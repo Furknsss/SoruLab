@@ -1,0 +1,6 @@
+{
+  "name": "SoruLab",
+  "description": "YKS (TYT-AYT) interaktif soru çözüm tahtası, PDF soru kırpma stüdyosu, optik form ve yapay zeka çözüm asistanı.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

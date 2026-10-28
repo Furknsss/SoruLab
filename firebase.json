@@ -1,0 +1,16 @@
+{
+  "firestore": [
+    {
+      "database": "ai-studio-android-sorulab-60eab89c-ce94-4f3c-b430-c4b1470c39d1",
+      "rules": "firestore.rules"
+    }
+  ],
+  "emulators": {
+    "firestore": {
+      "port": 8085
+    },
+    "auth": {
+      "port": 9099
+    }
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "TestAttempt": {
+      "title": "TestAttempt",
+      "description": "Represents a user's completed or in-progress YKS practice test or mock exam attempt.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Owner UID" },
+        "testId": { "type": "string", "description": "Catalog or custom test ID" },
+        "testTitle": { "type": "string", "description": "Display title of the test" },
+        "examType": { "type": "string", "description": "TYT or AYT" },
+        "subjectName": { "type": "string", "description": "Subject name e.g. Matematik" },
+        "topicName": { "type": "string", "description": "Topic name e.g. Temel Kavramlar" },
+        "correctCount": { "type": "integer", "description": "Number of correct answers" },
+        "wrongCount": { "type": "integer", "description": "Number of wrong answers" },
+        "emptyCount": { "type": "integer", "description": "Number of blank answers" },
+        "netScore": { "type": "number", "description": "Calculated YKS net score (Correct - Wrong/4)" },
+        "durationSeconds": { "type": "integer", "description": "Elapsed time in seconds" },
+        "answersMap": { "type": "object", "description": "Map of questionIndex to selected option (A-E)" },
+        "completedAtLabel": { "type": "string", "description": "Formatted date label e.g. 27 Eki 2026" },
+        "updatedAt": { "type": "timestamp", "description": "Server timestamp of update" }
+      },
+      "required": [
+        "userId",
+        "testId",
+        "testTitle",
+        "examType",
+        "subjectName",
+        "topicName",
+        "correctCount",
+        "wrongCount",
+        "emptyCount",
+        "netScore",
+        "durationSeconds",
+        "answersMap",
+        "completedAtLabel",
+        "updatedAt"
+      ]
+    },
+    "CustomQuestion": {
+      "title": "CustomQuestion",
+      "description": "Represents a question cropped from a PDF or added by the user into SoruLab's smart question bank.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Owner UID" },
+        "examType": { "type": "string", "description": "TYT or AYT" },
+        "subjectName": { "type": "string", "description": "Subject e.g. Matematik, Fizik" },
+        "topicName": { "type": "string", "description": "Topic e.g. Fonksiyonlar, Bağıl Hareket" },
+        "difficulty": { "type": "string", "description": "Kolay, Orta, or Zor" },
+        "publisherTag": { "type": "string", "description": "Source publisher or custom tag e.g. 3D Yayınları, Orijinal" },
+        "questionStem": { "type": "string", "description": "Question text or OCR summary" },
+        "optionA": { "type": "string", "description": "Choice A text" },
+        "optionB": { "type": "string", "description": "Choice B text" },
+        "optionC": { "type": "string", "description": "Choice C text" },
+        "optionD": { "type": "string", "description": "Choice D text" },
+        "optionE": { "type": "string", "description": "Choice E text" },
+        "correctOption": { "type": "string", "description": "Correct choice letter A, B, C, D, or E" },
+        "aiSolutionHint": { "type": "string", "description": "Step-by-step solution or AI tip" },
+        "croppedImageBase64": { "type": "string", "description": "Optional compact base64 thumbnail of the cropped PDF region" },
+        "createdAt": { "type": "timestamp", "description": "Server timestamp of creation" }
+      },
+      "required": [
+        "userId",
+        "examType",
+        "subjectName",
+        "topicName",
+        "difficulty",
+        "publisherTag",
+        "questionStem",
+        "optionA",
+        "optionB",
+        "optionC",
+        "optionD",
+        "optionE",
+        "correctOption",
+        "aiSolutionHint",
+        "croppedImageBase64",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/test_attempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/TestAttempt" },
+      "description": "User's private test attempts and optical form records."
+    },
+    "/users/{userId}/custom_questions/{questionId}": {
+      "schema": { "$ref": "#/entities/CustomQuestion" },
+      "description": "User's private cropped PDF questions and tagged YKS questions."
+    }
+  }
+}

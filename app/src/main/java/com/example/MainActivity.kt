@@ -73,12 +73,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.data.ExamType
 import com.example.data.SoruLabCatalog
 import com.example.ui.screens.AnaSayfaScreen
-import com.example.ui.screens.DenemelerAndPdfStudioScreen
+import com.example.ui.screens.DenemelerHubScreen
 import com.example.ui.screens.FloatingCircularBottomNav
 import com.example.ui.screens.IstatistiklerimScreen
 import com.example.ui.screens.LiveSolvingBoardScreen
+import com.example.ui.screens.SoruHavuzuAndPdfStudioView
 import com.example.ui.screens.SoruLabAiAssistantDialog
 import com.example.ui.screens.SoruPratigiScreen
 import com.example.ui.theme.SoruLabBackground
@@ -96,6 +98,7 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.SoruLabViolet
 import com.example.util.configureAppCheck
 import com.example.viewmodel.AiSolverViewModel
+import com.example.viewmodel.BatchPdfCropState
 import com.example.viewmodel.BoardViewMode
 import com.example.viewmodel.MainNavTab
 import com.example.viewmodel.SoruLabViewModel
@@ -241,6 +244,7 @@ private fun ActiveSolvingSessionHost(
     val activeTool by mainViewModel.activeTool.collectAsStateWithLifecycle()
     val selectedStrokeSizeIndex by mainViewModel.selectedStrokeSizeIndex.collectAsStateWithLifecycle()
     val selectedPenColorHex by mainViewModel.selectedPenColorHex.collectAsStateWithLifecycle()
+    val customPublishers by mainViewModel.customPublishers.collectAsStateWithLifecycle()
 
     val curSession = session ?: return
     val canvasKey = remember(curSession.viewMode, curSession.testItem.id, curSession.currentQuestionIndex) {
@@ -274,7 +278,11 @@ private fun ActiveSolvingSessionHost(
             onToggleQuestionMap = { mainViewModel.toggleQuestionMapDrawer() },
             onFinishTest = { mainViewModel.finishActiveTestAndReview() },
             onGoToStatsTab = { mainViewModel.navigateFromReviewToStats() },
-            onAskAiForQuestion = { q -> mainViewModel.openAiAssistant(q) }
+            onAskAiForQuestion = { q -> mainViewModel.openAiAssistant(q) },
+            onGenerateTwinQuestion = { q, cb -> aiViewModel.generateTwinQuestionOnDemand(q, cb) },
+            onGenerateSolutionForQuestion = { q, cb -> aiViewModel.generateQuestionSolutionOnDemand(q, cb) },
+            onAddQuestionToKumbara = { q -> mainViewModel.addQuestionToKumbara(q) },
+            customPublishers = customPublishers
         )
 
         AiAssistantAndBannerHost(
@@ -339,7 +347,7 @@ private fun SoruPratigiTabHost(
 
     val currentTopicTests = remember(selectedTopic, selectedTestLevel, generatedTopicTests) {
         selectedTopic?.let { topic ->
-            generatedTopicTests["${topic.id}_${selectedTestLevel.name}"].orEmpty()
+            mainViewModel.getTestsForTopicAndLevel(topic, selectedTestLevel)
         }.orEmpty()
     }
     val completedTestIds = remember(userTestResults) {
@@ -393,59 +401,89 @@ private fun DenemelerTabHost(
     val showPdfCropperStudio by mainViewModel.showPdfCropperStudio.collectAsStateWithLifecycle()
     val userCustomQuestions by mainViewModel.userCustomQuestions.collectAsStateWithLifecycle()
     val customPublishers by mainViewModel.customPublishers.collectAsStateWithLifecycle()
+    val userTestResults by mainViewModel.userTestResults.collectAsStateWithLifecycle()
     val isAutoTagging by aiViewModel.isAutoTagging.collectAsStateWithLifecycle()
     val batchStatusText by aiViewModel.batchStatusText.collectAsStateWithLifecycle()
+    val batchProgressPercent by aiViewModel.batchProgressPercent.collectAsStateWithLifecycle()
+    val batchErrorText by aiViewModel.batchErrorText.collectAsStateWithLifecycle()
 
-    DenemelerAndPdfStudioScreen(
-        showPdfCropper = showPdfCropperStudio,
-        customQuestions = userCustomQuestions,
-        customPublishers = customPublishers,
-        isAutoTagging = isAutoTagging,
-        batchStatusText = batchStatusText,
-        onOpenPdfCropper = { mainViewModel.openPdfCropperStudio() },
-        onClosePdfCropper = { mainViewModel.closePdfCropperStudio() },
-        onStartMockExam = { mockExam, reviewOnly ->
-            mainViewModel.startMockExam(mockExam, reviewOnly)
-        },
-        onAddCustomPublisher = { name, shortCode, logoPath ->
-            mainViewModel.addCustomPublisher(name, shortCode, logoPath)
-        },
-        onAutoTagCroppedQuestion = { bmp, hint, onResult ->
-            aiViewModel.autoAnalyzeCroppedQuestion(bmp, hint, onResult)
-        },
-        onExtractBatchFromPdfPage = { pageBmp, answerKeyBmps, manualKeyText, pubName, pubLogoUri, examType, subjectName, onComplete ->
-            aiViewModel.extractAndCropQuestionsFromPdfPage(
-                context = context,
-                pageBitmap = pageBmp,
-                answerKeyPageBitmaps = answerKeyBmps,
-                manualAnswerKeyText = manualKeyText,
-                publisherName = pubName,
-                publisherLogoUri = pubLogoUri,
-                defaultExamType = examType,
-                defaultSubjectName = subjectName,
-                onComplete = onComplete
+    var selectedExamFilter by remember { mutableStateOf<ExamType?>(null) }
+
+    if (showPdfCropperStudio) {
+        val batchState = remember(isAutoTagging, batchStatusText, batchProgressPercent, batchErrorText) {
+            BatchPdfCropState(
+                isAnalyzing = isAutoTagging,
+                progressPercent = batchProgressPercent,
+                progressMessage = batchStatusText.orEmpty(),
+                errorMessage = batchErrorText
             )
-        },
-        onSaveCroppedQuestion = { examType, subjectName, topicName, difficulty, correctOption, questionText, publisherTag, aiSolutionSummary, cropAspectRatio, targetLevel, croppedImagePath, publisherLogoUri, answerKeyVerified, questionNumberInBook ->
-            mainViewModel.saveCroppedQuestionToCloud(
-                examType = examType,
-                subjectName = subjectName,
-                topicName = topicName,
-                difficulty = difficulty,
-                correctOption = correctOption,
-                questionText = questionText,
-                publisherTag = publisherTag,
-                aiSolutionSummary = aiSolutionSummary,
-                cropAspectRatio = cropAspectRatio,
-                targetLevel = targetLevel,
-                croppedImagePath = croppedImagePath,
-                publisherLogoUri = publisherLogoUri,
-                answerKeyVerified = answerKeyVerified,
-                questionNumberInBook = questionNumberInBook
-            )
-        },
-        onDeleteCustomQuestion = { mainViewModel.deleteCustomQuestion(it) }
-    )
+        }
+        val selectedPubLogoLookup = remember(customPublishers) {
+            customPublishers.associateBy({ it.name.lowercase() }, { it.customLogoPath })
+        }
+
+        SoruHavuzuAndPdfStudioView(
+            customQuestions = userCustomQuestions,
+            customPublishers = customPublishers,
+            batchCropState = batchState,
+            onStartFastParallelPdfExtraction = { pdfUri, fileNameHint, publisher, onComplete ->
+                val logoUri = publisher.customLogoPath.ifBlank {
+                    selectedPubLogoLookup[publisher.name.lowercase()].orEmpty()
+                }
+                aiViewModel.extractFullPdfFastParallel(
+                    context = context,
+                    pdfUri = pdfUri,
+                    fileNameHint = fileNameHint,
+                    publisherName = publisher.name,
+                    publisherLogoUri = logoUri,
+                    customPublishers = customPublishers,
+                    onComplete = { extractedList, coverPath, detectedBookTitle ->
+                        onComplete(extractedList, coverPath, detectedBookTitle)
+                    }
+                )
+            },
+            onAddCustomPublisher = { name, shortCode, logoPath ->
+                mainViewModel.addCustomPublisher(name, shortCode, logoPath)
+            },
+            onSaveExtractedPdfBatch = { extractedItems, publisherName, publisherLogoUri, bookTitle, coverPath ->
+                mainViewModel.saveExtractedPdfQuestionsBatch(
+                    extractedItems = extractedItems,
+                    publisherName = publisherName,
+                    publisherLogoUri = publisherLogoUri,
+                    bookOrTestName = bookTitle,
+                    bookCoverPath = coverPath
+                )
+            },
+            onDismissError = {
+                aiViewModel.clearBatchError()
+            },
+            onDeleteLibraryBook = { questionIds -> mainViewModel.deleteLibraryBookQuestions(questionIds) },
+            onClearAllData = { mainViewModel.clearAllUserData() },
+            onBack = { mainViewModel.closePdfCropperStudio() },
+            onSolveBookInPractice = { firstRecord ->
+                val bookName = firstRecord.bookOrTestName.ifBlank { "${firstRecord.publisherTag} Soru Bankası" }
+                val bookQuestions = userCustomQuestions.filter {
+                    it.bookOrTestName.ifBlank { "${it.publisherTag} Soru Bankası" } == bookName
+                }.ifEmpty { listOf(firstRecord) }
+                mainViewModel.solveBookQuestionsInPractice(bookName, bookQuestions)
+            }
+        )
+    } else {
+        DenemelerHubScreen(
+            selectedFilter = selectedExamFilter,
+            mockExams = SoruLabCatalog.mockExams,
+            solvedRecords = userTestResults,
+            customQuestionsCount = userCustomQuestions.size,
+            onSelectFilter = { selectedExamFilter = it },
+            onStartExam = { mockExam ->
+                mainViewModel.startMockExam(mockExam, reviewOnly = false)
+            },
+            onReviewExam = { mockExam ->
+                mainViewModel.startMockExam(mockExam, reviewOnly = true)
+            },
+            onOpenPdfStudio = { mainViewModel.openPdfCropperStudio() }
+        )
+    }
 }
 
 @Composable

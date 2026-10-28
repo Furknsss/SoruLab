@@ -54,43 +54,136 @@ data class YksPublisherInfo(
 
 object SoruLabPublisherPresets {
     val defaultPublishers: List<YksPublisherInfo> = listOf(
-        YksPublisherInfo("3d", "3D Yayınları", "3D", 0xFFDC2626, 0xFF991B1B),
-        YksPublisherInfo("345", "ÜçDörtBeş Yayınları", "345", 0xFF1D4ED8, 0xFFEA580C),
-        YksPublisherInfo("orijinal", "Orijinal Yayınları", "ORJ", 0xFF1E3A8A, 0xFFD97706),
-        YksPublisherInfo("bilgi_sarmal", "Bilgi Sarmal", "BS", 0xFFB45309, 0xFF0F172A),
-        YksPublisherInfo("apotemi", "Apotemi Yayınları", "APO", 0xFF0F766E, 0xFF047857),
-        YksPublisherInfo("aydin", "Aydın Yayınları", "AYD", 0xFF6D28D9, 0xFF4C1D95),
-        YksPublisherInfo("acil", "Acil Yayınları", "ACİL", 0xFFE11D48, 0xFF881337),
-        YksPublisherInfo("karekok", "Karekök Yayınları", "√K", 0xFF15803D, 0xFF1E293B),
-        YksPublisherInfo("toprak", "Toprak Yayınları", "TPR", 0xFFC2410C, 0xFF7C2D12),
-        YksPublisherInfo("endemik", "Endemik Yayınları", "END", 0xFF0284C7, 0xFF0369A1),
-        YksPublisherInfo("hiz_ve_renk", "Hız ve Renk", "H&R", 0xFF7C3AED, 0xFF2563EB),
-        YksPublisherInfo("palme", "Palme Yayınları", "PLM", 0xFF059669, 0xFF065F46)
+        YksPublisherInfo(
+            id = "pub_3d",
+            name = "3D Yayınları",
+            shortCode = "3D",
+            primaryColorHex = 0xFFDC2626,
+            secondaryColorHex = 0xFF991B1B
+        ),
+        YksPublisherInfo(
+            id = "pub_345",
+            name = "345 All Star",
+            shortCode = "345",
+            primaryColorHex = 0xFF1E3A8A,
+            secondaryColorHex = 0xFF172554
+        ),
+        YksPublisherInfo(
+            id = "pub_orijinal",
+            name = "Orijinal",
+            shortCode = "ORJ",
+            primaryColorHex = 0xFF2563EB,
+            secondaryColorHex = 0xFF1E40AF
+        ),
+        YksPublisherInfo(
+            id = "pub_ess",
+            name = "ESŞ",
+            shortCode = "ESŞ",
+            primaryColorHex = 0xFF0D9488,
+            secondaryColorHex = 0xFF115E59
+        ),
+        YksPublisherInfo(
+            id = "pub_eyupb",
+            name = "Eyüp B.",
+            shortCode = "EYP",
+            primaryColorHex = 0xFF4F46E5,
+            secondaryColorHex = 0xFF3730A3
+        )
     )
+
+    fun mergedPublishers(customPublishers: List<YksPublisherInfo>): List<YksPublisherInfo> {
+        val customByName = customPublishers.associateBy { it.name.trim().lowercase() }
+        val baseList = defaultPublishers.map { def ->
+            val override = customByName[def.name.trim().lowercase()]
+            if (override != null && override.customLogoPath.isNotBlank()) {
+                def.copy(customLogoPath = override.customLogoPath)
+            } else {
+                def
+            }
+        }
+        val extraCustom = customPublishers.filter { custom ->
+            defaultPublishers.none { it.name.equals(custom.name.trim(), ignoreCase = true) }
+        }
+        return extraCustom + baseList
+    }
 
     fun resolvePublisher(
         publisherTag: String,
         customPublishers: List<YksPublisherInfo> = emptyList()
     ): YksPublisherInfo {
-        val all = customPublishers + defaultPublishers
         val trimmed = publisherTag.trim()
-        return all.firstOrNull {
+        val all = mergedPublishers(customPublishers)
+        all.firstOrNull {
             it.name.equals(trimmed, ignoreCase = true) ||
                 it.id.equals(trimmed, ignoreCase = true) ||
-                trimmed.contains(it.name.substringBefore(" "), ignoreCase = true) ||
-                trimmed.contains(it.shortCode, ignoreCase = true)
-        } ?: YksPublisherInfo(
+                it.shortCode.equals(trimmed, ignoreCase = true) ||
+                (it.name.isNotBlank() && trimmed.contains(it.name, ignoreCase = true)) ||
+                (it.name.isNotBlank() && it.name.contains(trimmed, ignoreCase = true) && trimmed.length >= 2)
+        }?.let { return it }
+
+        return YksPublisherInfo(
             id = "custom_${trimmed.lowercase().replace(" ", "_")}",
-            name = trimmed.ifBlank { "ÜçDörtBeş Yayınları" },
-            shortCode = trimmed.split(" ")
-                .filter { it.isNotBlank() }
-                .take(2)
-                .joinToString("") { it.take(2).uppercase() }
-                .ifBlank { "YKS" }
-                .take(4),
-            primaryColorHex = 0xFF1D4ED8,
-            secondaryColorHex = 0xFF0F172A
+            name = trimmed.ifBlank { "3D Yayınları" },
+            shortCode = trimmed.take(3).uppercase().ifBlank { "YKS" },
+            primaryColorHex = 0xFF1E3A8A,
+            secondaryColorHex = 0xFF0F172A,
+            customLogoPath = ""
         )
+    }
+}
+
+@Immutable
+data class AiStructuredSolution(
+    val kritikBilgiTeorem: String = "",
+    val adimAdimCozum: String = "",
+    val osymTuzakNotu: String = ""
+) {
+    val adimAdimList: List<String>
+        get() = adimAdimCozum
+            .split("\n")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .ifEmpty { if (adimAdimCozum.isNotBlank()) listOf(adimAdimCozum) else emptyList() }
+
+    fun toFormattedText(): String {
+        return buildString {
+            if (kritikBilgiTeorem.isNotBlank()) {
+                appendLine("📌 Kritik Bilgi & Teorem: $kritikBilgiTeorem")
+            }
+            if (adimAdimCozum.isNotBlank()) {
+                appendLine("✏️ Adım Adım Çözüm: $adimAdimCozum")
+            }
+            if (osymTuzakNotu.isNotBlank()) {
+                append("⚠️ ÖSYM Tuzak Notu: $osymTuzakNotu")
+            }
+        }.trim()
+    }
+
+    companion object {
+        fun fromFormattedText(raw: String): AiStructuredSolution {
+            val teorem = raw.substringAfter("Kritik Bilgi & Teorem:", "")
+                .substringBefore("✏️")
+                .substringBefore("⚠️")
+                .trim()
+            val adim = raw.substringAfter("Adım Adım Çözüm:", "")
+                .substringBefore("⚠️")
+                .trim()
+            val tuzak = raw.substringAfter("ÖSYM Tuzak Notu:", "")
+                .trim()
+            return if (teorem.isNotBlank() || adim.isNotBlank() || tuzak.isNotBlank()) {
+                AiStructuredSolution(
+                    kritikBilgiTeorem = teorem,
+                    adimAdimCozum = adim.ifBlank { raw },
+                    osymTuzakNotu = tuzak
+                )
+            } else {
+                AiStructuredSolution(
+                    kritikBilgiTeorem = "Temel YKS kazanım ve muhakeme ilkesi.",
+                    adimAdimCozum = raw,
+                    osymTuzakNotu = "İşlem sırasına ve öncül şartlarına dikkat ediniz."
+                )
+            }
+        }
     }
 }
 
@@ -106,7 +199,7 @@ data class CustomQuestionRecord(
     val difficulty: String = "Orta",
     val correctOption: String = "C",
     val questionText: String = "",
-    val publisherTag: String = "ÜçDörtBeş Yayınları",
+    val publisherTag: String = "3D Yayınları",
     val aiSolutionSummary: String = "",
     val cropAspectRatio: Double = 1.25,
     @ServerTimestamp val createdAt: Timestamp? = null,
@@ -136,6 +229,18 @@ data class CustomQuestionRecord(
         get() = parsedMetaMap["logo"].orEmpty()
 
     @get:Exclude
+    val bookOrTestName: String
+        get() = parsedMetaMap["book"].orEmpty()
+
+    @get:Exclude
+    val bookCoverPath: String
+        get() = parsedMetaMap["cover"].orEmpty()
+
+    @get:Exclude
+    val isInKumbara: Boolean
+        get() = parsedMetaMap["kumbara"] == "1"
+
+    @get:Exclude
     val answerKeyVerified: Boolean
         get() = parsedMetaMap["ak"] != "0"
 
@@ -151,6 +256,10 @@ data class CustomQuestionRecord(
             aiSolutionSummary
         }
 
+    @get:Exclude
+    val structuredAiCozum: AiStructuredSolution
+        get() = AiStructuredSolution.fromFormattedText(cleanSolutionSummary)
+
     companion object {
         fun packSolutionWithMeta(
             solutionText: String,
@@ -158,7 +267,10 @@ data class CustomQuestionRecord(
             croppedImagePath: String = "",
             publisherLogoUri: String = "",
             answerKeyVerified: Boolean = true,
-            questionNumberInBook: Int = 0
+            questionNumberInBook: Int = 0,
+            bookOrTestName: String = "",
+            bookCoverPath: String = "",
+            isInKumbara: Boolean = false
         ): String {
             val cleanSol = if (solutionText.startsWith("[META:")) {
                 solutionText.substringAfter("]").trimStart()
@@ -169,6 +281,9 @@ data class CustomQuestionRecord(
                 if (targetLevel.isNotBlank()) add("level=${targetLevel.replace("|", "")}")
                 if (croppedImagePath.isNotBlank()) add("img=${croppedImagePath.replace("|", "")}")
                 if (publisherLogoUri.isNotBlank()) add("logo=${publisherLogoUri.replace("|", "")}")
+                if (bookOrTestName.isNotBlank()) add("book=${bookOrTestName.replace("|", "").replace("]", "")}")
+                if (bookCoverPath.isNotBlank()) add("cover=${bookCoverPath.replace("|", "").replace("]", "")}")
+                if (isInKumbara) add("kumbara=1")
                 add("ak=${if (answerKeyVerified) "1" else "0"}")
                 if (questionNumberInBook > 0) add("qnum=$questionNumberInBook")
             }
@@ -178,6 +293,18 @@ data class CustomQuestionRecord(
         }
     }
 }
+
+@Immutable
+data class LibraryBookCardModel(
+    val key: String,
+    val bookTitle: String,
+    val publisherName: String,
+    val publisherInfo: YksPublisherInfo,
+    val coverImagePath: String,
+    val activeQuestionCount: Int,
+    val subjectsSummary: String,
+    val questions: List<CustomQuestionRecord>
+)
 
 enum class ExamType(val label: String, val fullTitle: String) {
     TYT("TYT", "Temel Yeterlilik Testi"),

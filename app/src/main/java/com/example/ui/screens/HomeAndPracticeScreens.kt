@@ -1275,12 +1275,12 @@ private fun ProfileCenterBottomSheet(
                                     }
                                     Column {
                                         Text(
-                                            text = "Soru Havuzu & PDF Stüdyosu",
+                                            text = "Soru Havuzu",
                                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
                                             color = Color.White
                                         )
                                         Text(
-                                            text = "PDF yükle, cevap anahtarıyla eşleştir, yayın logosuyla havuza ekle ($customQuestionsCount soru)",
+                                            text = "PDF yükle, otomatik kırp ve yayın logosuyla havuza ekle ($customQuestionsCount soru)",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = Color.White.copy(alpha = 0.85f)
                                         )
@@ -1405,7 +1405,7 @@ private fun ProfileCenterBottomSheet(
                         ),
                         AchievementBadgeItem(
                             title = "Soru Havuzu Mimarı",
-                            description = "PDF Soru Kırpma Stüdyosu'ndan havuza soru ekle ($customQuestionsCount/1)",
+                            description = "Soru Havuzu'na kendi kaynağından soru ekle ($customQuestionsCount/1)",
                             isUnlocked = customQuestionsCount >= 1,
                             color = Color(0xFF0D9488)
                         ),
@@ -2477,7 +2477,27 @@ private fun TopicTestsDetailView(
 
                                         Spacer(modifier = Modifier.width(12.dp))
 
-                                        DifficultyMeterBar(position = testItem.difficultyPosition)
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            DifficultyMeterBar(position = testItem.difficultyPosition)
+
+                                            Surface(
+                                                onClick = { onStartTestImmediately(testItem) },
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = Color(0xFF1E3A8A),
+                                                modifier = Modifier.testTag("solve_test_btn_${testItem.id}")
+                                            ) {
+                                                Text(
+                                                    text = "Çöz",
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    fontSize = 12.sp,
+                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }

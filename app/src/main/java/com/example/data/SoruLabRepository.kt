@@ -103,27 +103,44 @@ class SoruLabRepository(
 
     /**
      * One-time automatic migration that wipes any previously cached demo/sample generated tests,
-     * solved test results, or sample cropped questions so the app starts 100% clean.
+     * solved test results, sample cropped questions, or preset publishers without real logo files
+     * so the app starts 100% clean.
      */
     fun ensureDemoDataCleanedOnce() {
         val ctx = appContext ?: return
         try {
             val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
-            val alreadyCleaned = prefs.getBoolean("clean_demo_data_v3", false)
+            val alreadyCleaned = prefs.getBoolean("clean_demo_data_v6", false)
             if (!alreadyCleaned) {
                 val editor = prefs.edit()
                 prefs.all.keys.forEach { key ->
                     if (key.startsWith("solved_results_") ||
                         key.startsWith("gen_tests_") ||
-                        key.startsWith("custom_questions_")
+                        key.startsWith("custom_questions_") ||
+                        key == "custom_publishers_v1"
                     ) {
                         editor.remove(key)
                     }
                 }
-                editor.putBoolean("clean_demo_data_v3", true)
+                editor.putBoolean("clean_demo_data_v6", true)
+                editor.putBoolean("pending_cloud_demo_purge_v6", true)
                 editor.apply()
             }
         } catch (_: Exception) {
+        }
+    }
+
+    fun consumePendingCloudDemoPurge(): Boolean {
+        val ctx = appContext ?: return false
+        return try {
+            val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+            val pending = prefs.getBoolean("pending_cloud_demo_purge_v6", false)
+            if (pending) {
+                prefs.edit().putBoolean("pending_cloud_demo_purge_v6", false).apply()
+            }
+            pending
+        } catch (_: Exception) {
+            false
         }
     }
 

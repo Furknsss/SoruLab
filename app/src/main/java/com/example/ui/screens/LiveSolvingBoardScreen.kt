@@ -237,7 +237,206 @@ fun LiveSolvingBoardScreen(
         }
 
         // =======================================================================
-        // 2. ORTA TEST SAYFASI İÇERİĞİ + SAĞ KENAR DİKEY SEKME ("Optik Form" / "İstatistikler")
+        // 2. ÜST BEYAZ BARIN HEMEN ALTINDA KOYU LACİVERT (#16327A) ÇİZİM ARAÇ ÇUBUĞU:
+        //    - Solda: Kitap / Tekli görünüm ikonu
+        //    - Ortada: Kalem, Büyüteç (Zoom), El (Kaydırma), Silgi, 3 kalınlık noktası,
+        //              Renk Paleti, Çöp Kutusu
+        //    - En Sağda: Süre Sayacı
+        // =======================================================================
+        Surface(
+            color = Navy345ToolbarColor,
+            shadowElevation = 6.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Solda: Kitap / Tekli Görünüm İkonu
+                IconButton(
+                    onClick = onToggleViewMode,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = 0.16f))
+                        .testTag("toggle_board_view_mode_button")
+                ) {
+                    Icon(
+                        imageVector = if (session.viewMode == BoardViewMode.FULL_PAGE) {
+                            Icons.Filled.MenuBook
+                        } else {
+                            Icons.Filled.CropPortrait
+                        },
+                        contentDescription = "Görünüm Değiştir",
+                        tint = Color.White
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                // Ortada: Kalem, Büyüteç (Zoom), El (Kaydırma), Silgi, 3 kalınlık noktası, Renk Paleti, Çöp Kutusu
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Kalem
+                    ToolbarIconButton(
+                        icon = Icons.Filled.Edit,
+                        contentDescription = "Kalem",
+                        selected = activeTool == DrawingTool.PEN,
+                        onClick = { onSelectTool(DrawingTool.PEN) },
+                        tag = "tool_pen"
+                    )
+
+                    // Büyüteç (Zoom)
+                    ToolbarIconButton(
+                        icon = Icons.Filled.ZoomIn,
+                        contentDescription = "Yakınlaştır",
+                        selected = boardZoomScale > 1.05f,
+                        onClick = {
+                            if (boardZoomScale < 1.8f) {
+                                boardZoomScale = (boardZoomScale + 0.35f).coerceAtMost(2.2f)
+                            } else {
+                                boardZoomScale = 1f
+                                boardPanOffset = Offset.Zero
+                            }
+                            onSelectTool(DrawingTool.HAND_PAN)
+                        },
+                        tag = "tool_zoom"
+                    )
+
+                    // El (Kaydırma)
+                    ToolbarIconButton(
+                        icon = Icons.Filled.PanTool,
+                        contentDescription = "Kaydır",
+                        selected = activeTool == DrawingTool.HAND_PAN,
+                        onClick = { onSelectTool(DrawingTool.HAND_PAN) },
+                        tag = "tool_hand_pan"
+                    )
+
+                    // Silgi
+                    ToolbarIconButton(
+                        icon = Icons.Filled.AutoFixNormal,
+                        contentDescription = "Silgi",
+                        selected = activeTool == DrawingTool.ERASER,
+                        onClick = { onSelectTool(DrawingTool.ERASER) },
+                        tag = "tool_eraser"
+                    )
+
+                    // 3 Kalınlık Noktası
+                    val dotSizes = listOf(6.dp, 9.dp, 13.dp)
+                    dotSizes.forEachIndexed { idx, dotDp ->
+                        val isSizeSelected = selectedStrokeSizeIndex == idx
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isSizeSelected) Color.White.copy(alpha = 0.25f) else Color.Transparent
+                                )
+                                .clickable { onSelectStrokeSize(idx) }
+                                .testTag("stroke_size_$idx"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(dotDp)
+                                    .clip(CircleShape)
+                                    .background(Color.White)
+                            )
+                        }
+                    }
+
+                    // Renk Paleti
+                    Box {
+                        IconButton(
+                            onClick = { showColorPalettePopup = !showColorPalettePopup },
+                            modifier = Modifier.testTag("tool_color_palette")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Palette,
+                                contentDescription = "Kalem Rengi",
+                                tint = Color(selectedPenColorHex)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showColorPalettePopup,
+                            onDismissRequest = { showColorPalettePopup = false }
+                        ) {
+                            val palette = listOf(
+                                0xFF1D4ED8L to "Mavi",
+                                0xFF0F172AL to "Siyah",
+                                0xFFEF4444L to "Kırmızı",
+                                0xFF10B981L to "Yeşil",
+                                0xFF7C3AEDL to "Mor",
+                                0xFFF59E0BL to "Turuncu"
+                            )
+                            palette.forEach { (hex, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    leadingIcon = {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(18.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(hex))
+                                        )
+                                    },
+                                    onClick = {
+                                        onSelectPenColor(hex)
+                                        showColorPalettePopup = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // Çöp Kutusu
+                    IconButton(
+                        onClick = onClearCanvas,
+                        modifier = Modifier.testTag("tool_clear_canvas")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.DeleteOutline,
+                            contentDescription = "Çizimleri Temizle",
+                            tint = Color.White
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                // En Sağda: Süre Sayacı
+                Surface(
+                    color = Color.White.copy(alpha = 0.16f),
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.testTag("bottom_timer_counter")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Timer,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = formattedTimer,
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold),
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+        }
+
+        // =======================================================================
+        // 3. ORTA TEST SAYFASI İÇERİĞİ + SAĞ KENAR DİKEY SEKME ("Optik Form" / "İstatistikler")
         // =======================================================================
         Box(
             modifier = Modifier
@@ -468,205 +667,6 @@ fun LiveSolvingBoardScreen(
                         selectedAnswers = session.selectedAnswers,
                         onGoToStatsTab = onGoToStatsTab
                     )
-                }
-            }
-        }
-
-        // =======================================================================
-        // 3. ALT KOYU LACİVERT (#16327A) ARAÇ ÇUBUĞU:
-        //    - Solda: Kitap / Tekli görünüm ikonu
-        //    - Ortada: Kalem, Büyüteç (Zoom), El (Kaydırma), Silgi, 3 kalınlık noktası,
-        //              Renk Paleti, Çöp Kutusu
-        //    - En Sağda: Süre Sayacı
-        // =======================================================================
-        Surface(
-            color = Navy345ToolbarColor,
-            shadowElevation = 8.dp
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Solda: Kitap / Tekli Görünüm İkonu
-                IconButton(
-                    onClick = onToggleViewMode,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color.White.copy(alpha = 0.16f))
-                        .testTag("toggle_board_view_mode_button")
-                ) {
-                    Icon(
-                        imageVector = if (session.viewMode == BoardViewMode.FULL_PAGE) {
-                            Icons.Filled.MenuBook
-                        } else {
-                            Icons.Filled.CropPortrait
-                        },
-                        contentDescription = "Görünüm Değiştir",
-                        tint = Color.White
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(14.dp))
-
-                // Ortada: Kalem, Büyüteç (Zoom), El (Kaydırma), Silgi, 3 kalınlık noktası, Renk Paleti, Çöp Kutusu
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Kalem
-                    ToolbarIconButton(
-                        icon = Icons.Filled.Edit,
-                        contentDescription = "Kalem",
-                        selected = activeTool == DrawingTool.PEN,
-                        onClick = { onSelectTool(DrawingTool.PEN) },
-                        tag = "tool_pen"
-                    )
-
-                    // Büyüteç (Zoom)
-                    ToolbarIconButton(
-                        icon = Icons.Filled.ZoomIn,
-                        contentDescription = "Yakınlaştır",
-                        selected = boardZoomScale > 1.05f,
-                        onClick = {
-                            if (boardZoomScale < 1.8f) {
-                                boardZoomScale = (boardZoomScale + 0.35f).coerceAtMost(2.2f)
-                            } else {
-                                boardZoomScale = 1f
-                                boardPanOffset = Offset.Zero
-                            }
-                            onSelectTool(DrawingTool.HAND_PAN)
-                        },
-                        tag = "tool_zoom"
-                    )
-
-                    // El (Kaydırma)
-                    ToolbarIconButton(
-                        icon = Icons.Filled.PanTool,
-                        contentDescription = "Kaydır",
-                        selected = activeTool == DrawingTool.HAND_PAN,
-                        onClick = { onSelectTool(DrawingTool.HAND_PAN) },
-                        tag = "tool_hand_pan"
-                    )
-
-                    // Silgi
-                    ToolbarIconButton(
-                        icon = Icons.Filled.AutoFixNormal,
-                        contentDescription = "Silgi",
-                        selected = activeTool == DrawingTool.ERASER,
-                        onClick = { onSelectTool(DrawingTool.ERASER) },
-                        tag = "tool_eraser"
-                    )
-
-                    // 3 Kalınlık Noktası
-                    val dotSizes = listOf(6.dp, 9.dp, 13.dp)
-                    dotSizes.forEachIndexed { idx, dotDp ->
-                        val isSizeSelected = selectedStrokeSizeIndex == idx
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isSizeSelected) Color.White.copy(alpha = 0.25f) else Color.Transparent
-                                )
-                                .clickable { onSelectStrokeSize(idx) }
-                                .testTag("stroke_size_$idx"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(dotDp)
-                                    .clip(CircleShape)
-                                    .background(Color.White)
-                            )
-                        }
-                    }
-
-                    // Renk Paleti
-                    Box {
-                        IconButton(
-                            onClick = { showColorPalettePopup = !showColorPalettePopup },
-                            modifier = Modifier.testTag("tool_color_palette")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Palette,
-                                contentDescription = "Kalem Rengi",
-                                tint = Color(selectedPenColorHex)
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = showColorPalettePopup,
-                            onDismissRequest = { showColorPalettePopup = false }
-                        ) {
-                            val palette = listOf(
-                                0xFF1D4ED8L to "Mavi",
-                                0xFF0F172AL to "Siyah",
-                                0xFFEF4444L to "Kırmızı",
-                                0xFF10B981L to "Yeşil",
-                                0xFF7C3AEDL to "Mor",
-                                0xFFF59E0BL to "Turuncu"
-                            )
-                            palette.forEach { (hex, label) ->
-                                DropdownMenuItem(
-                                    text = { Text(label) },
-                                    leadingIcon = {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(18.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(hex))
-                                        )
-                                    },
-                                    onClick = {
-                                        onSelectPenColor(hex)
-                                        showColorPalettePopup = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    // Çöp Kutusu
-                    IconButton(
-                        onClick = onClearCanvas,
-                        modifier = Modifier.testTag("tool_clear_canvas")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.DeleteOutline,
-                            contentDescription = "Çizimleri Temizle",
-                            tint = Color.White
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(14.dp))
-
-                // En Sağda: Süre Sayacı
-                Surface(
-                    color = Color.White.copy(alpha = 0.16f),
-                    shape = RoundedCornerShape(50),
-                    modifier = Modifier.testTag("bottom_timer_counter")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Timer,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = formattedTimer,
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold),
-                            color = Color.White
-                        )
-                    }
                 }
             }
         }

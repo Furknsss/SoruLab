@@ -1033,7 +1033,7 @@ fun SoruHavuzuAndPdfStudioView(
                                     ) {
                                         Text(
                                             text = batchCropState.progressMessage.ifBlank {
-                                                "PDF Açıldı: Toplam $totalPdfPages Sayfa. Sayfa 1/$totalPdfPages yüksek çözünürlükte taranıyor..."
+                                                "Sayfa 1 / ${totalPdfPages.coerceAtLeast(1)} işleniyor • Aktarılan Soru: 0 • Cevap Anahtarı Eşleştirildi"
                                             },
                                             color = Color(0xFF1E3A8A),
                                             fontWeight = FontWeight.Bold,

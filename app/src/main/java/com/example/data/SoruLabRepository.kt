@@ -52,7 +52,8 @@ class SoruLabRepository(
             val uid = prefs.getString("recognized_uid", null)
             val name = prefs.getString("recognized_name", null)
             val email = prefs.getString("recognized_email", null)
-            if (!uid.isNullOrBlank()) {
+            val confirmedDeviceSession = prefs.getBoolean("user_confirmed_device_session", false)
+            if (!uid.isNullOrBlank() && (uid != "device_yks_student_tr" || confirmedDeviceSession)) {
                 RecognizedDeviceAccount(
                     uid = uid,
                     displayName = name?.ifBlank { "SoruLab Öğrencisi" } ?: "SoruLab Öğrencisi",
@@ -60,20 +61,7 @@ class SoruLabRepository(
                     recognizedAtMillis = prefs.getLong("recognized_at", System.currentTimeMillis())
                 )
             } else {
-                // In the preview emulator, automatically recognize this device with a persistent device profile
-                // unless the user explicitly clicked Sign Out ("Çıkış Yap").
-                val deviceUid = prefs.getString("persistent_device_uid", null) ?: run {
-                    val generated = "device_yks_student_tr"
-                    prefs.edit().putString("persistent_device_uid", generated).apply()
-                    generated
-                }
-                val account = RecognizedDeviceAccount(
-                    uid = deviceUid,
-                    displayName = "YKS Öğrencisi",
-                    email = "ogrenci@sorulab.app"
-                )
-                saveRecognizedDeviceAccount(account.uid, account.displayName, account.email)
-                account
+                null
             }
         } catch (_: Exception) {
             null
@@ -86,6 +74,7 @@ class SoruLabRepository(
             val prefs = ctx.getSharedPreferences("sorulab_device_auth_prefs", Context.MODE_PRIVATE)
             prefs.edit()
                 .putBoolean("explicit_sign_out", false)
+                .putBoolean("user_confirmed_device_session", true)
                 .putString("recognized_uid", uid)
                 .putString("recognized_name", displayName.ifBlank { "YKS Öğrencisi" })
                 .putString("recognized_email", email)
@@ -101,6 +90,7 @@ class SoruLabRepository(
             val prefs = ctx.getSharedPreferences("sorulab_device_auth_prefs", Context.MODE_PRIVATE)
             prefs.edit()
                 .putBoolean("explicit_sign_out", true)
+                .putBoolean("user_confirmed_device_session", false)
                 .remove("recognized_uid")
                 .apply()
         } catch (_: Exception) {

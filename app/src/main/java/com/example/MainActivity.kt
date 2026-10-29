@@ -757,7 +757,10 @@ private fun SoruLabSignInGate(
                         try {
                             val webClientId = getDefaultWebClientId(context)
                             if (webClientId.isBlank()) {
-                                onRecognizeDeviceQuickStart()
+                                onErrorMessage(
+                                    "Google Bulut Girişi için Firebase yapılandırması (google-services.json) eksik. " +
+                                        "Geçici olarak alttaki 'Tanınan Cihaz Oturumu ile Devam Et' butonunu kullanabilir veya google-services.json dosyasını projeye ekleyebilirsiniz."
+                                )
                                 return@launch
                             }
                             val credentialManager = CredentialManager.create(context)
@@ -770,11 +773,11 @@ private fun SoruLabSignInGate(
                         } catch (_: GetCredentialCancellationException) {
                             onErrorMessage(null)
                         } catch (e: GetCredentialException) {
-                            Log.e("SoruLabAuth", "Google sign-in failed, recognizing device", e)
-                            onRecognizeDeviceQuickStart()
+                            Log.e("SoruLabAuth", "Google sign-in failed", e)
+                            onErrorMessage("Google hesabı seçilemedi: ${e.localizedMessage ?: "SHA-1 veya OAuth istemci yapılandırmasını kontrol edin."}")
                         } catch (e: Exception) {
-                            Log.e("SoruLabAuth", "Sign-in exception, recognizing device", e)
-                            onRecognizeDeviceQuickStart()
+                            Log.e("SoruLabAuth", "Sign-in exception", e)
+                            onErrorMessage("Google ile giriş yapılamadı: ${e.localizedMessage ?: "Bağlantı hatası"}")
                         } finally {
                             isLoading = false
                         }

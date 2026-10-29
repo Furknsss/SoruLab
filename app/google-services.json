@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "656943524635",
+    "project_id": "gen-lang-client-0143749618",
+    "storage_bucket": "gen-lang-client-0143749618.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:656943524635:android:8ff497c04d59f36e5e01be",
+        "android_client_info": {
+          "package_name": "com.aistudio.sorulab.ykslab"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "656943524635-c0r0oqk0haat5s93jllkrqufjfa491aa.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.sorulab.ykslab",
+            "certificate_hash": "3bd5bc50cfc065c4a121c3a07ee45993bdb3f701"
+          }
+        },
+        {
+          "client_id": "656943524635-fn5l5klg6pb8bkfiktsctpq7fdlgifi9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.sorulab.ykslab",
+            "certificate_hash": "9a8d8a15ec981d9b259dc2eb45b2701f3561e204"
+          }
+        },
+        {
+          "client_id": "656943524635-kg7aottftmb82gj95fkde001dbptbh0b.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDoyB0GsxPcQ-XCeiAIbYtebmThCyxk6wk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "656943524635-kg7aottftmb82gj95fkde001dbptbh0b.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

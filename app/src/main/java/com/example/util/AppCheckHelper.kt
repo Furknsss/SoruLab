@@ -55,7 +55,7 @@ fun configureAppCheck(context: Context, intent: Intent?) {
                 )
                 prefs.edit()
                     .putString(DEBUG_SECRET_KEY, debugToken)
-                    .commit()
+                    .apply()
                 Log.d(TAG, "App Check debug secret configured successfully.")
             } else {
                 Log.w(TAG, "No debug token found in Intent extra.")

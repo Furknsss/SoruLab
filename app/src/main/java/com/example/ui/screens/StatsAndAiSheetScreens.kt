@@ -67,7 +67,7 @@ fun IstatistiklerimScreen(
     } else {
         0
     }
-    val dateFormat = remember { SimpleDateFormat("dd MMM yyyy • HH:mm", Locale("tr", "TR")) }
+    val dateFormat = remember { SimpleDateFormat("dd MMM yyyy • HH:mm", Locale.forLanguageTag("tr-TR")) }
 
     val subjectStats = remember(testResults) {
         val defs = listOf(

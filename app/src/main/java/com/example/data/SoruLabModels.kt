@@ -249,6 +249,14 @@ data class CustomQuestionRecord(
         get() = parsedMetaMap["qnum"]?.toIntOrNull() ?: 0
 
     @get:Exclude
+    val effectiveDifficultyLabel: String
+        get() = parsedMetaMap["diff5"]?.takeIf { it.isNotBlank() } ?: difficulty
+
+    @get:Exclude
+    val difficultyLevel5: DifficultyLevel
+        get() = DifficultyLevel.fromLabel(effectiveDifficultyLabel)
+
+    @get:Exclude
     val cleanSolutionSummary: String
         get() = if (aiSolutionSummary.startsWith("[META:")) {
             aiSolutionSummary.substringAfter("]").trimStart()
@@ -270,7 +278,8 @@ data class CustomQuestionRecord(
             questionNumberInBook: Int = 0,
             bookOrTestName: String = "",
             bookCoverPath: String = "",
-            isInKumbara: Boolean = false
+            isInKumbara: Boolean = false,
+            fiveTierDifficulty: String = ""
         ): String {
             val cleanSol = if (solutionText.startsWith("[META:")) {
                 solutionText.substringAfter("]").trimStart()
@@ -279,6 +288,7 @@ data class CustomQuestionRecord(
             }
             val metaParts = buildList {
                 if (targetLevel.isNotBlank()) add("level=${targetLevel.replace("|", "")}")
+                if (fiveTierDifficulty.isNotBlank()) add("diff5=${fiveTierDifficulty.replace("|", "").replace("]", "")}")
                 if (croppedImagePath.isNotBlank()) add("img=${croppedImagePath.replace("|", "")}")
                 if (publisherLogoUri.isNotBlank()) add("logo=${publisherLogoUri.replace("|", "")}")
                 if (bookOrTestName.isNotBlank()) add("book=${bookOrTestName.replace("|", "").replace("]", "")}")
@@ -311,10 +321,52 @@ enum class ExamType(val label: String, val fullTitle: String) {
     AYT("AYT", "Alan Yeterlilik Testi")
 }
 
-enum class DifficultyLevel(val label: String, val weight: Float) {
-    KOLAY("Kolay", 0.22f),
-    ORTA("Orta", 0.52f),
-    ZOR("Zor", 0.85f)
+/**
+ * 5-Tier Difficulty System:
+ * 1) Kolay (Temel işlem ve tanım soruları)
+ * 2) Orta (Standart kazanım soruları)
+ * 3) ÖSYM (Hikayeli, yorum ve grafik ağırlıklı sınav tarzı sorular)
+ * 4) Zor (İleri seviye, birden fazla kazanımı birleştiren sorular)
+ * 5) Çok Zor ("Tümevarım / Barışça / Orijinal / Derece" tarzı en üst seviye sorular)
+ */
+enum class DifficultyLevel(val label: String, val weight: Float, val colorHex: Long, val starsCount: Int) {
+    KOLAY("Kolay", 0.12f, 0xFF16A34A, 1),
+    ORTA("Orta", 0.34f, 0xFF2563EB, 2),
+    OSYM("ÖSYM", 0.54f, 0xFFD97706, 3),
+    ZOR("Zor", 0.76f, 0xFFEA580C, 4),
+    COK_ZOR("Çok Zor", 0.92f, 0xFFDC2626, 5);
+
+    fun toFirestoreSafeDifficulty(): String = when (this) {
+        KOLAY -> "Kolay"
+        ORTA, OSYM -> "Orta"
+        ZOR, COK_ZOR -> "Zor"
+    }
+
+    companion object {
+        fun fromLabel(raw: String): DifficultyLevel {
+            val normalized = raw.trim().lowercase()
+            return when {
+                normalized.contains("çok zor") ||
+                    normalized.contains("cok zor") ||
+                    normalized.contains("tümevarım") ||
+                    normalized.contains("tumevarim") ||
+                    normalized.contains("barışça") ||
+                    normalized.contains("barisca") ||
+                    normalized.contains("derece") ||
+                    normalized.contains("orijinal") -> COK_ZOR
+                normalized.contains("ösym") ||
+                    normalized.contains("osym") ||
+                    normalized.contains("birebir") ||
+                    normalized.contains("sınav tarzı") -> OSYM
+                normalized.contains("zor") -> ZOR
+                normalized.contains("kolay") ||
+                    normalized.contains("başlangıç") ||
+                    normalized.contains("baslangic") ||
+                    normalized.contains("temel") -> KOLAY
+                else -> ORTA
+            }
+        }
+    }
 }
 
 enum class TopicTestLevel(
@@ -333,9 +385,9 @@ enum class TopicTestLevel(
         shortTag = "Başlangıç",
         wedgeColorHex = 0xFFD4C585,
         textColorHex = 0xFF9C7214,
-        difficultyPosition = 0.20f,
+        difficultyPosition = 0.15f,
         defaultDifficulty = DifficultyLevel.KOLAY,
-        poolDistributionLabel = "Temel kavrama ve kazanım odaklı (%80 Kolay • %20 Orta)"
+        poolDistributionLabel = "Temel işlem ve tanım odaklı (Kolay & Orta seviye sorular)"
     ),
     IKIZ(
         wheelLabel = "İKİZ",
@@ -344,8 +396,8 @@ enum class TopicTestLevel(
         wedgeColorHex = 0xFFD3B484,
         textColorHex = 0xFFB86614,
         difficultyPosition = 0.48f,
-        defaultDifficulty = DifficultyLevel.ORTA,
-        poolDistributionLabel = "Çözdüğün testlerde yanlış yaptığın soruların birebir ikiz eşlenikleri"
+        defaultDifficulty = DifficultyLevel.OSYM,
+        poolDistributionLabel = "Bu konuda yanlış yaptığın veya boş bıraktığın soruların birebir ikizleri"
     ),
     PEKISTIRME(
         wheelLabel = "PEKİŞTİRME",
@@ -353,9 +405,9 @@ enum class TopicTestLevel(
         shortTag = "Pekiştirme",
         wedgeColorHex = 0xFFD99588,
         textColorHex = 0xFFC72C2C,
-        difficultyPosition = 0.52f,
+        difficultyPosition = 0.36f,
         defaultDifficulty = DifficultyLevel.ORTA,
-        poolDistributionLabel = "Ağırlıklı orta, az kolay ve az zor etiketli (%20 Kolay • %60 Orta • %20 Zor)"
+        poolDistributionLabel = "Standart müfredat kazanımlarını pekiştiren Orta seviye sorular"
     ),
     GELISIYORUM(
         wheelLabel = "GELİŞİYORUM",
@@ -363,9 +415,9 @@ enum class TopicTestLevel(
         shortTag = "Gelişiyorum",
         wedgeColorHex = 0xFF1574E5,
         textColorHex = 0xFFEFF6FF,
-        difficultyPosition = 0.64f,
+        difficultyPosition = 0.42f,
         defaultDifficulty = DifficultyLevel.ORTA,
-        poolDistributionLabel = "Orta ve ileri düzey yorum becerisi geliştiren sorular"
+        poolDistributionLabel = "Orta ve ÖSYM geçiş düzeyinde yorum becerisi geliştiren sorular"
     ),
     OSYM(
         wheelLabel = "ÖSYM",
@@ -373,9 +425,9 @@ enum class TopicTestLevel(
         shortTag = "ÖSYM",
         wedgeColorHex = 0xFF6BA5CE,
         textColorHex = 0xFF0F3D7A,
-        difficultyPosition = 0.68f,
-        defaultDifficulty = DifficultyLevel.ORTA,
-        poolDistributionLabel = "ÖSYM sınav formatında yeni nesil muhakeme etiketli sorular"
+        difficultyPosition = 0.56f,
+        defaultDifficulty = DifficultyLevel.OSYM,
+        poolDistributionLabel = "Hikayeli, yorum ve grafik ağırlıklı gerçek ÖSYM tarzı sorular"
     ),
     DERECE(
         wheelLabel = "DERECE",
@@ -384,8 +436,8 @@ enum class TopicTestLevel(
         wedgeColorHex = 0xFF7B88CC,
         textColorHex = 0xFF1D2268,
         difficultyPosition = 0.88f,
-        defaultDifficulty = DifficultyLevel.ZOR,
-        poolDistributionLabel = "İlk 1.000 hedefli seçici ve zor etiketli sorular"
+        defaultDifficulty = DifficultyLevel.COK_ZOR,
+        poolDistributionLabel = "Tümevarım, Zor ve Çok Zor etiketli ileri seviye derece soruları"
     )
 }
 
@@ -484,9 +536,11 @@ object SoruLabCatalog {
         completed: Boolean = false
     ): YksTestItem {
         val diff = when {
-            pos < 0.35f -> DifficultyLevel.KOLAY
-            pos < 0.68f -> DifficultyLevel.ORTA
-            else -> DifficultyLevel.ZOR
+            pos < 0.24f -> DifficultyLevel.KOLAY
+            pos < 0.44f -> DifficultyLevel.ORTA
+            pos < 0.65f -> DifficultyLevel.OSYM
+            pos < 0.84f -> DifficultyLevel.ZOR
+            else -> DifficultyLevel.COK_ZOR
         }
         return YksTestItem(
             id = "${topicId}_$suffix",
@@ -500,6 +554,218 @@ object SoruLabCatalog {
             level = TopicTestLevel.OSYM,
             questions = emptyList()
         )
+    }
+
+    /**
+     * Classifies 5-tier difficulty (`Kolay`, `Orta`, `ÖSYM`, `Zor`, `Çok Zor`) from PDF headers/text.
+     */
+    fun classifyDifficulty5FromText(
+        rawDifficultyHint: String,
+        headerOrQuestionText: String,
+        questionIndexInPage: Int = 0
+    ): DifficultyLevel {
+        val combined = "$rawDifficultyHint $headerOrQuestionText".lowercase()
+        return when {
+            combined.contains("tümevarım") ||
+                combined.contains("tumevarim") ||
+                combined.contains("barışça") ||
+                combined.contains("barisca") ||
+                combined.contains("çok zor") ||
+                combined.contains("cok zor") ||
+                combined.contains("derece") ||
+                combined.contains("orijinal sorular") ||
+                combined.contains("kırmızı test") ||
+                combined.contains("ileri seviye") -> DifficultyLevel.COK_ZOR
+
+            combined.contains("ösym tadında") ||
+                combined.contains("osym tadinda") ||
+                combined.contains("ösym tarzı") ||
+                combined.contains("osym tarzi") ||
+                combined.contains("birebir ösym") ||
+                combined.contains("birebir osym") ||
+                combined.contains("çıkmış") ||
+                combined.contains("cikmis") ||
+                combined.contains("günlük hayat") ||
+                combined.contains("gunluk hayat") ||
+                rawDifficultyHint.equals("ÖSYM", ignoreCase = true) ||
+                rawDifficultyHint.equals("OSYM", ignoreCase = true) -> DifficultyLevel.OSYM
+
+            combined.contains("zor") ||
+                combined.contains("pekiştirme 3") ||
+                combined.contains("test 4") ||
+                combined.contains("test 5") -> DifficultyLevel.ZOR
+
+            combined.contains("kolay") ||
+                combined.contains("kazanım") ||
+                combined.contains("kazanim") ||
+                combined.contains("başlangıç") ||
+                combined.contains("baslangic") ||
+                combined.contains("temel") ||
+                combined.contains("test 1") -> DifficultyLevel.KOLAY
+
+            rawDifficultyHint.isNotBlank() -> DifficultyLevel.fromLabel(rawDifficultyHint)
+            else -> when (questionIndexInPage % 5) {
+                0 -> DifficultyLevel.KOLAY
+                1 -> DifficultyLevel.ORTA
+                2 -> DifficultyLevel.OSYM
+                3 -> DifficultyLevel.ZOR
+                else -> DifficultyLevel.COK_ZOR
+            }
+        }
+    }
+
+    private val topicKeywordAliases: Map<String, List<String>> = mapOf(
+        // AYT Matematik
+        "fonksiyonlar" to listOf("fonksiyonlarda uygulama", "fonksiyon", "f(x)", "g(x)", "fog", "gof", "ters fonksiyon", "bire bir", "örten", "grafik dönüşüm", "simetri", "öteleme"),
+        "polinomlar" to listOf("polinom", "p(x)", "q(x)", "derece", "başkatsayı", "kalan", "bölümünden"),
+        "ikinci_derece_denklemler" to listOf("2. dereceden denklem", "ikinci dereceden denklem", "kökler toplamı", "kökler çarpımı", "diskriminant", "delta"),
+        "karmasik_sayilar" to listOf("karmaşık sayı", "karmasik sayi", "sanal", "eşlenik", "i^2"),
+        "parabol" to listOf("parabol", "tepe noktası", "simetri ekseni"),
+        "ikinci_derece_esitsizlikler" to listOf("eşitsizlik sistemi", "2. dereceden eşitsizlik", "işaret tablosu", "çözüm kümesi"),
+        "trigonometri_ayt_mat" to listOf("trigonometri", "sin", "cos", "tan", "cot", "arcsin", "arccos", "birim çember", "periyot", "toplam fark", "yarım açı"),
+        "logaritma" to listOf("logaritma", "log", "ln(", "ln ", "üstel fonksiyon"),
+        "diziler" to listOf("diziler", "aritmetik dizi", "geometrik dizi", "genel terim", "(an)", "a_n"),
+        "limit_ve_sureklilik" to listOf("limit", "süreklilik", "sureklilik", "sağdan limit", "soldan limit", "belirsizliği"),
+        "turev_alma_kurallari" to listOf("türev alma", "turev alma", "f'(x)", "dy/dx", "zincir kuralı", "türevi"),
+        "turev_uygulamalari" to listOf("türevin geometrik", "ekstremum", "yerel maksimum", "yerel minimum", "teğet", "artan", "azalan", "maksimum minimum", "türev"),
+        "belirsiz_integral" to listOf("belirsiz integral", "integral", "diferansiyel", "dx"),
+        "belirli_integral_alan" to listOf("belirli integral", "integral ve alan", "boyalı bölgenin alanı", "riemann"),
+        // TYT Matematik
+        "temel_kavramlar" to listOf("temel kavram", "rakam", "tam sayı", "doğal sayı", "ardışık", "asal sayı", "faktöriyel"),
+        "sayi_basamaklari" to listOf("sayı basamak", "iki basamaklı", "üç basamaklı", "çözümleme"),
+        "bolme_bolunebilme" to listOf("bölme", "bölünebilme", "kalan"),
+        "ebob_ekok" to listOf("ebob", "ekok", "ortak bölen", "ortak kat"),
+        "rasyonel_sayilar" to listOf("rasyonel sayı", "kesir"),
+        "mutlak_deger" to listOf("mutlak değer", "mutlak deger"),
+        "uslu_sayilar" to listOf("üslü sayı", "uslu sayi"),
+        "koklu_sayilar" to listOf("köklü sayı", "koklu sayi", "karekök"),
+        "carpanlara_ayirma" to listOf("çarpanlara ayırma", "tam kare", "iki kare farkı"),
+        "oran_oranti" to listOf("oran", "orantı", "doğru orantı", "ters orantı"),
+        "sayi_problemleri" to listOf("sayı problem", "sayi problem"),
+        "yas_problemleri" to listOf("yaş problem", "yas problem", "yaşındadır"),
+        "hareket_problemleri" to listOf("hareket problem", "hız problem", "km/sa"),
+        "yuzde_kar_zarar_problemleri" to listOf("yüzde", "kâr", "zarar", "indirim", "etiket fiyatı"),
+        "kumeler" to listOf("küme", "kume", "alt küme", "kesişim", "birleşim"),
+        "tyt_fonksiyonlar" to listOf("fonksiyon", "tanım kümesi", "görüntü kümesi"),
+        "tyt_polinomlar" to listOf("polinom"),
+        "permutasyon" to listOf("permütasyon", "permutasyon", "sıralama", "kaç farklı şekilde sıralanır"),
+        "kombinasyon" to listOf("kombinasyon", "seçim", "alt küme", "kaç farklı grup"),
+        "binom" to listOf("binom", "açılımında"),
+        "olasilik" to listOf("olasılık", "olasilik", "olasılığı kaçtır", "rastgele seçilen"),
+        // AYT Fizik
+        "vektorler" to listOf("vektör", "vektor", "bileşke"),
+        "bagil_hareket" to listOf("bağıl hareket", "bagil hareket", "gözlemci", "yere göre", "akıntı", "kayık", "yürüyen merdiven"),
+        "newton_hareket_yasalari" to listOf("newton", "sürtünme", "ivme", "net kuvvet"),
+        "bir_boyutta_sabit_ivmeli" to listOf("sabit ivmeli", "hız-zaman", "konum-zaman", "duruştan harekete"),
+        "atislar" to listOf("atış", "atis", "serbest düşme", "yatay atış", "eğik atış"),
+        "enerji_ve_hareket" to listOf("iş, enerji", "kinetik enerji", "potansiyel enerji", "yay sabiti"),
+        "itme_momentum" to listOf("itme", "momentum", "çarpışma", "patlama"),
+        "tork_ve_denge" to listOf("tork", "denge", "ip gerilmesi", "destek"),
+        "cembersel_hareket" to listOf("çembersel hareket", "açısal hız", "merkezcil"),
+        "basit_harmonik_hareket" to listOf("harmonik hareket", "yay sarkacı", "basit sarkaç", "periyot")
+    )
+
+    fun classifyDifficulty5FromText(
+        explicitDifficulty: String,
+        headerOrTestTitle: String,
+        stemText: String = "",
+        questionIndexInTest: Int = 0
+    ): DifficultyLevel = classifyDifficulty5FromText(
+        rawDifficultyHint = explicitDifficulty,
+        headerOrQuestionText = "$headerOrTestTitle $stemText",
+        questionIndexInPage = (questionIndexInTest - 1).coerceAtLeast(0)
+    )
+
+    fun matchBestTopic(
+        rawTopicText: String,
+        subject: YksSubject?,
+        fallbackExamType: ExamType = ExamType.AYT
+    ): YksTopic {
+        val pair = matchBestTopic(
+            examTypeHint = subject?.examType?.name ?: fallbackExamType.name,
+            subjectNameHint = subject?.name ?: "Matematik",
+            topicOrQuestionText = rawTopicText,
+            fallbackTopicName = subject?.topics?.firstOrNull()?.name ?: ""
+        )
+        return pair.second
+    }
+
+    /**
+     * Deterministically resolves the exact `YksSubject` and `YksTopic` from raw PDF text/topic name,
+     * NEVER falling back to modulo rotation across unrelated topics.
+     */
+    fun matchBestTopic(
+        examTypeHint: String,
+        subjectNameHint: String,
+        topicOrQuestionText: String,
+        fallbackTopicName: String = ""
+    ): Pair<YksSubject, YksTopic> {
+        val cleanExam = if (examTypeHint.contains("AYT", ignoreCase = true)) ExamType.AYT else ExamType.TYT
+        val cleanSubj = subjectNameHint
+            .replace("TYT ", "", ignoreCase = true)
+            .replace("AYT ", "", ignoreCase = true)
+            .trim()
+
+        val matchedSubject = allSubjects.find {
+            it.examType == cleanExam && it.name.equals(cleanSubj, ignoreCase = true)
+        } ?: allSubjects.find {
+            it.name.equals(cleanSubj, ignoreCase = true)
+        } ?: allSubjects.find {
+            it.examType == cleanExam
+        } ?: allSubjects.first()
+
+        val combinedSearch = "$topicOrQuestionText $fallbackTopicName".trim()
+        val lowerSearch = combinedSearch.lowercase()
+
+        // 1. Direct topic ID or exact topic name match within matchedSubject
+        matchedSubject.topics.firstOrNull { t ->
+            t.id.equals(topicOrQuestionText.trim(), ignoreCase = true) ||
+                t.name.equals(topicOrQuestionText.trim(), ignoreCase = true) ||
+                lowerSearch.contains(t.name.lowercase())
+        }?.let { return matchedSubject to it }
+
+        // 2. Check across all subjects of the same ExamType if a specific topic name is explicitly mentioned (e.g. Olasılık in AYT book)
+        val sameExamTopics = allSubjects.filter { it.examType == matchedSubject.examType }
+        for (subj in sameExamTopics) {
+            for (t in subj.topics) {
+                if (t.name.equals(topicOrQuestionText.trim(), ignoreCase = true) ||
+                    lowerSearch.contains(t.name.lowercase())
+                ) {
+                    return subj to t
+                }
+            }
+        }
+
+        // 3. Keyword alias scoring inside matchedSubject first
+        var bestTopic: YksTopic? = null
+        var bestScore = 0
+        for (t in matchedSubject.topics) {
+            val aliases = topicKeywordAliases[t.id].orEmpty()
+            val hits = aliases.count { alias -> lowerSearch.contains(alias.lowercase()) }
+            val wordHits = t.name.split(" ", "-", "ve")
+                .map { it.trim().lowercase() }
+                .filter { it.length >= 4 && it != "uygulamaları" && it != "uygulamalari" && it != "kavramlar" }
+                .count { w -> lowerSearch.contains(w) }
+            val score = hits * 3 + wordHits * 2
+            if (score > bestScore) {
+                bestScore = score
+                bestTopic = t
+            }
+        }
+        if (bestTopic != null && bestScore > 0) {
+            return matchedSubject to bestTopic
+        }
+
+        // 4. Fallback to fallbackTopicName match or first topic of matchedSubject (deterministic, NEVER modulo!)
+        val fallbackMatched = if (fallbackTopicName.isNotBlank()) {
+            matchedSubject.topics.firstOrNull { t ->
+                t.name.equals(fallbackTopicName.trim(), ignoreCase = true) ||
+                    t.name.contains(fallbackTopicName.trim(), ignoreCase = true) ||
+                    fallbackTopicName.contains(t.name, ignoreCase = true)
+            }
+        } else null
+
+        return matchedSubject to (fallbackMatched ?: matchedSubject.topics.first())
     }
 
     private fun topicEntry(

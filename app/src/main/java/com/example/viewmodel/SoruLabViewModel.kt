@@ -64,7 +64,8 @@ data class DrawStroke(
     val points: List<Offset>,
     val colorHex: Long,
     val strokeWidthPx: Float,
-    val isSmartShape: Boolean = false
+    val isSmartShape: Boolean = false,
+    val isEraser: Boolean = false
 )
 
 @Immutable
@@ -119,6 +120,9 @@ class SoruLabViewModel(
 
     private val _generatedTopicTests = MutableStateFlow<Map<String, List<YksTestItem>>>(emptyMap())
     val generatedTopicTests: StateFlow<Map<String, List<YksTestItem>>> = _generatedTopicTests.asStateFlow()
+
+    private val _deletedTestIds = MutableStateFlow<Set<String>>(emptySet())
+    val deletedTestIds: StateFlow<Set<String>> = _deletedTestIds.asStateFlow()
 
     private val _dialogTestItem = MutableStateFlow<Pair<YksTopic, YksTestItem>?>(null)
     val dialogTestItem: StateFlow<Pair<YksTopic, YksTestItem>?> = _dialogTestItem.asStateFlow()
@@ -482,8 +486,10 @@ class SoruLabViewModel(
                     }
                     val mappedLevel = when (dominantDiff) {
                         DifficultyLevel.KOLAY -> TopicTestLevel.BASLANGIC
+                        DifficultyLevel.ORTA -> TopicTestLevel.PEKISTIRME
+                        DifficultyLevel.OSYM -> TopicTestLevel.OSYM
                         DifficultyLevel.ZOR -> TopicTestLevel.DERECE
-                        DifficultyLevel.ORTA -> TopicTestLevel.OSYM
+                        DifficultyLevel.COK_ZOR -> TopicTestLevel.DERECE
                     }
 
                     autoTestsForTopic.add(
@@ -516,7 +522,34 @@ class SoruLabViewModel(
         val map = _generatedTopicTests.value
         val levelSpecific = map["${topic.id}_${level.name}"].orEmpty()
         val autoPdfTests = map["${topic.id}_AUTO_PDF"].orEmpty()
-        return (autoPdfTests + levelSpecific).distinctBy { it.id }
+        val deleted = _deletedTestIds.value
+        return (autoPdfTests + levelSpecific)
+            .filter { it.id !in deleted }
+            .distinctBy { it.id }
+    }
+
+    fun deleteTopicTest(topic: YksTopic, test: YksTestItem) {
+        _deletedTestIds.value = _deletedTestIds.value + test.id
+        val currentMap = _generatedTopicTests.value.toMutableMap()
+        val key = "${topic.id}_${test.level.name}"
+        if (currentMap.containsKey(key)) {
+            currentMap[key] = currentMap[key].orEmpty().filter { it.id != test.id }
+        }
+        val autoKey = "${topic.id}_AUTO_PDF"
+        if (currentMap.containsKey(autoKey)) {
+            currentMap[autoKey] = currentMap[autoKey].orEmpty().filter { it.id != test.id }
+        }
+        _generatedTopicTests.value = currentMap
+
+        val uid = effectiveUserId() ?: "device_yks_student_tr"
+        val allEntries = currentMap.flatMap { (_, list) ->
+            list.map { item ->
+                val num = item.id.substringAfterLast("_test_").toIntOrNull() ?: 1
+                Triple(item.topicId, item.level, num)
+            }
+        }
+        repository.saveCachedGeneratedTestKeys(uid, allEntries)
+        showBanner("Test başarıyla silindi.")
     }
 
     private fun parseGeneratedEntryFromRecord(rec: TestResultRecord): Triple<String, TopicTestLevel, Int>? {
@@ -1057,7 +1090,12 @@ class SoruLabViewModel(
         )
     }
 
-    fun solveBookQuestionsInPractice(bookTitle: String, records: List<CustomQuestionRecord>) {
+    fun solveBookQuestionsInPractice(
+        bookTitle: String,
+        records: List<CustomQuestionRecord>,
+        questionsPerTest: Int = 0,
+        selectedChunkIndex: Int = 0
+    ) {
         if (records.isEmpty()) return
         val firstRecord = records.first()
         val matchedSubject = SoruLabCatalog.allSubjects.find { it.id == firstRecord.subjectId }
@@ -1071,11 +1109,20 @@ class SoruLabViewModel(
             if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE
         }
 
-        val testQuestions = sortedRecords.mapIndexed { idx, record ->
+        val effectiveRecords = if (questionsPerTest > 0) {
+            val chunks = sortedRecords.chunked(questionsPerTest)
+            chunks.getOrNull(selectedChunkIndex) ?: chunks.firstOrNull() ?: sortedRecords
+        } else {
+            sortedRecords
+        }
+
+        val testQuestions = effectiveRecords.mapIndexed { idx, record ->
             val resolvedPub = SoruLabPublisherPresets.resolvePublisher(record.publisherTag, _customPublishers.value)
             val diffLevel = when (record.difficulty) {
                 "Kolay" -> DifficultyLevel.KOLAY
                 "Zor" -> DifficultyLevel.ZOR
+                "Çok Zor" -> DifficultyLevel.COK_ZOR
+                "ÖSYM" -> DifficultyLevel.OSYM
                 else -> DifficultyLevel.ORTA
             }
             val hasCroppedImg = record.croppedImagePath.isNotBlank()
@@ -1108,9 +1155,14 @@ class SoruLabViewModel(
             )
         }
 
-        val cleanTitle = bookTitle.ifBlank { firstRecord.publisherTag }
+        val baseTitle = bookTitle.ifBlank { firstRecord.publisherTag }
+        val cleanTitle = if (questionsPerTest > 0) {
+            "$baseTitle - Test ${selectedChunkIndex + 1}"
+        } else {
+            baseTitle
+        }
         val bookTest = YksTestItem(
-            id = "book_test_${cleanTitle.lowercase().replace(" ", "_").take(28)}",
+            id = "book_test_${cleanTitle.lowercase().replace(" ", "_").take(28)}_${System.currentTimeMillis() % 100000}",
             topicId = matchedTopic.id,
             title = cleanTitle.take(28),
             fullTitle = cleanTitle,
@@ -1383,11 +1435,13 @@ class SoruLabViewModel(
             points
         }
 
+        val isEraser = tool == DrawingTool.ERASER
         val newStroke = DrawStroke(
             points = finalPoints,
-            colorHex = _selectedPenColorHex.value,
-            strokeWidthPx = widthPx,
-            isSmartShape = tool == DrawingTool.SMART_SHAPE
+            colorHex = if (isEraser) 0x00000000L else _selectedPenColorHex.value,
+            strokeWidthPx = if (isEraser) 38f else widthPx,
+            isSmartShape = tool == DrawingTool.SMART_SHAPE,
+            isEraser = isEraser
         )
         val updatedStrokes = _boardStrokes.value + (key to (currentList + newStroke))
         _boardStrokes.value = updatedStrokes
@@ -1680,6 +1734,7 @@ class SoruLabViewModel(
 
         allCloudTestRecords = emptyList()
         _generatedTopicTests.value = emptyMap()
+        _deletedTestIds.value = emptySet()
         _userTestResults.value = emptyList()
         _userCustomQuestions.value = emptyList()
         _boardStrokes.value = emptyMap()

@@ -141,13 +141,6 @@ fun SoruLabAppRoot() {
     val recognizedDeviceAccount by mainViewModel.recognizedDeviceAccount.collectAsStateWithLifecycle()
     val authError by mainViewModel.authError.collectAsStateWithLifecycle()
 
-    // Background silent Google account sync when device is recognized but Firebase Auth token was reset by preview reload
-    LaunchedEffect(currentUser) {
-        if (currentUser == null) {
-            trySilentGoogleAutoSignIn(context)
-        }
-    }
-
     if (currentUser == null && recognizedDeviceAccount == null) {
         SoruLabSignInGate(
             errorMessage = authError,
@@ -342,10 +335,11 @@ private fun SoruPratigiTabHost(
     val selectedTopic by mainViewModel.selectedTopic.collectAsStateWithLifecycle()
     val selectedTestLevel by mainViewModel.selectedTestLevel.collectAsStateWithLifecycle()
     val generatedTopicTests by mainViewModel.generatedTopicTests.collectAsStateWithLifecycle()
+    val deletedTestIds by mainViewModel.deletedTestIds.collectAsStateWithLifecycle()
     val dialogTestItem by mainViewModel.dialogTestItem.collectAsStateWithLifecycle()
     val userTestResults by mainViewModel.userTestResults.collectAsStateWithLifecycle()
 
-    val currentTopicTests = remember(selectedTopic, selectedTestLevel, generatedTopicTests) {
+    val currentTopicTests = remember(selectedTopic, selectedTestLevel, generatedTopicTests, deletedTestIds) {
         selectedTopic?.let { topic ->
             mainViewModel.getTestsForTopicAndLevel(topic, selectedTestLevel)
         }.orEmpty()
@@ -383,6 +377,9 @@ private fun SoruPratigiTabHost(
                 isReviewMode = isReview,
                 openOpticalFormFirst = openOpticalFirst
             )
+        },
+        onDeleteTest = { topic, test ->
+            mainViewModel.deleteTopicTest(topic, test)
         },
         onOpenAiAssistant = { mainViewModel.openAiAssistant(null) },
         onOpenPdfCropper = {
@@ -466,6 +463,18 @@ private fun DenemelerTabHost(
                     it.bookOrTestName.ifBlank { "${it.publisherTag} Soru Bankası" } == bookName
                 }.ifEmpty { listOf(firstRecord) }
                 mainViewModel.solveBookQuestionsInPractice(bookName, bookQuestions)
+            },
+            onSolveBookChunkInPractice = { firstRecord, questionsPerTest, chunkIdx ->
+                val bookName = firstRecord.bookOrTestName.ifBlank { "${firstRecord.publisherTag} Soru Bankası" }
+                val bookQuestions = userCustomQuestions.filter {
+                    it.bookOrTestName.ifBlank { "${it.publisherTag} Soru Bankası" } == bookName
+                }.ifEmpty { listOf(firstRecord) }
+                mainViewModel.solveBookQuestionsInPractice(
+                    bookTitle = bookName,
+                    records = bookQuestions,
+                    questionsPerTest = questionsPerTest,
+                    selectedChunkIndex = chunkIdx
+                )
             }
         )
     } else {
@@ -610,10 +619,6 @@ private fun SoruLabSignInGate(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        trySilentGoogleAutoSignIn(context)
-    }
 
     Box(
         modifier = Modifier

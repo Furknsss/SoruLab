@@ -8,6 +8,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,7 +25,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -324,7 +329,7 @@ fun AnaSayfaScreen(
     onSignOut: () -> Unit,
     onResetAllUserData: () -> Unit = {}
 ) {
-    val dateFormat = remember { SimpleDateFormat("dd MMM yyyy • HH:mm", Locale("tr", "TR")) }
+    val dateFormat = remember { SimpleDateFormat("dd MMM yyyy • HH:mm", Locale.forLanguageTag("tr-TR")) }
     var showProfileSheet by remember { mutableStateOf(false) }
     var initialProfileTab by remember { mutableIntStateOf(0) }
 
@@ -879,7 +884,7 @@ fun AnaSayfaScreen(
                         subtitle = "TYT & AYT Konular",
                         badgeText = "Tüm Dersler",
                         gradientColors = listOf(Color(0xFF1E3A8A), Color(0xFF2563EB)),
-                        icon = Icons.Filled.MenuBook,
+                        icon = Icons.AutoMirrored.Filled.MenuBook,
                         onClick = { onNavigateTab(MainNavTab.SORU_PRATIGI) },
                         modifier = Modifier
                             .weight(1f)
@@ -890,7 +895,7 @@ fun AnaSayfaScreen(
                         subtitle = "Genel Deneme Sınavları",
                         badgeText = "TYT • AYT",
                         gradientColors = listOf(Color(0xFF4C1D95), Color(0xFF7C3AED)),
-                        icon = Icons.Filled.Assignment,
+                        icon = Icons.AutoMirrored.Filled.Assignment,
                         onClick = { onNavigateTab(MainNavTab.DENEMELER) },
                         modifier = Modifier
                             .weight(1f)
@@ -1378,7 +1383,7 @@ private fun ProfileCenterBottomSheet(
                                 .testTag("sign_out_button")
                         ) {
                             Icon(
-                                imageVector = Icons.Outlined.Logout,
+                                imageVector = Icons.AutoMirrored.Outlined.Logout,
                                 contentDescription = null,
                                 tint = SoruLabCoralRed,
                                 modifier = Modifier.size(18.dp)
@@ -1632,6 +1637,7 @@ fun SoruPratigiScreen(
     onTestClicked: (YksTopic, YksTestItem) -> Unit,
     onDismissDialog: () -> Unit,
     onStartTestAction: (YksTopic, YksTestItem, Boolean, Boolean) -> Unit,
+    onDeleteTest: (YksTopic, YksTestItem) -> Unit = { _, _ -> },
     onOpenAiAssistant: () -> Unit,
     onOpenPdfCropper: () -> Unit = {}
 ) {
@@ -1649,6 +1655,9 @@ fun SoruPratigiScreen(
             onTestClicked = { test -> onTestClicked(selectedTopic, test) },
             onStartTestImmediately = { test ->
                 onStartTestAction(selectedTopic, test, false, false)
+            },
+            onDeleteTest = { test ->
+                onDeleteTest(selectedTopic, test)
             },
             onOpenAiAssistant = onOpenAiAssistant,
             onOpenPdfCropper = onOpenPdfCropper
@@ -1685,7 +1694,7 @@ fun SoruPratigiScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.MenuBook,
+                                imageVector = Icons.AutoMirrored.Filled.MenuBook,
                                 contentDescription = "Soru Pratiği",
                                 tint = Color.White,
                                 modifier = Modifier.size(16.dp)
@@ -1865,23 +1874,44 @@ fun SoruPratigiScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    if (isSolved) {
-                        val earnedStars = testItem.starRating.coerceIn(1, 5).let { if (it <= 1) 4 else it }
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            repeat(5) { idx ->
-                                Icon(
-                                    imageVector = Icons.Filled.Star,
-                                    contentDescription = null,
-                                    tint = if (idx < earnedStars) Color(0xFF1D72E8) else Color(0xFFCBD5E1),
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
+                    val difficultyStars = when (testItem.difficulty) {
+                        DifficultyLevel.KOLAY -> 1
+                        DifficultyLevel.ORTA -> 2
+                        DifficultyLevel.OSYM -> 3
+                        DifficultyLevel.ZOR -> 4
+                        DifficultyLevel.COK_ZOR -> 5
+                    }
 
-                        Spacer(modifier = Modifier.height(22.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        repeat(5) { idx ->
+                            Icon(
+                                imageVector = Icons.Filled.Star,
+                                contentDescription = null,
+                                tint = if (idx < difficultyStars) Color(0xFF1D72E8) else Color(0xFFCBD5E1),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Surface(
+                        color = Color(testItem.difficulty.colorHex).copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(50)
+                    ) {
+                        Text(
+                            text = "${testItem.questions.size} Soru • Zorluk: ${testItem.difficulty.label} ($difficultyStars/5 ★)",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                            color = Color(0xFF1E293B),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                        )
+                    }
+
+                    if (isSolved) {
+                        Spacer(modifier = Modifier.height(18.dp))
 
                         Button(
                             onClick = {
@@ -1959,35 +1989,7 @@ fun SoruPratigiScreen(
                             )
                         }
                     } else {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            repeat(5) {
-                                Icon(
-                                    imageVector = Icons.Filled.Star,
-                                    contentDescription = null,
-                                    tint = Color(0xFFCBD5E1),
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Surface(
-                            color = Color(testItem.level.wedgeColorHex).copy(alpha = 0.25f),
-                            shape = RoundedCornerShape(50)
-                        ) {
-                            Text(
-                                text = "${testItem.questions.size} Soru • ${testItem.level.shortTag} Seviyesi",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color(0xFF1E293B),
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(22.dp))
+                        Spacer(modifier = Modifier.height(20.dp))
 
                         Button(
                             onClick = {
@@ -2153,6 +2155,7 @@ private fun TopicTestsDetailView(
     onGenerateAiLevelTest: () -> YksTestItem?,
     onTestClicked: (YksTestItem) -> Unit,
     onStartTestImmediately: (YksTestItem) -> Unit,
+    onDeleteTest: (YksTestItem) -> Unit,
     onOpenAiAssistant: () -> Unit,
     onOpenPdfCropper: () -> Unit
 ) {
@@ -2345,7 +2348,7 @@ private fun TopicTestsDetailView(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Outlined.MenuBook,
+                                        imageVector = Icons.AutoMirrored.Outlined.MenuBook,
                                         contentDescription = null,
                                         tint = Color(0xFF1D63DC),
                                         modifier = Modifier.size(30.dp)
@@ -2447,7 +2450,7 @@ private fun TopicTestsDetailView(
                                                     contentAlignment = Alignment.Center
                                                 ) {
                                                     Icon(
-                                                        imageVector = Icons.Outlined.MenuBook,
+                                                        imageVector = Icons.AutoMirrored.Outlined.MenuBook,
                                                         contentDescription = "Çözülmedi",
                                                         tint = Color(0xFF94A3B8),
                                                         modifier = Modifier.size(26.dp)
@@ -2479,9 +2482,29 @@ private fun TopicTestsDetailView(
 
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             DifficultyMeterBar(position = testItem.difficultyPosition)
+
+                                            // Şık Kırmızı/Gri Çöp Kutusu (Sil) İkonu - "Çöz" butonunun hemen SOLUNDA
+                                            Surface(
+                                                onClick = { onDeleteTest(testItem) },
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = Color(0xFFFEF2F2),
+                                                border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                                                modifier = Modifier
+                                                    .size(34.dp)
+                                                    .testTag("delete_test_btn_${testItem.id}")
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.Delete,
+                                                        contentDescription = "Testi Sil",
+                                                        tint = Color(0xFFDC2626),
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
 
                                             Surface(
                                                 onClick = { onStartTestImmediately(testItem) },
@@ -2545,15 +2568,18 @@ private fun TopicTestsDetailView(
             )
         }
 
-        // Strict 0-Hallucination Test Generator Dialog
+        // Strict 0-Hallucination Test Generator Dialog (Never recomposes poolCheck mid-generation!)
         if (showAiGeneratorModal) {
-            val poolCheck = remember(topic.id, selectedTestLevel, currentLevelTests.size) {
+            val poolCheck = remember(topic.id, selectedTestLevel, showAiGeneratorModal) {
                 onCheckPoolAvailability()
+            }
+            val nextTestNo = remember(topic.id, selectedTestLevel, showAiGeneratorModal) {
+                currentLevelTests.size + 1
             }
             SoruLabAiTestGeneratorDialog(
                 topic = topic,
                 level = selectedTestLevel,
-                nextTestNumber = currentLevelTests.size + 1,
+                nextTestNumber = nextTestNo,
                 poolCheck = poolCheck,
                 onGenerateFinished = {
                     onGenerateAiLevelTest()
@@ -2793,9 +2819,12 @@ private fun SoruLabAiTestGeneratorDialog(
     onStartGeneratedTest: (YksTestItem) -> Unit,
     onGoToPdfStudio: () -> Unit
 ) {
-    // Strict 0-Hallucination Policy: If no matching real questions exist in the pool,
-    // immediately present a clear "Soru Bulunamadı" dialog without faking AI steps!
-    if (!poolCheck.canGenerate) {
+    var currentStep by remember { mutableIntStateOf(1) }
+    var progressTarget by remember { mutableFloatStateOf(0.20f) }
+    var createdTest by remember { mutableStateOf<YksTestItem?>(null) }
+
+    // Never show "Soru Bulunamadı" if a test was already created or if poolCheck.canGenerate is true!
+    if (!poolCheck.canGenerate && createdTest == null && currentStep <= 1) {
         Dialog(onDismissRequest = onDismiss) {
             Card(
                 shape = RoundedCornerShape(26.dp),
@@ -2908,10 +2937,6 @@ private fun SoruLabAiTestGeneratorDialog(
         }
         return
     }
-
-    var currentStep by remember { mutableIntStateOf(1) }
-    var progressTarget by remember { mutableFloatStateOf(0.20f) }
-    var createdTest by remember { mutableStateOf<YksTestItem?>(null) }
 
     val animatedProgress by animateFloatAsState(
         targetValue = progressTarget,

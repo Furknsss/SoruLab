@@ -1,6 +1,6 @@
 {
-  "summary":  "Konu kartlarının sadeleştirilmesi, Anasayfa laf kalabalığının temizlenmesi ve Profil menüsü altında PDF sonundaki cevap anahtarı eşleştirmeli, yayın logolu ve 6 seviyeli otomatik Soru Havuzu sisteminin uygulama planı.",
-  "updatedAt":  "2026-10-28T13:44:23.967526269Z",
+  "summary":  "9 kritik hatanın tamamını gideren kapsamlı uygulama planı: Test üretimi ve çöp kutusu silme aksiyonu, 5 seviyeli gerçek konu/zorluk etiketleme sistemi, aktif ⋮ üç nokta popover menüsü, sadeleştirilmiş tam ekran kitap sayfası düzeni, kenarlık/başlık/cevap anahtarı hariç tutan kusursuz kırpma algoritması, üst çizim barı ve S-Pen / parmak ayrımı, boş sorular için gri ⊖ ikonu ve kompakt Optik kulakçığı.",
+  "updatedAt":  "2026-10-29T09:57:20.477226898Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

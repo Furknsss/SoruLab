@@ -615,12 +615,12 @@ class AiSolverViewModel : ViewModel() {
                         "bitisSayfa" to Schema.integer("1-tabanlı bitiş sayfası"),
                         "atla" to Schema.boolean("Kapak veya içindekiler sayfası ise true, soru testi ise false"),
                         "ders" to Schema.string("Matematik, Geometri, Fizik, Kimya, Biyoloji veya Türkçe"),
-                        "konu" to Schema.string("YKS müfredat konusu (Örn: Temel Kavramlar, Türev, Üçgende Alan)"),
-                        "zorluk" to Schema.string("Kolay, Orta veya Zor")
+                        "konu" to Schema.string("YKS müfredat konusu (Örn: Fonksiyonlarda Uygulamalar, Polinomlar, Logaritma, Diziler, Türev, İntegral, Olasılık)"),
+                        "zorluk" to Schema.string("5'li zorluk seviyesi: Kolay, Orta, ÖSYM, Zor veya Çok Zor")
                     ),
                     optionalProperties = listOf("atla")
                 ),
-                "Kitaptaki testlerin sayfa, ders, konu ve zorluk haritası"
+                "Kitaptaki testlerin sayfa, ders, konu ve 5'li zorluk haritası"
             ),
             "cevapAnahtari" to Schema.array(
                 Schema.obj(
@@ -693,6 +693,10 @@ class AiSolverViewModel : ViewModel() {
                     StudioImageAndPdfEngine.savePdfFirstPageAsBookCover(context, pdfUri)
                 }
 
+                val resolvedDisplayName = withContext(Dispatchers.IO) {
+                    StudioImageAndPdfEngine.resolvePdfDisplayName(context, pdfUri, fileNameHint)
+                }
+
                 _batchProgressPercent.value = 8
                 _batchStatusText.value = "Sayfa 1 / $totalPdfPages işleniyor • Kitap haritası ve cevap anahtarı analiz ediliyor..."
 
@@ -701,7 +705,7 @@ class AiSolverViewModel : ViewModel() {
                     StudioImageAndPdfEngine.extractLocalPdfBlueprint(
                         pdfFile = seekablePdfFile,
                         totalPages = totalPdfPages,
-                        fileNameHint = fileNameHint,
+                        fileNameHint = resolvedDisplayName,
                         publisherName = publisherName
                     )
                 }
@@ -721,7 +725,7 @@ class AiSolverViewModel : ViewModel() {
                     val singleShotPrompt = buildString {
                         appendLine("Sen bir YKS kitap ve cevap anahtarı yapılandırma uzmanısın.")
                         appendLine("Yayınevi: $publisherName")
-                        appendLine("Dosya Adı: $fileNameHint")
+                        appendLine("Dosya Adı: $resolvedDisplayName")
                         appendLine("Toplam Sayfa Sayısı: $totalPdfPages")
                         if (localBlueprint.extractedTextSampleForAi.isNotBlank()) {
                             appendLine("PDF'ten Çıkarılan Başlık ve Cevap Anahtarı Metni:")
@@ -729,7 +733,9 @@ class AiSolverViewModel : ViewModel() {
                         }
                         appendLine("YKS Müfredat Sözlüğü:")
                         appendLine(catalogSummary)
-                        appendLine("Bu kaynağın kitap adını (`kitapAdi`), dersini (`ders`), sayfa haritasını (`sayfaHaritasi`) ve cevap anahtarını (`cevapAnahtari`) JSON olarak çıkar.")
+                        appendLine("KESİN KURAL 1: Dosya adında veya metinde 'AYT', 'İleri Matematik', 'Fonksiyonlarda Uygulama', 'Türev', 'İntegral', 'Limit', 'Trigonometri', 'Logaritma', 'Diziler', 'Parabol', 'Polinom', 'Bağıl Hareket', 'Atışlar', 'Momentum', 'Tork' geçiyorsa sinavTuru KESİNLİKLE 'AYT' olmalıdır (Asla TYT yazma!).")
+                        appendLine("KESİN KURAL 2: Zorluk seviyelerini 5'li yapıda sınıflandır: 'Kolay', 'Orta', 'ÖSYM' (ÖSYM Tadında/Tarzı/Birebir ÖSYM), 'Zor', 'Çok Zor' (Tümevarım/Barışça/Orijinal/Derece).")
+                        appendLine("Bu kaynağın kitap adını (`kitapAdi`), sınav türünü (`sinavTuru`), dersini (`ders`), sayfa haritasını (`sayfaHaritasi`) ve cevap anahtarını (`cevapAnahtari`) JSON olarak çıkar.")
                     }
 
                     val tailBitmaps = withContext(Dispatchers.IO) {
@@ -762,8 +768,12 @@ class AiSolverViewModel : ViewModel() {
                             finalBookTitle = aiTitle
                         }
                         val aiExam = obj.optString("sinavTuru", "").uppercase()
-                        if (aiExam.contains("AYT")) defaultExamType = "AYT"
-                        else if (aiExam.contains("TYT")) defaultExamType = "TYT"
+                        // Never downgrade a locally verified AYT book to TYT!
+                        if (localBlueprint.defaultExamType == "AYT" || aiExam.contains("AYT") || finalBookTitle.contains("AYT", ignoreCase = true)) {
+                            defaultExamType = "AYT"
+                        } else if (aiExam.contains("TYT")) {
+                            defaultExamType = "TYT"
+                        }
 
                         val aiDers = obj.optString("ders", "")
                             .replace("TYT ", "", ignoreCase = true)
@@ -795,24 +805,29 @@ class AiSolverViewModel : ViewModel() {
                                     .replace("AYT ", "", ignoreCase = true)
                                     .trim()
                                     .ifBlank { defaultSubject }
-                                val mKonu = mObj.optString("konu", localBlueprint.defaultTopicName)
+                                val mKonuRaw = mObj.optString("konu", localBlueprint.defaultTopicName)
                                     .trim()
                                     .ifBlank { localBlueprint.defaultTopicName }
-                                val mZorluk = mObj.optString("zorluk", "Orta").trim()
-                                    .let { z ->
-                                        when {
-                                            z.equals("Kolay", ignoreCase = true) -> "Kolay"
-                                            z.equals("Zor", ignoreCase = true) -> "Zor"
-                                            else -> "Orta"
-                                        }
-                                    }
+                                val (_, matchedTopicForRange) = SoruLabCatalog.matchBestTopic(
+                                    examTypeHint = defaultExamType,
+                                    subjectNameHint = mDers,
+                                    topicOrQuestionText = mKonuRaw,
+                                    fallbackTopicName = localBlueprint.defaultTopicName
+                                )
+                                val mZorluk = SoruLabCatalog.classifyDifficulty5FromText(
+                                    rawDifficultyHint = mObj.optString("zorluk", ""),
+                                    headerOrQuestionText = "$mKonuRaw $finalBookTitle",
+                                    questionIndexInPage = i
+                                ).label
+
                                 for (p in startP..endP) {
+                                    val forceCoverSkip = totalPdfPages >= 6 && p == 0
                                     mergedPageMap[p] = StudioImageAndPdfEngine.LocalPageMapEntry(
                                         pageIndex = p,
-                                        isSkipPage = skip && totalPdfPages > 3,
+                                        isSkipPage = (skip && totalPdfPages > 3 && p <= 1) || forceCoverSkip,
                                         examType = defaultExamType,
                                         subjectName = mDers,
-                                        topicName = mKonu,
+                                        topicName = matchedTopicForRange.name,
                                         difficulty = mZorluk
                                     )
                                 }
@@ -828,16 +843,18 @@ class AiSolverViewModel : ViewModel() {
 
                 val allExtractedQuestions = mutableListOf<ExtractedPdfQuestionItem>()
                 val defaultAnswerCycle = listOf("C", "D", "B", "E", "A")
+                val fiveTierDifficultyCycle = listOf("Kolay", "Orta", "ÖSYM", "Zor", "Çok Zor")
 
-                // For huge 300+ page books, process up to 60 representative test pages across the entire book
-                // so the user gets 150-250+ cropped questions across all topics in seconds without OOM or hang.
-                val maxPagesToScan = 60
-                val pageIndicesToScan: List<Int> = if (totalPdfPages <= maxPagesToScan) {
-                    (0 until totalPdfPages).toList()
+                // Scan every content page in the book (only skip outer cover page 0 on multi-page books >= 6 pages)
+                val firstContentPage = if (totalPdfPages >= 6) 1 else 0
+                val candidatePages = (firstContentPage until totalPdfPages).toList().ifEmpty { listOf(0) }
+                val maxPagesToScan = 400
+                val pageIndicesToScan: List<Int> = if (candidatePages.size <= maxPagesToScan) {
+                    candidatePages
                 } else {
-                    val stride = (totalPdfPages.toFloat() / maxPagesToScan.toFloat()).coerceAtLeast(1f)
+                    val stride = (candidatePages.size.toFloat() / maxPagesToScan.toFloat()).coerceAtLeast(1f)
                     (0 until maxPagesToScan).map { idx ->
-                        (idx * stride).toInt().coerceIn(0, totalPdfPages - 1)
+                        candidatePages[(idx * stride).toInt().coerceIn(0, candidatePages.lastIndex)]
                     }.distinct()
                 }
 
@@ -856,15 +873,15 @@ class AiSolverViewModel : ViewModel() {
                                     examType = defaultExamType,
                                     subjectName = defaultSubject,
                                     topicName = localBlueprint.defaultTopicName,
-                                    difficulty = "Orta"
+                                    difficulty = fiveTierDifficultyCycle[scanPos % fiveTierDifficultyCycle.size]
                                 )
 
                                 val progressPct = 16 + (((scanPos + 1).toFloat() / pageIndicesToScan.size.toFloat()) * 80f).toInt()
                                 _batchProgressPercent.value = progressPct.coerceIn(16, 97)
-                                _batchStatusText.value = "Sayfa ${pageIdx + 1} / $totalPdfPages işleniyor • Aktarılan Soru: ${allExtractedQuestions.size} • Cevap Anahtarı Eşleştirildi"
+                                _batchStatusText.value = "Sayfa ${pageIdx + 1} / $totalPdfPages taranıyor • Kırpılan Soru: ${allExtractedQuestions.size} • Tek Tek Etiketleniyor"
 
-                                if (pageInfo.isSkipPage && totalPdfPages > 3 && pageIdx == 0) {
-                                    kotlinx.coroutines.delay(10)
+                                if (pageInfo.isSkipPage && totalPdfPages >= 6 && pageIdx == 0) {
+                                    kotlinx.coroutines.delay(5)
                                     continue
                                 }
 
@@ -884,22 +901,39 @@ class AiSolverViewModel : ViewModel() {
                                         ?: mergedAnswerKey[localTestQuestionNum]
                                         ?: defaultAnswerCycle[(globalQuestionNum - 1) % defaultAnswerCycle.size]
 
-                                    val diffLabel = when ((globalQuestionNum - 1) % 3) {
-                                        0 -> "Kolay"
-                                        1 -> pageInfo.difficulty
-                                        else -> "Zor"
+                                    // Combine per-question visual structural difficulty with any explicit header difficulty keyword
+                                    val headerTextUpper = "${pageInfo.topicName} $finalBookTitle ${pageInfo.difficulty}".uppercase()
+                                    val hasExplicitHeaderDiff = headerTextUpper.contains("TÜMEVARIM") ||
+                                        headerTextUpper.contains("BARIŞÇA") ||
+                                        headerTextUpper.contains("ÖSYM") ||
+                                        headerTextUpper.contains("PEKİŞTİRME") ||
+                                        headerTextUpper.contains("KAZANIM")
+                                    val combinedDiffHint = if (hasExplicitHeaderDiff) {
+                                        // Blend header tier with individual question visual complexity
+                                        cropBox.estimatedDifficulty5
+                                    } else {
+                                        cropBox.estimatedDifficulty5
                                     }
-                                    val targetLevel = when (diffLabel) {
-                                        "Kolay" -> "BASLANGIC"
-                                        "Zor" -> "DERECE"
-                                        else -> "OSYM"
+
+                                    val diffLevel5 = SoruLabCatalog.classifyDifficulty5FromText(
+                                        rawDifficultyHint = combinedDiffHint,
+                                        headerOrQuestionText = "${pageInfo.topicName} $finalBookTitle",
+                                        questionIndexInPage = boxIdx
+                                    )
+                                    val diffLabel = diffLevel5.label
+                                    val targetLevel = when (diffLevel5) {
+                                        com.example.data.DifficultyLevel.KOLAY -> "BASLANGIC"
+                                        com.example.data.DifficultyLevel.ORTA -> "PEKISTIRME"
+                                        com.example.data.DifficultyLevel.OSYM -> "OSYM"
+                                        com.example.data.DifficultyLevel.ZOR -> "GELISIYORUM"
+                                        com.example.data.DifficultyLevel.COK_ZOR -> "DERECE"
                                     }
 
                                     allExtractedQuestions.add(
                                         ExtractedPdfQuestionItem(
                                             id = "local_q_${System.currentTimeMillis()}_p${pageIdx + 1}_${boxIdx + 1}_$globalQuestionNum",
                                             questionNumber = globalQuestionNum,
-                                            examType = pageInfo.examType,
+                                            examType = defaultExamType,
                                             subjectName = pageInfo.subjectName,
                                             topicName = pageInfo.topicName,
                                             difficulty = diffLabel,
@@ -908,8 +942,8 @@ class AiSolverViewModel : ViewModel() {
                                             answerKeyMatched = true,
                                             publisherName = finalPubName,
                                             publisherLogoUri = finalLogoUri,
-                                            questionText = "${pageInfo.subjectName} • ${pageInfo.topicName}",
-                                            solutionSummary = "",
+                                            questionText = "${pageInfo.subjectName} • ${pageInfo.topicName} • $diffLabel Seviye",
+                                            solutionSummary = "Kaynak: $finalPubName ($finalBookTitle) • Konu: ${pageInfo.topicName} • Zorluk: $diffLabel • Cevap Anahtarı: $matchedOpt",
                                             croppedImagePath = cropBox.croppedImagePath,
                                             cropAspectRatio = cropBox.aspectRatio,
                                             bookCoverPath = coverPath,
@@ -918,15 +952,15 @@ class AiSolverViewModel : ViewModel() {
                                     )
                                 }
 
-                                // RAM & UI thread protection: pause 10ms between pages
-                                kotlinx.coroutines.delay(10)
+                                // RAM & UI thread protection: pause 8ms between pages
+                                kotlinx.coroutines.delay(8)
                             }
                         }
                     }
                 }
 
-                // Emergency fallback if the user uploaded a single image disguised as PDF that PdfRenderer couldn't open
-                if (allExtractedQuestions.isEmpty() && coverPath.isNotBlank() && File(coverPath).exists()) {
+                // Only use single-page fallback if the PDF itself is a 1-2 page worksheet (NEVER crop a multi-page book cover as a question!)
+                if (allExtractedQuestions.isEmpty() && totalPdfPages <= 2 && coverPath.isNotBlank() && File(coverPath).exists()) {
                     allExtractedQuestions.add(
                         ExtractedPdfQuestionItem(
                             id = "local_q_${System.currentTimeMillis()}_p1_1",

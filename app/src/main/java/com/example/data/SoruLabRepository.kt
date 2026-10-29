@@ -311,25 +311,25 @@ class SoruLabRepository(
 
     suspend fun saveTestResult(record: TestResultRecord): String {
         val docRef = if (record.id.isNotBlank()) {
-            testResultsCollection.document(record.id)
+            testResultsCollection.document(record.id.take(120))
         } else {
             testResultsCollection.document()
         }
         try {
             val payload = mapOf(
                 "userId" to record.userId,
-                "examType" to record.examType,
-                "subjectId" to record.subjectId,
-                "subjectName" to record.subjectName,
-                "topicId" to record.topicId,
-                "topicName" to record.topicName,
-                "testId" to record.testId,
-                "testTitle" to record.testTitle,
-                "correctCount" to record.correctCount,
-                "wrongCount" to record.wrongCount,
-                "emptyCount" to record.emptyCount,
-                "durationSeconds" to record.durationSeconds,
-                "answersMapJson" to record.answersMapJson,
+                "examType" to if (record.examType.equals("AYT", ignoreCase = true)) "AYT" else "TYT",
+                "subjectId" to record.subjectId.ifBlank { "tyt_mat" }.take(64),
+                "subjectName" to record.subjectName.ifBlank { "Matematik" }.take(100),
+                "topicId" to record.topicId.ifBlank { "temel_kavramlar" }.take(64),
+                "topicName" to record.topicName.ifBlank { "Temel Kavramlar" }.take(120),
+                "testId" to record.testId.ifBlank { "test_1" }.take(64),
+                "testTitle" to record.testTitle.ifBlank { "Test 1" }.take(150),
+                "correctCount" to record.correctCount.coerceIn(0, 200),
+                "wrongCount" to record.wrongCount.coerceIn(0, 200),
+                "emptyCount" to record.emptyCount.coerceIn(0, 200),
+                "durationSeconds" to record.durationSeconds.coerceIn(0, 36000),
+                "answersMapJson" to record.answersMapJson.take(4900),
                 "createdAt" to (record.createdAt ?: FieldValue.serverTimestamp()),
                 "updatedAt" to FieldValue.serverTimestamp()
             )
@@ -374,10 +374,10 @@ class SoruLabRepository(
         try {
             testResultsCollection.document(resultId).update(
                 mapOf(
-                    "correctCount" to correctCount,
-                    "wrongCount" to wrongCount,
-                    "emptyCount" to emptyCount,
-                    "answersMapJson" to answersMapJson,
+                    "correctCount" to correctCount.coerceIn(0, 200),
+                    "wrongCount" to wrongCount.coerceIn(0, 200),
+                    "emptyCount" to emptyCount.coerceIn(0, 200),
+                    "answersMapJson" to answersMapJson.take(4900),
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()
@@ -398,24 +398,29 @@ class SoruLabRepository(
 
     suspend fun saveCustomQuestion(record: CustomQuestionRecord): String {
         val docRef = if (record.id.isNotBlank()) {
-            customQuestionsCollection.document(record.id)
+            customQuestionsCollection.document(record.id.take(120))
         } else {
             customQuestionsCollection.document()
         }
         try {
+            val safeRatio = if (record.cropAspectRatio.isFinite()) {
+                record.cropAspectRatio.coerceIn(0.25, 4.8)
+            } else {
+                1.25
+            }
             val payload = mapOf(
                 "userId" to record.userId,
-                "examType" to record.examType,
-                "subjectId" to record.subjectId,
-                "subjectName" to record.subjectName,
-                "topicId" to record.topicId,
-                "topicName" to record.topicName,
-                "difficulty" to record.difficulty,
-                "correctOption" to record.correctOption,
-                "questionText" to record.questionText,
-                "publisherTag" to record.publisherTag,
-                "aiSolutionSummary" to record.aiSolutionSummary,
-                "cropAspectRatio" to record.cropAspectRatio,
+                "examType" to if (record.examType.equals("AYT", ignoreCase = true)) "AYT" else "TYT",
+                "subjectId" to record.subjectId.ifBlank { "tyt_mat" }.take(64),
+                "subjectName" to record.subjectName.ifBlank { "Matematik" }.take(100),
+                "topicId" to record.topicId.ifBlank { "temel_kavramlar" }.take(64),
+                "topicName" to record.topicName.ifBlank { "Temel Kavramlar" }.take(120),
+                "difficulty" to (record.difficulty.takeIf { it in listOf("Kolay", "Orta", "Zor") } ?: "Orta"),
+                "correctOption" to (record.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "C"),
+                "questionText" to record.questionText.ifBlank { "YKS Sorusu" }.take(1950),
+                "publisherTag" to record.publisherTag.ifBlank { "YKS Yayınları" }.take(115),
+                "aiSolutionSummary" to record.aiSolutionSummary.take(3950),
+                "cropAspectRatio" to safeRatio,
                 "createdAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp()
             )
@@ -600,7 +605,8 @@ class SoruLabRepository(
                                 points = points,
                                 colorHex = sObj.optLong("color", 0xFF1D4ED8L),
                                 strokeWidthPx = sObj.optDouble("width", 8.0).toFloat(),
-                                isSmartShape = sObj.optBoolean("smart", false)
+                                isSmartShape = sObj.optBoolean("smart", false),
+                                isEraser = sObj.optBoolean("eraser", false)
                             )
                         )
                     }
@@ -628,6 +634,7 @@ class SoruLabRepository(
                         sObj.put("color", stroke.colorHex)
                         sObj.put("width", stroke.strokeWidthPx.toDouble())
                         sObj.put("smart", stroke.isSmartShape)
+                        sObj.put("eraser", stroke.isEraser)
                         val ptsArr = JSONArray()
                         stroke.points.forEach { pt ->
                             ptsArr.put(pt.x.toDouble())

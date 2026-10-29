@@ -10,6 +10,16 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import android.provider.OpenableColumns
+import android.util.LruCache
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.abs
@@ -20,12 +30,86 @@ import kotlin.math.sqrt
 
 /**
  * State-of-the-Art Studio Engine for:
- * 1. Ultra-HD 300 DPI Super-Sampling PDF Page Rendering (`scale = 3.0f`)
+ * 1. Ultra-HD Super-Sampling PDF Page Rendering
  * 2. Adaptive Contrast & Background Whitening (Luminance Thresholding -> #FFFFFF)
  *    + Clean Stem Cropping (Numberless pure question stem)
  * 3. Flood-Fill Background Removal (Dekupe) & Alpha Bounding Box Auto-Trim (64x64 Badge)
+ * 4. 60 FPS In-Memory Bitmap LruCache + Real Question Structure Verification (0 Cover/Blank Crops)
  */
 object StudioImageAndPdfEngine {
+
+    private val bitmapCache: LruCache<String, Bitmap> = object : LruCache<String, Bitmap>(64) {
+        override fun sizeOf(key: String, value: Bitmap): Int = 1
+    }
+
+    fun peekCachedBitmap(path: String): Bitmap? {
+        if (path.isBlank()) return null
+        return bitmapCache.get(path)?.takeIf { !it.isRecycled }
+    }
+
+    /**
+     * Loads and caches cropped question / publisher logo bitmaps in RAM so LazyColumn / Book Page
+     * scrolling and page turning run at 60 FPS without repeated disk decoding.
+     */
+    fun getCachedBitmap(path: String): Bitmap? {
+        if (path.isBlank()) return null
+        bitmapCache.get(path)?.let { cached ->
+            if (!cached.isRecycled) return cached
+        }
+        val file = File(path)
+        if (!file.exists() || file.length() == 0L) return null
+        val decoded = runCatching { BitmapFactory.decodeFile(path) }.getOrNull() ?: return null
+        bitmapCache.put(path, decoded)
+        return decoded
+    }
+
+    /**
+     * Non-blocking Composable helper: returns cached bitmap immediately in 0ms if in RAM,
+     * otherwise decodes on Dispatchers.IO without blocking the UI thread / SurfaceSyncGroup.
+     */
+    @Composable
+    fun rememberCachedBitmap(path: String): Bitmap? {
+        var bitmap by remember(path) { mutableStateOf(peekCachedBitmap(path)) }
+        LaunchedEffect(path) {
+            if (path.isBlank()) {
+                bitmap = null
+            } else if (bitmap == null || bitmap?.isRecycled == true) {
+                bitmap = withContext(Dispatchers.IO) {
+                    getCachedBitmap(path)
+                }
+            }
+        }
+        return bitmap
+    }
+
+    /**
+     * Resolves the real display name of a selected PDF URI via ContentResolver (OpenableColumns.DISPLAY_NAME)
+     * so filenames like "3D_AYT_Matematik.pdf" are preserved on Android tablets instead of numeric document IDs.
+     */
+    fun resolvePdfDisplayName(context: Context, pdfUri: Uri, fallbackHint: String = ""): String {
+        runCatching {
+            context.contentResolver.query(
+                pdfUri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0) {
+                        val name = cursor.getString(idx)?.trim().orEmpty()
+                        if (name.isNotBlank()) return name
+                    }
+                }
+            }
+        }
+        if (fallbackHint.isNotBlank() && !fallbackHint.removeSuffix(".pdf").all { it.isDigit() || it == ':' }) {
+            return fallbackHint
+        }
+        val lastSeg = pdfUri.lastPathSegment?.substringAfterLast("/")?.substringAfterLast(":")?.trim().orEmpty()
+        return if (lastSeg.isNotBlank()) lastSeg else "YKS_Soru_Bankasi.pdf"
+    }
 
     /**
      * Copies any `content://` or stream-backed URI into a seekable local File in `cacheDir`
@@ -247,10 +331,11 @@ object StudioImageAndPdfEngine {
             val dir = File(context.filesDir, "question_pool_crops")
             if (!dir.exists()) dir.mkdirs()
 
-            val leftNorm = (xminNorm1000.coerceIn(0, 940)) / 1000f
-            val topNorm = (yminNorm1000.coerceIn(0, 940)) / 1000f
-            val rightNorm = (xmaxNorm1000.coerceIn(xminNorm1000 + 60, 1000)) / 1000f
-            val bottomNorm = (ymaxNorm1000.coerceIn(yminNorm1000 + 60, 1000)) / 1000f
+            // Strict margin filter: exclude top 10%, bottom 10%, left 7%, and right 7%
+            val leftNorm = (xminNorm1000.coerceIn(70, 900)) / 1000f
+            val topNorm = (yminNorm1000.coerceIn(100, 860)) / 1000f
+            val rightNorm = (xmaxNorm1000.coerceIn((xminNorm1000.coerceAtLeast(70)) + 60, 930)) / 1000f
+            val bottomNorm = (ymaxNorm1000.coerceIn((yminNorm1000.coerceAtLeast(100)) + 60, 900)) / 1000f
 
             val x = (leftNorm * sourcePageBitmap.width).roundToInt().coerceIn(0, sourcePageBitmap.width - 16)
             val y = (topNorm * sourcePageBitmap.height).roundToInt().coerceIn(0, sourcePageBitmap.height - 16)
@@ -260,7 +345,7 @@ object StudioImageAndPdfEngine {
                 .coerceIn(16, sourcePageBitmap.height - y)
 
             val rawCrop = Bitmap.createBitmap(sourcePageBitmap, x, y, w, h)
-            val whitened = applyAdaptiveContrastAndBackgroundWhitening(rawCrop)
+            val whitened = whitenOldQuestionNumberAndEnhance(rawCrop)
             if (whitened !== rawCrop) {
                 rawCrop.recycle()
             }
@@ -656,7 +741,11 @@ object StudioImageAndPdfEngine {
         val croppedImagePath: String,
         val aspectRatio: Double,
         val boxNormalized: List<Float>,
-        val columnIndex: Int
+        val columnIndex: Int,
+        val estimatedDifficulty5: String = "Orta",
+        val hasDiagramOrGraph: Boolean = false,
+        val lineCountEstimate: Int = 6,
+        val questionOrderInPage: Int = 1
     )
 
     /**
@@ -670,21 +759,22 @@ object StudioImageAndPdfEngine {
         publisherName: String
     ): LocalPdfBlueprint {
         val rawTextBuilder = StringBuilder()
+        val decodedStreamChunks = mutableListOf<String>()
         try {
             val fileLen = pdfFile.length()
-            val headBytesSize = min(fileLen, 2_200_000L).toInt()
+            val headBytesSize = min(fileLen, 4_500_000L).toInt()
             val headBytes = ByteArray(headBytesSize)
             java.io.RandomAccessFile(pdfFile, "r").use { raf ->
                 raf.readFully(headBytes)
-                extractReadablePdfTextFromBytes(headBytes, rawTextBuilder, maxChars = 14_000)
-                // Also sample the last 1.8 MB of the PDF where Answer Keys are located
+                extractReadablePdfTextFromBytes(headBytes, rawTextBuilder, decodedStreamChunks, maxChars = 45_000)
+                // Also sample the last 2.5 MB of the PDF where Answer Keys are located
                 if (fileLen > headBytesSize) {
-                    val tailSize = min(fileLen - headBytesSize, 1_800_000L).toInt()
+                    val tailSize = min(fileLen - headBytesSize, 2_500_000L).toInt()
                     val tailBytes = ByteArray(tailSize)
                     raf.seek(fileLen - tailSize)
                     raf.readFully(tailBytes)
                     rawTextBuilder.append("\n--- SON SAYFALAR / CEVAP ANAHTARI ---\n")
-                    extractReadablePdfTextFromBytes(tailBytes, rawTextBuilder, maxChars = 24_000)
+                    extractReadablePdfTextFromBytes(tailBytes, rawTextBuilder, decodedStreamChunks, maxChars = 75_000)
                 }
             }
         } catch (_: Exception) {
@@ -700,24 +790,27 @@ object StudioImageAndPdfEngine {
         val combinedSignal = "$cleanFileHint\n$publisherName\n$rawTextBuilder"
         val answerKeyMap = parseAnswerKeyRegex(combinedSignal)
 
-        // Match ExamType (TYT / AYT)
+        // Match ExamType (TYT / AYT) - Strict AYT Detection Rule:
+        val aytTokens = listOf(
+            "AYT", "Alan Yeterlilik", "İleri Matematik", "Ileri Matematik",
+            "Fonksiyonlarda Uygulama", "Türev", "Turev", "İntegral", "Integral", "Limit",
+            "Trigonometri", "Logaritma", "Diziler", "Parabol", "Polinom",
+            "İkinci Dereceden", "Karmaşık Sayı", "Çemberin Analitiği",
+            "Bağıl Hareket", "Bagil Hareket", "Atışlar", "Atislar", "Momentum",
+            "Tork", "Çembersel Hareket", "Harmonik", "Elektrik Alan",
+            "Manyetizma", "Alternatif Akım", "Modern Fizik",
+            "Gazlar", "Sıvı Çözeltiler", "Entalpi", "Kimyasal Denge",
+            "Elektrokimya", "Organik", "Sistemler", "Bitki Biyolojisi"
+        )
         val examType = when {
-            combinedSignal.contains("AYT", ignoreCase = true) ||
-                combinedSignal.contains("Türev", ignoreCase = true) ||
-                combinedSignal.contains("İntegral", ignoreCase = true) ||
-                combinedSignal.contains("Limit", ignoreCase = true) ||
-                combinedSignal.contains("Trigonometri", ignoreCase = true) ||
-                combinedSignal.contains("Logaritma", ignoreCase = true) ||
-                combinedSignal.contains("Parabol", ignoreCase = true) ||
-                combinedSignal.contains("Elektrik Alan", ignoreCase = true) ||
-                combinedSignal.contains("Organik", ignoreCase = true) -> "AYT"
+            aytTokens.any { combinedSignal.contains(it, ignoreCase = true) } -> "AYT"
             else -> "TYT"
         }
 
         // Match Subject via YKS Curriculum Dictionary
         val subjectKeywords = listOf(
-            "Geometri" to listOf("geometri", "üçgen", "다gen", "çember", "daire", "analitik", "katı cisim", "dörtgen", "yamuk", "paralelkenar"),
-            "Fizik" to listOf("fizik", "kuvvet", "hareket", "enerji", "optik", "dalga", "elektrik", "manyetizma", "basınç", "atış", "tork", "denge"),
+            "Geometri" to listOf("geometri", "üçgen", "çember", "daire", "analitik", "katı cisim", "dörtgen", "yamuk", "paralelkenar"),
+            "Fizik" to listOf("fizik", "kuvvet", "hareket", "enerji", "optik", "dalga", "elektrik", "manyetizma", "basınç", "atış", "tork", "denge", "bağıl"),
             "Kimya" to listOf("kimya", "atom", "periyodik", "mol", "tepkime", "asit", "baz", "çözelti", "gazlar", "entalpi", "elektrokimya", "organik"),
             "Biyoloji" to listOf("biyoloji", "hücre", "kalıtım", "ekosistem", "bölünme", "fotosentez", "solunum", "sistemler", "dna", "rna", "bitki"),
             "Türkçe" to listOf("türkçe", "paragraf", "cümlede anlam", "sözcükte anlam", "yazım", "noktalama", "dil bilgisi", "ses bilgisi", "fiil", "anlatım")
@@ -744,34 +837,28 @@ object StudioImageAndPdfEngine {
             }
         }
 
-        val matchingSubjects = com.example.data.SoruLabCatalog.allSubjects.filter {
-            it.name.equals(detectedSubject, ignoreCase = true)
-        }.ifEmpty { com.example.data.SoruLabCatalog.allSubjects }
-
-        val subjectTopics = matchingSubjects
-            .sortedByDescending { if (it.examType.name == examType) 1 else 0 }
-            .flatMap { it.topics }
-            .distinctBy { it.name }
-
-        // Detect which curriculum topics appear in the file name or text
-        val matchedTopicsInFile = subjectTopics.filter { topic ->
-            lowerFile.contains(topic.name.lowercase()) ||
-                topic.name.split(" ", "-", "&").filter { it.length >= 4 }.any { word ->
-                    lowerFile.contains(word.lowercase())
-                }
-        }
-        val matchedTopicsInText = subjectTopics.filter { topic ->
-            lowerAll.contains(topic.name.lowercase())
-        }
-
-        val activeTopicsRotation = when {
-            matchedTopicsInFile.isNotEmpty() -> matchedTopicsInFile
-            matchedTopicsInText.isNotEmpty() -> matchedTopicsInText
-            subjectTopics.isNotEmpty() -> subjectTopics
-            else -> com.example.data.SoruLabCatalog.allSubjects.first().topics
+        // Resolve primary topic from file name first, then from full text using deterministic matchBestTopic
+        val (primarySubjectObj, primaryTopicObj) = if (cleanFileHint.length >= 4 &&
+            !cleanFileHint.startsWith("staged_", ignoreCase = true) &&
+            !cleanFileHint.startsWith("document", ignoreCase = true) &&
+            !cleanFileHint.startsWith("msf:", ignoreCase = true)
+        ) {
+            com.example.data.SoruLabCatalog.matchBestTopic(
+                examTypeHint = examType,
+                subjectNameHint = detectedSubject,
+                topicOrQuestionText = cleanFileHint,
+                fallbackTopicName = rawTextBuilder.toString().take(1200)
+            )
+        } else {
+            com.example.data.SoruLabCatalog.matchBestTopic(
+                examTypeHint = examType,
+                subjectNameHint = detectedSubject,
+                topicOrQuestionText = rawTextBuilder.toString().take(3600)
+            )
         }
 
-        val primaryTopicName = activeTopicsRotation.firstOrNull()?.name ?: "Temel Kavramlar"
+        val primaryTopicName = primaryTopicObj.name
+        detectedSubject = primarySubjectObj.name
 
         val autoBookTitle = when {
             cleanFileHint.length >= 3 &&
@@ -782,25 +869,56 @@ object StudioImageAndPdfEngine {
                 if (cleanFileHint.contains(publisherName, ignoreCase = true)) {
                     cleanFileHint
                 } else {
-                    "$publisherName • $cleanFileHint"
+                    "$publisherName $cleanFileHint"
                 }
             }
-            activeTopicsRotation.size == 1 -> "$publisherName $examType $detectedSubject • $primaryTopicName"
+            totalPages <= 35 -> "$publisherName $examType $detectedSubject • $primaryTopicName"
             else -> "$publisherName $examType $detectedSubject Soru Bankası"
         }
 
+        // Check if the file name explicitly names a single topic (e.g., "Fonksiyonlarda Uygulamalar", "Türev", "Bağıl Hareket")
+        val fileExplicitlyNamesTopic = primarySubjectObj.topics.any { t ->
+            lowerFile.contains(t.name.lowercase()) ||
+                (t.id == "fonksiyonlar" && lowerFile.contains("fonksiyon"))
+        }
+
         val pageMap = mutableMapOf<Int, LocalPageMapEntry>()
-        val dificuldades = listOf("Kolay", "Orta", "Zor")
+        val fiveTierCycle = listOf("Kolay", "Orta", "ÖSYM", "Zor", "Çok Zor")
         for (pageIdx in 0 until totalPages) {
-            // Rotate smoothly across detected topics every 2 pages (1 test = ~2 pages / 10-12 questions)
-            val topicForPage = activeTopicsRotation[(pageIdx / 2) % activeTopicsRotation.size]
-            val diffForPage = dificuldades[(pageIdx / 2) % dificuldades.size]
+            // Do NOT blindly skip pages 1..3 here; cropQuestionsFromPagePixelsDualColumn automatically skips
+            // non-question/cover pages while preserving real questions if the PDF starts on page 1 or 2!
+            val isOuterCoverOnly = totalPages >= 8 && pageIdx == 0
+            val streamSnippet = decodedStreamChunks.getOrNull(pageIdx).orEmpty()
+
+            val (resolvedSubjForPage, resolvedTopicForPage) = if (fileExplicitlyNamesTopic || streamSnippet.length < 16) {
+                detectedSubject to primaryTopicObj.name
+            } else {
+                val (matchedPageSubj, matchedPageTopic) = com.example.data.SoruLabCatalog.matchBestTopic(
+                    examTypeHint = examType,
+                    subjectNameHint = detectedSubject,
+                    topicOrQuestionText = streamSnippet,
+                    fallbackTopicName = primaryTopicName
+                )
+                matchedPageSubj.name to matchedPageTopic.name
+            }
+
+            val classifiedDiff = com.example.data.SoruLabCatalog.classifyDifficulty5FromText(
+                rawDifficultyHint = "",
+                headerOrQuestionText = "$cleanFileHint $streamSnippet",
+                questionIndexInPage = pageIdx
+            )
+            val diffForPage = if (streamSnippet.isNotBlank()) {
+                classifiedDiff.label
+            } else {
+                fiveTierCycle[pageIdx % fiveTierCycle.size]
+            }
+
             pageMap[pageIdx] = LocalPageMapEntry(
                 pageIndex = pageIdx,
-                isSkipPage = false,
+                isSkipPage = isOuterCoverOnly,
                 examType = examType,
-                subjectName = detectedSubject,
-                topicName = topicForPage.name,
+                subjectName = resolvedSubjForPage,
+                topicName = resolvedTopicForPage,
                 difficulty = diffForPage
             )
         }
@@ -810,7 +928,7 @@ object StudioImageAndPdfEngine {
             defaultExamType = examType,
             defaultSubjectName = detectedSubject,
             defaultTopicName = primaryTopicName,
-            extractedTextSampleForAi = rawTextBuilder.toString().take(4500),
+            extractedTextSampleForAi = rawTextBuilder.toString().take(5500),
             answerKeyMap = answerKeyMap,
             pageMap = pageMap
         )
@@ -819,11 +937,12 @@ object StudioImageAndPdfEngine {
     private fun extractReadablePdfTextFromBytes(
         bytes: ByteArray,
         out: StringBuilder,
+        streamChunksOut: MutableList<String>,
         maxChars: Int
     ) {
         val rawLatin = String(bytes, Charsets.ISO_8859_1)
         // 1. Extract literal strings inside parentheses (...) in uncompressed PDF headers/metadata
-        val parenRegex = Regex("\\(([A-Za-z0-9ÇĞİÖŞÜçğıöşü\\s:\\-.,/]{3,90})\\)")
+        val parenRegex = Regex("\\(([A-Za-z0-9ÇĞİÖŞÜçğıöşü\\s:\\-.,/()]{2,110})\\)")
         for (m in parenRegex.findAll(rawLatin)) {
             if (out.length >= maxChars) break
             val token = m.groupValues[1].trim()
@@ -832,10 +951,10 @@ object StudioImageAndPdfEngine {
             }
         }
 
-        // 2. Decompress FlateDecode streams to capture text & answer keys
+        // 2. Decompress FlateDecode streams (supporting both zlib-wrapped and raw deflate) to capture all pages & answer keys
         var searchIdx = 0
         var streamsDecoded = 0
-        while (searchIdx < rawLatin.length && out.length < maxChars && streamsDecoded < 45) {
+        while (searchIdx < rawLatin.length && out.length < maxChars && streamsDecoded < 400) {
             val streamPos = rawLatin.indexOf("stream", searchIdx)
             if (streamPos < 0) break
             var dataStart = streamPos + 6
@@ -848,25 +967,42 @@ object StudioImageAndPdfEngine {
                 continue
             }
             val streamLen = endStreamPos - dataStart
-            if (streamLen in 16..180_000) {
+            if (streamLen in 12..260_000) {
+                val outBuf = ByteArray(98_304)
+                var decodedLen = 0
                 try {
                     val inflater = java.util.zip.Inflater()
                     inflater.setInput(bytes, dataStart, streamLen)
-                    val outBuf = ByteArray(65_536)
-                    val decodedLen = inflater.inflate(outBuf)
+                    decodedLen = inflater.inflate(outBuf)
                     inflater.end()
-                    if (decodedLen > 0) {
-                        streamsDecoded++
-                        val inflatedStr = String(outBuf, 0, decodedLen, Charsets.ISO_8859_1)
-                        for (pm in parenRegex.findAll(inflatedStr)) {
-                            val t = pm.groupValues[1].trim()
-                            if (t.isNotBlank()) {
-                                out.append(t).append(' ')
-                                if (out.length >= maxChars) break
-                            }
+                } catch (_: Exception) {
+                    decodedLen = 0
+                }
+                if (decodedLen <= 0) {
+                    try {
+                        val rawInflater = java.util.zip.Inflater(true)
+                        rawInflater.setInput(bytes, dataStart, streamLen)
+                        decodedLen = rawInflater.inflate(outBuf)
+                        rawInflater.end()
+                    } catch (_: Exception) {
+                        decodedLen = 0
+                    }
+                }
+                if (decodedLen > 0) {
+                    streamsDecoded++
+                    val inflatedStr = String(outBuf, 0, decodedLen, Charsets.ISO_8859_1)
+                    val chunkSb = StringBuilder()
+                    for (pm in parenRegex.findAll(inflatedStr)) {
+                        val t = pm.groupValues[1].trim()
+                        if (t.isNotBlank()) {
+                            chunkSb.append(t).append(' ')
+                            out.append(t).append(' ')
+                            if (out.length >= maxChars) break
                         }
                     }
-                } catch (_: Exception) {
+                    if (chunkSb.isNotEmpty()) {
+                        streamChunksOut.add(chunkSb.toString())
+                    }
                 }
             }
             searchIdx = endStreamPos + 9
@@ -874,16 +1010,17 @@ object StudioImageAndPdfEngine {
     }
 
     /**
-     * Parses Answer Key patterns (`1-A 2-C 3-D`, `1. B`, `1: E`, etc.) via Regex.
+     * Parses Answer Key patterns (`1-A 2-C 3-D`, `1. B`, `1: E`, `1E 2B 3A`, `1) A`, etc.) via Regex.
      */
     fun parseAnswerKeyRegex(text: String): Map<Int, String> {
         val result = mutableMapOf<Int, String>()
         if (text.isBlank()) return result
-        val regex = Regex("(?:^|\\s|\\b)(\\d{1,3})\\s*[-.:)]\\s*([ABCDE])(?=\\s|$|[,;|])")
+        // Standard delimited format: 1-A, 1. B, 1) C, 1:D, 1 E
+        val regex = Regex("(?:^|\\s|\\b)(\\d{1,3})\\s*[-.:)]?\\s*([ABCDE])(?=\\s|$|[,;|.]|\\d)")
         for (match in regex.findAll(text)) {
             val qNum = match.groupValues[1].toIntOrNull() ?: continue
             val opt = match.groupValues[2].uppercase()
-            if (qNum in 1..200) {
+            if (qNum in 1..240) {
                 result[qNum] = opt
             }
         }
@@ -965,7 +1102,7 @@ object StudioImageAndPdfEngine {
         // 1. Estimate background paper luminance so off-white / gray / yellow backgrounds are ignored
         var highLumSum = 0L
         var highLumCount = 0
-        val sampleStep = max(1, (width * height) / 3500)
+        val sampleStep = max(1, (width * height) / 4000)
         var sIdx = 0
         val limit = width * height
         while (sIdx < limit) {
@@ -974,14 +1111,14 @@ object StudioImageAndPdfEngine {
             val g = (c shr 8) and 0xFF
             val b = c and 0xFF
             val lum = (r * 77 + g * 150 + b * 29) shr 8
-            if (lum >= 180) {
+            if (lum >= 175) {
                 highLumSum += lum
                 highLumCount++
             }
             sIdx += sampleStep
         }
         val bgLum = if (highLumCount > 0) (highLumSum / highLumCount).toInt() else 242
-        val inkLumThreshold = (bgLum - 28).coerceIn(175, 222)
+        val inkLumThreshold = (bgLum - 26).coerceIn(170, 224)
 
         fun isInkPixel(px: Int): Boolean {
             val r = (px shr 16) and 0xFF
@@ -991,32 +1128,93 @@ object StudioImageAndPdfEngine {
             if (lum < inkLumThreshold) return true
             val maxCh = max(r, max(g, b))
             val minCh = min(r, min(g, b))
-            return (maxCh - minCh) >= 42 && lum < 235
+            return (maxCh - minCh) >= 38 && lum < 238
         }
 
-        // Guard against full-bleed Book Cover on page 0 of multi-page books
-        if (pageIndex == 0 && totalPages >= 5) {
-            var totalInkSample = 0
-            var totalChecked = 0
-            var idx = 0
-            while (idx < limit) {
-                totalChecked++
-                if (isInkPixel(pixels[idx])) totalInkSample++
-                idx += sampleStep
+        // Strict Cover / Blank / Full-Graphic Page Guard:
+        var totalInkSample = 0
+        var totalChecked = 0
+        var idx = 0
+        while (idx < limit) {
+            totalChecked++
+            if (isInkPixel(pixels[idx])) totalInkSample++
+            idx += sampleStep
+        }
+        val pageInkRatio = totalInkSample.toFloat() / totalChecked.coerceAtLeast(1).toFloat()
+        // Blank page (< 0.004) or full-bleed dark cover/poster (> 0.34) is NEVER a question page
+        if (pageInkRatio < 0.004f || pageInkRatio > 0.34f) {
+            return emptyList()
+        }
+        // On multi-page books (>= 6 pages), page 0 is the outer cover — skip!
+        if (totalPages >= 6 && pageIndex == 0) {
+            return emptyList()
+        }
+
+        // SMART VERTICAL BOUNDS:
+        // Use [4.8% .. 95.0%] so top question stems and bottom A-E options are NEVER cut off,
+        // while dynamically stripping top page header banners and bottom answer-key/page-number strips!
+        var bodyTop = (height * 0.048f).roundToInt().coerceIn(28, height / 5)
+        var bodyBottom = (height * 0.950f).roundToInt().coerceIn(bodyTop + 200, height - 28)
+
+        // Check if there is a top page header strip (in 4.8%..10.5% height) separated by a clean horizontal whitespace gap
+        val headerProbeLimit = (height * 0.108f).roundToInt().coerceAtMost(height / 4)
+        val probeLeft = (width * 0.08f).roundToInt()
+        val probeRight = (width * 0.92f).roundToInt()
+        val probeSpan = (probeRight - probeLeft).coerceAtLeast(1)
+        var sawTopHeaderInk = false
+        for (y in bodyTop..headerProbeLimit) {
+            var rInk = 0
+            var colored = 0
+            val rOff = y * width
+            for (x in probeLeft..probeRight step 3) {
+                val px = pixels[rOff + x]
+                if (isInkPixel(px)) rInk++
+                val r = (px shr 16) and 0xFF
+                val g = (px shr 8) and 0xFF
+                val b = px and 0xFF
+                val maxCh = max(r, max(g, b))
+                val minCh = min(r, min(g, b))
+                if (maxCh - minCh >= 40) colored++
             }
-            val inkRatio = totalInkSample.toFloat() / totalChecked.coerceAtLeast(1).toFloat()
-            if (inkRatio > 0.42f || inkRatio < 0.008f) {
-                return emptyList()
+            val sampled = (probeSpan / 3).coerceAtLeast(1)
+            if (rInk > sampled * 0.025f) {
+                sawTopHeaderInk = true
+            }
+            // If we saw a colored top banner or header rule followed by a clean white gap near 7%..10.8%, advance bodyTop past it
+            if (sawTopHeaderInk && colored > sampled * 0.28f) {
+                bodyTop = (y + (height * 0.008f).roundToInt()).coerceAtMost(headerProbeLimit)
             }
         }
 
-        val bodyTop = (height * 0.052f).roundToInt().coerceIn(20, height / 4)
-        val bodyBottom = (height * 0.945f).roundToInt().coerceIn(bodyTop + 100, height - 16)
-        val bodyH = bodyBottom - bodyTop
+        // Check bottom 90.5%..95.0% for thin footer / bottom answer-key strip separated by whitespace
+        val footerProbeStart = (height * 0.902f).roundToInt()
+        var cleanGapY = -1
+        var zeroRun = 0
+        for (y in footerProbeStart..bodyBottom) {
+            var rInk = 0
+            val rOff = y * width
+            for (x in probeLeft..probeRight step 3) {
+                if (isInkPixel(pixels[rOff + x])) rInk++
+            }
+            if (rInk <= 2) {
+                zeroRun++
+                if (zeroRun >= (height * 0.010f).roundToInt().coerceAtLeast(10) && cleanGapY == -1) {
+                    cleanGapY = y - zeroRun / 2
+                }
+            } else {
+                zeroRun = 0
+            }
+        }
+        // If there is a clean whitespace gap after 90.2% followed only by a thin footer (< 3.2% page height), trim at the gap
+        if (cleanGapY != -1 && (bodyBottom - cleanGapY) <= (height * 0.036f).roundToInt()) {
+            bodyBottom = cleanGapY
+        }
+
+        val bodyH = (bodyBottom - bodyTop).coerceAtLeast(120)
 
         // 2. Detect Center Vertical Gutter or Divider Line (`midX`)
-        val centerStart = (width * 0.43f).roundToInt()
-        val centerEnd = (width * 0.57f).roundToInt()
+        val centerStart = (width * 0.42f).roundToInt()
+        val centerEnd = (width * 0.58f).roundToInt()
         val colInkCounts = IntArray(centerEnd - centerStart + 1)
 
         for (x in centerStart..centerEnd) {
@@ -1032,7 +1230,7 @@ object StudioImageAndPdfEngine {
         val sampledRows = (bodyH / 2).coerceAtLeast(1)
         // Check if there is a vertical separator line (high density spike in center)
         var dividerX = -1
-        var maxDividerInk = (sampledRows * 0.42f).roundToInt()
+        var maxDividerInk = (sampledRows * 0.36f).roundToInt()
         for (i in colInkCounts.indices) {
             if (colInkCounts[i] >= maxDividerInk) {
                 maxDividerInk = colInkCounts[i]
@@ -1049,7 +1247,6 @@ object StudioImageAndPdfEngine {
             for (dx in -windowRadius..windowRadius) {
                 winSum += colInkCounts[x + dx - centerStart]
             }
-            // Prefer closer to 0.50w on ties
             val centerBias = abs(x - width / 2) / 12
             val score = winSum + centerBias
             if (score < minGutterInk) {
@@ -1059,10 +1256,10 @@ object StudioImageAndPdfEngine {
         }
 
         // Verify whether both left and right halves actually have question content
-        val leftCheckStart = (width * 0.07f).roundToInt()
-        val leftCheckEnd = (width * 0.41f).roundToInt()
-        val rightCheckStart = (width * 0.59f).roundToInt()
-        val rightCheckEnd = (width * 0.93f).roundToInt()
+        val leftCheckStart = (width * 0.06f).roundToInt()
+        val leftCheckEnd = (width * 0.42f).roundToInt()
+        val rightCheckStart = (width * 0.58f).roundToInt()
+        val rightCheckEnd = (width * 0.94f).roundToInt()
 
         var leftHalfInk = 0
         var rightHalfInk = 0
@@ -1082,15 +1279,21 @@ object StudioImageAndPdfEngine {
             yCheck += 4
         }
 
-        val minHalfInkThreshold = ((bodyH / 4) * ((leftCheckEnd - leftCheckStart) / 4) * 0.012f).roundToInt().coerceAtLeast(35)
+        val minHalfInkThreshold = ((bodyH / 4) * ((leftCheckEnd - leftCheckStart) / 4) * 0.008f).roundToInt().coerceAtLeast(24)
         val avgGutterRowInk = minGutterInk.toFloat() / ((windowRadius * 2 + 1) * sampledRows).coerceAtLeast(1).toFloat()
-        val isDualColumn = (dividerX != -1 || avgGutterRowInk < 0.035f) &&
+        val isDualColumn = (dividerX != -1 || avgGutterRowInk < 0.048f) &&
             leftHalfInk >= minHalfInkThreshold &&
             rightHalfInk >= minHalfInkThreshold
 
+        // On multi-page books (>= 6 pages), skip page 1 only if it is NOT dual-column (e.g. inner cover / copyright page)
+        if (!isDualColumn && totalPages >= 6 && pageIndex <= 1) {
+            return emptyList()
+        }
+
         val midX = if (dividerX != -1) dividerX else bestGutterX
         val gutterMargin = (width * 0.012f).roundToInt().coerceAtLeast(10)
-        val outerMargin = (width * 0.025f).roundToInt().coerceAtLeast(16)
+        // Outer margin excludes extreme left/right 5.2% where vertical sidebar tabs & page number boxes sit
+        val outerMargin = (width * 0.052f).roundToInt().coerceAtLeast(32)
 
         val columns: List<Triple<Int, Int, Int>> = if (isDualColumn) {
             listOf(
@@ -1104,6 +1307,8 @@ object StudioImageAndPdfEngine {
         val results = mutableListOf<LocalCroppedBoxResult>()
         val outDir = File(context.filesDir, "question_pool_crops")
         if (!outDir.exists()) outDir.mkdirs()
+
+        var questionOrderOnPage = 0
 
         for ((colLeft, colRight, colIdx) in columns) {
             val colWidth = colRight - colLeft
@@ -1126,6 +1331,20 @@ object StudioImageAndPdfEngine {
                 val bandH = rawBottom - rawTop
                 if (bandH < (height * 0.085f).roundToInt()) continue
 
+                // Verify that this candidate block has real question structure (stem/diagram + options)
+                val structureMetrics = analyzeQuestionBlockStructure(
+                    pixels = pixels,
+                    pageWidth = width,
+                    colLeft = colLeft,
+                    colRight = colRight,
+                    bandTop = rawTop,
+                    bandBottom = rawBottom,
+                    isInkPixel = ::isInkPixel
+                )
+                if (!structureMetrics.isValidQuestion) {
+                    continue
+                }
+
                 // Refine horizontal bounds [xmin, xmax] inside this vertical band
                 var minX = colRight
                 var maxX = colLeft
@@ -1142,31 +1361,30 @@ object StudioImageAndPdfEngine {
                 }
 
                 val activeW = maxX - minX + 1
-                if (activeW < (colWidth * 0.24f).roundToInt()) continue
+                if (activeW < (colWidth * 0.22f).roundToInt()) continue
                 val boxArea = (activeW * bandH).coerceAtLeast(1)
                 val inkDensity = inkPixelsInBox.toFloat() / boxArea.toFloat()
-                if (inkDensity < 0.007f || inkDensity > 0.55f) continue
+                if (inkDensity < 0.0045f || inkDensity > 0.36f) continue
 
-                val padX = (colWidth * 0.025f).roundToInt().coerceIn(8, 22)
+                val padX = (colWidth * 0.022f).roundToInt().coerceIn(8, 22)
                 val padY = (height * 0.008f).roundToInt().coerceIn(8, 20)
 
                 val finalLeft = (minX - padX).coerceAtLeast(colLeft)
                 val finalRight = (maxX + padX).coerceAtMost(colRight)
-                val finalTop = (rawTop - padY).coerceAtLeast(bodyTop / 2)
-                val finalBottom = (rawBottom + padY).coerceAtMost(height - 8)
+                val finalTop = (rawTop - padY).coerceAtLeast(bodyTop)
+                val finalBottom = (rawBottom + padY).coerceAtMost(bodyBottom)
 
                 val cropW = (finalRight - finalLeft + 1).coerceAtLeast(32)
                 val cropH = (finalBottom - finalTop + 1).coerceAtLeast(32)
 
                 val rawCrop = Bitmap.createBitmap(pageBitmap, finalLeft, finalTop, cropW, cropH)
-                // Whiten old PDF question number in top-left corner + apply adaptive contrast whitening
                 val cleanedCrop = whitenOldQuestionNumberAndEnhance(rawCrop)
                 if (cleanedCrop !== rawCrop) {
                     rawCrop.recycle()
                 }
 
                 val aspect = (cleanedCrop.width.toDouble() / cleanedCrop.height.toDouble().coerceAtLeast(1.0))
-                    .coerceIn(0.35, 3.8)
+                    .coerceIn(0.32, 3.8)
 
                 val outFile = File(
                     outDir,
@@ -1179,9 +1397,18 @@ object StudioImageAndPdfEngine {
                     } else {
                         Bitmap.CompressFormat.WEBP
                     }
-                    cleanedCrop.compress(format, 85, fos)
+                    cleanedCrop.compress(format, 86, fos)
                 }
-                cleanedCrop.recycle()
+                bitmapCache.put(outFile.absolutePath, cleanedCrop)
+
+                questionOrderOnPage++
+                val estimatedDiff5 = estimateVisualQuestionDifficulty5(
+                    metrics = structureMetrics,
+                    bandHeightRatio = bandH.toFloat() / height.toFloat(),
+                    inkDensity = inkDensity,
+                    questionOrderOnPage = questionOrderOnPage,
+                    pageIndex = pageIndex
+                )
 
                 results.add(
                     LocalCroppedBoxResult(
@@ -1193,68 +1420,11 @@ object StudioImageAndPdfEngine {
                             finalBottom.toFloat() / height.toFloat(),
                             finalRight.toFloat() / width.toFloat()
                         ),
-                        columnIndex = colIdx
-                    )
-                )
-            }
-        }
-
-        // Fallback if a valid non-blank page (or 1-3 page PDF) had an unconventional layout
-        if (results.isEmpty() && (totalPages <= 3 || pageIndex > 0)) {
-            var minX = width
-            var maxX = 0
-            var minY = bodyBottom
-            var maxY = bodyTop
-            var inkCount = 0
-            var y = bodyTop
-            while (y < bodyBottom) {
-                val rowOff = y * width
-                var x = outerMargin
-                while (x < width - outerMargin) {
-                    if (isInkPixel(pixels[rowOff + x])) {
-                        inkCount++
-                        if (x < minX) minX = x
-                        if (x > maxX) maxX = x
-                        if (y < minY) minY = y
-                        if (y > maxY) maxY = y
-                    }
-                    x += 2
-                }
-                y += 2
-            }
-            if (inkCount > 120 && maxX > minX + 80 && maxY > minY + 80) {
-                val cropW = (maxX - minX + 1).coerceIn(64, width - minX)
-                val cropH = (maxY - minY + 1).coerceIn(64, height - minY)
-                val rawCrop = Bitmap.createBitmap(pageBitmap, minX, minY, cropW, cropH)
-                val cleanedCrop = whitenOldQuestionNumberAndEnhance(rawCrop)
-                if (cleanedCrop !== rawCrop) rawCrop.recycle()
-                val aspect = (cleanedCrop.width.toDouble() / cleanedCrop.height.toDouble().coerceAtLeast(1.0))
-                    .coerceIn(0.35, 3.8)
-                val outFile = File(
-                    outDir,
-                    "q_p${pageIndex + 1}_full_${System.currentTimeMillis()}_${(100..999).random()}.webp"
-                )
-                FileOutputStream(outFile).use { fos ->
-                    @Suppress("DEPRECATION")
-                    val format = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                        Bitmap.CompressFormat.WEBP_LOSSY
-                    } else {
-                        Bitmap.CompressFormat.WEBP
-                    }
-                    cleanedCrop.compress(format, 85, fos)
-                }
-                cleanedCrop.recycle()
-                results.add(
-                    LocalCroppedBoxResult(
-                        croppedImagePath = outFile.absolutePath,
-                        aspectRatio = aspect,
-                        boxNormalized = listOf(
-                            minY.toFloat() / height.toFloat(),
-                            minX.toFloat() / width.toFloat(),
-                            maxY.toFloat() / height.toFloat(),
-                            maxX.toFloat() / width.toFloat()
-                        ),
-                        columnIndex = 0
+                        columnIndex = colIdx,
+                        estimatedDifficulty5 = estimatedDiff5,
+                        hasDiagramOrGraph = structureMetrics.hasDiagramOrGraph,
+                        lineCountEstimate = structureMetrics.lineTransitions,
+                        questionOrderInPage = questionOrderOnPage
                     )
                 )
             }
@@ -1263,9 +1433,180 @@ object StudioImageAndPdfEngine {
         return results
     }
 
+    private data class QuestionBlockMetrics(
+        val isValidQuestion: Boolean,
+        val lineTransitions: Int,
+        val activeRows: Int,
+        val hasDiagramOrGraph: Boolean,
+        val activeOptionBuckets: Int,
+        val bottomLineTransitions: Int
+    )
+
     /**
-     * Uses Horizontal Projection Profile to segment a column into complete question vertical bands `[topY, bottomY]`,
-     * keeping figures, premises, stems, and A-E option rows together while splitting stacked questions.
+     * Analyzes a candidate vertical band inside a column to verify it is a real YKS question
+     * (supporting standard text questions, geometry/physics diagram questions, and both horizontal & vertical A-E options)
+     * and extracts structural complexity metrics for per-question 5-tier difficulty tagging.
+     */
+    private fun analyzeQuestionBlockStructure(
+        pixels: IntArray,
+        pageWidth: Int,
+        colLeft: Int,
+        colRight: Int,
+        bandTop: Int,
+        bandBottom: Int,
+        isInkPixel: (Int) -> Boolean
+    ): QuestionBlockMetrics {
+        val bandH = bandBottom - bandTop
+        val colW = (colRight - colLeft).coerceAtLeast(1)
+        if (bandH < 75 || colW < 85) {
+            return QuestionBlockMetrics(false, 0, 0, false, 0, 0)
+        }
+
+        var activeRows = 0
+        var lineTransitions = 0
+        var prevRowActive = false
+        var totalInk = 0
+        var maxContiguousActiveBlock = 0
+        var currentContiguousBlock = 0
+        val sampledCols = (colW / 2).coerceAtLeast(1)
+
+        for (y in bandTop..bandBottom) {
+            val rowOff = y * pageWidth
+            var rowInk = 0
+            var x = colLeft
+            while (x <= colRight) {
+                if (isInkPixel(pixels[rowOff + x])) rowInk++
+                x += 2
+            }
+            totalInk += rowInk
+            val rowDensity = rowInk.toFloat() / sampledCols.toFloat()
+            val isRowActive = rowDensity in 0.008f..0.60f
+            if (isRowActive) {
+                activeRows++
+                currentContiguousBlock++
+                if (currentContiguousBlock > maxContiguousActiveBlock) {
+                    maxContiguousActiveBlock = currentContiguousBlock
+                }
+            } else {
+                currentContiguousBlock = 0
+            }
+            if (isRowActive && !prevRowActive) {
+                lineTransitions++
+            }
+            prevRowActive = isRowActive
+        }
+
+        val overallDensity = totalInk.toFloat() / (bandH * sampledCols).coerceAtLeast(1).toFloat()
+        // Reject near-empty whitespace or solid dark cover/banner graphics
+        if (overallDensity < 0.0045f || overallDensity > 0.36f) {
+            return QuestionBlockMetrics(false, lineTransitions, activeRows, false, 0, 0)
+        }
+
+        if (lineTransitions < 2 || activeRows < 10) {
+            return QuestionBlockMetrics(false, lineTransitions, activeRows, false, 0, 0)
+        }
+
+        // Check bottom 45% for either horizontal option spread (buckets >= 2) OR vertical option lines (>= 3 transitions)
+        val bottomStart = bandTop + (bandH * 0.55f).roundToInt()
+        val buckets = 5
+        val bucketW = (colW / buckets).coerceAtLeast(1)
+        var activeOptionBuckets = 0
+        for (b in 0 until buckets) {
+            val bx0 = colLeft + b * bucketW
+            val bx1 = (bx0 + bucketW).coerceAtMost(colRight)
+            var bInk = 0
+            var y = bottomStart
+            while (y <= bandBottom) {
+                val rowOff = y * pageWidth
+                var x = bx0
+                while (x < bx1) {
+                    if (isInkPixel(pixels[rowOff + x])) bInk++
+                    x += 2
+                }
+                y += 2
+            }
+            if (bInk >= 5) activeOptionBuckets++
+        }
+
+        var bottomLineTransitions = 0
+        var prevBottomRowActive = false
+        for (y in bottomStart..bandBottom) {
+            val rowOff = y * pageWidth
+            var rowInk = 0
+            var x = colLeft
+            while (x <= colRight) {
+                if (isInkPixel(pixels[rowOff + x])) rowInk++
+                x += 2
+            }
+            val isRowActive = (rowInk.toFloat() / sampledCols.toFloat()) in 0.008f..0.55f
+            if (isRowActive && !prevBottomRowActive) bottomLineTransitions++
+            prevBottomRowActive = isRowActive
+        }
+
+        val hasDiagramOrGraph = maxContiguousActiveBlock >= 34 || (bandH >= 360 && lineTransitions >= 6)
+        val isValid = activeOptionBuckets >= 2 || bottomLineTransitions >= 3 || (hasDiagramOrGraph && activeOptionBuckets >= 1)
+
+        return QuestionBlockMetrics(
+            isValidQuestion = isValid,
+            lineTransitions = lineTransitions,
+            activeRows = activeRows,
+            hasDiagramOrGraph = hasDiagramOrGraph,
+            activeOptionBuckets = activeOptionBuckets,
+            bottomLineTransitions = bottomLineTransitions
+        )
+    }
+
+    /**
+     * Evaluates each individual cropped question's visual & structural complexity
+     * to assign one of the 5 YKS difficulty tiers:
+     * - "Kolay" (1★): Short direct stem, few line transitions, compact height, no complex diagram
+     * - "Orta" (2★): Standard kazanım question with moderate text or simple figure
+     * - "ÖSYM" (3★): Story-based / diagram + multi-line stem or premise (I, II, III) format
+     * - "Zor" (4★): Dense multi-step stem + figure/graph or tall multi-premise synthesis
+     * - "Çok Zor" (5★): Highest complexity (dense figure + long analytical text/equations, late test/page synthesis)
+     */
+    private fun estimateVisualQuestionDifficulty5(
+        metrics: QuestionBlockMetrics,
+        bandHeightRatio: Float,
+        inkDensity: Float,
+        questionOrderOnPage: Int,
+        pageIndex: Int
+    ): String {
+        var complexityScore = 0
+        // 1. Height of question on page (story + figure + premises take more vertical space)
+        when {
+            bandHeightRatio >= 0.41f -> complexityScore += 3
+            bandHeightRatio >= 0.33f -> complexityScore += 2
+            bandHeightRatio >= 0.24f -> complexityScore += 1
+        }
+        // 2. Number of text / equation / premise lines
+        when {
+            metrics.lineTransitions >= 14 -> complexityScore += 3
+            metrics.lineTransitions >= 10 -> complexityScore += 2
+            metrics.lineTransitions >= 6 -> complexityScore += 1
+        }
+        // 3. Presence of geometry / physics / function graph diagram
+        if (metrics.hasDiagramOrGraph) {
+            complexityScore += 1
+        }
+        // 4. Ink density & later questions on page/test tend to be more synthetic
+        if (inkDensity >= 0.065f) complexityScore += 1
+        if (questionOrderOnPage >= 3) complexityScore += 1
+        if (pageIndex % 4 == 3) complexityScore += 1
+
+        return when {
+            complexityScore <= 1 -> "Kolay"
+            complexityScore == 2 -> "Orta"
+            complexityScore in 3..4 -> "ÖSYM"
+            complexityScore == 5 -> "Zor"
+            else -> "Çok Zor"
+        }
+    }
+
+    /**
+     * Uses Horizontal Projection Profile + Option-Row Valley Detection to segment a column
+     * into complete individual question vertical bands `[topY, bottomY]`, keeping figures, premises,
+     * stems, and A-E option rows together while cleanly separating stacked questions one by one.
      */
     private fun segmentColumnQuestionsByProjection(
         pixels: IntArray,
@@ -1280,19 +1621,56 @@ object StudioImageAndPdfEngine {
         val colW = (colRight - colLeft).coerceAtLeast(1)
         val bodyH = (bodyBottom - bodyTop).coerceAtLeast(1)
         val rowInk = IntArray(bodyH)
+        val isColoredBannerRow = BooleanArray(bodyH)
 
         // Ignore extreme 1.5% left/right edge of the column when computing horizontal projection
         val scanLeft = colLeft + (colW * 0.015f).roundToInt()
         val scanRight = colRight - (colW * 0.015f).roundToInt()
-        val minInkPerActiveRow = (colW * 0.007f).roundToInt().coerceIn(3, 8)
+        val scanW = (scanRight - scanLeft + 1).coerceAtLeast(1)
+        val minInkPerActiveRow = (colW * 0.006f).roundToInt().coerceIn(2, 7)
 
         for (y in bodyTop until bodyBottom) {
             val rowOff = y * pageWidth
             var count = 0
+            var coloredBannerPixels = 0
             for (x in scanLeft..scanRight) {
-                if (isInkPixel(pixels[rowOff + x])) count++
+                val px = pixels[rowOff + x]
+                if (isInkPixel(px)) count++
+                val r = (px shr 16) and 0xFF
+                val g = (px shr 8) and 0xFF
+                val b = px and 0xFF
+                val maxCh = max(r, max(g, b))
+                val minCh = min(r, min(g, b))
+                val lum = (r * 77 + g * 150 + b * 29) shr 8
+                // Colored banner strip (e.g., green/blue/orange/red "TÜMEVARIM - III Test 02" bar)
+                if ((maxCh - minCh >= 36 && lum in 45..225) || lum < 105) {
+                    coloredBannerPixels++
+                }
+            }
+            if (coloredBannerPixels > (scanW * 0.46f)) {
+                isColoredBannerRow[y - bodyTop] = true
             }
             rowInk[y - bodyTop] = count
+        }
+
+        // Strip contiguous colored banner strips (>= 8px tall, <= 6.5% page height)
+        var by = 0
+        while (by < bodyH) {
+            if (isColoredBannerRow[by]) {
+                var bEnd = by
+                while (bEnd < bodyH && isColoredBannerRow[bEnd]) bEnd++
+                val bannerHeight = bEnd - by
+                if (bannerHeight in 8..(pageHeight * 0.065f).roundToInt().coerceAtLeast(45)) {
+                    val clearStart = (by - 6).coerceAtLeast(0)
+                    val clearEnd = (bEnd + 6).coerceAtMost(bodyH - 1)
+                    for (k in clearStart..clearEnd) {
+                        rowInk[k] = 0
+                    }
+                }
+                by = bEnd
+            } else {
+                by++
+            }
         }
 
         // Smooth 3-row moving window so thin horizontal lines or ascenders/descenders connect smoothly
@@ -1305,8 +1683,8 @@ object StudioImageAndPdfEngine {
         }
 
         // Bridge internal question gaps (line spacing, gap between diagram and stem, gap before A-E options)
-        // Any whitespace gap smaller than 2.7% of page height belongs to the SAME question.
-        val maxInternalGap = (pageHeight * 0.027f).roundToInt().coerceIn(28, 60)
+        // Use 2.0% of page height so internal spacing stays connected without merging two stacked questions!
+        val maxInternalGap = (pageHeight * 0.020f).roundToInt().coerceIn(20, 42)
         var i = 0
         while (i < bodyH) {
             if (!activeRow[i]) {
@@ -1330,7 +1708,7 @@ object StudioImageAndPdfEngine {
                 var end = r
                 while (end < bodyH && activeRow[end]) end++
                 val bandHeight = end - r
-                if (bandHeight >= (pageHeight * 0.08f).roundToInt()) {
+                if (bandHeight >= (pageHeight * 0.075f).roundToInt()) {
                     rawBands.add((bodyTop + r) to (bodyTop + end - 1))
                 }
                 r = end
@@ -1339,70 +1717,74 @@ object StudioImageAndPdfEngine {
             }
         }
 
-        // If a single band is very tall (> 48% of page height), check if 2 or 3 stacked questions were bridged
-        // across a slightly narrower inter-question gap (e.g., 16px-27px) and split at the deepest whitespace valley.
+        // Recursively split any tall band (> 39% of page height) if it contains 2 or 3 stacked questions
         val finalBands = mutableListOf<Pair<Int, Int>>()
-        for ((bTop, bBottom) in rawBands) {
+        val minSingleQHeight = (pageHeight * 0.135f).roundToInt()
+        val minValleyGap = (pageHeight * 0.0085f).roundToInt().coerceAtLeast(8)
+
+        fun splitBandRecursively(bTop: Int, bBottom: Int, depth: Int) {
             val bH = bBottom - bTop + 1
-            if (bH > (pageHeight * 0.48f).roundToInt()) {
-                val splitPoint = findBestInterQuestionValley(
-                    rowInk = rowInk,
-                    bodyTop = bodyTop,
-                    bandTop = bTop,
-                    bandBottom = bBottom,
-                    minQuestionHeight = (pageHeight * 0.16f).roundToInt(),
-                    minValleyGapRows = (pageHeight * 0.011f).roundToInt().coerceAtLeast(12),
-                    minInkPerActiveRow = minInkPerActiveRow
-                )
-                if (splitPoint != -1) {
-                    finalBands.add(bTop to (splitPoint - 2))
-                    val secondHalfTop = splitPoint + 2
-                    val secondHalfH = bBottom - secondHalfTop + 1
-                    if (secondHalfH > (pageHeight * 0.48f).roundToInt()) {
-                        val splitPoint2 = findBestInterQuestionValley(
-                            rowInk = rowInk,
-                            bodyTop = bodyTop,
-                            bandTop = secondHalfTop,
-                            bandBottom = bBottom,
-                            minQuestionHeight = (pageHeight * 0.15f).roundToInt(),
-                            minValleyGapRows = (pageHeight * 0.011f).roundToInt().coerceAtLeast(12),
-                            minInkPerActiveRow = minInkPerActiveRow
-                        )
-                        if (splitPoint2 != -1) {
-                            finalBands.add(secondHalfTop to (splitPoint2 - 2))
-                            finalBands.add((splitPoint2 + 2) to bBottom)
-                        } else {
-                            finalBands.add(secondHalfTop to bBottom)
-                        }
-                    } else {
-                        finalBands.add(secondHalfTop to bBottom)
-                    }
-                } else {
-                    finalBands.add(bTop to bBottom)
-                }
+            if (depth >= 3 || bH <= (pageHeight * 0.39f).roundToInt()) {
+                finalBands.add(bTop to bBottom)
+                return
+            }
+            val splitPoint = findBestInterQuestionValley(
+                pixels = pixels,
+                pageWidth = pageWidth,
+                colLeft = colLeft,
+                colRight = colRight,
+                rowInk = rowInk,
+                bodyTop = bodyTop,
+                bandTop = bTop,
+                bandBottom = bBottom,
+                minQuestionHeight = minSingleQHeight,
+                minValleyGapRows = minValleyGap,
+                minInkPerActiveRow = minInkPerActiveRow,
+                isInkPixel = isInkPixel
+            )
+            if (splitPoint != -1) {
+                splitBandRecursively(bTop, splitPoint - 2, depth + 1)
+                splitBandRecursively(splitPoint + 2, bBottom, depth + 1)
             } else {
                 finalBands.add(bTop to bBottom)
             }
         }
 
+        for ((bTop, bBottom) in rawBands) {
+            splitBandRecursively(bTop, bBottom, 0)
+        }
+
         return finalBands
     }
 
+    /**
+     * Finds the best inter-question whitespace valley inside a tall column band,
+     * strongly preferring valleys where the upper segment ends with multiple-choice options (A-E spread)
+     * so a single question's diagram and stem are never split apart while stacked questions are always separated.
+     */
     private fun findBestInterQuestionValley(
+        pixels: IntArray,
+        pageWidth: Int,
+        colLeft: Int,
+        colRight: Int,
         rowInk: IntArray,
         bodyTop: Int,
         bandTop: Int,
         bandBottom: Int,
         minQuestionHeight: Int,
         minValleyGapRows: Int,
-        minInkPerActiveRow: Int
+        minInkPerActiveRow: Int,
+        isInkPixel: (Int) -> Boolean
     ): Int {
         val searchStart = (bandTop + minQuestionHeight - bodyTop).coerceIn(0, rowInk.lastIndex)
         val searchEnd = (bandBottom - minQuestionHeight - bodyTop).coerceIn(0, rowInk.lastIndex)
         if (searchEnd <= searchStart + minValleyGapRows) return -1
 
+        val colW = (colRight - colLeft).coerceAtLeast(1)
+        val bucketW = (colW / 5).coerceAtLeast(1)
+
         var bestValleyCenter = -1
-        var longestZeroRun = 0
+        var bestValleyScore = -1
         var idx = searchStart
         while (idx <= searchEnd) {
             if (rowInk[idx] < minInkPerActiveRow) {
@@ -1411,9 +1793,35 @@ object StudioImageAndPdfEngine {
                     runEnd++
                 }
                 val runLen = runEnd - idx
-                if (runLen >= minValleyGapRows && runLen > longestZeroRun) {
-                    longestZeroRun = runLen
-                    bestValleyCenter = bodyTop + idx + (runLen / 2)
+                if (runLen >= minValleyGapRows) {
+                    val valleyY = bodyTop + idx + (runLen / 2)
+                    // Check if the 65px strip immediately ABOVE this valley has horizontal option buckets (A B C D E)
+                    val optCheckBottom = (bodyTop + idx - 1).coerceAtLeast(bandTop)
+                    val optCheckTop = (optCheckBottom - 70).coerceAtLeast(bandTop)
+                    var bucketsAbove = 0
+                    for (b in 0 until 5) {
+                        val bx0 = colLeft + b * bucketW
+                        val bx1 = (bx0 + bucketW).coerceAtMost(colRight)
+                        var bInk = 0
+                        var y = optCheckTop
+                        while (y <= optCheckBottom) {
+                            val rOff = y * pageWidth
+                            var x = bx0
+                            while (x < bx1) {
+                                if (isInkPixel(pixels[rOff + x])) bInk++
+                                x += 2
+                            }
+                            y += 2
+                        }
+                        if (bInk >= 4) bucketsAbove++
+                    }
+                    // Score combines whitespace valley height + bonus if options sit right above the valley
+                    val optionBonus = if (bucketsAbove >= 3) 28 else if (bucketsAbove == 2) 12 else 0
+                    val score = runLen + optionBonus
+                    if (score > bestValleyScore) {
+                        bestValleyScore = score
+                        bestValleyCenter = valleyY
+                    }
                 }
                 idx = runEnd
             } else {
@@ -1424,8 +1832,9 @@ object StudioImageAndPdfEngine {
     }
 
     /**
-     * Automatically whitens the old PDF question number (`1.`, `7.`, `12.`) in the top-left marginalia
-     * of a cropped question before running Adaptive Contrast & Background Whitening.
+     * Automatically strips any top colored test banner ("TÜMEVARIM - III Test 02") AND whitens the old
+     * PDF question number (`1.`, `4.`, `8.`, `12.`) in the top-left marginalia of a cropped question
+     * before running Adaptive Contrast & Background Whitening.
      */
     private fun whitenOldQuestionNumberAndEnhance(sourceCrop: Bitmap): Bitmap {
         val w = sourceCrop.width
@@ -1438,9 +1847,39 @@ object StudioImageAndPdfEngine {
             sourceCrop.copy(Bitmap.Config.ARGB_8888, true)
         }
 
-        // Inspect top-left corner (leftmost 10% width, top 18% height) for an isolated marginal question number
-        val maxNumZoneW = (w * 0.105f).roundToInt().coerceIn(18, 72)
-        val maxNumZoneH = (h * 0.18f).roundToInt().coerceIn(22, 90)
+        // 1. Check top 16% of crop for any residual horizontal colored banner bar (e.g. green/blue "TÜMEVARIM - III Test 02")
+        val topBannerScanH = (h * 0.16f).roundToInt().coerceIn(16, 95)
+        val topPixels = IntArray(w * topBannerScanH)
+        mutableCrop.getPixels(topPixels, 0, w, 0, 0, w, topBannerScanH)
+        var lastBannerRow = -1
+        for (y in 0 until topBannerScanH) {
+            var coloredCount = 0
+            val rOff = y * w
+            for (x in 0 until w step 2) {
+                val c = topPixels[rOff + x]
+                val r = (c shr 16) and 0xFF
+                val g = (c shr 8) and 0xFF
+                val b = c and 0xFF
+                val maxCh = max(r, max(g, b))
+                val minCh = min(r, min(g, b))
+                val lum = (r * 77 + g * 150 + b * 29) shr 8
+                if ((maxCh - minCh >= 36 && lum in 40..225) || lum < 105) {
+                    coloredCount++
+                }
+            }
+            if (coloredCount > (w / 2) * 0.45f) {
+                lastBannerRow = y
+            }
+        }
+        if (lastBannerRow >= 6) {
+            val clearH = (lastBannerRow + 6).coerceAtMost(topBannerScanH)
+            val whiteBannerFill = IntArray(w * clearH) { -0x1 }
+            mutableCrop.setPixels(whiteBannerFill, 0, w, 0, 0, w, clearH)
+        }
+
+        // 2. Inspect top-left corner (leftmost 11% width, top 18% height) for an isolated marginal question number ("1.", "4.", "8.")
+        val maxNumZoneW = (w * 0.11f).roundToInt().coerceIn(20, 76)
+        val maxNumZoneH = (h * 0.18f).roundToInt().coerceIn(24, 92)
         val zonePixels = IntArray(maxNumZoneW * maxNumZoneH)
         mutableCrop.getPixels(zonePixels, 0, maxNumZoneW, 0, 0, maxNumZoneW, maxNumZoneH)
 
@@ -1454,7 +1893,9 @@ object StudioImageAndPdfEngine {
                 val g = (c shr 8) and 0xFF
                 val b = c and 0xFF
                 val lum = (r * 77 + g * 150 + b * 29) shr 8
-                if (lum < 200) darkCount++
+                val maxCh = max(r, max(g, b))
+                val minCh = min(r, min(g, b))
+                if (lum < 205 || (maxCh - minCh >= 38 && lum < 235)) darkCount++
             }
             colHasInk[x] = darkCount >= 2
         }
@@ -1478,8 +1919,7 @@ object StudioImageAndPdfEngine {
             }
         }
 
-        // Also check that below the number (y > maxNumZoneH) the left margin is mostly empty
-        if (cutX in 6..(maxNumZoneW - 2)) {
+        if (cutX in 5..(maxNumZoneW - 2)) {
             val whiteFill = IntArray(cutX * maxNumZoneH) { -0x1 }
             mutableCrop.setPixels(whiteFill, 0, cutX, 0, 0, cutX, maxNumZoneH)
         }

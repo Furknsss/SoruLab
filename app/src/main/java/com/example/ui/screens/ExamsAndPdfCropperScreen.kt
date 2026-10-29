@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -65,13 +66,7 @@ fun PublisherLogoEmblem(
     modifier: Modifier = Modifier
 ) {
     val effectivePath = overrideLogoPath.ifBlank { publisher.customLogoPath }
-    val customBitmap = remember(effectivePath) {
-        if (effectivePath.isNotBlank() && File(effectivePath).exists()) {
-            runCatching { BitmapFactory.decodeFile(effectivePath) }.getOrNull()
-        } else {
-            null
-        }
-    }
+    val customBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(effectivePath)
 
     if (customBitmap != null) {
         Box(
@@ -543,7 +538,8 @@ fun SoruHavuzuAndPdfStudioView(
     onClearAllData: () -> Unit = {},
     onDismissError: () -> Unit = {},
     onBack: () -> Unit,
-    onSolveBookInPractice: (CustomQuestionRecord) -> Unit = {}
+    onSolveBookInPractice: (CustomQuestionRecord) -> Unit = {},
+    onSolveBookChunkInPractice: (CustomQuestionRecord, Int, Int) -> Unit = { rec, _, _ -> onSolveBookInPractice(rec) }
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
@@ -590,15 +586,24 @@ fun SoruHavuzuAndPdfStudioView(
         }
     }
 
+    var selectedBookForTestPanel by remember { mutableStateOf<LibraryBookCardModel?>(null) }
+    var selectedQuestionsPerTest by remember { mutableIntStateOf(12) }
+
     val pdfPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
             onDismissError()
             selectedPdfUri = uri
-            val lastSeg = uri.lastPathSegment?.substringAfterLast("/") ?: "Secilen_Kaynak.pdf"
-            selectedPdfFileName = if (lastSeg.endsWith(".pdf", ignoreCase = true)) lastSeg else "$lastSeg.pdf"
             scope.launch {
+                val resolvedName = withContext(Dispatchers.IO) {
+                    StudioImageAndPdfEngine.resolvePdfDisplayName(context, uri)
+                }
+                selectedPdfFileName = if (resolvedName.endsWith(".pdf", ignoreCase = true)) {
+                    resolvedName
+                } else {
+                    "$resolvedName.pdf"
+                }
                 val count = withContext(Dispatchers.IO) {
                     StudioImageAndPdfEngine.getPdfPageCount(context, uri)
                 }
@@ -1137,7 +1142,7 @@ fun SoruHavuzuAndPdfStudioView(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.MenuBook,
+                            imageVector = Icons.AutoMirrored.Filled.MenuBook,
                             contentDescription = null,
                             tint = Color(0xFF1E3A8A),
                             modifier = Modifier.size(22.dp)
@@ -1223,9 +1228,7 @@ fun SoruHavuzuAndPdfStudioView(
                                 LibraryBookShowcaseCard(
                                     book = book,
                                     onOpenBookTest = {
-                                        book.questions.firstOrNull()?.let { firstRecord ->
-                                            onSolveBookInPractice(firstRecord)
-                                        }
+                                        selectedBookForTestPanel = book
                                     },
                                     onDeleteBook = {
                                         onDeleteLibraryBook(book.questions.map { it.id })
@@ -1235,6 +1238,240 @@ fun SoruHavuzuAndPdfStudioView(
                         }
                         repeat(3 - rowBooks.size) {
                             Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // =======================================================================
+    // KİTAP KARTINA TIKLANDIĞINDA AÇILAN "TEST OLUŞTURMA PANELİ"
+    // - Kullanıcı testlerin kaç soruluk olacağını (8, 10, 12, 16, 20 veya Tümünü Al) seçer.
+    // - Testler doğrudan "[Konu Adı] - Test 1", "[Konu Adı] - Test 2" olarak listelenir.
+    // =======================================================================
+    val activeBookPanel = selectedBookForTestPanel
+    if (activeBookPanel != null) {
+        val sortedBookQuestions = remember(activeBookPanel.questions) {
+            activeBookPanel.questions.sortedBy {
+                if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE
+            }
+        }
+        val effectiveChunkSize = if (selectedQuestionsPerTest <= 0) {
+            sortedBookQuestions.size.coerceAtLeast(1)
+        } else {
+            selectedQuestionsPerTest.coerceAtLeast(1)
+        }
+        val testChunks = remember(sortedBookQuestions, effectiveChunkSize) {
+            sortedBookQuestions.chunked(effectiveChunkSize)
+        }
+        val countOptions = listOf(8, 10, 12, 16, 20, 0)
+
+        Dialog(onDismissRequest = { selectedBookForTestPanel = null }) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                shadowElevation = 12.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(min = 420.dp, max = 640.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            PublisherLogoEmblem(
+                                publisher = activeBookPanel.publisherInfo,
+                                size = 44.dp
+                            )
+                            Column {
+                                Text(
+                                    text = activeBookPanel.bookTitle,
+                                    color = Color(0xFF0F172A),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 17.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "${activeBookPanel.subjectsSummary} • Toplam ${sortedBookQuestions.size} Soru",
+                                    color = Color(0xFF2563EB),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.5.sp
+                                )
+                            }
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                onClick = {
+                                    val ids = activeBookPanel.questions.map { it.id }
+                                    selectedBookForTestPanel = null
+                                    onDeleteLibraryBook(ids)
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFFEF2F2),
+                                border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                                modifier = Modifier.testTag("modal_delete_book_btn")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = "Kitabı Kaldır",
+                                        tint = Color(0xFFDC2626),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "Kitabı Kaldır",
+                                        color = Color(0xFFDC2626),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 11.5.sp
+                                    )
+                                }
+                            }
+                            IconButton(onClick = { selectedBookForTestPanel = null }) {
+                                Icon(Icons.Default.Close, contentDescription = "Kapat", tint = Color(0xFF64748B))
+                            }
+                        }
+                    }
+
+                    // Soru Sayısı Seçici (8, 10, 12, 16, 20, Tümünü Al)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Her Testteki Soru Sayısı",
+                            color = Color(0xFF0F172A),
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 13.5.sp
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            countOptions.forEach { opt ->
+                                val isSel = selectedQuestionsPerTest == opt
+                                val label = if (opt == 0) "Tümünü Al (${sortedBookQuestions.size})" else "$opt Soru"
+                                Surface(
+                                    onClick = { selectedQuestionsPerTest = opt },
+                                    shape = RoundedCornerShape(50),
+                                    color = if (isSel) Color(0xFF1E3A8A) else Color(0xFFF1F5F9),
+                                    border = BorderStroke(1.dp, if (isSel) Color(0xFF1E3A8A) else Color(0xFFCBD5E1))
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = if (isSel) Color.White else Color(0xFF334155),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = Color(0xFFE2E8F0))
+
+                    // Oluşturulan Testler Listesi ("[Konu Adı] - Test 1", "[Konu Adı] - Test 2"...)
+                    Text(
+                        text = "Oluşturulan Konu Testleri (${testChunks.size} Test)",
+                        color = Color(0xFF0F172A),
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 13.5.sp
+                    )
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 280.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(testChunks.size) { chunkIdx ->
+                            val chunkQuestions = testChunks[chunkIdx]
+                            val firstInChunk = chunkQuestions.first()
+                            val topicTitle = firstInChunk.topicName.ifBlank { "Genel Tekrar" }
+                            val cleanTestName = "$topicTitle - Test ${chunkIdx + 1}"
+
+                            Surface(
+                                onClick = {
+                                    selectedBookForTestPanel = null
+                                    onSolveBookChunkInPractice(
+                                        firstInChunk,
+                                        effectiveChunkSize,
+                                        chunkIdx
+                                    )
+                                },
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            text = cleanTestName,
+                                            color = Color(0xFF0F172A),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 14.5.sp
+                                        )
+                                        Text(
+                                            text = "${firstInChunk.examType} ${firstInChunk.subjectName} • ${chunkQuestions.size} Soru • Cevap Anahtarlı",
+                                            color = Color(0xFF64748B),
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 11.5.sp
+                                        )
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = Color(0xFF2563EB)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.PlayArrow,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Text(
+                                                text = "Testi Çöz",
+                                                color = Color.White,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1392,18 +1629,11 @@ private fun LibraryBookShowcaseCard(
     onOpenBookTest: () -> Unit,
     onDeleteBook: () -> Unit
 ) {
-    val coverBitmap = remember(book.coverImagePath) {
-        if (book.coverImagePath.isNotBlank() && File(book.coverImagePath).exists()) {
-            runCatching { BitmapFactory.decodeFile(book.coverImagePath) }.getOrNull()
-        } else {
-            null
-        }
-    }
+    val coverBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(book.coverImagePath)
     val primaryBrand = Color(book.publisherInfo.primaryColorHex)
     val secondaryBrand = Color(book.publisherInfo.secondaryColorHex)
 
     Surface(
-        onClick = onOpenBookTest,
         shape = RoundedCornerShape(22.dp),
         color = Color.White,
         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
@@ -1430,6 +1660,7 @@ private fun LibraryBookShowcaseCard(
                         )
                     )
                     .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(16.dp))
+                    .clickable(onClick = onOpenBookTest)
             ) {
                 if (coverBitmap != null) {
                     Image(
@@ -1489,15 +1720,18 @@ private fun LibraryBookShowcaseCard(
                     Surface(
                         onClick = onDeleteBook,
                         shape = CircleShape,
-                        color = Color.Black.copy(alpha = 0.35f),
-                        modifier = Modifier.size(28.dp)
+                        color = Color(0xFFDC2626),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.6f)),
+                        modifier = Modifier
+                            .size(34.dp)
+                            .testTag("delete_book_top_${book.key}")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
-                                imageVector = Icons.Default.Close,
+                                imageVector = Icons.Default.DeleteOutline,
                                 contentDescription = "Kitabı Kaldır",
                                 tint = Color.White,
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
@@ -1529,7 +1763,12 @@ private fun LibraryBookShowcaseCard(
             }
 
             // Kitap Adı ve Yayınevi Bilgisi
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenBookTest),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(
                     text = book.bookTitle,
                     color = Color(0xFF0F172A),
@@ -1548,29 +1787,66 @@ private fun LibraryBookShowcaseCard(
                 )
             }
 
-            // Alt Aksiyon Butonu: Testi Çöz
-            Button(
-                onClick = onOpenBookTest,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF1E3A8A),
-                    contentColor = Color.White
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp)
+            // Alt Aksiyon Butonları: Test Oluştur & Çöz + Kitabı Kaldır
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(17.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Kitap Testini Çöz",
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 13.sp
-                )
+                Button(
+                    onClick = onOpenBookTest,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF1E3A8A),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Test Oluştur & Çöz",
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 12.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Surface(
+                    onClick = onDeleteBook,
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFFEF2F2),
+                    border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                    modifier = Modifier
+                        .height(44.dp)
+                        .testTag("delete_book_btn_${book.key}")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "Kitabı Kaldır",
+                            tint = Color(0xFFDC2626),
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Text(
+                            text = "Kaldır",
+                            color = Color(0xFFDC2626),
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
             }
         }
     }

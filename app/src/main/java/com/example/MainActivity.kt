@@ -551,9 +551,14 @@ private fun AiAssistantAndBannerHost(
     }
 }
 
+private fun getDefaultWebClientId(context: android.content.Context): String {
+    val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+    return if (resId != 0) runCatching { context.getString(resId) }.getOrDefault("") else ""
+}
+
 private suspend fun trySilentGoogleAutoSignIn(context: android.content.Context): Boolean {
     if (Firebase.auth.currentUser != null) return true
-    val webClientId = runCatching { context.getString(R.string.default_web_client_id) }.getOrDefault("")
+    val webClientId = getDefaultWebClientId(context)
     if (webClientId.isBlank()) return false
     val credentialManager = CredentialManager.create(context)
 
@@ -750,7 +755,11 @@ private fun SoruLabSignInGate(
                         isLoading = true
                         onErrorMessage(null)
                         try {
-                            val webClientId = context.getString(R.string.default_web_client_id)
+                            val webClientId = getDefaultWebClientId(context)
+                            if (webClientId.isBlank()) {
+                                onRecognizeDeviceQuickStart()
+                                return@launch
+                            }
                             val credentialManager = CredentialManager.create(context)
                             val signInOption = GetSignInWithGoogleOption.Builder(webClientId).build()
                             val request = GetCredentialRequest.Builder()

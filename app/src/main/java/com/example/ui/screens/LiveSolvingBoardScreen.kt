@@ -547,7 +547,10 @@ fun LiveSolvingBoardScreen(
                         .fillMaxSize()
                         .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
                         .then(
-                            if ((activeTool == DrawingTool.PEN || activeTool == DrawingTool.SMART_SHAPE || activeTool == DrawingTool.ERASER) &&
+                            if ((activeTool == DrawingTool.PEN ||
+                                    activeTool == DrawingTool.HIGHLIGHTER ||
+                                    activeTool == DrawingTool.SMART_SHAPE ||
+                                    activeTool == DrawingTool.ERASER) &&
                                 openThreeDotQuestionNumber == null
                             ) {
                                 Modifier.pointerInput(
@@ -644,6 +647,7 @@ fun LiveSolvingBoardScreen(
                     }
                     if (tick >= 0 && liveRawPoints.size >= 2) {
                         val isEraser = activeTool == DrawingTool.ERASER
+                        val isHigh = activeTool == DrawingTool.HIGHLIGHTER
                         if (isEraser) {
                             drawPath(
                                 path = liveRawPath,
@@ -658,9 +662,9 @@ fun LiveSolvingBoardScreen(
                         } else {
                             drawPath(
                                 path = liveRawPath,
-                                color = Color(selectedPenColorHex),
+                                color = if (isHigh) Color(selectedPenColorHex).copy(alpha = 0.36f) else Color(selectedPenColorHex),
                                 style = Stroke(
-                                    width = currentStrokePx,
+                                    width = if (isHigh) currentStrokePx * 2.6f else currentStrokePx,
                                     cap = StrokeCap.Round,
                                     join = StrokeJoin.Round
                                 )
@@ -779,31 +783,137 @@ fun LiveSolvingBoardScreen(
                         ) {
                             CircularProgressIndicator(color = Color(0xFF2563EB))
                             Text(
-                                text = "Soru görseli inceleniyor ve adım adım çözüm hazırlanıyor...",
+                                text = "Soru görseli inceleniyor ve 3 aşamalı adım adım çözüm hazırlanıyor...",
                                 color = Color(0xFF475569),
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.sp
                             )
                         }
                     } else {
+                        val rawSol = activeSolutionText.ifBlank {
+                            solutionQ.stepByStepSolution.ifBlank {
+                                "Cevap anahtarına göre doğru yanıt ${solutionQ.correctOption} seçeneğidir."
+                            }
+                        }
+                        val structuredSol = remember(rawSol) {
+                            com.example.data.AiStructuredSolution.fromFormattedText(rawSol)
+                        }
+                        val solutionQuestionBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(solutionQ.croppedImagePath)
+
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(max = 380.dp)
+                                .heightIn(max = 460.dp)
                                 .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Text(
-                                text = activeSolutionText.ifBlank {
-                                    solutionQ.stepByStepSolution.ifBlank {
-                                        "Cevap anahtarına göre doğru yanıt ${solutionQ.correctOption} seçeneğidir."
-                                    }
-                                },
-                                color = Color(0xFF1E293B),
-                                fontSize = 14.sp,
-                                lineHeight = 21.sp,
-                                fontWeight = FontWeight.Medium
-                            )
+                            // Temizlenmiş Soru Görseli Üst Önizleme Kartı
+                            if (solutionQuestionBitmap != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = Color.White,
+                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    val aspect = (solutionQuestionBitmap.width.toFloat() / solutionQuestionBitmap.height.toFloat().coerceAtLeast(1f))
+                                        .coerceIn(0.6f, 2.8f)
+                                    Image(
+                                        bitmap = solutionQuestionBitmap.asImageBitmap(),
+                                        contentDescription = "Temizlenmiş Soru Görseli",
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = 175.dp)
+                                            .aspectRatio(aspect)
+                                            .padding(8.dp)
+                                    )
+                                }
+                            }
+
+                            // 1. AŞAMA: Kritik Bilgi & Teorem
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFEFF6FF),
+                                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "1. Kritik Bilgi & Teorem",
+                                        color = Color(0xFF1D4ED8),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 13.5.sp
+                                    )
+                                    Text(
+                                        text = structuredSol.kritikBilgiTeorem.ifBlank {
+                                            "${solutionQ.topicHeader} kazanımına ait temel bağıntı ve sınır koşulları uygulanır."
+                                        },
+                                        color = Color(0xFF1E293B),
+                                        fontSize = 13.sp,
+                                        lineHeight = 19.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+
+                            // 2. AŞAMA: Adım Adım İşlem
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFF0FDF4),
+                                border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "2. Adım Adım İşlem",
+                                        color = Color(0xFF15803D),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 13.5.sp
+                                    )
+                                    Text(
+                                        text = structuredSol.adimAdimCozum.ifBlank { rawSol },
+                                        color = Color(0xFF1E293B),
+                                        fontSize = 13.5.sp,
+                                        lineHeight = 20.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+
+                            // 3. AŞAMA: ÖSYM Tuzak Notu
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFFFF7ED),
+                                border = BorderStroke(1.dp, Color(0xFFFED7AA)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "3. ÖSYM Tuzak Notu",
+                                        color = Color(0xFFEA580C),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 13.5.sp
+                                    )
+                                    Text(
+                                        text = structuredSol.osymTuzakNotu.ifBlank {
+                                            "Öncül şartlarına, işaret değişimlerine ve birim dönüşümlerine dikkat edilmelidir."
+                                        },
+                                        color = Color(0xFF334155),
+                                        fontSize = 13.sp,
+                                        lineHeight = 19.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -1196,7 +1306,7 @@ private fun RealTwoColumnBookPageSurface(
                 }
             }
 
-            // Alt Kitap Sayfası Çevirme Şeridi (Hem Yatay Kaydırma İpucu Hem Tıklanabilir Sayfa Köşeleri)
+            // Alt Kitap Sayfası Bilgisi (Eski ← ve → sayfa geçiş okları tamamen kaldırıldı; geçiş sadece HorizontalPager swipe ile yapılır)
             Surface(
                 shape = RoundedCornerShape(50),
                 color = Color(0xFFF8FAFC),
@@ -1208,83 +1318,23 @@ private fun RealTwoColumnBookPageSurface(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val hasPrev = currentBookPageIndex > 0
-                    Surface(
-                        onClick = onPrevBookPage,
-                        enabled = hasPrev,
-                        shape = RoundedCornerShape(50),
-                        color = if (hasPrev) Color(0xFFEFF6FF) else Color.Transparent,
-                        modifier = Modifier.testTag("book_prev_page_btn")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Önceki Sayfa",
-                                tint = if (hasPrev) Color(0xFF1E3A8A) else Color(0xFFCBD5E1),
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = "Önceki Sayfa",
-                                color = if (hasPrev) Color(0xFF1E3A8A) else Color(0xFFCBD5E1),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                            contentDescription = null,
-                            tint = Color(0xFF475569),
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Text(
-                            text = "Sayfa ${currentBookPageIndex + 1} / $totalBookPages  •  Sağa/Sola Kaydırın",
-                            color = Color(0xFF475569),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp
-                        )
-                    }
-
-                    val hasNext = currentBookPageIndex < totalBookPages - 1
-                    Surface(
-                        onClick = onNextBookPage,
-                        enabled = hasNext,
-                        shape = RoundedCornerShape(50),
-                        color = if (hasNext) Color(0xFFEFF6FF) else Color.Transparent,
-                        modifier = Modifier.testTag("book_next_page_btn")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = "Sonraki Sayfa",
-                                color = if (hasNext) Color(0xFF1E3A8A) else Color(0xFFCBD5E1),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp
-                            )
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = "Sonraki Sayfa",
-                                tint = if (hasNext) Color(0xFF1E3A8A) else Color(0xFFCBD5E1),
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                        contentDescription = null,
+                        tint = Color(0xFF475569),
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Sayfa ${currentBookPageIndex + 1} / $totalBookPages  •  Parmakla Sağa/Sola Kaydırın",
+                        color = Color(0xFF475569),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp
+                    )
                 }
             }
         }
@@ -2345,6 +2395,52 @@ private fun BottomDarkNavyDrawingBar345(
                         }
                     }
 
+                    // Fosforlu Kalem (Highlighter)
+                    val isHighlighterActive = activeTool == DrawingTool.HIGHLIGHTER && !isZoomMagnifierEnabled
+                    Surface(
+                        onClick = {
+                            showColorPalettePopup = false
+                            onSelectTool(DrawingTool.HIGHLIGHTER)
+                        },
+                        shape = CircleShape,
+                        color = if (isHighlighterActive) Color(0xFF2563EB) else Color.Transparent,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .testTag("tool_highlighter_btn")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.BorderColor,
+                                contentDescription = "Fosforlu Kalem",
+                                tint = if (isHighlighterActive) Color(0xFFFACC15) else Color.White,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                    }
+
+                    // Akıllı Şekil (Smart Shape)
+                    val isSmartShapeActive = activeTool == DrawingTool.SMART_SHAPE && !isZoomMagnifierEnabled
+                    Surface(
+                        onClick = {
+                            showColorPalettePopup = false
+                            onSelectTool(DrawingTool.SMART_SHAPE)
+                        },
+                        shape = CircleShape,
+                        color = if (isSmartShapeActive) Color(0xFF2563EB) else Color.Transparent,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .testTag("tool_smart_shape_btn")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.ChangeHistory,
+                                contentDescription = "Akıllı Şekil",
+                                tint = Color.White,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                    }
+
                     // Büyüteç (Zoom)
                     Surface(
                         onClick = {
@@ -2704,6 +2800,15 @@ private fun FullScreenTwinQuestionComparisonView(
                                         fontWeight = FontWeight.Medium
                                     )
 
+                                    if (twinData.visualType != QuestionVisualType.NONE) {
+                                        QuestionVectorDiagram(
+                                            visualType = twinData.visualType,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(145.dp)
+                                        )
+                                    }
+
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -2802,7 +2907,11 @@ private fun FullScreenTwinQuestionComparisonView(
                                 .fillMaxSize()
                                 .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
                                 .then(
-                                    if (activeTool == DrawingTool.PEN || activeTool == DrawingTool.ERASER) {
+                                    if (activeTool == DrawingTool.PEN ||
+                                        activeTool == DrawingTool.HIGHLIGHTER ||
+                                        activeTool == DrawingTool.SMART_SHAPE ||
+                                        activeTool == DrawingTool.ERASER
+                                    ) {
                                         Modifier.pointerInput(activeTool, selectedStrokeSizeIndex, selectedPenColorHex) {
                                             awaitEachGesture {
                                                 val down = awaitFirstDown(requireUnconsumed = false)
@@ -2836,11 +2945,19 @@ private fun FullScreenTwinQuestionComparisonView(
                                                     }
                                                     if (liveTwinPoints.size >= 2) {
                                                         val isEr = activeTool == DrawingTool.ERASER
+                                                        val isHigh = activeTool == DrawingTool.HIGHLIGHTER
+                                                        val isShape = activeTool == DrawingTool.SMART_SHAPE
                                                         twinStrokes = twinStrokes + DrawStroke(
                                                             points = liveTwinPoints.toList(),
                                                             colorHex = if (isEr) 0x00000000L else selectedPenColorHex,
-                                                            strokeWidthPx = if (isEr) 38f else currentStrokePx,
-                                                            isEraser = isEr
+                                                            strokeWidthPx = when {
+                                                                isEr -> 38f
+                                                                isHigh -> currentStrokePx * 2.6f
+                                                                else -> currentStrokePx
+                                                            },
+                                                            isSmartShape = isShape,
+                                                            isEraser = isEr,
+                                                            isHighlighter = isHigh
                                                         )
                                                     }
                                                     liveTwinPoints.clear()
@@ -2856,11 +2973,20 @@ private fun FullScreenTwinQuestionComparisonView(
                             twinStrokes.forEach { drawSmoothStroke(it) }
                             if (tick >= 0 && liveTwinPoints.size >= 2) {
                                 val isEr = activeTool == DrawingTool.ERASER
+                                val isHigh = activeTool == DrawingTool.HIGHLIGHTER
                                 drawPath(
                                     path = liveTwinPath,
-                                    color = if (isEr) Color.Transparent else Color(selectedPenColorHex),
+                                    color = when {
+                                        isEr -> Color.Transparent
+                                        isHigh -> Color(selectedPenColorHex).copy(alpha = 0.36f)
+                                        else -> Color(selectedPenColorHex)
+                                    },
                                     style = Stroke(
-                                        width = if (isEr) 38f else currentStrokePx,
+                                        width = when {
+                                            isEr -> 38f
+                                            isHigh -> currentStrokePx * 2.6f
+                                            else -> currentStrokePx
+                                        },
                                         cap = StrokeCap.Round,
                                         join = StrokeJoin.Round
                                     ),
@@ -3476,7 +3602,11 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSmoothStroke(st
     val pts = stroke.points
     if (pts.size < 2) return
     val isEraser = stroke.isEraser || stroke.colorHex == 0x00000000L
-    val strokeColor = if (isEraser) Color.Transparent else Color(stroke.colorHex)
+    val strokeColor = when {
+        isEraser -> Color.Transparent
+        stroke.isHighlighter -> Color(stroke.colorHex).copy(alpha = 0.36f)
+        else -> Color(stroke.colorHex)
+    }
     val blendMode = if (isEraser) BlendMode.Clear else BlendMode.SrcOver
 
     if (!isEraser && stroke.isSmartShape && pts.size >= 4) {

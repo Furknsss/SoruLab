@@ -205,68 +205,97 @@ data class CustomQuestionRecord(
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 ) {
-    @get:Exclude
-    private val parsedMetaMap: Map<String, String>
-        get() {
-            if (!aiSolutionSummary.startsWith("[META:")) return emptyMap()
+    @delegate:Transient
+    private val cachedMetaMap: Map<String, String> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        if (!aiSolutionSummary.startsWith("[META:")) emptyMap()
+        else {
             val header = aiSolutionSummary.substringAfter("[META:").substringBefore("]")
-            return header.split("|").mapNotNull { entry ->
+            header.split("|").mapNotNull { entry ->
                 val idx = entry.indexOf('=')
                 if (idx > 0) entry.substring(0, idx) to entry.substring(idx + 1) else null
             }.toMap()
         }
+    }
 
     @get:Exclude
-    val targetLevelName: String
-        get() = parsedMetaMap["level"].orEmpty()
+    private val parsedMetaMap: Map<String, String>
+        get() = cachedMetaMap
 
+    @delegate:Transient
     @get:Exclude
-    val croppedImagePath: String
-        get() = parsedMetaMap["img"].orEmpty()
+    val targetLevelName: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        parsedMetaMap["level"].orEmpty()
+    }
 
+    @delegate:Transient
     @get:Exclude
-    val publisherLogoUri: String
-        get() = parsedMetaMap["logo"].orEmpty()
+    val croppedImagePath: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        parsedMetaMap["img"].orEmpty()
+    }
 
+    @delegate:Transient
     @get:Exclude
-    val bookOrTestName: String
-        get() = parsedMetaMap["book"].orEmpty()
+    val publisherLogoUri: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        parsedMetaMap["logo"].orEmpty()
+    }
 
+    @delegate:Transient
     @get:Exclude
-    val bookCoverPath: String
-        get() = parsedMetaMap["cover"].orEmpty()
+    val bookOrTestName: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        parsedMetaMap["book"].orEmpty()
+    }
 
+    @delegate:Transient
     @get:Exclude
-    val isInKumbara: Boolean
-        get() = parsedMetaMap["kumbara"] == "1"
+    val bookCoverPath: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        parsedMetaMap["cover"].orEmpty()
+    }
 
+    @delegate:Transient
     @get:Exclude
-    val answerKeyVerified: Boolean
-        get() = parsedMetaMap["ak"] != "0"
+    val isInKumbara: Boolean by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        parsedMetaMap["kumbara"] == "1"
+    }
 
+    @delegate:Transient
     @get:Exclude
-    val questionNumberInBook: Int
-        get() = parsedMetaMap["qnum"]?.toIntOrNull() ?: 0
+    val answerKeyVerified: Boolean by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        parsedMetaMap["ak"] != "0"
+    }
 
+    @delegate:Transient
     @get:Exclude
-    val effectiveDifficultyLabel: String
-        get() = parsedMetaMap["diff5"]?.takeIf { it.isNotBlank() } ?: difficulty
+    val questionNumberInBook: Int by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        parsedMetaMap["qnum"]?.toIntOrNull() ?: 0
+    }
 
+    @delegate:Transient
     @get:Exclude
-    val difficultyLevel5: DifficultyLevel
-        get() = DifficultyLevel.fromLabel(effectiveDifficultyLabel)
+    val effectiveDifficultyLabel: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        parsedMetaMap["diff5"]?.takeIf { it.isNotBlank() } ?: difficulty
+    }
 
+    @delegate:Transient
     @get:Exclude
-    val cleanSolutionSummary: String
-        get() = if (aiSolutionSummary.startsWith("[META:")) {
+    val difficultyLevel5: DifficultyLevel by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        DifficultyLevel.fromLabel(effectiveDifficultyLabel)
+    }
+
+    @delegate:Transient
+    @get:Exclude
+    val cleanSolutionSummary: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        if (aiSolutionSummary.startsWith("[META:")) {
             aiSolutionSummary.substringAfter("]").trimStart()
         } else {
             aiSolutionSummary
         }
+    }
 
+    @delegate:Transient
     @get:Exclude
-    val structuredAiCozum: AiStructuredSolution
-        get() = AiStructuredSolution.fromFormattedText(cleanSolutionSummary)
+    val structuredAiCozum: AiStructuredSolution by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        AiStructuredSolution.fromFormattedText(cleanSolutionSummary)
+    }
 
     companion object {
         fun packSolutionWithMeta(
@@ -319,6 +348,33 @@ data class LibraryBookCardModel(
 enum class ExamType(val label: String, val fullTitle: String) {
     TYT("TYT", "Temel Yeterlilik Testi"),
     AYT("AYT", "Alan Yeterlilik Testi")
+}
+
+/**
+ * Akıllı Kaynak Filtresi (İnteraktif Test Oluşturma Paneli):
+ * - Tüm Sorular
+ * - Çözülmemiş Sorular
+ * - Yanlış Yaptıklarım
+ * - Boş Bıraktıklarım
+ * - Soru Kumbaram
+ */
+enum class QuestionSourceFilter(val label: String) {
+    TUM_SORULAR("Tüm Sorular"),
+    COZULMEMIS_SORULAR("Çözülmemiş Sorular"),
+    YANLIS_YAPTIKLARIM("Yanlış Yaptıklarım"),
+    BOS_BIRAKTIKLARIM("Boş Bıraktıklarım"),
+    SORU_KUMBARAM("Soru Kumbaram")
+}
+
+@Immutable
+data class TopicProgressSummary(
+    val solvedQuestions: Int = 0,
+    val totalQuestions: Int = 0,
+    val completedTests: Int = 0,
+    val totalTests: Int = 0
+) {
+    val progressPercent: Int
+        get() = if (totalQuestions <= 0) 0 else ((solvedQuestions.toFloat() / totalQuestions.toFloat()) * 100f).toInt().coerceIn(0, 100)
 }
 
 /**
@@ -526,6 +582,8 @@ data class MockExamItem(
 object SoruLabCatalog {
 
     val temelKavramlarOdev5Questions: List<YksQuestion> = emptyList()
+
+    val topicProgressState = androidx.compose.runtime.mutableStateMapOf<String, TopicProgressSummary>()
 
     fun buildDefaultPracticeTest(
         topicId: String,
@@ -1140,5 +1198,31 @@ object SoruLabCatalog {
     )
 
     val mockExams: List<MockExamItem> = emptyList()
+
+    val allTopicsFlat: List<YksTopic> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        allSubjects.flatMap { it.topics }
+    }
+
+    val topicByIdMap: Map<String, YksTopic> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        allTopicsFlat.associateBy { it.id }
+    }
+
+    val topicByNormalizedNameMap: Map<String, YksTopic> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        allTopicsFlat.associateBy { it.name.trim().lowercase() }
+    }
+
+    fun resolveTopicFast(topicId: String, topicName: String): YksTopic? {
+        if (topicId.isNotBlank()) {
+            topicByIdMap[topicId]?.let { return it }
+        }
+        val norm = topicName.trim().lowercase()
+        if (norm.isNotBlank()) {
+            topicByNormalizedNameMap[norm]?.let { return it }
+            allTopicsFlat.firstOrNull {
+                norm.contains(it.name.lowercase()) || it.name.lowercase().contains(norm)
+            }?.let { return it }
+        }
+        return null
+    }
 }
 

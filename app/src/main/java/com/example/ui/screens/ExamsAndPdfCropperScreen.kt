@@ -612,43 +612,67 @@ fun SoruHavuzuAndPdfStudioView(
         }
     }
 
-    // Group all questions in the pool into "KİTAPLIĞIM" Book Cards
-    val libraryBooks: List<LibraryBookCardModel> = remember(customQuestions, customPublishers) {
-        if (customQuestions.isEmpty()) {
-            emptyList()
-        } else {
-            customQuestions
-                .groupBy { q ->
-                    val pub = q.publisherTag.trim().ifBlank { "3D Yayınları" }
-                    val book = q.bookOrTestName.trim().ifBlank { "$pub Soru Bankası" }
-                    "${pub.lowercase()}|${book.lowercase()}"
-                }
-                .map { (groupKey, questionsInBook) ->
-                    val first = questionsInBook.first()
-                    val pubName = first.publisherTag.trim().ifBlank { "3D Yayınları" }
-                    val resolvedPub = SoruLabPublisherPresets.resolvePublisher(pubName, customPublishers)
-                    val bookTitle = first.bookOrTestName.trim().ifBlank { "$pubName Soru Bankası" }
-                    val coverPath = questionsInBook.firstOrNull { it.bookCoverPath.isNotBlank() }?.bookCoverPath
-                        ?: first.croppedImagePath
-                    val distinctSubjects = questionsInBook
-                        .map { "${it.examType} ${it.subjectName} • ${it.topicName}".trim() }
-                        .distinct()
-                        .take(2)
-                        .joinToString(" | ")
+    // Group all questions in the pool into "KİTAPLIĞIM" Book Cards off the UI thread
+    var libraryBooks by remember { mutableStateOf<List<LibraryBookCardModel>>(emptyList()) }
+    var searchBookQuery by remember { mutableStateOf("") }
+    var selectedTopicInBookModal by remember { mutableStateOf<String?>(null) }
 
-                    LibraryBookCardModel(
-                        key = groupKey,
-                        bookTitle = bookTitle,
-                        publisherName = resolvedPub.name,
-                        publisherInfo = resolvedPub.copy(
-                            customLogoPath = first.publisherLogoUri.ifBlank { resolvedPub.customLogoPath }
-                        ),
-                        coverImagePath = coverPath,
-                        activeQuestionCount = questionsInBook.size,
-                        subjectsSummary = distinctSubjects.ifBlank { "YKS Soru Bankası" },
-                        questions = questionsInBook
-                    )
-                }
+    LaunchedEffect(customQuestions, customPublishers) {
+        if (customQuestions.isEmpty()) {
+            libraryBooks = emptyList()
+        } else {
+            val computed = withContext(Dispatchers.Default) {
+                val pubCache = HashMap<String, YksPublisherInfo>(32)
+                customQuestions
+                    .groupBy { q ->
+                        val pub = q.publisherTag.trim().ifBlank { "3D Yayınları" }
+                        val book = q.bookOrTestName.trim().ifBlank { "$pub Soru Bankası" }
+                        "${pub.lowercase()}|${book.lowercase()}"
+                    }
+                    .map { (groupKey, questionsInBook) ->
+                        val first = questionsInBook.first()
+                        val pubName = first.publisherTag.trim().ifBlank { "3D Yayınları" }
+                        val resolvedPub = pubCache.getOrPut(pubName) {
+                            SoruLabPublisherPresets.resolvePublisher(pubName, customPublishers)
+                        }
+                        val bookTitle = first.bookOrTestName.trim().ifBlank { "$pubName Soru Bankası" }
+                        val coverPath = questionsInBook.firstOrNull { it.bookCoverPath.isNotBlank() }?.bookCoverPath
+                            ?: first.croppedImagePath
+                        val distinctSubjects = questionsInBook
+                            .asSequence()
+                            .map { "${it.examType} ${it.subjectName} • ${it.topicName}".trim() }
+                            .distinct()
+                            .take(2)
+                            .joinToString(" | ")
+
+                        LibraryBookCardModel(
+                            key = groupKey,
+                            bookTitle = bookTitle,
+                            publisherName = resolvedPub.name,
+                            publisherInfo = resolvedPub.copy(
+                                customLogoPath = first.publisherLogoUri.ifBlank { resolvedPub.customLogoPath }
+                            ),
+                            coverImagePath = coverPath,
+                            activeQuestionCount = questionsInBook.size,
+                            subjectsSummary = distinctSubjects.ifBlank { "YKS Soru Bankası" },
+                            questions = questionsInBook
+                        )
+                    }
+            }
+            libraryBooks = computed
+        }
+    }
+
+    val filteredLibraryBooks = remember(libraryBooks, searchBookQuery) {
+        val q = searchBookQuery.trim().lowercase()
+        if (q.isBlank()) {
+            libraryBooks
+        } else {
+            libraryBooks.filter {
+                it.bookTitle.lowercase().contains(q) ||
+                    it.publisherName.lowercase().contains(q) ||
+                    it.subjectsSummary.lowercase().contains(q)
+            }
         }
     }
 
@@ -1132,45 +1156,80 @@ fun SoruHavuzuAndPdfStudioView(
             // "KİTAPLIĞIM" VİTRİNİ (YÜKLENEN KİTAPLAR ANINDA BURADA GÖRÜNÜR)
             // ====================================================================
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                            contentDescription = null,
-                            tint = Color(0xFF1E3A8A),
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Text(
-                            text = "KİTAPLIĞIM",
-                            color = Color(0xFF0F172A),
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 19.sp
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = Color(0xFFEFF6FF),
-                            border = BorderStroke(1.dp, Color(0xFFBFDBFE))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                                contentDescription = null,
+                                tint = Color(0xFF1E3A8A),
+                                modifier = Modifier.size(22.dp)
+                            )
                             Text(
-                                text = "${libraryBooks.size} Kaynak Kitap",
-                                color = Color(0xFF1E3A8A),
+                                text = "KİTAPLIĞIM",
+                                color = Color(0xFF0F172A),
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                fontSize = 19.sp
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFFEFF6FF),
+                                border = BorderStroke(1.dp, Color(0xFFBFDBFE))
+                            ) {
+                                Text(
+                                    text = "${libraryBooks.size} Kaynak Kitap • ${customQuestions.size} Soru",
+                                    color = Color(0xFF1E3A8A),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+
+                        if (libraryBooks.size >= 2) {
+                            OutlinedTextField(
+                                value = searchBookQuery,
+                                onValueChange = { searchBookQuery = it },
+                                placeholder = { Text("Kitap, yayın veya konu ara...", fontSize = 12.sp) },
+                                singleLine = true,
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = null,
+                                        tint = Color(0xFF64748B),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                trailingIcon = {
+                                    if (searchBookQuery.isNotBlank()) {
+                                        IconButton(onClick = { searchBookQuery = "" }) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "Temizle",
+                                                tint = Color(0xFF64748B),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                },
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .widthIn(min = 220.dp, max = 320.dp)
+                                    .height(48.dp)
                             )
                         }
                     }
                 }
             }
 
-            if (libraryBooks.isEmpty()) {
+            if (filteredLibraryBooks.isEmpty()) {
                 item {
                     Surface(
                         shape = RoundedCornerShape(20.dp),
@@ -1201,7 +1260,7 @@ fun SoruHavuzuAndPdfStudioView(
                             }
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(
-                                    text = "Kitaplığınızda Henüz Kaynak Bulunmuyor",
+                                    text = if (libraryBooks.isEmpty()) "Kitaplığınızda Henüz Kaynak Bulunmuyor" else "Aramaya Uygun Kitap Bulunamadı",
                                     color = Color(0xFF0F172A),
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 15.sp
@@ -1216,8 +1275,12 @@ fun SoruHavuzuAndPdfStudioView(
                     }
                 }
             } else {
-                val bookRows = libraryBooks.chunked(3)
-                items(bookRows) { rowBooks ->
+                val bookRows = filteredLibraryBooks.chunked(3)
+                items(
+                    items = bookRows,
+                    key = { row -> row.joinToString("|") { it.key } },
+                    contentType = { "library_book_row" }
+                ) { rowBooks ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(18.dp),
@@ -1228,6 +1291,7 @@ fun SoruHavuzuAndPdfStudioView(
                                 LibraryBookShowcaseCard(
                                     book = book,
                                     onOpenBookTest = {
+                                        selectedTopicInBookModal = null
                                         selectedBookForTestPanel = book
                                     },
                                     onDeleteBook = {
@@ -1257,13 +1321,28 @@ fun SoruHavuzuAndPdfStudioView(
                 if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE
             }
         }
+        val topicsInBook = remember(sortedBookQuestions) {
+            sortedBookQuestions
+                .groupBy { it.topicName.ifBlank { "Genel Tekrar" } }
+                .map { (tName, list) -> tName to list.size }
+                .sortedByDescending { it.second }
+        }
+        val filteredQuestionsForChunks = remember(sortedBookQuestions, selectedTopicInBookModal) {
+            if (selectedTopicInBookModal == null) {
+                sortedBookQuestions
+            } else {
+                sortedBookQuestions.filter {
+                    it.topicName.ifBlank { "Genel Tekrar" } == selectedTopicInBookModal
+                }.ifEmpty { sortedBookQuestions }
+            }
+        }
         val effectiveChunkSize = if (selectedQuestionsPerTest <= 0) {
-            sortedBookQuestions.size.coerceAtLeast(1)
+            filteredQuestionsForChunks.size.coerceAtLeast(1)
         } else {
             selectedQuestionsPerTest.coerceAtLeast(1)
         }
-        val testChunks = remember(sortedBookQuestions, effectiveChunkSize) {
-            sortedBookQuestions.chunked(effectiveChunkSize)
+        val testChunks = remember(filteredQuestionsForChunks, effectiveChunkSize) {
+            filteredQuestionsForChunks.chunked(effectiveChunkSize)
         }
         val countOptions = listOf(8, 10, 12, 16, 20, 0)
 
@@ -1354,6 +1433,57 @@ fun SoruHavuzuAndPdfStudioView(
                         }
                     }
 
+                    // Konu Filtresi (Çok konulu büyük kitaplarda konulara göre anında filtreleme)
+                    if (topicsInBook.size > 1) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "Kitaptaki Konular (${topicsInBook.size} Konu)",
+                                color = Color(0xFF0F172A),
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.5.sp
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val allSelected = selectedTopicInBookModal == null
+                                Surface(
+                                    onClick = { selectedTopicInBookModal = null },
+                                    shape = RoundedCornerShape(50),
+                                    color = if (allSelected) Color(0xFF1D4ED8) else Color(0xFFF1F5F9),
+                                    border = BorderStroke(1.dp, if (allSelected) Color(0xFF1D4ED8) else Color(0xFFCBD5E1))
+                                ) {
+                                    Text(
+                                        text = "Tüm Konular (${sortedBookQuestions.size})",
+                                        color = if (allSelected) Color.White else Color(0xFF334155),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 11.5.sp,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                                    )
+                                }
+                                topicsInBook.forEach { (topicName, count) ->
+                                    val isTopicSel = selectedTopicInBookModal == topicName
+                                    Surface(
+                                        onClick = { selectedTopicInBookModal = topicName },
+                                        shape = RoundedCornerShape(50),
+                                        color = if (isTopicSel) Color(0xFF1D4ED8) else Color(0xFFF1F5F9),
+                                        border = BorderStroke(1.dp, if (isTopicSel) Color(0xFF1D4ED8) else Color(0xFFCBD5E1))
+                                    ) {
+                                        Text(
+                                            text = "$topicName ($count)",
+                                            color = if (isTopicSel) Color.White else Color(0xFF334155),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.5.sp,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Soru Sayısı Seçici (8, 10, 12, 16, 20, Tümünü Al)
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
@@ -1370,7 +1500,7 @@ fun SoruHavuzuAndPdfStudioView(
                         ) {
                             countOptions.forEach { opt ->
                                 val isSel = selectedQuestionsPerTest == opt
-                                val label = if (opt == 0) "Tümünü Al (${sortedBookQuestions.size})" else "$opt Soru"
+                                val label = if (opt == 0) "Tümünü Al (${filteredQuestionsForChunks.size})" else "$opt Soru"
                                 Surface(
                                     onClick = { selectedQuestionsPerTest = opt },
                                     shape = RoundedCornerShape(50),
@@ -1393,7 +1523,7 @@ fun SoruHavuzuAndPdfStudioView(
 
                     // Oluşturulan Testler Listesi ("[Konu Adı] - Test 1", "[Konu Adı] - Test 2"...)
                     Text(
-                        text = "Oluşturulan Konu Testleri (${testChunks.size} Test)",
+                        text = "Oluşturulan Konu Testleri (${testChunks.size} Test • ${filteredQuestionsForChunks.size} Soru)",
                         color = Color(0xFF0F172A),
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 13.5.sp
@@ -1405,7 +1535,11 @@ fun SoruHavuzuAndPdfStudioView(
                             .heightIn(max = 280.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        items(testChunks.size) { chunkIdx ->
+                        items(
+                            count = testChunks.size,
+                            key = { chunkIdx -> "chunk_${selectedTopicInBookModal ?: "all"}_$chunkIdx" },
+                            contentType = { "book_test_chunk_row" }
+                        ) { chunkIdx ->
                             val chunkQuestions = testChunks[chunkIdx]
                             val firstInChunk = chunkQuestions.first()
                             val topicTitle = firstInChunk.topicName.ifBlank { "Genel Tekrar" }

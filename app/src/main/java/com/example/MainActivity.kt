@@ -419,6 +419,12 @@ private fun DenemelerTabHost(
             customPublishers.associateBy({ it.name.lowercase() }, { it.customLogoPath })
         }
 
+        val questionsByBookName = remember(userCustomQuestions) {
+            userCustomQuestions.groupBy {
+                it.bookOrTestName.ifBlank { "${it.publisherTag} Soru Bankası" }
+            }
+        }
+
         SoruHavuzuAndPdfStudioView(
             customQuestions = userCustomQuestions,
             customPublishers = customPublishers,
@@ -459,16 +465,12 @@ private fun DenemelerTabHost(
             onBack = { mainViewModel.closePdfCropperStudio() },
             onSolveBookInPractice = { firstRecord ->
                 val bookName = firstRecord.bookOrTestName.ifBlank { "${firstRecord.publisherTag} Soru Bankası" }
-                val bookQuestions = userCustomQuestions.filter {
-                    it.bookOrTestName.ifBlank { "${it.publisherTag} Soru Bankası" } == bookName
-                }.ifEmpty { listOf(firstRecord) }
+                val bookQuestions = questionsByBookName[bookName].orEmpty().ifEmpty { listOf(firstRecord) }
                 mainViewModel.solveBookQuestionsInPractice(bookName, bookQuestions)
             },
             onSolveBookChunkInPractice = { firstRecord, questionsPerTest, chunkIdx ->
                 val bookName = firstRecord.bookOrTestName.ifBlank { "${firstRecord.publisherTag} Soru Bankası" }
-                val bookQuestions = userCustomQuestions.filter {
-                    it.bookOrTestName.ifBlank { "${it.publisherTag} Soru Bankası" } == bookName
-                }.ifEmpty { listOf(firstRecord) }
+                val bookQuestions = questionsByBookName[bookName].orEmpty().ifEmpty { listOf(firstRecord) }
                 mainViewModel.solveBookQuestionsInPractice(
                     bookTitle = bookName,
                     records = bookQuestions,

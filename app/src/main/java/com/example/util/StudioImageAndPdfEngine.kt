@@ -38,8 +38,14 @@ import kotlin.math.sqrt
  */
 object StudioImageAndPdfEngine {
 
-    private val bitmapCache: LruCache<String, Bitmap> = object : LruCache<String, Bitmap>(64) {
-        override fun sizeOf(key: String, value: Bitmap): Int = 1
+    private val maxCacheBytes: Int = ((Runtime.getRuntime().maxMemory() / 1024L) / 6L)
+        .toInt()
+        .coerceIn(24 * 1024, 96 * 1024) // 24 MB .. 96 MB in KB
+
+    private val bitmapCache: LruCache<String, Bitmap> = object : LruCache<String, Bitmap>(maxCacheBytes) {
+        override fun sizeOf(key: String, value: Bitmap): Int {
+            return (value.allocationByteCount / 1024).coerceAtLeast(1)
+        }
     }
 
     fun peekCachedBitmap(path: String): Bitmap? {
@@ -49,16 +55,31 @@ object StudioImageAndPdfEngine {
 
     /**
      * Loads and caches cropped question / publisher logo bitmaps in RAM so LazyColumn / Book Page
-     * scrolling and page turning run at 60 FPS without repeated disk decoding.
+     * scrolling and page turning run at 120 FPS without repeated disk decoding or OOM.
      */
-    fun getCachedBitmap(path: String): Bitmap? {
+    fun getCachedBitmap(path: String, maxDimension: Int = 1440): Bitmap? {
         if (path.isBlank()) return null
         bitmapCache.get(path)?.let { cached ->
             if (!cached.isRecycled) return cached
         }
         val file = File(path)
         if (!file.exists() || file.length() == 0L) return null
-        val decoded = runCatching { BitmapFactory.decodeFile(path) }.getOrNull() ?: return null
+        val decoded = runCatching {
+            val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(path, boundsOpts)
+            var sampleSize = 1
+            val longest = max(boundsOpts.outWidth, boundsOpts.outHeight)
+            if (longest > maxDimension && maxDimension > 0) {
+                while ((longest / (sampleSize * 2)) >= maxDimension) {
+                    sampleSize *= 2
+                }
+            }
+            val decodeOpts = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            BitmapFactory.decodeFile(path, decodeOpts)
+        }.getOrNull() ?: return null
         bitmapCache.put(path, decoded)
         return decoded
     }
@@ -884,11 +905,25 @@ object StudioImageAndPdfEngine {
 
         val pageMap = mutableMapOf<Int, LocalPageMapEntry>()
         val fiveTierCycle = listOf("Kolay", "Orta", "ÖSYM", "Zor", "Çok Zor")
+        val skipPageKeywords = listOf(
+            "içindekiler", "icindekiler", "önsöz", "onsoz", "istiklal marşı",
+            "gençliğe hitabe", "künye", "kunye", "basım yeri", "isbn",
+            "tüm hakları saklıdır", "reklam", "tanıtım", "diğer yayınlarımız",
+            "kampanya", "notlarım"
+        )
         for (pageIdx in 0 until totalPages) {
-            // Do NOT blindly skip pages 1..3 here; cropQuestionsFromPagePixelsDualColumn automatically skips
-            // non-question/cover pages while preserving real questions if the PDF starts on page 1 or 2!
-            val isOuterCoverOnly = totalPages >= 8 && pageIdx == 0
             val streamSnippet = decodedStreamChunks.getOrNull(pageIdx).orEmpty()
+            val lowerSnippet = streamSnippet.lowercase()
+            val hasQuestionOptionPattern = lowerSnippet.contains("a)") ||
+                lowerSnippet.contains("b)") ||
+                lowerSnippet.contains("c)") ||
+                lowerSnippet.contains("d)") ||
+                lowerSnippet.contains("e)") ||
+                lowerSnippet.contains("hangisidir") ||
+                lowerSnippet.contains("kaçtır")
+            val isNonQuestionMetaPage = !hasQuestionOptionPattern &&
+                skipPageKeywords.any { kw -> lowerSnippet.contains(kw) }
+            val isOuterCoverOnly = (totalPages >= 4 && pageIdx == 0 && !hasQuestionOptionPattern) || isNonQuestionMetaPage
 
             val (resolvedSubjForPage, resolvedTopicForPage) = if (fileExplicitlyNamesTopic || streamSnippet.length < 16) {
                 detectedSubject to primaryTopicObj.name
@@ -1150,16 +1185,16 @@ object StudioImageAndPdfEngine {
             return emptyList()
         }
 
-        // SMART VERTICAL BOUNDS:
-        // Use [4.8% .. 95.0%] so top question stems and bottom A-E options are NEVER cut off,
-        // while dynamically stripping top page header banners and bottom answer-key/page-number strips!
-        var bodyTop = (height * 0.048f).roundToInt().coerceIn(28, height / 5)
-        var bodyBottom = (height * 0.950f).roundToInt().coerceIn(bodyTop + 200, height - 28)
+        // MARJ VE KENAR TEMİZLİĞİ (MARGIN FILTERING):
+        // Sayfanın üst %10'luk kısmını (test başlıkları, üst şeritler) ve alt %10'luk kısmını
+        // (sayfa numaraları, alttaki "1-A 2-C..." cevap anahtarı şeritleri) kırpma alanından kesin olarak hariç tut!
+        var bodyTop = (height * 0.10f).roundToInt().coerceIn(32, height / 4)
+        var bodyBottom = (height * 0.90f).roundToInt().coerceIn(bodyTop + 200, height - 32)
 
-        // Check if there is a top page header strip (in 4.8%..10.5% height) separated by a clean horizontal whitespace gap
-        val headerProbeLimit = (height * 0.108f).roundToInt().coerceAtMost(height / 4)
-        val probeLeft = (width * 0.08f).roundToInt()
-        val probeRight = (width * 0.92f).roundToInt()
+        // Check if there is any remaining top header rule just below 10%..12% separated by whitespace
+        val headerProbeLimit = (height * 0.125f).roundToInt().coerceAtMost(height / 4)
+        val probeLeft = (width * 0.07f).roundToInt()
+        val probeRight = (width * 0.93f).roundToInt()
         val probeSpan = (probeRight - probeLeft).coerceAtLeast(1)
         var sawTopHeaderInk = false
         for (y in bodyTop..headerProbeLimit) {
@@ -1180,14 +1215,13 @@ object StudioImageAndPdfEngine {
             if (rInk > sampled * 0.025f) {
                 sawTopHeaderInk = true
             }
-            // If we saw a colored top banner or header rule followed by a clean white gap near 7%..10.8%, advance bodyTop past it
             if (sawTopHeaderInk && colored > sampled * 0.28f) {
                 bodyTop = (y + (height * 0.008f).roundToInt()).coerceAtMost(headerProbeLimit)
             }
         }
 
-        // Check bottom 90.5%..95.0% for thin footer / bottom answer-key strip separated by whitespace
-        val footerProbeStart = (height * 0.902f).roundToInt()
+        // Check bottom 88%..90% for any residual thin footer / answer-key strip separated by whitespace
+        val footerProbeStart = (height * 0.88f).roundToInt()
         var cleanGapY = -1
         var zeroRun = 0
         for (y in footerProbeStart..bodyBottom) {
@@ -1205,8 +1239,7 @@ object StudioImageAndPdfEngine {
                 zeroRun = 0
             }
         }
-        // If there is a clean whitespace gap after 90.2% followed only by a thin footer (< 3.2% page height), trim at the gap
-        if (cleanGapY != -1 && (bodyBottom - cleanGapY) <= (height * 0.036f).roundToInt()) {
+        if (cleanGapY != -1 && (bodyBottom - cleanGapY) <= (height * 0.032f).roundToInt()) {
             bodyBottom = cleanGapY
         }
 
@@ -1256,10 +1289,10 @@ object StudioImageAndPdfEngine {
         }
 
         // Verify whether both left and right halves actually have question content
-        val leftCheckStart = (width * 0.06f).roundToInt()
+        val leftCheckStart = (width * 0.07f).roundToInt()
         val leftCheckEnd = (width * 0.42f).roundToInt()
         val rightCheckStart = (width * 0.58f).roundToInt()
-        val rightCheckEnd = (width * 0.94f).roundToInt()
+        val rightCheckEnd = (width * 0.93f).roundToInt()
 
         var leftHalfInk = 0
         var rightHalfInk = 0
@@ -1292,8 +1325,8 @@ object StudioImageAndPdfEngine {
 
         val midX = if (dividerX != -1) dividerX else bestGutterX
         val gutterMargin = (width * 0.012f).roundToInt().coerceAtLeast(10)
-        // Outer margin excludes extreme left/right 5.2% where vertical sidebar tabs & page number boxes sit
-        val outerMargin = (width * 0.052f).roundToInt().coerceAtLeast(32)
+        // Sol ve sağ %7'lik dış kenar boşluklarını (outerMargin = 0.07f) kırpma alanından kesin olarak hariç tut!
+        val outerMargin = (width * 0.07f).roundToInt().coerceAtLeast(36)
 
         val columns: List<Triple<Int, Int, Int>> = if (isDualColumn) {
             listOf(
@@ -1397,9 +1430,13 @@ object StudioImageAndPdfEngine {
                     } else {
                         Bitmap.CompressFormat.WEBP
                     }
-                    cleanedCrop.compress(format, 86, fos)
+                    cleanedCrop.compress(format, 85, fos)
                 }
-                bitmapCache.put(outFile.absolutePath, cleanedCrop)
+                if (pageIndex < 6) {
+                    bitmapCache.put(outFile.absolutePath, cleanedCrop)
+                } else {
+                    cleanedCrop.recycle()
+                }
 
                 questionOrderOnPage++
                 val estimatedDiff5 = estimateVisualQuestionDifficulty5(

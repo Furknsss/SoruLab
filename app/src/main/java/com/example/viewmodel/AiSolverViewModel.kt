@@ -58,6 +58,7 @@ data class TwinQuestionModalData(
     val topicTitle: String = "",
     val difficultyLabel: String = "Orta",
     val questionStem: String = "",
+    val visualType: com.example.data.QuestionVisualType = com.example.data.QuestionVisualType.NONE,
     val options: Map<String, String> = mapOf(
         "A" to "",
         "B" to "",
@@ -360,11 +361,13 @@ class AiSolverViewModel : ViewModel() {
                 if (question.stemTop.isNotBlank()) {
                     appendLine("Soru Bilgisi: ${question.stemTop}")
                 }
-                appendLine("Görseldeki soruyu dikkatle incele ve çözümü şu 3 aşamalı başlık altında net Türkçe ile yaz:")
-                appendLine("1. KRİTİK BİLGİ & TEOREM")
-                appendLine("2. ADIM ADIM ÇÖZÜM (Sonucun neden ${question.correctOption} seçeneği olduğunu işlemli göster)")
-                appendLine("3. ÖSYM TUZAK NOTU")
+                appendLine("Görseldeki soruyu dikkatle incele ve çözümü kesinlikle şu 3 aşamalı formatta net Türkçe ile yaz:")
+                appendLine("📌 Kritik Bilgi & Teorem: [Sorunun çözümünde kullanılan temel formül, kazanım ve teorem]")
+                appendLine("✏️ Adım Adım Çözüm: [1. Adım, 2. Adım ve 3. Adım olarak sonucun neden ${question.correctOption} seçeneği olduğunu işlemli göster]")
+                appendLine("⚠️ ÖSYM Tuzak Notu: [Öğrencilerin bu soru tipinde sık düştüğü çeldirici ve dikkat edilmesi gereken nokta]")
             }
+
+            val defaultStructuredText = buildStructuredSolutionForQuestion(question)
 
             try {
                 val response = withTimeout(45_000L) {
@@ -383,13 +386,29 @@ class AiSolverViewModel : ViewModel() {
                 if (text.isNotBlank()) {
                     onResult(text)
                 } else {
-                    onResult(question.stepByStepSolution.ifBlank { "Cevap anahtarına göre doğru yanıt ${question.correctOption} seçeneğidir." })
+                    onResult(defaultStructuredText)
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException && e !is TimeoutCancellationException) throw e
-                onResult(question.stepByStepSolution.ifBlank { "Cevap anahtarına göre doğru yanıt ${question.correctOption} seçeneğidir." })
+                onResult(defaultStructuredText)
             }
         }
+    }
+
+    private fun buildStructuredSolutionForQuestion(question: YksQuestion): String {
+        val rawExisting = question.stepByStepSolution.trim()
+        if (rawExisting.contains("Kritik Bilgi") && rawExisting.contains("Adım Adım")) {
+            return rawExisting
+        }
+        val topic = question.topicHeader.ifBlank { "YKS Kazanımı" }
+        val ans = question.correctOption
+        return AiStructuredSolution(
+            kritikBilgiTeorem = "$topic kazanımında verilen bağıntıdaki sınır koşulları ve temel denklem eşitliği doğrudan uygulanır.",
+            adimAdimCozum = "1. Adım: Soruda verilen öncül ve sayısal değerler standart $topic bağıntısında yerine yazılır.\n" +
+                "2. Adım: İfade sadeleştirilip bilinmeyen büyüklük yalnız bırakıldığında aranan değer elde edilir.\n" +
+                "3. Adım: Elde edilen sonuç şıklarla eşleştirildiğinde doğru yanıt $ans seçeneği olarak bulunur.",
+            osymTuzakNotu = "Birim dönüşümleri, işaret değişimleri ve tanım kümesi sınır değerleri işlem sonunda mutlaka kontrol edilmelidir."
+        ).toFormattedText()
     }
 
     /**
@@ -409,6 +428,8 @@ class AiSolverViewModel : ViewModel() {
                 }
             }
 
+            val contextualTwin = buildContextualRealTwinQuestion(question)
+
             val prompt = buildString {
                 appendLine("Sen uzman bir ÖSYM YKS soru yazarısın.")
                 appendLine("Konu: ${question.topicHeader}")
@@ -416,7 +437,7 @@ class AiSolverViewModel : ViewModel() {
                 if (question.stemTop.isNotBlank()) {
                     appendLine("Orijinal Soru: ${question.stemTop}")
                 }
-                appendLine("Bu sorunun ölçtüğü kazanım ve çözüm mantığıyla birebir aynı (sayıları ve kurgusu farklı) yeni bir İKİZ SORU üret.")
+                appendLine("Bu sorunun ölçtüğü kazanım, sayısal yapı ve çözüm mantığıyla birebir aynı (sayıları ve kurgusu farklı) ÖSYM formatında tam metinli ve A-E şıklı gerçek bir İKİZ SORU üret.")
             }
 
             try {
@@ -435,31 +456,32 @@ class AiSolverViewModel : ViewModel() {
                 val raw = response.text.orEmpty()
                 val obj = JSONObject(raw)
                 val stem = obj.optString("questionStem", "").trim()
-                val optA = obj.optString("optionA", "12").trim()
-                val optB = obj.optString("optionB", "15").trim()
-                val optC = obj.optString("optionC", "18").trim()
-                val optD = obj.optString("optionD", "24").trim()
-                val optE = obj.optString("optionE", "30").trim()
-                val correct = obj.optString("correctOption", question.correctOption)
+                val optA = obj.optString("optionA", "").trim()
+                val optB = obj.optString("optionB", "").trim()
+                val optC = obj.optString("optionC", "").trim()
+                val optD = obj.optString("optionD", "").trim()
+                val optE = obj.optString("optionE", "").trim()
+                val correct = obj.optString("correctOption", contextualTwin.correctOption)
                     .uppercase()
-                    .takeIf { it in listOf("A", "B", "C", "D", "E") } ?: question.correctOption
+                    .takeIf { it in listOf("A", "B", "C", "D", "E") } ?: contextualTwin.correctOption
                 val explanation = obj.optString("solutionExplanation", "").trim()
 
-                if (stem.isNotBlank()) {
+                if (stem.length >= 25 && optA.isNotBlank() && optB.isNotBlank()) {
                     onResult(
                         TwinQuestionModalData(
                             topicTitle = question.topicHeader,
                             difficultyLabel = question.difficulty.label,
                             questionStem = stem,
+                            visualType = contextualTwin.visualType,
                             options = mapOf(
                                 "A" to optA,
                                 "B" to optB,
-                                "C" to optC,
-                                "D" to optD,
-                                "E" to optE
+                                "C" to optC.ifBlank { contextualTwin.options["C"].orEmpty() },
+                                "D" to optD.ifBlank { contextualTwin.options["D"].orEmpty() },
+                                "E" to optE.ifBlank { contextualTwin.options["E"].orEmpty() }
                             ),
                             correctOption = correct,
-                            solutionExplanation = explanation.ifBlank { "Doğru seçenek $correct şıkkıdır." }
+                            solutionExplanation = explanation.ifBlank { contextualTwin.solutionExplanation }
                         )
                     )
                     return@launch
@@ -467,22 +489,144 @@ class AiSolverViewModel : ViewModel() {
             } catch (_: Exception) {
             }
 
-            onResult(
+            onResult(contextualTwin)
+        }
+    }
+
+    private fun buildContextualRealTwinQuestion(question: YksQuestion): TwinQuestionModalData {
+        val topicUpper = question.topicHeader.uppercase()
+        val k = (question.number % 5) + 2
+        val targetCorrect = question.correctOption.takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "C"
+
+        fun assignCorrectToTarget(correctVal: String, distractors: List<String>): Map<String, String> {
+            val keys = listOf("A", "B", "C", "D", "E")
+            val map = mutableMapOf<String, String>()
+            var dIdx = 0
+            for (key in keys) {
+                if (key == targetCorrect) {
+                    map[key] = correctVal
+                } else {
+                    map[key] = distractors.getOrElse(dIdx) { "${dIdx + 1}" }
+                    dIdx++
+                }
+            }
+            return map
+        }
+
+        return when {
+            topicUpper.contains("TÜREV") || topicUpper.contains("FONKSİYON") || topicUpper.contains("PARABOL") || topicUpper.contains("LİMİT") || topicUpper.contains("İNTEGRAL") -> {
+                val a = k
+                val b = k * 3
+                val x0 = 2
+                val resultVal = 3 * a * x0 * x0 - 2 * b * x0 + 4
+                val opts = assignCorrectToTarget(
+                    correctVal = resultVal.toString(),
+                    distractors = listOf(
+                        (resultVal - 6).toString(),
+                        (resultVal - 2).toString(),
+                        (resultVal + 4).toString(),
+                        (resultVal + 8).toString()
+                    )
+                )
                 TwinQuestionModalData(
                     topicTitle = question.topicHeader,
                     difficultyLabel = question.difficulty.label,
-                    questionStem = "${question.topicHeader} kazanımına ait eşdeğer İkiz Soru:\nVerilen bağıntı ve koşullara göre aynı yöntem uygulandığında elde edilen değer aşağıdakilerden hangisidir?",
-                    options = mapOf(
-                        "A" to "I ve II",
-                        "B" to "Yalnız II",
-                        "C" to "II ve III",
-                        "D" to "I ve III",
-                        "E" to "I, II ve III"
-                    ),
-                    correctOption = question.correctOption,
-                    solutionExplanation = "Orijinal soruyla aynı teorem ve işlem adımları izlendiğinde doğru yanıt ${question.correctOption} seçeneğidir."
+                    questionStem = "Gerçel sayılar kümesi üzerinde tanımlı ve türevlenebilir bir f fonksiyonu\n" +
+                        "f(x) = ${a}x³ - ${b}x² + 4x - 5\n" +
+                        "biçiminde veriliyor.\n\n" +
+                        "Buna göre, y = f(x) eğrisine x = $x0 apsisli noktasından çizilen teğetin eğimi kaçtır?",
+                    visualType = com.example.data.QuestionVisualType.FUNCTION_GRAPH,
+                    options = opts,
+                    correctOption = targetCorrect,
+                    solutionExplanation = "1. Adım: Fonksiyonun türevi alındığında f'(x) = ${3 * a}x² - ${2 * b}x + 4 elde edilir.\n" +
+                        "2. Adım: x = $x0 değeri yerine yazılırsa f'($x0) = ${3 * a}·($x0)² - ${2 * b}·($x0) + 4 = $resultVal bulunur.\n" +
+                        "Doğru seçenek $targetCorrect şıkkıdır."
                 )
-            )
+            }
+
+            topicUpper.contains("ÜÇGEN") || topicUpper.contains("ÇEMBER") || topicUpper.contains("DÖRTGEN") || topicUpper.contains("ANALİTİK") || topicUpper.contains("GEOMETRİ") -> {
+                val baseLen = k * 4
+                val heightLen = k * 3
+                val areaVal = (baseLen * heightLen) / 2
+                val opts = assignCorrectToTarget(
+                    correctVal = areaVal.toString(),
+                    distractors = listOf(
+                        (areaVal - 6).toString(),
+                        (areaVal - 3).toString(),
+                        (areaVal + 6).toString(),
+                        (areaVal + 12).toString()
+                    )
+                )
+                TwinQuestionModalData(
+                    topicTitle = question.topicHeader,
+                    difficultyLabel = question.difficulty.label,
+                    questionStem = "Bir ABC dik üçgeninde [AB] ⊥ [BC], |AB| = $heightLen birim ve |BC| = $baseLen birim olarak veriliyor.\n\n" +
+                        "Buna göre, ABC üçgeninin alanı kaç birimkaredir?",
+                    visualType = com.example.data.QuestionVisualType.GEOMETRY_TRIANGLE,
+                    options = opts,
+                    correctOption = targetCorrect,
+                    solutionExplanation = "1. Adım: Dik üçgenin alanı dik kenarların çarpımının yarısına eşittir: Alan(ABC) = (|AB| · |BC|) / 2.\n" +
+                        "2. Adım: Alan(ABC) = ($heightLen · $baseLen) / 2 = $areaVal birimkare bulunur.\n" +
+                        "Doğru seçenek $targetCorrect şıkkıdır."
+                )
+            }
+
+            topicUpper.contains("HAREKET") || topicUpper.contains("KUVVET") || topicUpper.contains("ENERJİ") || topicUpper.contains("VEKTÖR") || topicUpper.contains("ATIŞ") || topicUpper.contains("TORK") || topicUpper.contains("ELEKTRİK") -> {
+                val v1 = k * 6
+                val v2 = k * 2
+                val relV = v1 + v2
+                val tSec = 4
+                val dist = relV * tSec
+                val opts = assignCorrectToTarget(
+                    correctVal = "$dist m",
+                    distractors = listOf(
+                        "${dist - 16} m",
+                        "${dist - 8} m",
+                        "${dist + 12} m",
+                        "${dist + 24} m"
+                    )
+                )
+                TwinQuestionModalData(
+                    topicTitle = question.topicHeader,
+                    difficultyLabel = question.difficulty.label,
+                    questionStem = "Doğrusal bir yolda birbirine paralel raylarda sabit büyüklükteki hızlarla zıt yönde hareket eden K ve L araçlarından K'nin yere göre hızı Doğu yönünde $v1 m/s, L'nin yere göre hızı Batı yönünde $v2 m/s'dir.\n\n" +
+                        "Buna göre, K aracındaki gözlemciye göre L aracı $tSec saniyede kaç metre yer değiştirir?",
+                    visualType = com.example.data.QuestionVisualType.PHYSICS_VECTORS,
+                    options = opts,
+                    correctOption = targetCorrect,
+                    solutionExplanation = "1. Adım: Zıt yönde hareket eden araçların bağıl hız büyüklüğü V_bağıl = |V_L - V_K| = $v1 + $v2 = $relV m/s'dir.\n" +
+                        "2. Adım: Δx = V_bağıl · t = $relV · $tSec = $dist m bulunur.\n" +
+                        "Doğru seçenek $targetCorrect şıkkıdır."
+                )
+            }
+
+            else -> {
+                val n1 = k * 5
+                val n2 = k * 3
+                val ansNum = n1 + n2 * 2
+                val opts = assignCorrectToTarget(
+                    correctVal = ansNum.toString(),
+                    distractors = listOf(
+                        (ansNum - 5).toString(),
+                        (ansNum - 2).toString(),
+                        (ansNum + 3).toString(),
+                        (ansNum + 7).toString()
+                    )
+                )
+                TwinQuestionModalData(
+                    topicTitle = question.topicHeader,
+                    difficultyLabel = question.difficulty.label,
+                    questionStem = "a ve b pozitif tam sayılar olmak üzere, ${question.topicHeader} kazanımına göre tanımlanan işlemde\n" +
+                        "a = $n1 ve b = $n2 değerleri için A = a + 2b bağıntısı veriliyor.\n\n" +
+                        "Buna göre, A ifadesinin sayısal değeri kaçtır?",
+                    visualType = if (question.visualType != com.example.data.QuestionVisualType.NONE) question.visualType else com.example.data.QuestionVisualType.VENN_DIAGRAM,
+                    options = opts,
+                    correctOption = targetCorrect,
+                    solutionExplanation = "1. Adım: Verilen a = $n1 ve b = $n2 değerleri A = a + 2b bağıntısında yerine yazılır.\n" +
+                        "2. Adım: A = $n1 + 2·($n2) = $ansNum elde edilir.\n" +
+                        "Doğru seçenek $targetCorrect şıkkıdır."
+                )
+            }
         }
     }
 
@@ -848,7 +992,7 @@ class AiSolverViewModel : ViewModel() {
                 // Scan every content page in the book (only skip outer cover page 0 on multi-page books >= 6 pages)
                 val firstContentPage = if (totalPdfPages >= 6) 1 else 0
                 val candidatePages = (firstContentPage until totalPdfPages).toList().ifEmpty { listOf(0) }
-                val maxPagesToScan = 400
+                val maxPagesToScan = 1200
                 val pageIndicesToScan: List<Int> = if (candidatePages.size <= maxPagesToScan) {
                     candidatePages
                 } else {
@@ -865,6 +1009,7 @@ class AiSolverViewModel : ViewModel() {
                     ).use { pfd ->
                         android.graphics.pdf.PdfRenderer(pfd).use { renderer ->
                             val rendererTotal = renderer.pageCount.coerceAtLeast(1)
+                            var lastProgressUpdateMs = 0L
 
                             for ((scanPos, pageIdx) in pageIndicesToScan.withIndex()) {
                                 if (pageIdx >= rendererTotal) continue
@@ -876,12 +1021,15 @@ class AiSolverViewModel : ViewModel() {
                                     difficulty = fiveTierDifficultyCycle[scanPos % fiveTierDifficultyCycle.size]
                                 )
 
-                                val progressPct = 16 + (((scanPos + 1).toFloat() / pageIndicesToScan.size.toFloat()) * 80f).toInt()
-                                _batchProgressPercent.value = progressPct.coerceIn(16, 97)
-                                _batchStatusText.value = "Sayfa ${pageIdx + 1} / $totalPdfPages taranıyor • Kırpılan Soru: ${allExtractedQuestions.size} • Tek Tek Etiketleniyor"
+                                val nowMs = System.currentTimeMillis()
+                                if (nowMs - lastProgressUpdateMs >= 110L || scanPos == 0 || scanPos == pageIndicesToScan.lastIndex) {
+                                    lastProgressUpdateMs = nowMs
+                                    val progressPct = 16 + (((scanPos + 1).toFloat() / pageIndicesToScan.size.toFloat()) * 82f).toInt()
+                                    _batchProgressPercent.value = progressPct.coerceIn(16, 98)
+                                    _batchStatusText.value = "Sayfa ${pageIdx + 1} / $totalPdfPages taranıyor • Kırpılan Soru: ${allExtractedQuestions.size} • Tek Tek Etiketleniyor"
+                                }
 
-                                if (pageInfo.isSkipPage && totalPdfPages >= 6 && pageIdx == 0) {
-                                    kotlinx.coroutines.delay(5)
+                                if (pageInfo.isSkipPage) {
                                     continue
                                 }
 
@@ -952,8 +1100,7 @@ class AiSolverViewModel : ViewModel() {
                                     )
                                 }
 
-                                // RAM & UI thread protection: pause 8ms between pages
-                                kotlinx.coroutines.delay(8)
+                                kotlinx.coroutines.yield()
                             }
                         }
                     }

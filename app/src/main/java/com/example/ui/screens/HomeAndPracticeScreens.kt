@@ -20,8 +20,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -1670,49 +1672,15 @@ fun SoruPratigiScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xFFEAEEF5))
+                    .background(Color(0xFFF8FAFC))
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFEAEEF5))
-                        .padding(horizontal = 22.dp, vertical = 12.dp)
+                        .background(Color(0xFFF8FAFC))
+                        .padding(horizontal = 22.dp, vertical = 10.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(Color(0xFF1D63DC), Color(0xFF1E3A8A))
-                                    )
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                                contentDescription = "Soru Pratiği",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                        Text(
-                            text = "Soru Pratiği",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.ExtraBold
-                            ),
-                            color = Color(0xFF0F172A)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Centered Pill TYT / AYT Switcher
+                    // Centered Pill TYT / AYT Switcher (Gereksiz tekrar eden üst başlık temizlendi)
                     Box(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center
@@ -1722,7 +1690,7 @@ fun SoruPratigiScreen(
                                 .width(300.dp)
                                 .height(42.dp)
                                 .clip(RoundedCornerShape(50))
-                                .background(Color(0xFFD8DFEB))
+                                .background(Color(0xFFE2E8F0))
                                 .padding(3.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2082,22 +2050,28 @@ private fun TopicLandscapeCard(
     onClick: () -> Unit
 ) {
     val accentColor = Color(topic.badgeColorHex)
-    // Ultra-lightweight topic card for 60 FPS scrolling on tablet preview (no shadow or heavy overdraw)
+    val progressSnapshot = SoruLabCatalog.topicProgressState[topic.id]
+    val solvedCount = progressSnapshot?.solvedQuestions ?: 0
+    val totalCount = progressSnapshot?.totalQuestions ?: topic.questionCount
+    val progressPct = progressSnapshot?.progressPercent ?: 0
+    val testCount = progressSnapshot?.totalTests ?: topic.totalTests
+
+    // Porselen Light Tema (#FFFFFF kart, sol kenarda 6dp ders rengi şeridi, sağda ilerleme %, çözülen/toplam soru ve mikro rozetler)
     Box(
         modifier = Modifier
-            .width(220.dp)
-            .height(100.dp)
+            .width(256.dp)
+            .height(108.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.White)
-            .border(1.4.dp, accentColor.copy(alpha = 0.38f), RoundedCornerShape(16.dp))
+            .background(Color(0xFFFFFFFF))
+            .border(1.2.dp, accentColor.copy(alpha = 0.32f), RoundedCornerShape(16.dp))
             .clickable { onClick() }
             .drawWithCache {
                 onDrawBehind {
                     drawRoundRect(
                         color = accentColor,
                         topLeft = Offset(0f, 0f),
-                        size = Size(5.dp.toPx(), size.height),
-                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                        size = Size(6.dp.toPx(), size.height),
+                        cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
                     )
                 }
             }
@@ -2106,38 +2080,100 @@ private fun TopicLandscapeCard(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 18.dp, end = 14.dp, top = 14.dp, bottom = 14.dp),
+                .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = topic.name,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 15.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    lineHeight = 20.sp
-                ),
-                color = Color(0xFF0F172A),
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = topic.name,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 14.8.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        lineHeight = 19.sp
+                    ),
+                    color = Color(0xFF0F172A),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Surface(
+                        color = accentColor.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(50)
+                    ) {
+                        Text(
+                            text = if (testCount > 0) "$testCount Test" else "All Star",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            ),
+                            color = accentColor,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+
+                    Surface(
+                        color = Color(0xFFF1F5F9),
+                        shape = RoundedCornerShape(50)
+                    ) {
+                        Text(
+                            text = "$solvedCount/$totalCount Soru",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = Color(0xFF475569),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            Box(
-                modifier = Modifier
-                    .size(24.dp)
-                    .clip(CircleShape)
-                    .background(accentColor.copy(alpha = 0.14f)),
-                contentAlignment = Alignment.Center
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxHeight()
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = accentColor,
-                    modifier = Modifier.size(16.dp)
-                )
+                Surface(
+                    color = if (progressPct > 0) Color(0xFFDCFCE7) else accentColor.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(50)
+                ) {
+                    Text(
+                        text = "%$progressPct",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        ),
+                        color = if (progressPct > 0) Color(0xFF15803D) else accentColor,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(accentColor.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = accentColor,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
     }
@@ -2175,7 +2211,7 @@ private fun TopicTestsDetailView(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFEAEEF4))
+            .background(Color(0xFFF8FAFC))
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Top bar: Back + SubjectFormulaBadge + Topic Name ONLY (no redundant level badge on top-right!) + "Oluştur" button
@@ -2819,6 +2855,38 @@ private fun SoruLabAiTestGeneratorDialog(
     onStartGeneratedTest: (YksTestItem) -> Unit,
     onGoToPdfStudio: () -> Unit
 ) {
+    var isSetupPhase by remember(topic.id, level) { mutableStateOf(true) }
+    var selectedDifficulties by remember(topic.id, level) {
+        mutableStateOf(
+            when (level) {
+                TopicTestLevel.BASLANGIC -> setOf(DifficultyLevel.KOLAY, DifficultyLevel.ORTA)
+                TopicTestLevel.PEKISTIRME -> setOf(DifficultyLevel.KOLAY, DifficultyLevel.ORTA, DifficultyLevel.OSYM)
+                TopicTestLevel.GELISIYORUM -> setOf(DifficultyLevel.ORTA, DifficultyLevel.OSYM, DifficultyLevel.ZOR)
+                TopicTestLevel.OSYM -> setOf(DifficultyLevel.OSYM, DifficultyLevel.ORTA, DifficultyLevel.ZOR)
+                TopicTestLevel.DERECE -> setOf(DifficultyLevel.ZOR, DifficultyLevel.COK_ZOR, DifficultyLevel.OSYM)
+                TopicTestLevel.IKIZ -> DifficultyLevel.entries.toSet()
+            }
+        )
+    }
+    var selectedSourceFilter by remember(topic.id, level) {
+        mutableStateOf(
+            if (level == TopicTestLevel.IKIZ) QuestionSourceFilter.YANLIS_YAPTIKLARIM else QuestionSourceFilter.TUM_SORULAR
+        )
+    }
+
+    val matchingDiffCount = remember(selectedDifficulties, poolCheck.countsByDifficulty, poolCheck.availableQuestionCount) {
+        if (poolCheck.countsByDifficulty.isEmpty()) {
+            poolCheck.availableQuestionCount
+        } else {
+            val sum = selectedDifficulties.sumOf { poolCheck.countsByDifficulty[it] ?: 0 }
+            if (sum > 0) sum else poolCheck.availableQuestionCount
+        }
+    }
+    val maxAvailableCount = matchingDiffCount.coerceAtLeast(1)
+    var selectedQuestionCount by remember(topic.id, level, maxAvailableCount) {
+        mutableIntStateOf(12.coerceAtMost(maxAvailableCount).coerceAtLeast(1))
+    }
+
     var currentStep by remember { mutableIntStateOf(1) }
     var progressTarget by remember { mutableFloatStateOf(0.20f) }
     var createdTest by remember { mutableStateOf<YksTestItem?>(null) }
@@ -2876,7 +2944,7 @@ private fun SoruLabAiTestGeneratorDialog(
                         shape = RoundedCornerShape(50)
                     ) {
                         Text(
-                            text = "${topic.name} • ${level.displayTitle}",
+                            text = "${topic.name} - Test $nextTestNumber",
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                             color = Color(0xFF0F172A),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
@@ -2938,40 +3006,331 @@ private fun SoruLabAiTestGeneratorDialog(
         return
     }
 
+    // İNTERAKTİF TEST OLUŞTURMA PANELİ (5'li Zorluk Seçici + Akıllı Kaynak Filtresi + Esnek Soru Sayısı Slider/Seçici + Otomatik "[Konu Adı] - Test [X]" İsimlendirme)
+    if (isSetupPhase) {
+        val autoTestName = "${topic.name} - Test $nextTestNumber"
+        val presetCounts = listOf(5, 10, 12, 16, 20)
+
+        Dialog(onDismissRequest = onDismiss) {
+            Card(
+                shape = RoundedCornerShape(26.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
+                modifier = Modifier
+                    .widthIn(max = 520.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+                    .testTag("interactive_test_builder_dialog")
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 22.dp, vertical = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "İnteraktif Test Oluşturucu",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 18.sp
+                                ),
+                                color = Color(0xFF0F172A)
+                            )
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = "Otomatik Ad: $autoTestName",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                ),
+                                color = Color(0xFF1D63DC)
+                            )
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Kapat",
+                                tint = Color(0xFF64748B)
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = Color(0xFFE2E8F0))
+
+                    // 1. 5'Lİ ZORLUK SEÇİCİ (Multi-Select Chips + Soru Sayısı)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "1. Zorluk Seviyeleri (Çoklu Seçim)",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.sp
+                            ),
+                            color = Color(0xFF1E293B)
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(DifficultyLevel.entries) { diff ->
+                                val isSelected = diff in selectedDifficulties
+                                val countForDiff = poolCheck.countsByDifficulty[diff] ?: 0
+                                val chipColor = Color(diff.colorHex)
+                                Surface(
+                                    onClick = {
+                                        selectedDifficulties = if (isSelected && selectedDifficulties.size > 1) {
+                                            selectedDifficulties - diff
+                                        } else {
+                                            selectedDifficulties + diff
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(50),
+                                    color = if (isSelected) chipColor.copy(alpha = 0.16f) else Color(0xFFF8FAFC),
+                                    border = BorderStroke(
+                                        1.3.dp,
+                                        if (isSelected) chipColor else Color(0xFFCBD5E1)
+                                    ),
+                                    modifier = Modifier.testTag("diff_chip_${diff.name}")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Check,
+                                                contentDescription = null,
+                                                tint = chipColor,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                        Text(
+                                            text = "${diff.label} ($countForDiff)",
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                fontSize = 12.sp
+                                            ),
+                                            color = if (isSelected) chipColor else Color(0xFF475569)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. AKILLI KAYNAK FİLTRESİ
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "2. Akıllı Kaynak Filtresi",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.sp
+                            ),
+                            color = Color(0xFF1E293B)
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(QuestionSourceFilter.entries) { srcFilter ->
+                                val isSel = selectedSourceFilter == srcFilter
+                                val srcCount = poolCheck.countsBySource[srcFilter] ?: poolCheck.availableQuestionCount
+                                Surface(
+                                    onClick = { selectedSourceFilter = srcFilter },
+                                    shape = RoundedCornerShape(50),
+                                    color = if (isSel) Color(0xFF1D63DC) else Color(0xFFF8FAFC),
+                                    border = BorderStroke(
+                                        1.2.dp,
+                                        if (isSel) Color(0xFF1D63DC) else Color(0xFFCBD5E1)
+                                    ),
+                                    modifier = Modifier.testTag("source_chip_${srcFilter.name}")
+                                ) {
+                                    Text(
+                                        text = "${srcFilter.label} ($srcCount)",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        ),
+                                        color = if (isSel) Color.White else Color(0xFF334155),
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. ESNEK SORU SAYISI SLIDER / SEÇİCİ (5, 10, 12, 16, 20 veya Maksimum)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "3. Soru Sayısı Seçimi",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 13.sp
+                                ),
+                                color = Color(0xFF1E293B)
+                            )
+                            Text(
+                                text = "${selectedQuestionCount.coerceAtMost(maxAvailableCount)} / $maxAvailableCount Soru",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 13.sp
+                                ),
+                                color = Color(0xFF1D63DC)
+                            )
+                        }
+
+                        if (maxAvailableCount > 1) {
+                            Slider(
+                                value = selectedQuestionCount.coerceIn(1, maxAvailableCount).toFloat(),
+                                onValueChange = { v ->
+                                    selectedQuestionCount = v.toInt().coerceIn(1, maxAvailableCount)
+                                },
+                                valueRange = 1f..maxAvailableCount.toFloat(),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color(0xFF1D63DC),
+                                    activeTrackColor = Color(0xFF1D63DC),
+                                    inactiveTrackColor = Color(0xFFE2E8F0)
+                                )
+                            )
+                        }
+
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(presetCounts) { preset ->
+                                val effectiveVal = preset.coerceAtMost(maxAvailableCount)
+                                val isCurrent = selectedQuestionCount == effectiveVal
+                                Surface(
+                                    onClick = { selectedQuestionCount = effectiveVal },
+                                    shape = RoundedCornerShape(50),
+                                    color = if (isCurrent) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
+                                    border = BorderStroke(
+                                        1.2.dp,
+                                        if (isCurrent) Color(0xFF1D63DC) else Color(0xFFCBD5E1)
+                                    )
+                                ) {
+                                    Text(
+                                        text = "$preset Soru",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        ),
+                                        color = if (isCurrent) Color(0xFF1D63DC) else Color(0xFF475569),
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                            item {
+                                val isMax = selectedQuestionCount == maxAvailableCount
+                                Surface(
+                                    onClick = { selectedQuestionCount = maxAvailableCount },
+                                    shape = RoundedCornerShape(50),
+                                    color = if (isMax) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
+                                    border = BorderStroke(
+                                        1.2.dp,
+                                        if (isMax) Color(0xFF1D63DC) else Color(0xFFCBD5E1)
+                                    )
+                                ) {
+                                    Text(
+                                        text = "Maks ($maxAvailableCount)",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        ),
+                                        color = if (isMax) Color(0xFF1D63DC) else Color(0xFF475569),
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp)
+                        ) {
+                            Text("Vazgeç", fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = { isSetupPhase = false },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF1D63DC),
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .weight(1.4f)
+                                .height(46.dp)
+                                .testTag("confirm_create_test_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.AutoAwesome,
+                                contentDescription = null,
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Testi Oluştur",
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        return
+    }
+
     val animatedProgress by animateFloatAsState(
         targetValue = progressTarget,
         animationSpec = tween(durationMillis = 450),
         label = "ai_gen_progress"
     )
 
-    val realCount = poolCheck.availableQuestionCount.coerceAtMost(12)
-    val step1Text = remember(topic, level, realCount) {
-        if (level == TopicTestLevel.IKIZ) {
-            "'${topic.name}' konusunda yanlış veya boş bıraktığınız $realCount gerçek soru kaydı doğrulandı..."
-        } else {
-            "Soru havuzundan '${topic.name}' konusu için $realCount gerçek soru seçiliyor..."
-        }
+    val realCount = selectedQuestionCount.coerceIn(1, maxAvailableCount)
+    val step1Text = remember(topic, selectedSourceFilter, realCount) {
+        "'${topic.name}' konusundan (${selectedSourceFilter.label}) $realCount gerçek soru seçiliyor..."
     }
-    val step2Text = remember(topic, level, realCount) {
-        "$realCount soruluk testin kazanım sırası ve şık anahtarları eşleştiriliyor..."
+    val step2Text = remember(topic, selectedDifficulties, realCount) {
+        "Seçilen zorluk seviyeleri (${selectedDifficulties.joinToString { it.label }}) ve cevap anahtarları eşleştiriliyor..."
     }
-    val step3Text = remember(topic, level, nextTestNumber) {
-        "${topic.name} ${level.displayTitle} Test-$nextTestNumber optik formu ve canlı çözüm tahtası hazırlanıyor..."
+    val step3Text = remember(topic, nextTestNumber) {
+        "${topic.name} - Test $nextTestNumber optik formu ve canlı çözüm tahtası hazırlanıyor..."
     }
 
-    LaunchedEffect(topic.id, level) {
-        progressTarget = 0.36f
-        delay(650L)
-        currentStep = 2
-        progressTarget = 0.74f
-        delay(650L)
-        currentStep = 3
-        progressTarget = 1.0f
-        delay(550L)
-        if (createdTest == null) {
-            createdTest = onGenerateFinished()
+    LaunchedEffect(isSetupPhase, topic.id, level) {
+        if (!isSetupPhase) {
+            progressTarget = 0.36f
+            delay(450L)
+            currentStep = 2
+            progressTarget = 0.74f
+            delay(450L)
+            currentStep = 3
+            progressTarget = 1.0f
+            delay(400L)
+            if (createdTest == null) {
+                createdTest = poolCheck.onGenerateCustomTest?.invoke(
+                    selectedDifficulties,
+                    selectedSourceFilter,
+                    realCount
+                ) ?: onGenerateFinished()
+            }
+            currentStep = 4
         }
-        currentStep = 4
     }
 
     Dialog(onDismissRequest = { if (createdTest != null) onDismiss() }) {

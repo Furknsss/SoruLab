@@ -164,6 +164,10 @@ class SoruLabRepository(
             editor.remove("custom_questions_global_device")
             editor.remove("board_strokes_$userId")
             editor.apply()
+            val cacheDir = java.io.File(ctx.filesDir, "sorulab_question_cache")
+            if (cacheDir.exists()) {
+                cacheDir.listFiles()?.forEach { runCatching { it.delete() } }
+            }
         } catch (_: Exception) {
         }
     }
@@ -494,6 +498,62 @@ class SoruLabRepository(
         }
     }
 
+    suspend fun saveCustomQuestionsBatch(records: List<CustomQuestionRecord>) {
+        if (records.isEmpty()) return
+        records.chunked(350).forEach { chunk ->
+            try {
+                val batch = db.batch()
+                chunk.forEach { record ->
+                    val docRef = if (record.id.isNotBlank()) {
+                        customQuestionsCollection.document(record.id.take(120))
+                    } else {
+                        customQuestionsCollection.document()
+                    }
+                    val safeRatio = if (record.cropAspectRatio.isFinite()) {
+                        record.cropAspectRatio.coerceIn(0.25, 4.8)
+                    } else {
+                        1.25
+                    }
+                    val payload = mapOf(
+                        "userId" to record.userId,
+                        "examType" to if (record.examType.equals("AYT", ignoreCase = true)) "AYT" else "TYT",
+                        "subjectId" to record.subjectId.ifBlank { "tyt_mat" }.take(64),
+                        "subjectName" to record.subjectName.ifBlank { "Matematik" }.take(100),
+                        "topicId" to record.topicId.ifBlank { "temel_kavramlar" }.take(64),
+                        "topicName" to record.topicName.ifBlank { "Temel Kavramlar" }.take(120),
+                        "difficulty" to (record.difficulty.takeIf { it in listOf("Kolay", "Orta", "Zor") } ?: "Orta"),
+                        "correctOption" to (record.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "C"),
+                        "questionText" to record.questionText.ifBlank { "YKS Sorusu" }.take(1950),
+                        "publisherTag" to record.publisherTag.ifBlank { "YKS Yayınları" }.take(115),
+                        "aiSolutionSummary" to record.aiSolutionSummary.take(3950),
+                        "cropAspectRatio" to safeRatio,
+                        "createdAt" to FieldValue.serverTimestamp(),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                    batch.set(docRef, payload)
+                }
+                batch.commit().await()
+            } catch (e: Exception) {
+                handleFirestoreError(e, OperationType.CREATE, "custom_questions/batch")
+            }
+        }
+    }
+
+    suspend fun deleteCustomQuestionsBatch(questionIds: List<String>) {
+        if (questionIds.isEmpty()) return
+        questionIds.filter { it.isNotBlank() }.chunked(350).forEach { chunk ->
+            try {
+                val batch = db.batch()
+                chunk.forEach { qid ->
+                    batch.delete(customQuestionsCollection.document(qid))
+                }
+                batch.commit().await()
+            } catch (e: Exception) {
+                handleFirestoreError(e, OperationType.DELETE, "custom_questions/batch")
+            }
+        }
+    }
+
     suspend fun deleteCustomQuestion(questionId: String) {
         try {
             customQuestionsCollection.document(questionId).delete().await()
@@ -506,13 +566,24 @@ class SoruLabRepository(
     fun loadCachedCustomQuestions(userId: String): List<CustomQuestionRecord> {
         val ctx = appContext ?: return emptyList()
         return try {
-            val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
-            val raw = prefs.getString("custom_questions_$userId", null)
-                ?: prefs.getString("custom_questions_global_device", null)
-                ?: return emptyList()
+            val cacheDir = java.io.File(ctx.filesDir, "sorulab_question_cache")
+            val userCacheFile = java.io.File(cacheDir, "custom_questions_${userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")}.json")
+            val globalCacheFile = java.io.File(cacheDir, "custom_questions_global_device.json")
+
+            val raw = when {
+                userCacheFile.exists() && userCacheFile.length() > 2L -> userCacheFile.readText(Charsets.UTF_8)
+                globalCacheFile.exists() && globalCacheFile.length() > 2L -> globalCacheFile.readText(Charsets.UTF_8)
+                else -> {
+                    val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+                    prefs.getString("custom_questions_$userId", null)
+                        ?: prefs.getString("custom_questions_global_device", null)
+                        ?: return emptyList()
+                }
+            }
             val arr = JSONArray(raw)
-            val list = mutableListOf<CustomQuestionRecord>()
-            for (i in 0 until arr.length()) {
+            val len = arr.length()
+            val list = ArrayList<CustomQuestionRecord>(len)
+            for (i in 0 until len) {
                 val obj = arr.optJSONObject(i) ?: continue
                 list.add(
                     CustomQuestionRecord(
@@ -541,9 +612,12 @@ class SoruLabRepository(
     fun saveCachedCustomQuestions(userId: String, records: List<CustomQuestionRecord>) {
         val ctx = appContext ?: return
         try {
-            val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+            val cacheDir = java.io.File(ctx.filesDir, "sorulab_question_cache")
+            if (!cacheDir.exists()) cacheDir.mkdirs()
             val arr = JSONArray()
-            records.distinctBy { it.id }.forEach { rec ->
+            val seenIds = HashSet<String>(records.size)
+            for (rec in records) {
+                if (rec.id.isNotBlank() && !seenIds.add(rec.id)) continue
                 val obj = JSONObject()
                 obj.put("id", rec.id)
                 obj.put("userId", rec.userId)
@@ -561,10 +635,19 @@ class SoruLabRepository(
                 arr.put(obj)
             }
             val jsonStr = arr.toString()
-            prefs.edit()
-                .putString("custom_questions_$userId", jsonStr)
-                .putString("custom_questions_global_device", jsonStr)
-                .apply()
+            val safeUid = userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+            val userCacheFile = java.io.File(cacheDir, "custom_questions_$safeUid.json")
+            val globalCacheFile = java.io.File(cacheDir, "custom_questions_global_device.json")
+            userCacheFile.writeText(jsonStr, Charsets.UTF_8)
+            globalCacheFile.writeText(jsonStr, Charsets.UTF_8)
+            // Keep SharedPreferences light (remove oversized old payloads if > 500 questions)
+            if (records.size > 400) {
+                val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+                prefs.edit()
+                    .remove("custom_questions_$userId")
+                    .remove("custom_questions_global_device")
+                    .apply()
+            }
         } catch (_: Exception) {
         }
     }

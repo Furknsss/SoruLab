@@ -910,7 +910,7 @@ class AiSolverViewModel : ViewModel() {
                                         headerTextUpper.contains("KAZANIM")
                                     val combinedDiffHint = if (hasExplicitHeaderDiff) {
                                         // Blend header tier with individual question visual complexity
-                                        cropBox.estimatedDifficulty5
+                                        pageInfo.difficulty.ifBlank { cropBox.estimatedDifficulty5 }
                                     } else {
                                         cropBox.estimatedDifficulty5
                                     }

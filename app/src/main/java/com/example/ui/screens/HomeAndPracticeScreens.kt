@@ -2220,7 +2220,7 @@ private fun TopicTestsDetailView(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Top-Right "Oluştur" Button
+                // Top-Right "Test / Soru Üret" Button
                 Button(
                     onClick = { showAiGeneratorModal = true },
                     shape = RoundedCornerShape(14.dp),
@@ -2238,9 +2238,9 @@ private fun TopicTestsDetailView(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Oluştur",
+                        text = "Test / Soru Üret",
                         style = MaterialTheme.typography.labelLarge.copy(
-                            fontSize = 13.5.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
                     )
@@ -2371,9 +2371,9 @@ private fun TopicTestsDetailView(
 
                                 Text(
                                     text = if (selectedTestLevel == TopicTestLevel.IKIZ) {
-                                        "Bu seviyede henüz oluşturulmuş bir İkiz test yok. Sağ üstteki 'Oluştur' butonuna bastığında bu konuda daha önce yanlış yaptığın gerçek sorular kontrol edilerek İkiz Test oluşturulur."
+                                        "Bu seviyede henüz oluşturulmuş bir İkiz test yok. Sağ üstteki 'Test / Soru Üret' butonuna bastığında bu konuda daha önce yanlış yaptığın veya boş bıraktığın gerçek sorular kontrol edilerek İkiz Test oluşturulur."
                                     } else {
-                                        "Bu seviyede henüz test oluşturulmadı (${selectedTestLevel.poolDistributionLabel}). Sağ üstteki 'Oluştur' butonuna basarak soru havuzundaki gerçek sorularla test oluşturabilirsin."
+                                        "Bu seviyede henüz test oluşturulmadı (${selectedTestLevel.poolDistributionLabel}). Sağ üstteki 'Test / Soru Üret' butonuna basarak soru havuzundaki gerçek sorularla test oluşturabilirsin."
                                     },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color(0xFF475569),
@@ -2397,7 +2397,7 @@ private fun TopicTestsDetailView(
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Test Oluştur")
+                                    Text("Test / Soru Üret")
                                 }
                             }
                         } else {
@@ -2947,7 +2947,7 @@ private fun SoruLabAiTestGeneratorDialog(
     val realCount = poolCheck.availableQuestionCount.coerceAtMost(12)
     val step1Text = remember(topic, level, realCount) {
         if (level == TopicTestLevel.IKIZ) {
-            "'${topic.name}' konusunda yanlış yaptığınız $realCount gerçek soru kaydı doğrulandı..."
+            "'${topic.name}' konusunda yanlış veya boş bıraktığınız $realCount gerçek soru kaydı doğrulandı..."
         } else {
             "Soru havuzundan '${topic.name}' konusu için $realCount gerçek soru seçiliyor..."
         }
@@ -3188,16 +3188,12 @@ fun DifficultyMeterBar(position: Float) {
         position < 0.72f -> 1
         else -> 2
     }
-    val fillColor = when (activeCategory) {
-        0 -> Color(0xFF15803D)
-        1 -> Color(0xFFE67E22)
+    val fillColor = when {
+        position < 0.36f -> Color(0xFF15803D)
+        position < 0.66f -> Color(0xFFE67E22)
         else -> Color(0xFFDC2626)
     }
-    val fillFraction = when (activeCategory) {
-        0 -> 0.24f
-        1 -> 0.62f
-        else -> 0.90f
-    }
+    val fillFraction = position.coerceIn(0.18f, 0.94f)
 
     Column(
         modifier = Modifier.width(136.dp),

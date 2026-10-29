@@ -251,6 +251,7 @@ class SoruLabViewModel(
     }
 
     private fun hydrateLocalSessionData(uid: String) {
+        _deletedTestIds.value = repository.loadCachedDeletedTestIds(uid)
         _customPublishers.value = repository.loadCustomPublishers().filter {
             it.customLogoPath.isNotBlank() &&
                 runCatching { java.io.File(it.customLogoPath).exists() }.getOrDefault(false)
@@ -436,11 +437,7 @@ class SoruLabViewModel(
                     val testId = "auto_pdf_${topic.id}_${safePubSlug}_odev_$odevNo"
 
                     val convertedQuestions = chunkRecords.mapIndexed { qIdx, custom ->
-                        val diff = when (custom.difficulty.lowercase()) {
-                            "kolay" -> DifficultyLevel.KOLAY
-                            "zor" -> DifficultyLevel.ZOR
-                            else -> DifficultyLevel.ORTA
-                        }
+                        val diff = custom.difficultyLevel5
                         val resolvedPub = SoruLabPublisherPresets.resolvePublisher(
                             custom.publisherTag,
                             _customPublishers.value
@@ -478,34 +475,38 @@ class SoruLabViewModel(
                     }
 
                     val avgWeight = convertedQuestions.map { it.difficulty.weight }.average().toFloat()
-                        .coerceIn(0.18f, 0.92f)
+                        .coerceIn(0.18f, 0.94f)
                     val dominantDiff = when {
-                        avgWeight < 0.36f -> DifficultyLevel.KOLAY
-                        avgWeight < 0.72f -> DifficultyLevel.ORTA
-                        else -> DifficultyLevel.ZOR
+                        avgWeight < 0.29f -> DifficultyLevel.KOLAY
+                        avgWeight < 0.50f -> DifficultyLevel.ORTA
+                        avgWeight < 0.67f -> DifficultyLevel.OSYM
+                        avgWeight < 0.85f -> DifficultyLevel.ZOR
+                        else -> DifficultyLevel.COK_ZOR
                     }
                     val mappedLevel = when (dominantDiff) {
                         DifficultyLevel.KOLAY -> TopicTestLevel.BASLANGIC
                         DifficultyLevel.ORTA -> TopicTestLevel.PEKISTIRME
                         DifficultyLevel.OSYM -> TopicTestLevel.OSYM
-                        DifficultyLevel.ZOR -> TopicTestLevel.DERECE
+                        DifficultyLevel.ZOR -> TopicTestLevel.GELISIYORUM
                         DifficultyLevel.COK_ZOR -> TopicTestLevel.DERECE
                     }
 
-                    autoTestsForTopic.add(
-                        YksTestItem(
-                            id = testId,
-                            topicId = topic.id,
-                            title = shortTitle,
-                            fullTitle = fullTitle,
-                            difficulty = dominantDiff,
-                            difficultyPosition = avgWeight,
-                            defaultCompleted = false,
-                            starRating = 0,
-                            level = mappedLevel,
-                            questions = convertedQuestions
+                    if (testId !in _deletedTestIds.value) {
+                        autoTestsForTopic.add(
+                            YksTestItem(
+                                id = testId,
+                                topicId = topic.id,
+                                title = shortTitle,
+                                fullTitle = fullTitle,
+                                difficulty = dominantDiff,
+                                difficultyPosition = avgWeight,
+                                defaultCompleted = false,
+                                starRating = 0,
+                                level = mappedLevel,
+                                questions = convertedQuestions
+                            )
                         )
-                    )
+                    }
                 }
             }
 
@@ -521,7 +522,11 @@ class SoruLabViewModel(
     fun getTestsForTopicAndLevel(topic: YksTopic, level: TopicTestLevel): List<YksTestItem> {
         val map = _generatedTopicTests.value
         val levelSpecific = map["${topic.id}_${level.name}"].orEmpty()
-        val autoPdfTests = map["${topic.id}_AUTO_PDF"].orEmpty()
+        val autoPdfTests = if (level == TopicTestLevel.IKIZ) {
+            emptyList()
+        } else {
+            map["${topic.id}_AUTO_PDF"].orEmpty()
+        }
         val deleted = _deletedTestIds.value
         return (autoPdfTests + levelSpecific)
             .filter { it.id !in deleted }
@@ -529,7 +534,8 @@ class SoruLabViewModel(
     }
 
     fun deleteTopicTest(topic: YksTopic, test: YksTestItem) {
-        _deletedTestIds.value = _deletedTestIds.value + test.id
+        val updatedDeleted = _deletedTestIds.value + test.id
+        _deletedTestIds.value = updatedDeleted
         val currentMap = _generatedTopicTests.value.toMutableMap()
         val key = "${topic.id}_${test.level.name}"
         if (currentMap.containsKey(key)) {
@@ -542,13 +548,29 @@ class SoruLabViewModel(
         _generatedTopicTests.value = currentMap
 
         val uid = effectiveUserId() ?: "device_yks_student_tr"
-        val allEntries = currentMap.flatMap { (_, list) ->
-            list.map { item ->
-                val num = item.id.substringAfterLast("_test_").toIntOrNull() ?: 1
-                Triple(item.topicId, item.level, num)
+        repository.saveCachedDeletedTestIds(uid, updatedDeleted)
+        val allEntries = currentMap.flatMap { (mapKey, list) ->
+            if (mapKey.endsWith("_AUTO_PDF")) {
+                emptyList()
+            } else {
+                list.map { item ->
+                    val num = item.id.substringAfterLast("_test_").toIntOrNull() ?: 1
+                    Triple(item.topicId, item.level, num)
+                }
             }
         }
         repository.saveCachedGeneratedTestKeys(uid, allEntries)
+
+        val cloudMatches = allCloudTestRecords.filter { it.testId == test.id && !it.isSolvedAttempt }
+        if (cloudMatches.isNotEmpty()) {
+            viewModelScope.launch {
+                cloudMatches.forEach { rec ->
+                    if (rec.id.isNotBlank()) {
+                        runCatching { repository.deleteTestResult(rec.id) }
+                    }
+                }
+            }
+        }
         showBanner("Test başarıyla silindi.")
     }
 
@@ -584,13 +606,14 @@ class SoruLabViewModel(
         persistCache: Boolean
     ) {
         val updatedMap = _generatedTopicTests.value.toMutableMap()
+        val deleted = _deletedTestIds.value
         var changed = false
         for ((topicId, level, testNumber) in entries) {
             val topic = allTopicsById[topicId] ?: continue
             val key = "${topic.id}_${level.name}"
             val currentList = updatedMap[key].orEmpty()
             val expectedTestId = "${topic.id}_${level.name.lowercase()}_test_$testNumber"
-            if (currentList.none { it.id == expectedTestId }) {
+            if (expectedTestId !in deleted && currentList.none { it.id == expectedTestId }) {
                 val realQuestions = collectRealPoolQuestionsForTopicAndLevel(topic, level)
                 if (realQuestions.isNotEmpty()) {
                     val shortTitle = "${level.displayTitle} Test-$testNumber"
@@ -624,10 +647,14 @@ class SoruLabViewModel(
         if (changed) {
             _generatedTopicTests.value = updatedMap
             if (persistCache) {
-                val allEntries = updatedMap.flatMap { (_, list) ->
-                    list.map { item ->
-                        val num = item.id.substringAfterLast("_test_").toIntOrNull() ?: 1
-                        Triple(item.topicId, item.level, num)
+                val allEntries = updatedMap.flatMap { (mapKey, list) ->
+                    if (mapKey.endsWith("_AUTO_PDF")) {
+                        emptyList()
+                    } else {
+                        list.map { item ->
+                            val num = item.id.substringAfterLast("_test_").toIntOrNull() ?: 1
+                            Triple(item.topicId, item.level, num)
+                        }
                     }
                 }
                 repository.saveCachedGeneratedTestKeys(uid, allEntries)
@@ -637,9 +664,8 @@ class SoruLabViewModel(
 
     /**
      * Collects ONLY real questions belonging to [topic] and [level] (0-hallucination policy):
-     * 1. For IKIZ level: only questions the user actually answered wrong in solved tests of this topic.
-     * 2. For standard levels: user's cropped/custom questions for this topic + real authored catalog questions
-     *    strictly matching this topic (e.g. `temel_kavramlar`), calibrated to the requested 6-level wheel category.
+     * 1. For IKIZ level: only questions the user actually answered wrong or left blank in solved tests of this topic.
+     * 2. For standard levels: user's cropped/custom questions for this topic calibrated to the requested 6-level wheel category.
      */
     private fun collectRealPoolQuestionsForTopicAndLevel(
         topic: YksTopic,
@@ -652,19 +678,29 @@ class SoruLabViewModel(
             val baseTopicQuestions = buildRealBaseQuestionsForTopic(topic, null)
             if (baseTopicQuestions.isEmpty()) return emptyList()
 
-            val wrongQuestionNumbers = mutableSetOf<Int>()
+            val allKnownTests = _generatedTopicTests.value.values.flatten()
+            val collectedTwinQuestions = mutableListOf<YksQuestion>()
+            val seenIdentities = mutableSetOf<String>()
+
             for (record in solvedInTopic) {
                 val answersMap = parseAnswersJson(record.answersMapJson).orEmpty()
-                for (q in baseTopicQuestions) {
+                val sourceQuestions = allKnownTests.firstOrNull { it.id == record.testId }?.questions
+                    ?: baseTopicQuestions
+
+                for (q in sourceQuestions) {
                     val chosen = answersMap[q.number]
-                    if (chosen != null && chosen != q.correctOption) {
-                        wrongQuestionNumbers.add(q.number)
+                    val isWrongOrBlank = chosen.isNullOrBlank() || chosen != q.correctOption
+                    if (isWrongOrBlank) {
+                        val identityKey = q.croppedImagePath.ifBlank { "${q.stemTop}|${q.number}" }
+                        if (seenIdentities.add(identityKey)) {
+                            collectedTwinQuestions.add(q)
+                        }
                     }
                 }
             }
-            if (wrongQuestionNumbers.isEmpty()) return emptyList()
-
-            return baseTopicQuestions.filter { it.number in wrongQuestionNumbers }
+            return collectedTwinQuestions.mapIndexed { idx, q ->
+                q.copy(number = idx + 1)
+            }
         }
 
         return buildRealBaseQuestionsForTopic(topic, level)
@@ -686,12 +722,13 @@ class SoruLabViewModel(
                 it.targetLevelName.equals(levelFilter.name, ignoreCase = true)
             }
             val difficultyMatches = topicPool.filter { cq ->
+                val diff5 = cq.difficultyLevel5
                 when (levelFilter) {
-                    TopicTestLevel.BASLANGIC -> cq.difficulty.equals("Kolay", true) || cq.difficulty.equals("Orta", true)
-                    TopicTestLevel.PEKISTIRME -> true
-                    TopicTestLevel.GELISIYORUM -> cq.difficulty.equals("Orta", true) || cq.difficulty.equals("Zor", true)
-                    TopicTestLevel.OSYM -> cq.difficulty.equals("Orta", true) || cq.difficulty.equals("Zor", true)
-                    TopicTestLevel.DERECE -> cq.difficulty.equals("Zor", true)
+                    TopicTestLevel.BASLANGIC -> diff5 == DifficultyLevel.KOLAY || diff5 == DifficultyLevel.ORTA
+                    TopicTestLevel.PEKISTIRME -> diff5 == DifficultyLevel.KOLAY || diff5 == DifficultyLevel.ORTA || diff5 == DifficultyLevel.OSYM
+                    TopicTestLevel.GELISIYORUM -> diff5 == DifficultyLevel.ORTA || diff5 == DifficultyLevel.OSYM || diff5 == DifficultyLevel.ZOR
+                    TopicTestLevel.OSYM -> diff5 == DifficultyLevel.OSYM || diff5 == DifficultyLevel.ORTA || diff5 == DifficultyLevel.ZOR
+                    TopicTestLevel.DERECE -> diff5 == DifficultyLevel.ZOR || diff5 == DifficultyLevel.COK_ZOR || diff5 == DifficultyLevel.OSYM
                     TopicTestLevel.IKIZ -> true
                 }
             }
@@ -699,11 +736,7 @@ class SoruLabViewModel(
         }
 
         val customMatches = filteredCustom.mapIndexed { index, custom ->
-            val diff = when (custom.difficulty.lowercase()) {
-                "kolay" -> DifficultyLevel.KOLAY
-                "zor" -> DifficultyLevel.ZOR
-                else -> DifficultyLevel.ORTA
-            }
+            val diff = custom.difficultyLevel5
             val resolvedPub = SoruLabPublisherPresets.resolvePublisher(
                 custom.publisherTag,
                 _customPublishers.value
@@ -760,7 +793,7 @@ class SoruLabViewModel(
                     canGenerate = false,
                     availableQuestionCount = 0,
                     reasonTitle = "Soru Bulunamadı",
-                    reasonMessage = "'${topic.name}' konusunda henüz yanlış yaptığınız bir soru kaydı bulunamadı. İkiz test yalnızca çözdüğünüz testlerdeki gerçek yanlışlarınızdan oluşturulur."
+                    reasonMessage = "'${topic.name}' konusunda henüz yanlış yaptığınız veya boş bıraktığınız bir soru kaydı bulunamadı. İkiz test yalnızca çözdüğünüz testlerdeki gerçek yanlış ve boş sorularınızdan oluşturulur."
                 )
             }
             if (existingTestsForLevel.isNotEmpty() && existingTestsForLevel.last().questions.size >= realCandidates.size) {
@@ -768,14 +801,14 @@ class SoruLabViewModel(
                     canGenerate = false,
                     availableQuestionCount = 0,
                     reasonTitle = "Yeni İkiz Soru Bulunamadı",
-                    reasonMessage = "'${topic.name}' konusundaki mevcut yanlış sorularınız için İkiz test zaten oluşturuldu. Yeni yanlış sorular tespit edildiğinde yeni İkiz test oluşturabilirsiniz."
+                    reasonMessage = "'${topic.name}' konusundaki mevcut yanlış ve boş sorularınız için İkiz test zaten oluşturuldu. Yeni yanlış veya boş sorular tespit edildiğinde yeni İkiz test oluşturabilirsiniz."
                 )
             }
             return PoolAvailabilityCheck(
                 canGenerate = true,
                 availableQuestionCount = realCandidates.size,
                 reasonTitle = "İkiz Sorular Hazır",
-                reasonMessage = "Bu konuda yanlış yaptığınız ${realCandidates.size} gerçek sorudan İkiz Test oluşturuluyor."
+                reasonMessage = "Bu konuda yanlış yaptığınız veya boş bıraktığınız ${realCandidates.size} gerçek sorudan İkiz Test oluşturuluyor."
             )
         }
 
@@ -1029,11 +1062,7 @@ class SoruLabViewModel(
             }
         } ?: run {
             val resolvedPub = SoruLabPublisherPresets.resolvePublisher(record.publisherTag, _customPublishers.value)
-            val diffLevel = when (record.difficulty) {
-                "Kolay" -> DifficultyLevel.KOLAY
-                "Zor" -> DifficultyLevel.ZOR
-                else -> DifficultyLevel.ORTA
-            }
+            val diffLevel = record.difficultyLevel5
             val hasCroppedImg = record.croppedImagePath.isNotBlank()
             val fallbackQuestion = YksQuestion(
                 id = "single_${record.id}",
@@ -1118,13 +1147,7 @@ class SoruLabViewModel(
 
         val testQuestions = effectiveRecords.mapIndexed { idx, record ->
             val resolvedPub = SoruLabPublisherPresets.resolvePublisher(record.publisherTag, _customPublishers.value)
-            val diffLevel = when (record.difficulty) {
-                "Kolay" -> DifficultyLevel.KOLAY
-                "Zor" -> DifficultyLevel.ZOR
-                "Çok Zor" -> DifficultyLevel.COK_ZOR
-                "ÖSYM" -> DifficultyLevel.OSYM
-                else -> DifficultyLevel.ORTA
-            }
+            val diffLevel = record.difficultyLevel5
             val hasCroppedImg = record.croppedImagePath.isNotBlank()
             YksQuestion(
                 id = "book_${record.id}",
@@ -1155,6 +1178,14 @@ class SoruLabViewModel(
             )
         }
 
+        val avgBookWeight = testQuestions.map { it.difficulty.weight }.average().toFloat().coerceIn(0.18f, 0.94f)
+        val dominantBookDiff = when {
+            avgBookWeight < 0.29f -> DifficultyLevel.KOLAY
+            avgBookWeight < 0.50f -> DifficultyLevel.ORTA
+            avgBookWeight < 0.67f -> DifficultyLevel.OSYM
+            avgBookWeight < 0.85f -> DifficultyLevel.ZOR
+            else -> DifficultyLevel.COK_ZOR
+        }
         val baseTitle = bookTitle.ifBlank { firstRecord.publisherTag }
         val cleanTitle = if (questionsPerTest > 0) {
             "$baseTitle - Test ${selectedChunkIndex + 1}"
@@ -1166,8 +1197,8 @@ class SoruLabViewModel(
             topicId = matchedTopic.id,
             title = cleanTitle.take(28),
             fullTitle = cleanTitle,
-            difficulty = DifficultyLevel.ORTA,
-            difficultyPosition = DifficultyLevel.ORTA.weight,
+            difficulty = dominantBookDiff,
+            difficultyPosition = avgBookWeight,
             defaultCompleted = false,
             starRating = 0,
             level = TopicTestLevel.OSYM,
@@ -1397,11 +1428,23 @@ class SoruLabViewModel(
         if (tool == DrawingTool.ERASER) {
             val eraseRadius = 42f
             val remaining = currentList.filter { stroke ->
-                stroke.points.none { pt ->
+                stroke.isEraser || stroke.points.none { pt ->
                     points.any { erasePt -> (pt - erasePt).getDistance() < eraseRadius }
                 }
             }
-            val updatedStrokes = _boardStrokes.value + (key to remaining)
+            val finalStrokes = if (remaining.any { !it.isEraser }) {
+                val eraserStroke = DrawStroke(
+                    points = points,
+                    colorHex = 0x00000000L,
+                    strokeWidthPx = 38f,
+                    isSmartShape = false,
+                    isEraser = true
+                )
+                remaining + eraserStroke
+            } else {
+                emptyList()
+            }
+            val updatedStrokes = _boardStrokes.value + (key to finalStrokes)
             _boardStrokes.value = updatedStrokes
             repository.saveCachedBoardStrokes(effectiveUserId() ?: "device_yks_student_tr", updatedStrokes)
             return
@@ -1435,13 +1478,12 @@ class SoruLabViewModel(
             points
         }
 
-        val isEraser = tool == DrawingTool.ERASER
         val newStroke = DrawStroke(
             points = finalPoints,
-            colorHex = if (isEraser) 0x00000000L else _selectedPenColorHex.value,
-            strokeWidthPx = if (isEraser) 38f else widthPx,
+            colorHex = _selectedPenColorHex.value,
+            strokeWidthPx = widthPx,
             isSmartShape = tool == DrawingTool.SMART_SHAPE,
-            isEraser = isEraser
+            isEraser = false
         )
         val updatedStrokes = _boardStrokes.value + (key to (currentList + newStroke))
         _boardStrokes.value = updatedStrokes
@@ -1540,8 +1582,15 @@ class SoruLabViewModel(
             answerKeyVerified = answerKeyVerified,
             questionNumberInBook = questionNumberInBook,
             bookOrTestName = bookOrTestName,
-            bookCoverPath = bookCoverPath
+            bookCoverPath = bookCoverPath,
+            fiveTierDifficulty = difficulty
         )
+
+        val firestoreCompatDiff = when {
+            difficulty.equals("Kolay", ignoreCase = true) -> "Kolay"
+            difficulty.equals("Zor", ignoreCase = true) || difficulty.equals("Çok Zor", ignoreCase = true) -> "Zor"
+            else -> "Orta"
+        }
 
         val record = CustomQuestionRecord(
             id = "cq_${System.currentTimeMillis()}_${(100..999).random()}",
@@ -1551,7 +1600,7 @@ class SoruLabViewModel(
             subjectName = resolvedSubjectName,
             topicId = topicId,
             topicName = resolvedTopicName,
-            difficulty = difficulty.takeIf { it in listOf("Kolay", "Orta", "Zor") } ?: "Orta",
+            difficulty = firestoreCompatDiff,
             correctOption = correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "D",
             questionText = questionText.ifBlank { "PDF'ten kırpılan YKS sorusu" }.take(1800),
             publisherTag = publisherTag.ifBlank { resolvedPublisher.name }.take(100),
@@ -1625,8 +1674,15 @@ class SoruLabViewModel(
                 answerKeyVerified = item.answerKeyMatched,
                 questionNumberInBook = item.questionNumber,
                 bookOrTestName = bookOrTestName,
-                bookCoverPath = effectiveCover
+                bookCoverPath = effectiveCover,
+                fiveTierDifficulty = item.difficulty
             )
+
+            val firestoreCompatDiff = when {
+                item.difficulty.equals("Kolay", ignoreCase = true) -> "Kolay"
+                item.difficulty.equals("Zor", ignoreCase = true) || item.difficulty.equals("Çok Zor", ignoreCase = true) -> "Zor"
+                else -> "Orta"
+            }
 
             CustomQuestionRecord(
                 id = "cq_${System.currentTimeMillis()}_${idx}_${(100..999).random()}",
@@ -1636,7 +1692,7 @@ class SoruLabViewModel(
                 subjectName = resolvedSubjectName,
                 topicId = topicId,
                 topicName = resolvedTopicName,
-                difficulty = item.difficulty.takeIf { it in listOf("Kolay", "Orta", "Zor") } ?: "Orta",
+                difficulty = firestoreCompatDiff,
                 correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "C",
                 questionText = item.questionText.ifBlank { "$resolvedSubjectName • $resolvedTopicName" }.take(1800),
                 publisherTag = finalPubName,
@@ -1679,7 +1735,8 @@ class SoruLabViewModel(
                 questionNumberInBook = target.questionNumberInBook,
                 bookOrTestName = target.bookOrTestName,
                 bookCoverPath = target.bookCoverPath,
-                isInKumbara = true
+                isInKumbara = true,
+                fiveTierDifficulty = target.effectiveDifficultyLabel
             )
             val updatedRecord = target.copy(aiSolutionSummary = updatedPacked)
             val mutable = currentQuestions.toMutableList()

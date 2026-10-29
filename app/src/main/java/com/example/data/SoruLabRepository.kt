@@ -148,6 +148,7 @@ class SoruLabRepository(
             prefs.all.keys.forEach { key ->
                 if (key.startsWith("solved_results_") ||
                     key.startsWith("gen_tests_") ||
+                    key.startsWith("deleted_tests_") ||
                     key.startsWith("custom_questions_") ||
                     key.startsWith("board_strokes_")
                 ) {
@@ -157,6 +158,8 @@ class SoruLabRepository(
             editor.remove("solved_results_$userId")
             editor.remove("gen_tests_$userId")
             editor.remove("gen_tests_global_device")
+            editor.remove("deleted_tests_$userId")
+            editor.remove("deleted_tests_global_device")
             editor.remove("custom_questions_$userId")
             editor.remove("custom_questions_global_device")
             editor.remove("board_strokes_$userId")
@@ -268,6 +271,42 @@ class SoruLabRepository(
             prefs.edit()
                 .putString("gen_tests_$userId", jsonStr)
                 .putString("gen_tests_global_device", jsonStr)
+                .apply()
+        } catch (_: Exception) {
+        }
+    }
+
+    fun loadCachedDeletedTestIds(userId: String): Set<String> {
+        val ctx = appContext ?: return emptySet()
+        return try {
+            val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+            val raw = prefs.getString("deleted_tests_$userId", null)
+                ?: prefs.getString("deleted_tests_global_device", null)
+                ?: return emptySet()
+            val arr = JSONArray(raw)
+            val result = mutableSetOf<String>()
+            for (i in 0 until arr.length()) {
+                val id = arr.optString(i)
+                if (id.isNotBlank()) {
+                    result.add(id)
+                }
+            }
+            result
+        } catch (_: Exception) {
+            emptySet()
+        }
+    }
+
+    fun saveCachedDeletedTestIds(userId: String, deletedIds: Set<String>) {
+        val ctx = appContext ?: return
+        try {
+            val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+            val arr = JSONArray()
+            deletedIds.filter { it.isNotBlank() }.forEach { arr.put(it) }
+            val jsonStr = arr.toString()
+            prefs.edit()
+                .putString("deleted_tests_$userId", jsonStr)
+                .putString("deleted_tests_global_device", jsonStr)
                 .apply()
         } catch (_: Exception) {
         }

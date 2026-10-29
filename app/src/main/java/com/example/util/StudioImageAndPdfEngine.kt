@@ -911,8 +911,18 @@ object StudioImageAndPdfEngine {
             "tüm hakları saklıdır", "reklam", "tanıtım", "diğer yayınlarımız",
             "kampanya", "notlarım"
         )
+        val subjectTopics = primarySubjectObj.topics.ifEmpty {
+            com.example.data.SoruLabCatalog.allSubjects.first().topics
+        }
+
         for (pageIdx in 0 until totalPages) {
-            val streamSnippet = decodedStreamChunks.getOrNull(pageIdx).orEmpty()
+            // Map page index proportionally to decodedStreamChunks if stream count differs from page count
+            val mappedStreamIdx = if (decodedStreamChunks.isNotEmpty()) {
+                ((pageIdx.toFloat() / totalPages.coerceAtLeast(1).toFloat()) * decodedStreamChunks.size)
+                    .toInt()
+                    .coerceIn(0, decodedStreamChunks.lastIndex)
+            } else -1
+            val streamSnippet = if (mappedStreamIdx >= 0) decodedStreamChunks[mappedStreamIdx] else ""
             val lowerSnippet = streamSnippet.lowercase()
             val hasQuestionOptionPattern = lowerSnippet.contains("a)") ||
                 lowerSnippet.contains("b)") ||
@@ -925,16 +935,31 @@ object StudioImageAndPdfEngine {
                 skipPageKeywords.any { kw -> lowerSnippet.contains(kw) }
             val isOuterCoverOnly = (totalPages >= 4 && pageIdx == 0 && !hasQuestionOptionPattern) || isNonQuestionMetaPage
 
-            val (resolvedSubjForPage, resolvedTopicForPage) = if (fileExplicitlyNamesTopic || streamSnippet.length < 16) {
-                detectedSubject to primaryTopicObj.name
+            // Curriculum-proportional fallback topic for multi-topic books when raw PDF streams are image/CID-encoded
+            val proportionalTopicForPage = if (totalPages >= 8 && !fileExplicitlyNamesTopic) {
+                val contentStart = if (totalPages >= 6) 1 else 0
+                val effectivePage = (pageIdx - contentStart).coerceAtLeast(0)
+                val effectiveTotal = (totalPages - contentStart).coerceAtLeast(1)
+                val topicIdx = ((effectivePage.toFloat() / effectiveTotal.toFloat()) * subjectTopics.size)
+                    .toInt()
+                    .coerceIn(0, subjectTopics.lastIndex)
+                subjectTopics[topicIdx]
             } else {
+                primaryTopicObj
+            }
+
+            val (resolvedSubjForPage, resolvedTopicForPage) = if (fileExplicitlyNamesTopic) {
+                detectedSubject to primaryTopicObj.name
+            } else if (streamSnippet.length >= 16) {
                 val (matchedPageSubj, matchedPageTopic) = com.example.data.SoruLabCatalog.matchBestTopic(
                     examTypeHint = examType,
                     subjectNameHint = detectedSubject,
                     topicOrQuestionText = streamSnippet,
-                    fallbackTopicName = primaryTopicName
+                    fallbackTopicName = proportionalTopicForPage.name
                 )
                 matchedPageSubj.name to matchedPageTopic.name
+            } else {
+                detectedSubject to proportionalTopicForPage.name
             }
 
             val classifiedDiff = com.example.data.SoruLabCatalog.classifyDifficulty5FromText(
@@ -1185,43 +1210,63 @@ object StudioImageAndPdfEngine {
             return emptyList()
         }
 
-        // MARJ VE KENAR TEMİZLİĞİ (MARGIN FILTERING):
-        // Sayfanın üst %10'luk kısmını (test başlıkları, üst şeritler) ve alt %10'luk kısmını
-        // (sayfa numaraları, alttaki "1-A 2-C..." cevap anahtarı şeritleri) kırpma alanından kesin olarak hariç tut!
-        var bodyTop = (height * 0.10f).roundToInt().coerceIn(32, height / 4)
-        var bodyBottom = (height * 0.90f).roundToInt().coerceIn(bodyTop + 200, height - 32)
+        // AKILLI MARJ VE BAŞLIK/CEVAP ANAHTARI TEMİZLİĞİ:
+        // Üstteki test başlığı şeritlerini ve alttaki sayfa no / cevap anahtarı şeritlerini ("1-A 2-C...")
+        // temizlerken, ilk sorunun üst satırlarını veya son sorunun A-E şıklarını ASLA kesmez!
+        var bodyTop = (height * 0.055f).roundToInt().coerceIn(24, height / 4)
+        var bodyBottom = (height * 0.945f).roundToInt().coerceIn(bodyTop + 200, height - 24)
 
-        // Check if there is any remaining top header rule just below 10%..12% separated by whitespace
-        val headerProbeLimit = (height * 0.125f).roundToInt().coerceAtMost(height / 4)
-        val probeLeft = (width * 0.07f).roundToInt()
-        val probeRight = (width * 0.93f).roundToInt()
+        val headerProbeLimit = (height * 0.12f).roundToInt().coerceAtMost(height / 4)
+        val probeLeft = (width * 0.055f).roundToInt()
+        val probeRight = (width * 0.945f).roundToInt()
         val probeSpan = (probeRight - probeLeft).coerceAtLeast(1)
-        var sawTopHeaderInk = false
-        for (y in bodyTop..headerProbeLimit) {
-            var rInk = 0
+        val sampledColsTop = (probeSpan / 3).coerceAtLeast(1)
+
+        // Detect top header banner or full-width title bar followed by whitespace gap in top 5.5%..12%
+        var lastHeaderBannerY = -1
+        for (y in (height * 0.03f).roundToInt()..headerProbeLimit) {
             var colored = 0
             val rOff = y * width
             for (x in probeLeft..probeRight step 3) {
                 val px = pixels[rOff + x]
-                if (isInkPixel(px)) rInk++
                 val r = (px shr 16) and 0xFF
                 val g = (px shr 8) and 0xFF
                 val b = px and 0xFF
                 val maxCh = max(r, max(g, b))
                 val minCh = min(r, min(g, b))
-                if (maxCh - minCh >= 40) colored++
+                if (maxCh - minCh >= 42) colored++
             }
-            val sampled = (probeSpan / 3).coerceAtLeast(1)
-            if (rInk > sampled * 0.025f) {
-                sawTopHeaderInk = true
+            if (colored > sampledColsTop * 0.34f) {
+                lastHeaderBannerY = y
             }
-            if (sawTopHeaderInk && colored > sampled * 0.28f) {
-                bodyTop = (y + (height * 0.008f).roundToInt()).coerceAtMost(headerProbeLimit)
+        }
+        if (lastHeaderBannerY != -1) {
+            bodyTop = (lastHeaderBannerY + (height * 0.008f).roundToInt()).coerceAtMost(headerProbeLimit)
+        } else {
+            // Look for whitespace gap below top running header text (within 4%..9.5%)
+            var sawTopInk = false
+            var zeroRunTop = 0
+            for (y in (height * 0.035f).roundToInt()..(height * 0.095f).roundToInt()) {
+                var rInk = 0
+                val rOff = y * width
+                for (x in probeLeft..probeRight step 3) {
+                    if (isInkPixel(pixels[rOff + x])) rInk++
+                }
+                if (rInk > sampledColsTop * 0.015f) {
+                    sawTopInk = true
+                    zeroRunTop = 0
+                } else if (sawTopInk) {
+                    zeroRunTop++
+                    if (zeroRunTop >= (height * 0.008f).roundToInt().coerceAtLeast(8)) {
+                        bodyTop = y
+                        break
+                    }
+                }
             }
         }
 
-        // Check bottom 88%..90% for any residual thin footer / answer-key strip separated by whitespace
-        val footerProbeStart = (height * 0.88f).roundToInt()
+        // Check bottom 89%..96% for bottom page number / "1-A 2-C..." answer key strip separated by whitespace
+        val footerProbeStart = (height * 0.89f).roundToInt()
         var cleanGapY = -1
         var zeroRun = 0
         for (y in footerProbeStart..bodyBottom) {
@@ -1232,14 +1277,14 @@ object StudioImageAndPdfEngine {
             }
             if (rInk <= 2) {
                 zeroRun++
-                if (zeroRun >= (height * 0.010f).roundToInt().coerceAtLeast(10) && cleanGapY == -1) {
+                if (zeroRun >= (height * 0.011f).roundToInt().coerceAtLeast(10)) {
                     cleanGapY = y - zeroRun / 2
                 }
             } else {
                 zeroRun = 0
             }
         }
-        if (cleanGapY != -1 && (bodyBottom - cleanGapY) <= (height * 0.032f).roundToInt()) {
+        if (cleanGapY != -1 && (bodyBottom - cleanGapY) <= (height * 0.045f).roundToInt()) {
             bodyBottom = cleanGapY
         }
 
@@ -1719,17 +1764,48 @@ object StudioImageAndPdfEngine {
             activeRow[i] = (c0 >= minInkPerActiveRow) || ((c0 + cPrev + cNext) >= minInkPerActiveRow * 2)
         }
 
-        // Bridge internal question gaps (line spacing, gap between diagram and stem, gap before A-E options)
-        // Use 2.0% of page height so internal spacing stays connected without merging two stacked questions!
-        val maxInternalGap = (pageHeight * 0.020f).roundToInt().coerceIn(20, 42)
+        // Bridge internal question gaps (line spacing, gap between diagram/graph and stem, gap before A-E options):
+        // 1. Always bridge gaps <= 2.3% of page height.
+        // 2. Also bridge medium gaps (up to 3.6% of page height) UNLESS the block immediately above the gap
+        //    already ends with a horizontal A-B-C-D-E option row (>= 3 option buckets active).
+        val baseInternalGap = (pageHeight * 0.023f).roundToInt().coerceIn(22, 46)
+        val extendedInternalGap = (pageHeight * 0.036f).roundToInt().coerceIn(34, 72)
+        val bucketWForGap = (colW / 5).coerceAtLeast(1)
+
         var i = 0
         while (i < bodyH) {
             if (!activeRow[i]) {
                 var gapEnd = i
                 while (gapEnd < bodyH && !activeRow[gapEnd]) gapEnd++
                 val gapLen = gapEnd - i
-                if (i > 0 && gapEnd < bodyH && gapLen <= maxInternalGap) {
-                    for (k in i until gapEnd) activeRow[k] = true
+                if (i > 0 && gapEnd < bodyH) {
+                    if (gapLen <= baseInternalGap) {
+                        for (k in i until gapEnd) activeRow[k] = true
+                    } else if (gapLen <= extendedInternalGap) {
+                        // Check if the 58px strip right above this gap has >= 3 horizontal option buckets
+                        val optBottom = (bodyTop + i - 1).coerceAtLeast(bodyTop)
+                        val optTop = (optBottom - 58).coerceAtLeast(bodyTop)
+                        var bucketsAboveGap = 0
+                        for (b in 0 until 5) {
+                            val bx0 = colLeft + b * bucketWForGap
+                            val bx1 = (bx0 + bucketWForGap).coerceAtMost(colRight)
+                            var bInk = 0
+                            var y = optTop
+                            while (y <= optBottom) {
+                                val rOff = y * pageWidth
+                                var x = bx0
+                                while (x < bx1) {
+                                    if (isInkPixel(pixels[rOff + x])) bInk++
+                                    x += 2
+                                }
+                                y += 2
+                            }
+                            if (bInk >= 4) bucketsAboveGap++
+                        }
+                        if (bucketsAboveGap < 3) {
+                            for (k in i until gapEnd) activeRow[k] = true
+                        }
+                    }
                 }
                 i = gapEnd
             } else {
@@ -1754,14 +1830,14 @@ object StudioImageAndPdfEngine {
             }
         }
 
-        // Recursively split any tall band (> 39% of page height) if it contains 2 or 3 stacked questions
+        // Recursively split any tall band (> 43% of page height) if it contains 2 or 3 stacked questions
         val finalBands = mutableListOf<Pair<Int, Int>>()
-        val minSingleQHeight = (pageHeight * 0.135f).roundToInt()
-        val minValleyGap = (pageHeight * 0.0085f).roundToInt().coerceAtLeast(8)
+        val minSingleQHeight = (pageHeight * 0.145f).roundToInt()
+        val minValleyGap = (pageHeight * 0.009f).roundToInt().coerceAtLeast(8)
 
         fun splitBandRecursively(bTop: Int, bBottom: Int, depth: Int) {
             val bH = bBottom - bTop + 1
-            if (depth >= 3 || bH <= (pageHeight * 0.39f).roundToInt()) {
+            if (depth >= 3 || bH <= (pageHeight * 0.43f).roundToInt()) {
                 finalBands.add(bTop to bBottom)
                 return
             }
@@ -1853,7 +1929,7 @@ object StudioImageAndPdfEngine {
                         if (bInk >= 4) bucketsAbove++
                     }
                     // Score combines whitespace valley height + bonus if options sit right above the valley
-                    val optionBonus = if (bucketsAbove >= 3) 28 else if (bucketsAbove == 2) 12 else 0
+                    val optionBonus = if (bucketsAbove >= 3) 34 else if (bucketsAbove == 2) 14 else 0
                     val score = runLen + optionBonus
                     if (score > bestValleyScore) {
                         bestValleyScore = score
@@ -1869,9 +1945,9 @@ object StudioImageAndPdfEngine {
     }
 
     /**
-     * Automatically strips any top colored test banner ("TÜMEVARIM - III Test 02") AND whitens the old
-     * PDF question number (`1.`, `4.`, `8.`, `12.`) in the top-left marginalia of a cropped question
-     * before running Adaptive Contrast & Background Whitening.
+     * Strips only genuine full-width saturated colored test banner bars at the very top edge
+     * (NEVER dark ink or diagram boxes!) and applies Adaptive Contrast & Background Whitening (#FFFFFF)
+     * without cutting or erasing any part of the question text, formulas, or figures.
      */
     private fun whitenOldQuestionNumberAndEnhance(sourceCrop: Bitmap): Bitmap {
         val w = sourceCrop.width
@@ -1884,13 +1960,13 @@ object StudioImageAndPdfEngine {
             sourceCrop.copy(Bitmap.Config.ARGB_8888, true)
         }
 
-        // 1. Check top 16% of crop for any residual horizontal colored banner bar (e.g. green/blue "TÜMEVARIM - III Test 02")
-        val topBannerScanH = (h * 0.16f).roundToInt().coerceIn(16, 95)
+        // Only check top 9% (max 42px) for a full-width saturated colored header bar (>= 72% saturated color)
+        val topBannerScanH = (h * 0.09f).roundToInt().coerceIn(10, 42)
         val topPixels = IntArray(w * topBannerScanH)
         mutableCrop.getPixels(topPixels, 0, w, 0, 0, w, topBannerScanH)
         var lastBannerRow = -1
         for (y in 0 until topBannerScanH) {
-            var coloredCount = 0
+            var saturatedCount = 0
             val rOff = y * w
             for (x in 0 until w step 2) {
                 val c = topPixels[rOff + x]
@@ -1900,65 +1976,18 @@ object StudioImageAndPdfEngine {
                 val maxCh = max(r, max(g, b))
                 val minCh = min(r, min(g, b))
                 val lum = (r * 77 + g * 150 + b * 29) shr 8
-                if ((maxCh - minCh >= 36 && lum in 40..225) || lum < 105) {
-                    coloredCount++
+                if (maxCh - minCh >= 48 && lum in 45..220) {
+                    saturatedCount++
                 }
             }
-            if (coloredCount > (w / 2) * 0.45f) {
+            if (saturatedCount > (w / 2) * 0.72f) {
                 lastBannerRow = y
             }
         }
-        if (lastBannerRow >= 6) {
-            val clearH = (lastBannerRow + 6).coerceAtMost(topBannerScanH)
+        if (lastBannerRow in 4..(topBannerScanH - 2)) {
+            val clearH = (lastBannerRow + 3).coerceAtMost(topBannerScanH)
             val whiteBannerFill = IntArray(w * clearH) { -0x1 }
             mutableCrop.setPixels(whiteBannerFill, 0, w, 0, 0, w, clearH)
-        }
-
-        // 2. Inspect top-left corner (leftmost 11% width, top 18% height) for an isolated marginal question number ("1.", "4.", "8.")
-        val maxNumZoneW = (w * 0.11f).roundToInt().coerceIn(20, 76)
-        val maxNumZoneH = (h * 0.18f).roundToInt().coerceIn(24, 92)
-        val zonePixels = IntArray(maxNumZoneW * maxNumZoneH)
-        mutableCrop.getPixels(zonePixels, 0, maxNumZoneW, 0, 0, maxNumZoneW, maxNumZoneH)
-
-        // Look for a vertical white gap column separating a small left-margin number (x < gapX) from the question stem
-        val colHasInk = BooleanArray(maxNumZoneW)
-        for (x in 0 until maxNumZoneW) {
-            var darkCount = 0
-            for (y in 0 until maxNumZoneH) {
-                val c = zonePixels[y * maxNumZoneW + x]
-                val r = (c shr 16) and 0xFF
-                val g = (c shr 8) and 0xFF
-                val b = c and 0xFF
-                val lum = (r * 77 + g * 150 + b * 29) shr 8
-                val maxCh = max(r, max(g, b))
-                val minCh = min(r, min(g, b))
-                if (lum < 205 || (maxCh - minCh >= 38 && lum < 235)) darkCount++
-            }
-            colHasInk[x] = darkCount >= 2
-        }
-
-        // Find first ink blob (the question number) followed by at least 3 empty white columns
-        var sawNumberInk = false
-        var cutX = -1
-        var x = 0
-        while (x < maxNumZoneW - 3) {
-            if (colHasInk[x]) {
-                sawNumberInk = true
-                x++
-            } else if (sawNumberInk) {
-                if (!colHasInk[x + 1] && !colHasInk[x + 2]) {
-                    cutX = x + 1
-                    break
-                }
-                x++
-            } else {
-                x++
-            }
-        }
-
-        if (cutX in 5..(maxNumZoneW - 2)) {
-            val whiteFill = IntArray(cutX * maxNumZoneH) { -0x1 }
-            mutableCrop.setPixels(whiteFill, 0, cutX, 0, 0, cutX, maxNumZoneH)
         }
 
         val whitened = applyAdaptiveContrastAndBackgroundWhitening(mutableCrop)

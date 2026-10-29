@@ -407,6 +407,10 @@ class SoruLabViewModel(
      * Runs 100% off the UI thread on [Dispatchers.Default] with O(1) indexed topic lookup
      * so even 10,000+ questions across 50 books sync with zero frame drops.
      */
+    /**
+     * Updates topic question pool counts when PDF questions are added or loaded,
+     * WITHOUT pre-creating automatic tests in Soru Pratiği before the user clicks "Test Oluştur".
+     */
     private fun syncPdfPoolToPracticeTests(poolQuestions: List<CustomQuestionRecord>) {
         poolSyncJob?.cancel()
         if (poolQuestions.isEmpty()) {
@@ -417,10 +421,7 @@ class SoruLabViewModel(
 
         poolSyncJob = viewModelScope.launch(Dispatchers.Default) {
             val baseMap = _generatedTopicTests.value
-            val deleted = _deletedTestIds.value
-            val customPubs = _customPublishers.value
-
-            val updatedMap = HashMap<String, List<YksTestItem>>(baseMap.size + 64)
+            val updatedMap = HashMap<String, List<YksTestItem>>(baseMap.size)
             for ((k, v) in baseMap) {
                 if (!k.endsWith("_AUTO_PDF")) {
                     val remaining = v.filterNot { it.id.startsWith("auto_pdf_") }
@@ -430,141 +431,10 @@ class SoruLabViewModel(
                 }
             }
 
-            // O(1) fast topic resolution cache so thousands of questions group in <3ms
-            val resolutionCache = HashMap<String, String>(128)
-            val groupedByTopic = HashMap<String, MutableList<CustomQuestionRecord>>(64)
-
-            for (cq in poolQuestions) {
-                val cacheKey = "${cq.subjectId}|${cq.topicId}|${cq.topicName}"
-                val resolvedTopicId = resolutionCache.getOrPut(cacheKey) {
-                    SoruLabCatalog.resolveTopicFast(cq.topicId, cq.topicName)?.id ?: run {
-                        val matchedSubject = SoruLabCatalog.allSubjects.firstOrNull {
-                            it.id.equals(cq.subjectId, ignoreCase = true) ||
-                                it.name.equals(cq.subjectName, ignoreCase = true)
-                        } ?: SoruLabCatalog.allSubjects.first()
-                        matchedSubject.topics.first().id
-                    }
-                }
-                groupedByTopic.getOrPut(resolvedTopicId) { ArrayList() }.add(cq)
-            }
-
-            val publisherMemo = HashMap<String, YksPublisherInfo>(32)
-
-            for ((topicId, topicQuestions) in groupedByTopic) {
-                val topic = allTopicsById[topicId]
-                    ?: SoruLabCatalog.allTopicsFlat.firstOrNull { it.id.equals(topicId, ignoreCase = true) }
-                    ?: SoruLabCatalog.allSubjects.first().topics.first()
-
-                val byPublisher = topicQuestions
-                    .sortedBy { if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE }
-                    .groupBy { it.publisherTag.trim().ifBlank { "3D Yayınları" } }
-
-                val autoTestsForTopic = ArrayList<YksTestItem>()
-
-                for ((pubName, pubQuestions) in byPublisher) {
-                    val resolvedPub = publisherMemo.getOrPut(pubName) {
-                        SoruLabPublisherPresets.resolvePublisher(pubName, customPubs)
-                    }
-                    val safePubSlug = pubName.lowercase()
-                        .replace(Regex("[^a-z0-9]"), "_")
-                        .take(16)
-                        .ifBlank { "yayin" }
-
-                    val chunks = pubQuestions.chunked(12)
-                    chunks.forEachIndexed { chunkIdx, chunkRecords ->
-                        val odevNo = chunkIdx + 1
-                        val testId = "auto_pdf_${topic.id}_${safePubSlug}_odev_$odevNo"
-                        if (testId !in deleted) {
-                            val shortTitle = "$pubName - ${topic.name} Ödev $odevNo"
-                            val bookTag = chunkRecords.firstOrNull { it.bookOrTestName.isNotBlank() }?.bookOrTestName.orEmpty()
-                            val fullTitle = if (bookTag.isNotBlank() && !bookTag.equals(pubName, ignoreCase = true)) {
-                                "$pubName • $bookTag - ${topic.name} Ödev $odevNo"
-                            } else {
-                                "$pubName - ${topic.name} Ödev $odevNo"
-                            }
-
-                            var weightSum = 0f
-                            val convertedQuestions = ArrayList<YksQuestion>(chunkRecords.size)
-                            for (qIdx in chunkRecords.indices) {
-                                val custom = chunkRecords[qIdx]
-                                val diff = custom.difficultyLevel5
-                                weightSum += diff.weight
-                                val logoUri = custom.publisherLogoUri.ifBlank { resolvedPub.customLogoPath }
-                                val hasCroppedStemImage = custom.croppedImagePath.isNotBlank()
-
-                                convertedQuestions.add(
-                                    YksQuestion(
-                                        id = "custom_${custom.id.ifBlank { "${testId}_q${qIdx + 1}" }}",
-                                        number = qIdx + 1,
-                                        badgeTitle = shortTitle.uppercase(),
-                                        topicHeader = topic.name.uppercase(),
-                                        publisherStamp = pubName.uppercase(),
-                                        publisherName = pubName,
-                                        publisherLogoUri = logoUri,
-                                        croppedImagePath = custom.croppedImagePath,
-                                        answerKeyVerified = custom.answerKeyVerified,
-                                        stemTop = if (hasCroppedStemImage) "" else custom.questionText,
-                                        bulletsOrSteps = emptyList(),
-                                        stemBottom = if (hasCroppedStemImage) "" else "Buna göre doğru seçenek aşağıdakilerden hangisidir?",
-                                        options = mapOf(
-                                            "A" to "A",
-                                            "B" to "B",
-                                            "C" to "C",
-                                            "D" to "D",
-                                            "E" to "E"
-                                        ),
-                                        correctOption = custom.correctOption.takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "C",
-                                        difficulty = diff,
-                                        visualType = QuestionVisualType.NONE,
-                                        stepByStepSolution = custom.cleanSolutionSummary.ifBlank {
-                                            "Kitap cevap anahtarına göre doğru yanıt ${custom.correctOption} seçeneğidir."
-                                        }
-                                    )
-                                )
-                            }
-
-                            val avgWeight = (weightSum / convertedQuestions.size.coerceAtLeast(1).toFloat())
-                                .coerceIn(0.18f, 0.94f)
-                            val dominantDiff = when {
-                                avgWeight < 0.29f -> DifficultyLevel.KOLAY
-                                avgWeight < 0.50f -> DifficultyLevel.ORTA
-                                avgWeight < 0.67f -> DifficultyLevel.OSYM
-                                avgWeight < 0.85f -> DifficultyLevel.ZOR
-                                else -> DifficultyLevel.COK_ZOR
-                            }
-                            val mappedLevel = when (dominantDiff) {
-                                DifficultyLevel.KOLAY -> TopicTestLevel.BASLANGIC
-                                DifficultyLevel.ORTA -> TopicTestLevel.PEKISTIRME
-                                DifficultyLevel.OSYM -> TopicTestLevel.OSYM
-                                DifficultyLevel.ZOR -> TopicTestLevel.GELISIYORUM
-                                DifficultyLevel.COK_ZOR -> TopicTestLevel.DERECE
-                            }
-
-                            autoTestsForTopic.add(
-                                YksTestItem(
-                                    id = testId,
-                                    topicId = topic.id,
-                                    title = shortTitle,
-                                    fullTitle = fullTitle,
-                                    difficulty = dominantDiff,
-                                    difficultyPosition = avgWeight,
-                                    defaultCompleted = false,
-                                    starRating = 0,
-                                    level = mappedLevel,
-                                    questions = convertedQuestions
-                                )
-                            )
-                        }
-                    }
-                }
-
-                if (autoTestsForTopic.isNotEmpty()) {
-                    updatedMap["${topic.id}_AUTO_PDF"] = autoTestsForTopic
-                }
-            }
-
             withContext(Dispatchers.Main) {
-                _generatedTopicTests.value = updatedMap
+                if (_generatedTopicTests.value != updatedMap) {
+                    _generatedTopicTests.value = updatedMap
+                }
                 refreshTopicProgressSummaries()
             }
         }
@@ -636,13 +506,8 @@ class SoruLabViewModel(
     fun getTestsForTopicAndLevel(topic: YksTopic, level: TopicTestLevel): List<YksTestItem> {
         val map = _generatedTopicTests.value
         val levelSpecific = map["${topic.id}_${level.name}"].orEmpty()
-        val autoPdfTests = if (level == TopicTestLevel.IKIZ) {
-            emptyList()
-        } else {
-            map["${topic.id}_AUTO_PDF"].orEmpty()
-        }
         val deleted = _deletedTestIds.value
-        return (autoPdfTests + levelSpecific)
+        return levelSpecific
             .filter { it.id !in deleted }
             .distinctBy { it.id }
     }
@@ -730,8 +595,8 @@ class SoruLabViewModel(
             if (expectedTestId !in deleted && currentList.none { it.id == expectedTestId }) {
                 val realQuestions = collectRealPoolQuestionsForTopicAndLevel(topic, level)
                 if (realQuestions.isNotEmpty()) {
-                    val shortTitle = "${level.displayTitle} Test-$testNumber"
-                    val fullTitle = "${topic.name} ${level.displayTitle} Test-$testNumber"
+                    val shortTitle = "${topic.name} - Test $testNumber"
+                    val fullTitle = "${topic.name} - Test $testNumber"
                     val testItem = YksTestItem(
                         id = expectedTestId,
                         topicId = topic.id,
@@ -746,7 +611,7 @@ class SoruLabViewModel(
                             q.copy(
                                 id = "${expectedTestId}_q${idx + 1}",
                                 number = idx + 1,
-                                badgeTitle = shortTitle.uppercase(),
+                                badgeTitle = fullTitle.uppercase(),
                                 topicHeader = topic.name.uppercase()
                             )
                         }
@@ -1148,12 +1013,31 @@ class SoruLabViewModel(
         val allTestsInTopic = getTestsForTopicAndLevel(topic, level)
         val nextTestNumber = maxOf(existingList.size, allTestsInTopic.size) + 1
 
-        val safeCount = requestedQuestionCount.coerceIn(1, strictCandidates.size)
-        val questionsToUse = strictCandidates.take(safeCount)
+        // Daha önceki testlerde kullanılmış soruları tespit et; yeni testlerde önce kullanılmamış soruları seç
+        val usedSignatures = allTestsInTopic
+            .flatMap { it.questions }
+            .map { q -> q.croppedImagePath.ifBlank { q.stemTop.take(60) } }
+            .toSet()
+
+        val unusedCandidates = strictCandidates.filter { q ->
+            val sig = q.croppedImagePath.ifBlank { q.stemTop.take(60) }
+            sig !in usedSignatures
+        }
+
+        val orderedPool = if (unusedCandidates.size >= requestedQuestionCount) {
+            unusedCandidates
+        } else {
+            val offset = ((nextTestNumber - 1) * requestedQuestionCount) % strictCandidates.size.coerceAtLeast(1)
+            val rotated = strictCandidates.drop(offset) + strictCandidates.take(offset)
+            (unusedCandidates + rotated).distinctBy { it.croppedImagePath.ifBlank { it.id } }
+        }
+
+        val safeCount = requestedQuestionCount.coerceIn(1, orderedPool.size)
+        val questionsToUse = orderedPool.take(safeCount)
         if (questionsToUse.isEmpty()) return null
 
-        // Otomatik İsimlendirme: "[Konu Adı] - Test [X]"
-        val shortTitle = "Test $nextTestNumber"
+        // Otomatik İsimlendirme: "[Konu Adı] - Test [X]" (Kesinlikle kitap adı kullanılmaz)
+        val shortTitle = "${topic.name} - Test $nextTestNumber"
         val fullTitle = "${topic.name} - Test $nextTestNumber"
         val expectedTestId = "${topic.id}_${level.name.lowercase()}_test_$nextTestNumber"
 
@@ -1475,23 +1359,24 @@ class SoruLabViewModel(
             avgBookWeight < 0.85f -> DifficultyLevel.ZOR
             else -> DifficultyLevel.COK_ZOR
         }
-        val baseTitle = bookTitle.ifBlank { firstRecord.publisherTag }
-        val cleanTitle = if (questionsPerTest > 0) {
-            "$baseTitle - Test ${selectedChunkIndex + 1}"
-        } else {
-            baseTitle
-        }
+        val cleanTitle = "${matchedTopic.name} - Test ${selectedChunkIndex + 1}"
         val bookTest = YksTestItem(
-            id = "book_test_${cleanTitle.lowercase().replace(" ", "_").take(28)}_${System.currentTimeMillis() % 100000}",
+            id = "book_test_${matchedTopic.id}_${selectedChunkIndex + 1}_${System.currentTimeMillis() % 100000}",
             topicId = matchedTopic.id,
-            title = cleanTitle.take(28),
+            title = cleanTitle,
             fullTitle = cleanTitle,
             difficulty = dominantBookDiff,
             difficultyPosition = avgBookWeight,
             defaultCompleted = false,
             starRating = 0,
             level = TopicTestLevel.OSYM,
-            questions = testQuestions
+            questions = testQuestions.mapIndexed { idx, q ->
+                q.copy(
+                    number = idx + 1,
+                    badgeTitle = cleanTitle.uppercase(),
+                    topicHeader = matchedTopic.name.uppercase()
+                )
+            }
         )
 
         _showPdfCropperStudio.value = false

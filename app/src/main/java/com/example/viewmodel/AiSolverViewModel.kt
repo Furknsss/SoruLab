@@ -938,11 +938,12 @@ class AiSolverViewModel : ViewModel() {
                         }
 
                         val mapArr = obj.optJSONArray("sayfaHaritasi")
-                        if (mapArr != null) {
+                        if (mapArr != null && (mapArr.length() >= 4 || totalPdfPages <= 18)) {
                             for (i in 0 until mapArr.length()) {
                                 val mObj = mapArr.optJSONObject(i) ?: continue
                                 val startP = (mObj.optInt("baslangicSayfa", 1) - 1).coerceIn(0, totalPdfPages - 1)
                                 val endP = (mObj.optInt("bitisSayfa", startP + 1) - 1).coerceIn(startP, totalPdfPages - 1)
+                                if (totalPdfPages > 24 && (endP - startP) > (totalPdfPages / 2)) continue
                                 val skip = mObj.optBoolean("atla", false)
                                 val mDers = mObj.optString("ders", defaultSubject)
                                     .replace("TYT ", "", ignoreCase = true)

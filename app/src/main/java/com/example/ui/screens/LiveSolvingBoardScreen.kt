@@ -1227,29 +1227,82 @@ private fun RealTwoColumnBookPageSurface(
                 .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
                 .heightIn(min = pageMinHeight)
                 .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 18.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
+            // GERÇEK BASILI TEST KİTABI ÜST ŞERİDİ (Sayfa Başlığı & Konu - Test No)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(4.dp)
+                                .height(16.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(Color(0xFF2563EB))
+                        )
+                        Text(
+                            text = "${session.subjectName.uppercase()}  •  ${session.topicName.uppercase()}",
+                            color = Color(0xFF334155),
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 11.5.sp,
+                            letterSpacing = 0.4.sp
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFFEFF6FF),
+                        border = BorderStroke(1.dp, Color(0xFFBFDBFE))
+                    ) {
+                        Text(
+                            text = session.testItem.title.uppercase(),
+                            color = Color(0xFF1D4ED8),
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.2.dp)
+                        .background(Color(0xFFCBD5E1))
+                )
+            }
+
             // ÇİFT SÜTUNLU (SOL SÜTUN & SAĞ SÜTUN) VE ORTADAN İNCE DİKEY ÇİZGİLİ TAM SAYFA DÜZENİ
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = (pageMinHeight - 40.dp).coerceAtLeast(360.dp))
+                    .heightIn(min = (pageMinHeight - 76.dp).coerceAtLeast(360.dp))
                     .height(IntrinsicSize.Min),
                 horizontalArrangement = Arrangement.spacedBy(0.dp),
                 verticalAlignment = Alignment.Top
             ) {
-                // SOL SÜTUN (Soru 1 ve 2) — Dikeyde dengeli dağılım
+                // SOL SÜTUN (Soru 1 ve 2) — Gerçek kitap sayfası gibi dengeli dikey yerleşim
                 val isLeftPopoverOpen = leftColumnQuestions.any { it.number == openThreeDotQuestionNumber }
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
                         .zIndex(if (isLeftPopoverOpen) 60f else 1f)
-                        .padding(end = 14.dp),
-                    verticalArrangement = Arrangement.SpaceEvenly
+                        .padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
+                    verticalArrangement = if (leftColumnQuestions.size > 1) Arrangement.SpaceBetween else Arrangement.Top
                 ) {
-                    leftColumnQuestions.forEach { q ->
+                    leftColumnQuestions.forEachIndexed { idx, q ->
                         BookPageQuestionItem345(
                             question = q,
                             isReviewMode = session.isReviewMode,
@@ -1263,6 +1316,9 @@ private fun RealTwoColumnBookPageSurface(
                             onOpenTwinScreen = { onOpenTwinScreen(q) },
                             onAddToKumbara = { onAddToKumbara(q) }
                         )
+                        if (idx == 0 && leftColumnQuestions.size > 1) {
+                            Spacer(modifier = Modifier.height(18.dp))
+                        }
                     }
                 }
 
@@ -1274,20 +1330,20 @@ private fun RealTwoColumnBookPageSurface(
                         .background(Color(0xFFCBD5E1))
                 )
 
-                // SAĞ SÜTUN (Soru 3 ve 4) — Dikeyde dengeli dağılım
+                // SAĞ SÜTUN (Soru 3 ve 4) — Gerçek kitap sayfası gibi dengeli dikey yerleşim
                 val isRightPopoverOpen = rightColumnQuestions.any { it.number == openThreeDotQuestionNumber }
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
                         .zIndex(if (isRightPopoverOpen) 60f else 1f)
-                        .padding(start = 14.dp),
-                    verticalArrangement = Arrangement.SpaceEvenly
+                        .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+                    verticalArrangement = if (rightColumnQuestions.size > 1) Arrangement.SpaceBetween else Arrangement.Top
                 ) {
                     if (rightColumnQuestions.isEmpty()) {
                         Spacer(modifier = Modifier.height(80.dp))
                     } else {
-                        rightColumnQuestions.forEach { q ->
+                        rightColumnQuestions.forEachIndexed { idx, q ->
                             BookPageQuestionItem345(
                                 question = q,
                                 isReviewMode = session.isReviewMode,
@@ -1301,6 +1357,9 @@ private fun RealTwoColumnBookPageSurface(
                                 onOpenTwinScreen = { onOpenTwinScreen(q) },
                                 onAddToKumbara = { onAddToKumbara(q) }
                             )
+                            if (idx == 0 && rightColumnQuestions.size > 1) {
+                                Spacer(modifier = Modifier.height(18.dp))
+                            }
                         }
                     }
                 }
@@ -1412,15 +1471,66 @@ private fun BookPageQuestionItem345(
             ) {
                 if (croppedBitmap != null) {
                     val aspect = (croppedBitmap.width.toFloat() / croppedBitmap.height.toFloat().coerceAtLeast(1f))
-                        .coerceIn(0.45f, 3.0f)
+                        .coerceIn(0.42f, 2.85f)
                     Image(
                         bitmap = croppedBitmap.asImageBitmap(),
                         contentDescription = "${question.number}. Soru",
-                        contentScale = ContentScale.FillWidth,
+                        contentScale = ContentScale.Fit,
+                        alignment = Alignment.TopStart,
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(aspect)
+                            .background(Color.White)
                     )
+                    // Kitap sayfasında her kırpılmış sorunun hemen altında hızlı şık işaretleme barı (A B C D E)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        listOf("A", "B", "C", "D", "E").forEach { optKey ->
+                            val isChosen = selectedOption == optKey
+                            val isRightOpt = isReviewMode && optKey == question.correctOption
+                            val isWrongChosen = isReviewMode && isChosen && optKey != question.correctOption
+                            Surface(
+                                shape = CircleShape,
+                                color = when {
+                                    isRightOpt -> Color(0xFFDCFCE7)
+                                    isWrongChosen -> Color(0xFFFEE2E2)
+                                    isChosen -> Color(0xFF2563EB)
+                                    else -> Color(0xFFF8FAFC)
+                                },
+                                border = BorderStroke(
+                                    1.dp,
+                                    when {
+                                        isRightOpt -> Color(0xFF16A34A)
+                                        isWrongChosen -> Color(0xFFDC2626)
+                                        isChosen -> Color(0xFF2563EB)
+                                        else -> Color(0xFFCBD5E1)
+                                    }
+                                ),
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clickable(enabled = !isReviewMode) { onSelectOption(optKey) }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = optKey,
+                                        color = when {
+                                            isRightOpt -> Color(0xFF15803D)
+                                            isWrongChosen -> Color(0xFFB91C1C)
+                                            isChosen -> Color.White
+                                            else -> Color(0xFF475569)
+                                        },
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
                 } else {
                     // Fallback vector/text rendering if a catalog question has no bitmap
                     if (question.stemTop.isNotBlank()) {

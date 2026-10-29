@@ -5,6 +5,7 @@ import android.content.Intent
 import android.util.Log
 import com.example.BuildConfig
 import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseOptions
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import com.google.firebase.appcheck.recaptcha.RecaptchaAppCheckProviderFactory
@@ -16,10 +17,31 @@ private const val DEBUG_STORE_PREFIX = "com.google.firebase.appcheck.debug.store
 private const val DEBUG_SECRET_KEY = "com.google.firebase.appcheck.debug.DEBUG_SECRET"
 private const val RECAPTCHA_SITE_KEY_RES = "recaptcha_site_key"
 
+fun ensureFirebaseInitialized(context: Context): Boolean {
+    return try {
+        val appCtx = context.applicationContext ?: context
+        if (FirebaseApp.getApps(appCtx).isEmpty()) {
+            val defaultApp = FirebaseApp.initializeApp(appCtx)
+            if (defaultApp == null && FirebaseApp.getApps(appCtx).isEmpty()) {
+                val fallbackOptions = FirebaseOptions.Builder()
+                    .setProjectId("sorulab-yks-local")
+                    .setApplicationId("1:100000000000:android:0000000000000000")
+                    .setApiKey("AIzaSyDummyKeyForLocalOfflineExecution000")
+                    .build()
+                FirebaseApp.initializeApp(appCtx, fallbackOptions)
+            }
+        }
+        FirebaseApp.getApps(appCtx).isNotEmpty()
+    } catch (e: Exception) {
+        Log.w(TAG, "Firebase initialization fallback skipped: ${e.message}")
+        false
+    }
+}
+
 fun configureAppCheck(context: Context, intent: Intent?) {
     try {
-        if (FirebaseApp.getApps(context).isEmpty()) {
-            FirebaseApp.initializeApp(context)
+        if (!ensureFirebaseInitialized(context)) {
+            return
         }
 
         if (BuildConfig.DEBUG) {

@@ -91,9 +91,9 @@ class SoruLabViewModel(
 
     constructor(context: Context) : this(SoruLabRepository(context.applicationContext))
 
-    private val auth = Firebase.auth
+    private val auth = runCatching { Firebase.auth }.getOrNull()
 
-    private val _currentUser = MutableStateFlow<FirebaseUser?>(auth.currentUser)
+    private val _currentUser = MutableStateFlow<FirebaseUser?>(auth?.currentUser)
     val currentUser: StateFlow<FirebaseUser?> = _currentUser.asStateFlow()
 
     private val _recognizedDeviceAccount = MutableStateFlow<RecognizedDeviceAccount?>(
@@ -211,8 +211,8 @@ class SoruLabViewModel(
     init {
         repository.ensureDemoDataCleanedOnce()
         shouldPurgeCloudDemoOnce = repository.consumePendingCloudDemoPurge()
-        auth.addAuthStateListener(authStateListener)
-        val current = auth.currentUser
+        auth?.addAuthStateListener(authStateListener)
+        val current = auth?.currentUser
         if (current != null) {
             startFirestoreListeners(current.uid)
         } else {
@@ -224,7 +224,7 @@ class SoruLabViewModel(
 
     override fun onCleared() {
         super.onCleared()
-        auth.removeAuthStateListener(authStateListener)
+        auth?.removeAuthStateListener(authStateListener)
         timerJob?.cancel()
         resultsListenerJob?.cancel()
         customQuestionsListenerJob?.cancel()
@@ -263,6 +263,10 @@ class SoruLabViewModel(
         val cachedResults = repository.loadCachedSolvedTestResults(uid)
             .filterNot { isLegacyDemoTestRecord(it) }
         _userTestResults.value = cachedResults
+        val cachedStrokes = repository.loadCachedBoardStrokes(uid)
+        if (cachedStrokes.isNotEmpty()) {
+            _boardStrokes.value = cachedStrokes
+        }
     }
 
     private fun startFirestoreListeners(uid: String) {
@@ -767,7 +771,7 @@ class SoruLabViewModel(
     }
 
     fun recognizeCurrentDevice(displayName: String = "YKS Öğrencisi", email: String = "ogrenci@sorulab.app") {
-        val currentAuth = auth.currentUser
+        val currentAuth = auth?.currentUser
         val uid = currentAuth?.uid ?: "device_yks_student_tr"
         val finalName = currentAuth?.displayName?.takeIf { it.isNotBlank() } ?: displayName
         val finalEmail = currentAuth?.email?.takeIf { it.isNotBlank() } ?: email
@@ -786,7 +790,7 @@ class SoruLabViewModel(
     fun signOut() {
         repository.clearRecognizedDeviceAccountOnSignOut()
         _recognizedDeviceAccount.value = null
-        auth.signOut()
+        auth?.signOut()
     }
 
     fun selectTab(tab: MainNavTab) {
@@ -981,9 +985,15 @@ class SoruLabViewModel(
             ?: matchedSubject.topics.find { it.name.equals(record.topicName, ignoreCase = true) }
             ?: matchedSubject.topics.first()
 
-        val allTopicTests = _generatedTopicTests.value[matchedTopic.id].orEmpty()
+        val allTopicTests = _generatedTopicTests.value.entries
+            .filter { (key, _) -> key.startsWith("${matchedTopic.id}_") || key == matchedTopic.id }
+            .flatMap { it.value }
+            .ifEmpty { _generatedTopicTests.value.values.flatten() }
         val targetTest = allTopicTests.firstOrNull { test ->
-            test.questions.any { q -> q.id.contains(record.id) || q.croppedImagePath == record.croppedImagePath }
+            test.questions.any { q ->
+                (record.id.isNotBlank() && q.id.contains(record.id)) ||
+                    (record.croppedImagePath.isNotBlank() && q.croppedImagePath == record.croppedImagePath)
+            }
         } ?: run {
             val resolvedPub = SoruLabPublisherPresets.resolvePublisher(record.publisherTag, _customPublishers.value)
             val diffLevel = when (record.difficulty) {
@@ -1339,7 +1349,9 @@ class SoruLabViewModel(
                     points.any { erasePt -> (pt - erasePt).getDistance() < eraseRadius }
                 }
             }
-            _boardStrokes.value = _boardStrokes.value + (key to remaining)
+            val updatedStrokes = _boardStrokes.value + (key to remaining)
+            _boardStrokes.value = updatedStrokes
+            repository.saveCachedBoardStrokes(effectiveUserId() ?: "device_yks_student_tr", updatedStrokes)
             return
         }
 
@@ -1377,12 +1389,16 @@ class SoruLabViewModel(
             strokeWidthPx = widthPx,
             isSmartShape = tool == DrawingTool.SMART_SHAPE
         )
-        _boardStrokes.value = _boardStrokes.value + (key to (currentList + newStroke))
+        val updatedStrokes = _boardStrokes.value + (key to (currentList + newStroke))
+        _boardStrokes.value = updatedStrokes
+        repository.saveCachedBoardStrokes(effectiveUserId() ?: "device_yks_student_tr", updatedStrokes)
     }
 
     fun clearCurrentCanvasStrokes() {
         val key = currentCanvasKey()
-        _boardStrokes.value = _boardStrokes.value - key
+        val updatedStrokes = _boardStrokes.value - key
+        _boardStrokes.value = updatedStrokes
+        repository.saveCachedBoardStrokes(effectiveUserId() ?: "device_yks_student_tr", updatedStrokes)
     }
 
     fun openPdfCropperStudio() {

@@ -557,7 +557,7 @@ private fun getDefaultWebClientId(context: android.content.Context): String {
 }
 
 private suspend fun trySilentGoogleAutoSignIn(context: android.content.Context): Boolean {
-    if (Firebase.auth.currentUser != null) return true
+    if (runCatching { Firebase.auth.currentUser }.getOrNull() != null) return true
     val webClientId = getDefaultWebClientId(context)
     if (webClientId.isBlank()) return false
     val credentialManager = CredentialManager.create(context)

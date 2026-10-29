@@ -1,7 +1,11 @@
 package com.example.data
 
 import android.content.Context
+import androidx.compose.runtime.Immutable
+import androidx.compose.ui.geometry.Offset
 import com.example.R
+import com.example.util.ensureFirebaseInitialized
+import com.example.viewmodel.DrawStroke
 import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -9,7 +13,6 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
-import androidx.compose.runtime.Immutable
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -27,10 +30,13 @@ class SoruLabRepository(
 ) {
 
     constructor(context: Context) : this(
-        db = FirebaseFirestore.getInstance(
-            FirebaseApp.getInstance(),
-            context.applicationContext.getString(R.string.firestore_database_id)
-        ),
+        db = kotlin.run {
+            ensureFirebaseInitialized(context.applicationContext)
+            FirebaseFirestore.getInstance(
+                FirebaseApp.getInstance(),
+                context.applicationContext.getString(R.string.firestore_database_id)
+            )
+        },
         appContext = context.applicationContext
     )
 
@@ -152,7 +158,8 @@ class SoruLabRepository(
             prefs.all.keys.forEach { key ->
                 if (key.startsWith("solved_results_") ||
                     key.startsWith("gen_tests_") ||
-                    key.startsWith("custom_questions_")
+                    key.startsWith("custom_questions_") ||
+                    key.startsWith("board_strokes_")
                 ) {
                     editor.remove(key)
                 }
@@ -162,6 +169,7 @@ class SoruLabRepository(
             editor.remove("gen_tests_global_device")
             editor.remove("custom_questions_$userId")
             editor.remove("custom_questions_global_device")
+            editor.remove("board_strokes_$userId")
             editor.apply()
         } catch (_: Exception) {
         }
@@ -569,6 +577,79 @@ class SoruLabRepository(
                 arr.put(obj)
             }
             prefs.edit().putString("custom_publishers_v1", arr.toString()).apply()
+        } catch (_: Exception) {
+        }
+    }
+
+    fun loadCachedBoardStrokes(userId: String): Map<String, List<DrawStroke>> {
+        val ctx = appContext ?: return emptyMap()
+        return try {
+            val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+            val raw = prefs.getString("board_strokes_$userId", null) ?: return emptyMap()
+            val rootObj = JSONObject(raw)
+            val result = mutableMapOf<String, List<DrawStroke>>()
+            val keys = rootObj.keys()
+            while (keys.hasNext()) {
+                val canvasKey = keys.next()
+                val strokesArr = rootObj.optJSONArray(canvasKey) ?: continue
+                val strokeList = mutableListOf<DrawStroke>()
+                for (i in 0 until strokesArr.length()) {
+                    val sObj = strokesArr.optJSONObject(i) ?: continue
+                    val ptsArr = sObj.optJSONArray("pts") ?: continue
+                    val points = mutableListOf<Offset>()
+                    var j = 0
+                    while (j + 1 < ptsArr.length()) {
+                        val x = ptsArr.optDouble(j, 0.0).toFloat()
+                        val y = ptsArr.optDouble(j + 1, 0.0).toFloat()
+                        points.add(Offset(x, y))
+                        j += 2
+                    }
+                    if (points.size >= 2) {
+                        strokeList.add(
+                            DrawStroke(
+                                points = points,
+                                colorHex = sObj.optLong("color", 0xFF1D4ED8L),
+                                strokeWidthPx = sObj.optDouble("width", 8.0).toFloat(),
+                                isSmartShape = sObj.optBoolean("smart", false)
+                            )
+                        )
+                    }
+                }
+                if (strokeList.isNotEmpty()) {
+                    result[canvasKey] = strokeList
+                }
+            }
+            result
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    fun saveCachedBoardStrokes(userId: String, strokesMap: Map<String, List<DrawStroke>>) {
+        val ctx = appContext ?: return
+        try {
+            val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+            val rootObj = JSONObject()
+            strokesMap.forEach { (canvasKey, strokes) ->
+                if (strokes.isNotEmpty()) {
+                    val strokesArr = JSONArray()
+                    strokes.forEach { stroke ->
+                        val sObj = JSONObject()
+                        sObj.put("color", stroke.colorHex)
+                        sObj.put("width", stroke.strokeWidthPx.toDouble())
+                        sObj.put("smart", stroke.isSmartShape)
+                        val ptsArr = JSONArray()
+                        stroke.points.forEach { pt ->
+                            ptsArr.put(pt.x.toDouble())
+                            ptsArr.put(pt.y.toDouble())
+                        }
+                        sObj.put("pts", ptsArr)
+                        strokesArr.put(sObj)
+                    }
+                    rootObj.put(canvasKey, strokesArr)
+                }
+            }
+            prefs.edit().putString("board_strokes_$userId", rootObj.toString()).apply()
         } catch (_: Exception) {
         }
     }

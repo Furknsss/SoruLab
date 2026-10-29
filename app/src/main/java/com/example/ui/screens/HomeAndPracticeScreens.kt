@@ -148,7 +148,7 @@ fun FloatingCircularBottomNav(
                                 .clip(CircleShape)
                                 .background(
                                     Brush.verticalGradient(
-                                        listOf(Color(0xFF1F42B5), Color(0xFF183492))
+                                        listOf(Color(0xFF42316B), Color(0xFF35265A))
                                     )
                                 )
                                 .border(2.dp, Color.White.copy(alpha = 0.85f), CircleShape),
@@ -222,7 +222,7 @@ private fun BottomNavCustomIcon(
                     path = housePath,
                     color = tint
                 )
-                val cutoutColor = if (isSelected) Color(0xFF1B3A9E) else Color(0xFFF6F7FB)
+                val cutoutColor = if (isSelected) Color(0xFF392960) else Color(0xFFF6F7FB)
                 drawArc(
                     color = cutoutColor,
                     startAngle = 20f,
@@ -235,7 +235,7 @@ private fun BottomNavCustomIcon(
             }
 
             MainNavTab.SORU_PRATIGI -> {
-                val nibCutout = if (isSelected) Color(0xFF1B3A9E) else Color(0xFFF6F7FB)
+                val nibCutout = if (isSelected) Color(0xFF392960) else Color(0xFFF6F7FB)
                 val penPath = Path().apply {
                     moveTo(w * 0.50f, h * 0.10f)
                     lineTo(w * 0.72f, h * 0.38f)
@@ -261,7 +261,7 @@ private fun BottomNavCustomIcon(
 
             MainNavTab.DENEMELER -> {
                 // Clean Exam Booklet / Optical Form Sheet icon for "Denemeler"
-                val cutout = if (isSelected) Color(0xFF1B3A9E) else Color(0xFFF6F7FB)
+                val cutout = if (isSelected) Color(0xFF392960) else Color(0xFFF6F7FB)
                 drawRoundRect(
                     color = tint,
                     topLeft = Offset(w * 0.18f, h * 0.12f),
@@ -1669,28 +1669,74 @@ fun SoruPratigiScreen(
             SoruLabCatalog.allSubjects.filter { it.examType == selectedExamType }
         }
 
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFFF3F6FA))
+        ) {
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xFFF8FAFC))
+                modifier = Modifier.fillMaxSize()
             ) {
+                // Top Header ("Soru Pratiği" with blue play-book icon) + Centered TYT / AYT Pill Switcher
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFF8FAFC))
-                        .padding(horizontal = 22.dp, vertical = 10.dp)
+                        .background(Color(0xFFF3F6FA))
+                        .padding(horizontal = 24.dp, vertical = 12.dp)
                 ) {
-                    // Centered Pill TYT / AYT Switcher (Gereksiz tekrar eden üst başlık temizlendi)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 14.dp)
+                    ) {
+                        // Blue Play-Book Icon matching the screenshot
+                        Canvas(modifier = Modifier.size(24.dp)) {
+                            val w = size.width
+                            val h = size.height
+                            drawRoundRect(
+                                color = Color(0xFF426CE0),
+                                topLeft = Offset(w * 0.12f, h * 0.06f),
+                                size = Size(w * 0.76f, h * 0.78f),
+                                cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                            )
+                            // White play triangle inside book
+                            val playPath = Path().apply {
+                                moveTo(w * 0.40f, h * 0.28f)
+                                lineTo(w * 0.66f, h * 0.44f)
+                                lineTo(w * 0.40f, h * 0.60f)
+                                close()
+                            }
+                            drawPath(path = playPath, color = Color.White)
+                            // Bottom book pages curve/line
+                            drawLine(
+                                color = Color(0xFF426CE0),
+                                start = Offset(w * 0.16f, h * 0.92f),
+                                end = Offset(w * 0.86f, h * 0.92f),
+                                strokeWidth = 2.4.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Soru Pratiği",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = Color(0xFF475569)
+                        )
+                    }
+
+                    // Centered Pill TYT / AYT Switcher
                     Box(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center
                     ) {
                         Row(
                             modifier = Modifier
-                                .width(300.dp)
-                                .height(42.dp)
+                                .width(330.dp)
+                                .height(48.dp)
                                 .clip(RoundedCornerShape(50))
-                                .background(Color(0xFFE2E8F0))
+                                .background(Color(0xFFE9EEF5))
                                 .padding(3.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1702,7 +1748,7 @@ fun SoruPratigiScreen(
                                         .fillMaxHeight()
                                         .clip(RoundedCornerShape(50))
                                         .background(
-                                            if (active) Color(0xFF1D63DC) else Color.Transparent
+                                            if (active) Color(0xFF436EE6) else Color.Transparent
                                         )
                                         .clickable { onSelectExamType(type) }
                                         .testTag("exam_toggle_${type.name.lowercase()}"),
@@ -1711,10 +1757,10 @@ fun SoruPratigiScreen(
                                     Text(
                                         text = type.label,
                                         style = MaterialTheme.typography.labelLarge.copy(
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold
+                                            fontSize = 15.sp,
+                                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium
                                         ),
-                                        color = if (active) Color.White else Color(0xFF475569)
+                                        color = if (active) Color.White else Color(0xFF64748B)
                                     )
                                 }
                             }
@@ -1722,54 +1768,47 @@ fun SoruPratigiScreen(
                     }
                 }
 
-                // Subject rows: Subject name on left + full-width colored line + horizontal LazyRow of all topics
+                // Subject rows: Subject name on left + full-width colored line + horizontal LazyRow of minimalist white cards
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
                         .testTag("soru_pratigi_subjects_list"),
-                    contentPadding = PaddingValues(top = 8.dp, bottom = 128.dp),
-                    verticalArrangement = Arrangement.spacedBy(26.dp)
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 140.dp),
+                    verticalArrangement = Arrangement.spacedBy(28.dp)
                 ) {
                     items(
                         items = subjects,
                         key = { it.id },
                         contentType = { "subject_row" }
                     ) { subject ->
-                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 22.dp),
+                                    .padding(horizontal = 24.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(subject.accentColorHex))
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = subject.name,
                                     style = MaterialTheme.typography.titleMedium.copy(
-                                        fontSize = 17.5.sp,
-                                        fontWeight = FontWeight.ExtraBold
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Medium
                                     ),
-                                    color = Color(0xFF0F172A)
+                                    color = Color(0xFF475569)
                                 )
-                                Spacer(modifier = Modifier.width(12.dp))
+                                Spacer(modifier = Modifier.width(14.dp))
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(2.4.dp)
+                                        .height(2.2.dp)
                                         .clip(RoundedCornerShape(2.dp))
                                         .background(Color(subject.accentColorHex))
                                 )
                             }
 
                             LazyRow(
-                                contentPadding = PaddingValues(horizontal = 22.dp),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                contentPadding = PaddingValues(horizontal = 24.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
                                 items(
                                     items = subject.topics,
@@ -1786,6 +1825,98 @@ fun SoruPratigiScreen(
                     }
                 }
             }
+
+            // Bottom-Right Floating Action Buttons matching the screenshot ("?" orange circle + "All Star Asistan" pill + blue/purple paper-plane circle)
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 22.dp, bottom = 20.dp),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .clickable { onOpenPdfCropper() },
+                    shape = CircleShape,
+                    color = Color(0xFFE67E35),
+                    shadowElevation = 6.dp
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "?",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = Color.White
+                        )
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .offset(x = 12.dp)
+                            .clickable { onOpenAiAssistant() },
+                        shape = RoundedCornerShape(topStart = 50.dp, bottomStart = 50.dp, topEnd = 12.dp, bottomEnd = 12.dp),
+                        color = Color.White,
+                        shadowElevation = 5.dp
+                    ) {
+                        Text(
+                            text = "All Star Asistan",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = Color(0xFF475569),
+                            modifier = Modifier.padding(start = 16.dp, end = 22.dp, top = 8.dp, bottom = 8.dp)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .shadow(8.dp, CircleShape)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF5D6CE8), Color(0xFF4756DC))
+                                )
+                            )
+                            .clickable { onOpenAiAssistant() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Canvas(modifier = Modifier.size(22.dp)) {
+                            val w = size.width
+                            val h = size.height
+                            val planePath = Path().apply {
+                                moveTo(w * 0.12f, h * 0.46f)
+                                lineTo(w * 0.88f, h * 0.14f)
+                                lineTo(w * 0.62f, h * 0.88f)
+                                lineTo(w * 0.46f, h * 0.56f)
+                                close()
+                            }
+                            drawPath(
+                                path = planePath,
+                                color = Color.White,
+                                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                            )
+                            drawLine(
+                                color = Color.White,
+                                start = Offset(w * 0.46f, h * 0.56f),
+                                end = Offset(w * 0.88f, h * 0.14f),
+                                strokeWidth = 1.8.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 
     if (dialogTestPair != null) {
@@ -2049,132 +2180,126 @@ private fun TopicLandscapeCard(
     topic: YksTopic,
     onClick: () -> Unit
 ) {
-    val accentColor = Color(topic.badgeColorHex)
-    val progressSnapshot = SoruLabCatalog.topicProgressState[topic.id]
-    val solvedCount = progressSnapshot?.solvedQuestions ?: 0
-    val totalCount = progressSnapshot?.totalQuestions ?: topic.questionCount
-    val progressPct = progressSnapshot?.progressPercent ?: 0
-    val testCount = progressSnapshot?.totalTests ?: topic.totalTests
-
-    // Porselen Light Tema (#FFFFFF kart, sol kenarda 6dp ders rengi şeridi, sağda ilerleme %, çözülen/toplam soru ve mikro rozetler)
-    Box(
+    Surface(
         modifier = Modifier
-            .width(256.dp)
-            .height(108.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFFFFFFFF))
-            .border(1.2.dp, accentColor.copy(alpha = 0.32f), RoundedCornerShape(16.dp))
+            .width(196.dp)
+            .height(148.dp)
+            .clip(RoundedCornerShape(14.dp))
             .clickable { onClick() }
-            .drawWithCache {
-                onDrawBehind {
-                    drawRoundRect(
-                        color = accentColor,
-                        topLeft = Offset(0f, 0f),
-                        size = Size(6.dp.toPx(), size.height),
-                        cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
-                    )
-                }
-            }
-            .testTag("topic_card_${topic.id}")
+            .testTag("topic_card_${topic.id}"),
+        shape = RoundedCornerShape(14.dp),
+        color = Color.White,
+        shadowElevation = 1.dp
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .drawWithCache {
+                    val watermarkColor = Color(0xFFF1F5F9)
+                    onDrawBehind {
+                        val gridSize = 68.dp.toPx()
+                        val cx = size.width - 36.dp.toPx()
+                        val cy = size.height - 34.dp.toPx()
+                        val half = gridSize * 0.5f
+                        val q = gridSize * 0.25f
+                        val s = 6.dp.toPx()
+                        val sw = 2.6.dp.toPx()
+
+                        drawContext.canvas.save()
+                        drawContext.canvas.translate(cx, cy)
+                        drawContext.canvas.rotate(-16f)
+
+                        // Cross divider lines
+                        drawLine(
+                            color = watermarkColor,
+                            start = Offset(-half, 0f),
+                            end = Offset(half, 0f),
+                            strokeWidth = sw,
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = watermarkColor,
+                            start = Offset(0f, -half),
+                            end = Offset(0f, half),
+                            strokeWidth = sw,
+                            cap = StrokeCap.Round
+                        )
+
+                        // Top-left: '+'
+                        drawLine(
+                            color = watermarkColor,
+                            start = Offset(-q - s, -q),
+                            end = Offset(-q + s, -q),
+                            strokeWidth = sw,
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = watermarkColor,
+                            start = Offset(-q, -q - s),
+                            end = Offset(-q, -q + s),
+                            strokeWidth = sw,
+                            cap = StrokeCap.Round
+                        )
+
+                        // Top-right: '-'
+                        drawLine(
+                            color = watermarkColor,
+                            start = Offset(q - s, -q),
+                            end = Offset(q + s, -q),
+                            strokeWidth = sw,
+                            cap = StrokeCap.Round
+                        )
+
+                        // Bottom-left: '×'
+                        val d = s * 0.75f
+                        drawLine(
+                            color = watermarkColor,
+                            start = Offset(-q - d, q - d),
+                            end = Offset(-q + d, q + d),
+                            strokeWidth = sw,
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = watermarkColor,
+                            start = Offset(-q + d, q - d),
+                            end = Offset(-q - d, q + d),
+                            strokeWidth = sw,
+                            cap = StrokeCap.Round
+                        )
+
+                        // Bottom-right: '='
+                        drawLine(
+                            color = watermarkColor,
+                            start = Offset(q - s, q - 3.dp.toPx()),
+                            end = Offset(q + s, q - 3.dp.toPx()),
+                            strokeWidth = sw,
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = watermarkColor,
+                            start = Offset(q - s, q + 3.dp.toPx()),
+                            end = Offset(q + s, q + 3.dp.toPx()),
+                            strokeWidth = sw,
+                            cap = StrokeCap.Round
+                        )
+
+                        drawContext.canvas.restore()
+                    }
+                }
+                .padding(start = 18.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = topic.name,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 14.8.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        lineHeight = 19.sp
-                    ),
-                    color = Color(0xFF0F172A),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Surface(
-                        color = accentColor.copy(alpha = 0.12f),
-                        shape = RoundedCornerShape(50)
-                    ) {
-                        Text(
-                            text = if (testCount > 0) "$testCount Test" else "All Star",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.ExtraBold
-                            ),
-                            color = accentColor,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
-
-                    Surface(
-                        color = Color(0xFFF1F5F9),
-                        shape = RoundedCornerShape(50)
-                    ) {
-                        Text(
-                            text = "$solvedCount/$totalCount Soru",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = Color(0xFF475569),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxHeight()
-            ) {
-                Surface(
-                    color = if (progressPct > 0) Color(0xFFDCFCE7) else accentColor.copy(alpha = 0.12f),
-                    shape = RoundedCornerShape(50)
-                ) {
-                    Text(
-                        text = "%$progressPct",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        ),
-                        color = if (progressPct > 0) Color(0xFF15803D) else accentColor,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(accentColor.copy(alpha = 0.14f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = accentColor,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
+            Text(
+                text = topic.name,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    lineHeight = 22.sp
+                ),
+                color = Color(0xFF475569),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.TopStart)
+            )
         }
     }
 }

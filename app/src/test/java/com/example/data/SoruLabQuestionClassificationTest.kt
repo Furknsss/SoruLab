@@ -2,9 +2,26 @@ package com.example.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SoruLabQuestionClassificationTest {
+    @Test
+    fun publisherPickerContainsOnlyUserAddedPublishers() {
+        val publisher = YksPublisherInfo(
+            id = "custom_apotemi",
+            name = "Apotemi",
+            shortCode = "APO",
+            primaryColorHex = 0xFF1D4ED8,
+            secondaryColorHex = 0xFF0F172A,
+            customLogoPath = "/logos/apotemi.png"
+        )
+
+        assertTrue(SoruLabPublisherPresets.defaultPublishers.isEmpty())
+        assertEquals(listOf(publisher), SoruLabPublisherPresets.mergedPublishers(listOf(publisher)))
+        assertEquals("Apotemi", SoruLabPublisherPresets.resolvePublisher("Apotemi", listOf(publisher)).name)
+    }
+
     @Test
     fun polynomialSymbolsOverrideSuggestedTopic() {
         val result = SoruLabCatalog.classifyQuestionTopicFromText(

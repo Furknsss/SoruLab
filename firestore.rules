@@ -86,5 +86,29 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
+
+    match /users/{userId}/publishers/{publisherId} {
+      function isValidPublisher(data) {
+        return data.keys().hasAll([
+            'name', 'shortCode', 'primaryColorHex', 'secondaryColorHex', 'logoBase64', 'updatedAt'
+          ])
+          && data.keys().hasOnly([
+            'name', 'shortCode', 'primaryColorHex', 'secondaryColorHex', 'logoBase64', 'updatedAt'
+          ])
+          && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+          && data.shortCode is string && data.shortCode.size() >= 1 && data.shortCode.size() <= 4
+          && data.primaryColorHex is int
+          && data.secondaryColorHex is int
+          && data.logoBase64 is string && data.logoBase64.size() >= 1 && data.logoBase64.size() <= 350000
+          && data.updatedAt is timestamp;
+      }
+
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow create, update: if isSignedIn()
+        && request.auth.uid == userId
+        && isValidId(publisherId)
+        && isValidPublisher(request.resource.data);
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
   }
 }

@@ -167,7 +167,9 @@ class SoruLabViewModel(
     private val _userCustomQuestions = MutableStateFlow<List<CustomQuestionRecord>>(emptyList())
     val userCustomQuestions: StateFlow<List<CustomQuestionRecord>> = _userCustomQuestions.asStateFlow()
 
-    private val _customPublishers = MutableStateFlow<List<YksPublisherInfo>>(repository.loadCustomPublishers())
+    private val _customPublishers = MutableStateFlow(
+        repository.loadCustomPublishers(_currentUser.value?.uid ?: _recognizedDeviceAccount.value?.uid)
+    )
     val customPublishers: StateFlow<List<YksPublisherInfo>> = _customPublishers.asStateFlow()
 
     private val _showPdfCropperStudio = MutableStateFlow(false)
@@ -185,6 +187,7 @@ class SoruLabViewModel(
     private var timerJob: Job? = null
     private var resultsListenerJob: Job? = null
     private var customQuestionsListenerJob: Job? = null
+    private var customPublishersListenerJob: Job? = null
     private var poolSyncJob: Job? = null
     private var cacheSaveJob: Job? = null
 
@@ -229,11 +232,13 @@ class SoruLabViewModel(
         } else {
             resultsListenerJob?.cancel()
             customQuestionsListenerJob?.cancel()
+            customPublishersListenerJob?.cancel()
             val recognized = repository.loadRecognizedDeviceAccount()
             _recognizedDeviceAccount.value = recognized
             if (recognized != null) {
                 hydrateLocalSessionData(recognized.uid)
             } else {
+                _customPublishers.value = emptyList()
                 resetUserScopedData()
             }
         }
@@ -261,6 +266,7 @@ class SoruLabViewModel(
         timerJob?.cancel()
         resultsListenerJob?.cancel()
         customQuestionsListenerJob?.cancel()
+        customPublishersListenerJob?.cancel()
     }
 
     private fun isLegacyDemoQuestion(q: CustomQuestionRecord): Boolean {
@@ -281,7 +287,7 @@ class SoruLabViewModel(
     private fun hydrateLocalSessionData(uid: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val delIds = repository.loadCachedDeletedTestIds(uid)
-            val customPubs = repository.loadCustomPublishers().filter {
+            val customPubs = repository.loadCustomPublishers(uid).filter {
                 it.customLogoPath.isNotBlank() &&
                     runCatching { java.io.File(it.customLogoPath).exists() }.getOrDefault(false)
             }
@@ -295,7 +301,7 @@ class SoruLabViewModel(
 
             withContext(Dispatchers.Main) {
                 _deletedTestIds.value = delIds
-                _customPublishers.value = customPubs
+                _customPublishers.value = (customPubs + _customPublishers.value).distinctBy { it.id }
                 if (_userCustomQuestions.value.isEmpty() || cachedCustomQuestions.size >= _userCustomQuestions.value.size) {
                     _userCustomQuestions.value = cachedCustomQuestions
                 }
@@ -321,10 +327,48 @@ class SoruLabViewModel(
     private fun startFirestoreListeners(uid: String) {
         resultsListenerJob?.cancel()
         customQuestionsListenerJob?.cancel()
+        customPublishersListenerJob?.cancel()
+        _customPublishers.value = repository.loadCustomPublishers(uid)
         resetUserScopedData()
 
         // 1. Fast non-blocking background hydration for generated tests, custom questions & solved results
         hydrateLocalSessionData(uid)
+
+        customPublishersListenerJob = viewModelScope.launch {
+            repository.observeUserCustomPublishers(uid)
+                .catch { error ->
+                    if (error is CancellationException) throw error
+                    showBanner("Yayın logoları buluttan eşitlenemedi. Firestore kurallarını ve internet bağlantısını kontrol edin.")
+                }
+                .collect { cloudPublishers ->
+                    val localPublishers = withContext(Dispatchers.IO) {
+                        repository.loadCustomPublishers(uid).filter {
+                            it.customLogoPath.isNotBlank() &&
+                                java.io.File(it.customLogoPath).isFile
+                        }
+                    }
+                    val cloudIds = cloudPublishers.mapTo(mutableSetOf()) { it.id }
+                    val cloudNames = cloudPublishers.mapTo(mutableSetOf()) { it.name.trim().lowercase() }
+                    val localOnly = localPublishers.filter {
+                        it.id !in cloudIds && it.name.trim().lowercase() !in cloudNames
+                    }
+                    val merged = (cloudPublishers + localOnly)
+                        .distinctBy { it.name.trim().lowercase() }
+                    _customPublishers.value = merged
+                    withContext(Dispatchers.IO) {
+                        repository.saveCustomPublishers(merged, uid)
+                    }
+                    localOnly.forEach { publisher ->
+                        try {
+                            repository.saveCloudCustomPublisher(uid, publisher)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            showBanner("‘${publisher.name}’ logosu cihazda kayıtlı; bulut yedeklemesi tamamlanamadı.")
+                        }
+                    }
+                }
+        }
 
         // 2. Real-time Firestore listener for both solved results & cloud-saved generated tests
         resultsListenerJob = viewModelScope.launch {
@@ -1797,8 +1841,22 @@ class SoruLabViewModel(
             it.name.equals(cleanName, ignoreCase = true)
         }
         _customPublishers.value = updated
-        repository.saveCustomPublishers(updated)
-        showBanner("'$cleanName' yayını ve logosu sisteme eklendi!")
+        repository.saveCustomPublishers(updated, effectiveUserId())
+        val signedInUid = _currentUser.value?.uid
+        if (signedInUid == null) {
+            showBanner("‘$cleanName’ yayını cihaza eklendi. Bulut yedeklemesi için Google hesabınla oturum aç.")
+        } else {
+            viewModelScope.launch {
+                try {
+                    repository.saveCloudCustomPublisher(signedInUid, newPub)
+                    showBanner("‘$cleanName’ yayını ve logosu buluta yedeklendi.")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    showBanner("‘$cleanName’ yayını cihaza kaydedildi; bulut yedeklemesi başarısız oldu.")
+                }
+            }
+        }
         return newPub
     }
 
@@ -2151,10 +2209,20 @@ class SoruLabViewModel(
         _deletedTestIds.value = emptySet()
         _userTestResults.value = emptyList()
         _userCustomQuestions.value = emptyList()
+        _customPublishers.value = emptyList()
         _boardStrokes.value = emptyMap()
 
         viewModelScope.launch(Dispatchers.IO) {
             repository.clearAllLocalUserData(uid)
+            if (_currentUser.value != null) {
+                try {
+                    repository.deleteCloudCustomPublishers(uid)
+                } catch (_: Exception) {
+                    withContext(Dispatchers.Main) {
+                        showBanner("Cihazdaki veriler temizlendi ancak yayın logoları buluttan silinemedi.")
+                    }
+                }
+            }
             oldResults.forEach { rec ->
                 if (rec.id.isNotBlank()) {
                     runCatching { repository.deleteTestResult(rec.id) }

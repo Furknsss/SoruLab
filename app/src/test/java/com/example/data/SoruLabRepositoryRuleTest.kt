@@ -10,6 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
+import java.io.File
 
 class SoruLabRepositoryRuleTest : FirestoreEmulatorTestBase() {
 
@@ -130,6 +131,46 @@ class SoruLabRepositoryRuleTest : FirestoreEmulatorTestBase() {
             val cause = (e.cause ?: e) as? FirebaseFirestoreException
             assertNotNull(cause)
             assertTrue(cause?.code == FirebaseFirestoreException.Code.PERMISSION_DENIED)
+        }
+    }
+
+    @Test
+    fun customPublisherLogo_isCloudBackedAndPrivateToOwner() {
+        val aliceUid = signInTestUser("alice-publishers@sorulab.com").user!!.uid
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val logoFile = File(context.filesDir, "test-publisher-logo.png")
+        logoFile.writeBytes(byteArrayOf(1, 2, 3, 4))
+        val contextualRepository = SoruLabRepository(db, context)
+        val publisher = YksPublisherInfo(
+            id = "custom_test-publisher",
+            name = "Test Yayınları",
+            shortCode = "TST",
+            primaryColorHex = 0xFF1D4ED8,
+            secondaryColorHex = 0xFF0F172A,
+            customLogoPath = logoFile.absolutePath
+        )
+
+        try {
+            runRepoCall { contextualRepository.saveCloudCustomPublisher(aliceUid, publisher) }
+            val publisherRef = db.collection("users")
+                .document(aliceUid)
+                .collection("publishers")
+                .document(publisher.id)
+            val cloudPublisher = awaitTask(publisherRef.get())
+            assertEquals(publisher.name, cloudPublisher.getString("name"))
+            assertTrue(cloudPublisher.getString("logoBase64").orEmpty().isNotBlank())
+
+            signInTestUser("bob-publishers@sorulab.com")
+            try {
+                awaitTask(publisherRef.get())
+                fail("Expected PERMISSION_DENIED when another user reads a publisher logo")
+            } catch (e: Exception) {
+                val cause = (e.cause ?: e) as? FirebaseFirestoreException
+                assertNotNull(cause)
+                assertEquals(FirebaseFirestoreException.Code.PERMISSION_DENIED, cause?.code)
+            }
+        } finally {
+            logoFile.delete()
         }
     }
 }

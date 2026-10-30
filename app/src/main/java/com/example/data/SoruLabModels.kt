@@ -59,58 +59,12 @@ data class YksPublisherInfo(
 )
 
 object SoruLabPublisherPresets {
-    val defaultPublishers: List<YksPublisherInfo> = listOf(
-        YksPublisherInfo(
-            id = "pub_3d",
-            name = "3D Yayınları",
-            shortCode = "3D",
-            primaryColorHex = 0xFFDC2626,
-            secondaryColorHex = 0xFF991B1B
-        ),
-        YksPublisherInfo(
-            id = "pub_345",
-            name = "345 All Star",
-            shortCode = "345",
-            primaryColorHex = 0xFF1E3A8A,
-            secondaryColorHex = 0xFF172554
-        ),
-        YksPublisherInfo(
-            id = "pub_orijinal",
-            name = "Orijinal",
-            shortCode = "ORJ",
-            primaryColorHex = 0xFF2563EB,
-            secondaryColorHex = 0xFF1E40AF
-        ),
-        YksPublisherInfo(
-            id = "pub_ess",
-            name = "ESŞ",
-            shortCode = "ESŞ",
-            primaryColorHex = 0xFF0D9488,
-            secondaryColorHex = 0xFF115E59
-        ),
-        YksPublisherInfo(
-            id = "pub_eyupb",
-            name = "Eyüp B.",
-            shortCode = "EYP",
-            primaryColorHex = 0xFF4F46E5,
-            secondaryColorHex = 0xFF3730A3
-        )
-    )
+    val defaultPublishers: List<YksPublisherInfo> = emptyList()
 
     fun mergedPublishers(customPublishers: List<YksPublisherInfo>): List<YksPublisherInfo> {
-        val customByName = customPublishers.associateBy { it.name.trim().lowercase() }
-        val baseList = defaultPublishers.map { def ->
-            val override = customByName[def.name.trim().lowercase()]
-            if (override != null && override.customLogoPath.isNotBlank()) {
-                def.copy(customLogoPath = override.customLogoPath)
-            } else {
-                def
-            }
-        }
-        val extraCustom = customPublishers.filter { custom ->
-            defaultPublishers.none { it.name.equals(custom.name.trim(), ignoreCase = true) }
-        }
-        return extraCustom + baseList
+        return customPublishers
+            .filter { it.name.isNotBlank() }
+            .distinctBy { it.name.trim().lowercase() }
     }
 
     fun resolvePublisher(
@@ -129,7 +83,7 @@ object SoruLabPublisherPresets {
 
         return YksPublisherInfo(
             id = "custom_${trimmed.lowercase().replace(" ", "_")}",
-            name = trimmed.ifBlank { "3D Yayınları" },
+            name = trimmed.ifBlank { "Özel Yayın" },
             shortCode = trimmed.take(3).uppercase().ifBlank { "YKS" },
             primaryColorHex = 0xFF1E3A8A,
             secondaryColorHex = 0xFF0F172A,

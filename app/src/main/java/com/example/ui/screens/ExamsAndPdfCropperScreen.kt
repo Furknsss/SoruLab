@@ -53,6 +53,7 @@ import com.example.data.*
 import com.example.util.StudioImageAndPdfEngine
 import com.example.viewmodel.BatchPdfCropState
 import com.example.viewmodel.ExtractedPdfQuestionItem
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -65,7 +66,9 @@ fun PublisherLogoEmblem(
     overrideLogoPath: String = "",
     modifier: Modifier = Modifier
 ) {
-    val effectivePath = overrideLogoPath.ifBlank { publisher.customLogoPath }
+    val effectivePath = overrideLogoPath
+        .takeIf { it.isNotBlank() && File(it).isFile }
+        ?: publisher.customLogoPath
     val customBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(effectivePath)
 
     if (customBitmap != null) {
@@ -552,7 +555,7 @@ fun SoruHavuzuAndPdfStudioView(
     }
 
     var selectedPublisher by remember(allPublishers) {
-        mutableStateOf(allPublishers.first())
+        mutableStateOf(allPublishers.firstOrNull())
     }
     var selectedPdfUri by remember { mutableStateOf<Uri?>(null) }
     var selectedPdfFileName by remember { mutableStateOf("") }
@@ -563,27 +566,44 @@ fun SoruHavuzuAndPdfStudioView(
     var newPubBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var newPubSavedPath by remember { mutableStateOf("") }
     var isProcessingLogo by remember { mutableStateOf(false) }
+    var logoProcessingError by remember { mutableStateOf<String?>(null) }
 
     val logoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) {
             isProcessingLogo = true
+            logoProcessingError = null
+            newPubBitmap = null
+            newPubSavedPath = ""
             scope.launch {
-                val savedPath = withContext(Dispatchers.IO) {
-                    StudioImageAndPdfEngine.processPublisherLogoFloodFillAndTrim(
-                        context = context,
-                        logoUri = uri
-                    )
-                }
-                if (savedPath.isNotBlank() && File(savedPath).exists()) {
-                    val decoded = withContext(Dispatchers.IO) {
-                        runCatching { BitmapFactory.decodeFile(savedPath) }.getOrNull()
+                try {
+                    val savedPath = withContext(Dispatchers.IO) {
+                        StudioImageAndPdfEngine.processPublisherLogoFloodFillAndTrim(
+                            context = context,
+                            logoUri = uri
+                        )
                     }
-                    newPubBitmap = decoded
-                    newPubSavedPath = savedPath
+                    if (savedPath.isNotBlank() && File(savedPath).exists()) {
+                        val decoded = withContext(Dispatchers.IO) {
+                            BitmapFactory.decodeFile(savedPath)
+                        }
+                        if (decoded != null) {
+                            newPubBitmap = decoded
+                            newPubSavedPath = savedPath
+                        } else {
+                            logoProcessingError = "Logo görseli açılamadı. Başka bir görsel deneyin."
+                        }
+                    } else {
+                        logoProcessingError = "Logo işlenemedi. Daha net bir görsel seçip tekrar deneyin."
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    logoProcessingError = "Logo işlenirken hata oluştu. Başka bir görsel deneyin."
+                } finally {
+                    isProcessingLogo = false
                 }
-                isProcessingLogo = false
             }
         }
     }
@@ -835,8 +855,15 @@ fun SoruHavuzuAndPdfStudioView(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                if (allPublishers.isEmpty()) {
+                                    Text(
+                                        text = "Henüz yayın logosu eklenmedi. Devam etmek için kendi logonu ekle.",
+                                        color = Color(0xFF64748B),
+                                        fontSize = 12.sp
+                                    )
+                                }
                                 allPublishers.forEach { pub ->
-                                    val isSelected = selectedPublisher.id == pub.id
+                                    val isSelected = selectedPublisher?.id == pub.id
                                     Surface(
                                         onClick = { selectedPublisher = pub },
                                         shape = RoundedCornerShape(14.dp),
@@ -987,23 +1014,26 @@ fun SoruHavuzuAndPdfStudioView(
                             Button(
                                 onClick = {
                                     val uri = selectedPdfUri ?: return@Button
+                                    val publisher = selectedPublisher ?: return@Button
                                     onStartFastParallelPdfExtraction(
                                         uri,
                                         selectedPdfFileName,
-                                        selectedPublisher
+                                        publisher
                                     ) { extractedItems, coverPath, autoDetectedBookTitle ->
                                         if (extractedItems.isNotEmpty()) {
                                             onSaveExtractedPdfBatch(
                                                 extractedItems,
-                                                selectedPublisher.name,
-                                                selectedPublisher.customLogoPath,
+                                                publisher.name,
+                                                publisher.customLogoPath,
                                                 autoDetectedBookTitle,
                                                 coverPath
                                             )
                                         }
                                     }
                                 },
-                                enabled = selectedPdfUri != null && !batchCropState.isAnalyzing,
+                                enabled = selectedPdfUri != null &&
+                                    selectedPublisher != null &&
+                                    !batchCropState.isAnalyzing,
                                 shape = RoundedCornerShape(16.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color(0xFF1E3A8A),
@@ -1755,8 +1785,9 @@ fun SoruHavuzuAndPdfStudioView(
                                     fontSize = 13.sp
                                 )
                                 Text(
-                                    text = "Seçilen logonun arka planı otomatik temizlenir ve kitaplarınıza eklenir.",
-                                    color = Color(0xFF64748B),
+                                    text = logoProcessingError
+                                        ?: "Logo arka planı otomatik temizlenir ve hesabına yedeklenir.",
+                                    color = if (logoProcessingError != null) Color(0xFFDC2626) else Color(0xFF64748B),
                                     fontSize = 11.sp
                                 )
                             }
@@ -1784,7 +1815,10 @@ fun SoruHavuzuAndPdfStudioView(
                                 selectedPublisher = created
                                 showAddPublisherModal = false
                             },
-                            enabled = newPubName.isNotBlank() && !isProcessingLogo,
+                            enabled = newPubName.isNotBlank() &&
+                                newPubBitmap != null &&
+                                newPubSavedPath.isNotBlank() &&
+                                !isProcessingLogo,
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A))
                         ) {

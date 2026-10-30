@@ -1047,7 +1047,7 @@ object StudioImageAndPdfEngine {
 
     // =========================================================================
     // %100 ÜCRETSİZ VE SINIRSIZ YEREL SORU KIRPMA MOTORU
-    // (DUAL-COLUMN VECTOR & PIXEL PROJECTION + RECYCLED BITMAP + WEBP 85%)
+    // (DUAL-COLUMN VECTOR & PIXEL PROJECTION + RECYCLED BITMAP + HIGH-QUALITY WEBP)
     // =========================================================================
 
     /**
@@ -1519,7 +1519,7 @@ object StudioImageAndPdfEngine {
                     } else {
                         Bitmap.CompressFormat.WEBP
                     }
-                    cleanedCrop.compress(format, 85, fos)
+                    cleanedCrop.compress(format, 92, fos)
                 }
                 if (pageIndex < 6) {
                     bitmapCache.put(outFile.absolutePath, cleanedCrop)

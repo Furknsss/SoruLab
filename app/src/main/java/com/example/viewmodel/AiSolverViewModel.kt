@@ -35,6 +35,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -120,7 +122,7 @@ data class BatchPdfCropState(
 )
 
 private data class PdfAiStatus(
-    var unavailableReason: String? = null
+    @Volatile var unavailableReason: String? = null
 )
 
 class AiSolverViewModel : ViewModel() {
@@ -488,11 +490,28 @@ class AiSolverViewModel : ViewModel() {
             try {
                 val prompt = buildString {
                     appendLine("Sen uzman bir ÖSYM YKS soru yazarısın.")
-                    appendLine("KURAL: Bu YKS sorusunun matematiksel/bilimsel kazanımını, denklemini ve zorluk seviyesini birebir koruyarak, sadece fonksiyonu/sayıları değiştirip ÖSYM formatında, düzgün matematiksel gösterimli gerçek bir İkiz Soru ve A-E şıkları üret.")
-                    appendLine("Orijinal soru yalnızca ekli kırpılmış görseldir. Görseli dikkatle çözümle; yeni soru aynı kazanım, denklem yapısı ve çözüm mantığını ölçmeli.")
+                    appendLine("Görev: Görseldeki soruyu önce tamamen çözümle; sonra aynı kazanımı ölçen, aynı zorlukta ve aynı temel çözüm yöntemini gerektiren yeni bir ikiz soru yaz.")
+                    appendLine("Yeni soruda yalnızca sayıları/nesneleri rastgele değiştirme. Verilenler ve şıklar yeni soruya göre tutarlı olsun; öğrenci aynı beceriyi yeni veriler üzerinde uygulamak zorunda kalsın.")
+                    appendLine("Soru kökünü ve şıkları kopyalama. En az bir önemli niceliği veya koşulu değiştir; yeni sorunun cevabını sıfırdan hesapla. Orijinal sorunun doğru şıkkını yeni sorunun cevabı olarak varsayma.")
+                    appendLine("Önce şu iç kontrolleri yap, çıktıya yalnızca son sonucu yaz: kazanım aynı mı, çözüm yolu ve zorluk paralel mi, verilenler yeterli mi, tam olarak bir doğru şık var mı, çözüm hesapla tutarlı mı?")
+                    appendLine("A-E şıklarının beşi de dolu ve birbirinden farklı olmalı. Çeldiriciler yaygın işlem/kavram hatalarına dayansın; doğru cevap ve çözüm adımları birbiriyle uyuşsun.")
+                    appendLine("Orijinal soru şekil, grafik veya tablo gerektiriyorsa yeni soru için gereken tüm bilgileri soru metninde açıkça tarif et; var olmayan bir görsele atıf yapma.")
+                    appendLine("Matematiksel gösterimi ve Türkçe karakterleri koru. Yeni soru bağımsız, anlaşılır ve YKS sınav dilinde olsun.")
                     appendLine("Konu bağlamı: ${question.topicHeader}")
                     appendLine("Zorluk seviyesi: ${question.difficulty.label}")
-                    appendLine("Beş şıkkın (A, B, C, D, E) her birini eksiksiz doldur, doğru cevabı kontrol et ve adım adım net çözüm ver.")
+                    appendLine("Orijinal soru kökü: ${question.stemTop}")
+                    if (question.bulletsOrSteps.isNotEmpty()) {
+                        appendLine("Orijinal veriler/öncüller: ${question.bulletsOrSteps.joinToString(" | ")}")
+                    }
+                    if (question.stemBottom.isNotBlank()) {
+                        appendLine("Orijinal yönerge: ${question.stemBottom}")
+                    }
+                    appendLine("Orijinal şıklar: ${question.options.entries.sortedBy { it.key }.joinToString(" | ") { "${it.key}) ${it.value}" }}")
+                    appendLine("Orijinal cevabın doğru şıkkı: ${question.correctOption} (yeni sorunun cevabı değildir)")
+                    if (question.stepByStepSolution.isNotBlank()) {
+                        appendLine("Orijinal çözüm yöntemi/kazanım ipucu: ${question.stepByStepSolution.take(1200)}")
+                    }
+                    appendLine("JSON şemasındaki alanları doldur; solutionExplanation yeni sorunun çözümünü işlem işlem doğrulasın.")
                 }
                 val response = withTimeout(45_000L) {
                     twinQuestionGeneratorModel.generateContent(
@@ -513,10 +532,14 @@ class AiSolverViewModel : ViewModel() {
                 )
                 val correct = obj.optString("correctOption", "").uppercase()
                 val explanation = obj.optString("solutionExplanation", "").trim()
+                val distinctOptions = options.values
+                    .map { it.trim().lowercase().replace(Regex("\\s+"), " ") }
+                    .distinct()
                 if (stem.length < 25 || options.values.any(String::isBlank) ||
-                    correct !in options.keys || explanation.isBlank()
+                    distinctOptions.size != options.size ||
+                    correct !in options.keys || explanation.length < 20
                 ) {
-                    throw IllegalStateException("Gemini geçerli bir A-E ikiz soru yanıtı döndürmedi.")
+                    throw IllegalStateException("Gemini tutarlı ve birbirinden farklı A-E şıkları olan geçerli bir ikiz soru döndürmedi.")
                 }
 
                 onResult(
@@ -610,7 +633,6 @@ class AiSolverViewModel : ViewModel() {
                         }
                         return classification
                     }
-                    aiStatus.unavailableReason = "Gemini soru kökü ve A-E şıklarını doğrulayamadı."
                 } catch (e: TimeoutCancellationException) {
                     aiStatus.unavailableReason = "Gemini isteği zaman aşımına uğradı."
                 } catch (e: CancellationException) {
@@ -1247,17 +1269,28 @@ class AiSolverViewModel : ViewModel() {
                                     reusablePixelsRef = reusablePixelsRef
                                 )
 
+                                val classifications = coroutineScope {
+                                    val semaphore = Semaphore(3)
+                                    croppedBoxes.map { cropBox ->
+                                        async {
+                                            semaphore.withPermit {
+                                                classifyCroppedQuestion(
+                                                    imagePath = cropBox.croppedImagePath,
+                                                    examTypeHint = pageInfo.examType,
+                                                    subjectNameHint = pageInfo.subjectName,
+                                                    pageTopicHint = pageInfo.topicName,
+                                                    visualDifficultyHint = cropBox.estimatedDifficulty5,
+                                                    hasDiagramOrGraph = cropBox.hasDiagramOrGraph,
+                                                    lineCountEstimate = cropBox.lineCountEstimate,
+                                                    aiStatus = aiStatus
+                                                )
+                                            }
+                                        }
+                                    }.awaitAll()
+                                }
+
                                 for ((boxIdx, cropBox) in croppedBoxes.withIndex()) {
-                                    val classification = classifyCroppedQuestion(
-                                        imagePath = cropBox.croppedImagePath,
-                                        examTypeHint = pageInfo.examType,
-                                        subjectNameHint = pageInfo.subjectName,
-                                        pageTopicHint = pageInfo.topicName,
-                                        visualDifficultyHint = cropBox.estimatedDifficulty5,
-                                        hasDiagramOrGraph = cropBox.hasDiagramOrGraph,
-                                        lineCountEstimate = cropBox.lineCountEstimate,
-                                        aiStatus = aiStatus
-                                    )
+                                    val classification = classifications[boxIdx]
                                     if (classification == null) {
                                         rejectedCropCount++
                                         continue

@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.Context
+import android.util.Base64
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.Offset
 import com.example.R
@@ -17,6 +18,8 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 
 @Immutable
 data class RecognizedDeviceAccount(
@@ -46,6 +49,7 @@ class SoruLabRepository(
 
     private val testResultsCollection = db.collection("test_results")
     private val customQuestionsCollection = db.collection("custom_questions")
+    private val customPublishersCollection = db.collection("users")
 
     fun loadRecognizedDeviceAccount(): RecognizedDeviceAccount? {
         val ctx = appContext ?: return null
@@ -150,6 +154,9 @@ class SoruLabRepository(
         val ctx = appContext ?: return
         try {
             val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+            val publisherLogoPaths = loadCustomPublishers(userId)
+                .map { it.customLogoPath }
+                .filter(String::isNotBlank)
             val editor = prefs.edit()
             prefs.all.keys.forEach { key ->
                 if (key.startsWith("solved_results_") ||
@@ -158,6 +165,7 @@ class SoruLabRepository(
                     key.startsWith("gen_snapshot_") ||
                     key.startsWith("deleted_tests_") ||
                     key.startsWith("custom_questions_") ||
+                    key == customPublishersCacheKey(userId) ||
                     key.startsWith("board_strokes_")
                 ) {
                     editor.remove(key)
@@ -177,6 +185,7 @@ class SoruLabRepository(
             if (cacheDir.exists()) {
                 cacheDir.listFiles()?.forEach { runCatching { it.delete() } }
             }
+            publisherLogoPaths.forEach { File(it).delete() }
         } catch (_: Exception) {
         }
     }
@@ -756,11 +765,16 @@ class SoruLabRepository(
         }
     }
 
-    fun loadCustomPublishers(): List<YksPublisherInfo> {
+    fun loadCustomPublishers(userId: String? = null): List<YksPublisherInfo> {
         val ctx = appContext ?: return emptyList()
         return try {
             val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
-            val raw = prefs.getString("custom_publishers_v1", null) ?: return emptyList()
+            val scopedKey = customPublishersCacheKey(userId)
+            val raw = prefs.getString(scopedKey, null)
+                ?: prefs.getString("custom_publishers_v1", null)?.also {
+                    prefs.edit().putString(scopedKey, it).remove("custom_publishers_v1").apply()
+                }
+                ?: return emptyList()
             val arr = JSONArray(raw)
             val list = mutableListOf<YksPublisherInfo>()
             for (i in 0 until arr.length()) {
@@ -782,7 +796,7 @@ class SoruLabRepository(
         }
     }
 
-    fun saveCustomPublishers(publishers: List<YksPublisherInfo>) {
+    fun saveCustomPublishers(publishers: List<YksPublisherInfo>, userId: String? = null) {
         val ctx = appContext ?: return
         try {
             val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
@@ -797,9 +811,138 @@ class SoruLabRepository(
                 obj.put("customLogoPath", pub.customLogoPath)
                 arr.put(obj)
             }
-            prefs.edit().putString("custom_publishers_v1", arr.toString()).apply()
+            prefs.edit().putString(customPublishersCacheKey(userId), arr.toString()).apply()
         } catch (_: Exception) {
         }
+    }
+
+    private fun customPublishersCacheKey(userId: String?): String =
+        userId?.takeIf(String::isNotBlank)?.let {
+            "custom_publishers_${it.replace("[^A-Za-z0-9_-]".toRegex(), "_")}"
+        } ?: "custom_publishers_device"
+
+    fun observeUserCustomPublishers(userId: String): Flow<List<YksPublisherInfo>> = callbackFlow {
+        val registration = customPublishersCollection
+            .document(userId)
+            .collection("publishers")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                if (snapshot != null) {
+                    try {
+                        val publishers = snapshot.documents.mapNotNull { document ->
+                            val name = document.getString("name")?.trim().orEmpty()
+                            if (name.isBlank()) return@mapNotNull null
+                            val logoBase64 = document.getString("logoBase64").orEmpty()
+                            YksPublisherInfo(
+                                id = document.id,
+                                name = name,
+                                shortCode = document.getString("shortCode").orEmpty(),
+                                primaryColorHex = document.getLong("primaryColorHex") ?: 0xFF1D4ED8,
+                                secondaryColorHex = document.getLong("secondaryColorHex") ?: 0xFF0F172A,
+                                customLogoPath = if (logoBase64.isBlank()) "" else {
+                                    cacheCloudPublisherLogo(userId, document.id, logoBase64)
+                                }
+                            )
+                        }
+                        trySend(publishers)
+                    } catch (e: Exception) {
+                        close(IllegalStateException("Buluttaki yayın logoları okunamadı.", e))
+                    }
+                }
+            }
+        awaitClose { registration.remove() }
+    }
+
+    suspend fun saveCloudCustomPublisher(userId: String, publisher: YksPublisherInfo) {
+        require(userId.isNotBlank()) { "Yayın logosunu buluta kaydetmek için kullanıcı oturumu gerekli." }
+        check(appContext != null) {
+            "Yayın logosunu buluta kaydetmek için uygulama bağlamı gerekli."
+        }
+        val publisherId = publisher.id
+            .replace(Regex("[^A-Za-z0-9_-]"), "_")
+            .take(120)
+            .ifBlank { throw IllegalArgumentException("Yayın kimliği geçersiz.") }
+        val logoFile = publisher.customLogoPath.takeIf(String::isNotBlank)?.let(::File)
+        if (logoFile == null || !logoFile.isFile) {
+            throw IllegalArgumentException("Yayın logosu cihazda bulunamadı.")
+        }
+        val logoBytes = logoFile.readBytes()
+        require(logoBytes.isNotEmpty() && logoBytes.size <= MAX_CLOUD_PUBLISHER_LOGO_BYTES) {
+            "Yayın logosu bulut yedeklemesi için çok büyük."
+        }
+        val logoBase64 = Base64.encodeToString(logoBytes, Base64.NO_WRAP)
+        val payload = mapOf(
+            "name" to publisher.name.take(120),
+            "shortCode" to publisher.shortCode.take(4),
+            "primaryColorHex" to publisher.primaryColorHex,
+            "secondaryColorHex" to publisher.secondaryColorHex,
+            "logoBase64" to logoBase64,
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        try {
+            val publisherCollection = customPublishersCollection
+                .document(userId)
+                .collection("publishers")
+            publisherCollection.whereEqualTo("name", publisher.name.take(120))
+                .get()
+                .await()
+                .documents
+                .filter { it.id != publisherId }
+                .forEach { it.reference.delete().await() }
+            publisherCollection.document(publisherId).set(payload).await()
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, "users/$userId/publishers/$publisherId")
+            throw e
+        }
+    }
+
+    suspend fun deleteCloudCustomPublishers(userId: String) {
+        require(userId.isNotBlank()) { "Yayın logolarını silmek için kullanıcı oturumu gerekli." }
+        try {
+            val publisherCollection = customPublishersCollection
+                .document(userId)
+                .collection("publishers")
+            publisherCollection.get().await().documents
+                .chunked(400)
+                .forEach { documents ->
+                    val batch = db.batch()
+                    documents.forEach { batch.delete(it.reference) }
+                    batch.commit().await()
+                }
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.DELETE, "users/$userId/publishers")
+            throw e
+        }
+    }
+
+    private fun cacheCloudPublisherLogo(userId: String, publisherId: String, logoBase64: String): String {
+        val context = appContext
+            ?: throw IllegalStateException("Buluttaki yayın logosu bu cihazda saklanamadı.")
+        val bytes = Base64.decode(logoBase64, Base64.DEFAULT)
+        require(bytes.isNotEmpty() && bytes.size <= MAX_CLOUD_PUBLISHER_LOGO_BYTES) {
+            "Buluttaki yayın logosu boyut sınırını aşıyor."
+        }
+        val logoDirectory = File(context.filesDir, "publisher_logos")
+        check(logoDirectory.exists() || logoDirectory.mkdirs()) {
+            "Yayın logosu klasörü oluşturulamadı."
+        }
+        val safeUserId = Base64.encodeToString(
+            userId.toByteArray(Charsets.UTF_8),
+            Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+        )
+        val safeId = publisherId.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        val target = File(logoDirectory, "cloud_${safeUserId}_$safeId.png")
+        val temporary = File(logoDirectory, "cloud_${safeUserId}_$safeId.tmp")
+        FileOutputStream(temporary).use { it.write(bytes) }
+        check(temporary.renameTo(target)) { "Buluttaki yayın logosu dosyası kaydedilemedi." }
+        return target.absolutePath
+    }
+
+    private companion object {
+        const val MAX_CLOUD_PUBLISHER_LOGO_BYTES = 256 * 1024
     }
 
     fun loadCachedBoardStrokes(userId: String): Map<String, List<DrawStroke>> {

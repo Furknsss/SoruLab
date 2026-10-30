@@ -18,7 +18,7 @@ android {
     minSdk = 24
     targetSdk = 36
     versionCode = 10
-    versionName = "1.1.0"
+    versionName = "1.1.1"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -27,18 +27,17 @@ android {
   // and updating Android apps in AI Studio.
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/release.jks"
+      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
       storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD") ?: "sorulab123"
-      keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
-      keyPassword = System.getenv("KEY_PASSWORD") ?: "sorulab123"
+      storePassword = System.getenv("STORE_PASSWORD")
+      keyAlias = "upload"
+      keyPassword = System.getenv("KEY_PASSWORD")
     }
     create("debugConfig") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/release.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD") ?: "sorulab123"
-      keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
-      keyPassword = System.getenv("KEY_PASSWORD") ?: "sorulab123"
+      storeFile = file("${rootDir}/debug.keystore")
+      storePassword = "android"
+      keyAlias = "androiddebugkey"
+      keyPassword = "android"
     }
   }
 

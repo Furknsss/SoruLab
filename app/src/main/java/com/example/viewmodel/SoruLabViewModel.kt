@@ -691,12 +691,28 @@ class SoruLabViewModel(
      * 1. For IKIZ level: only questions the user actually answered wrong or left blank in solved tests of this topic.
      * 2. For standard levels: user's cropped/custom questions for this topic calibrated to the requested 6-level wheel category.
      */
+    private fun matchesTopic(
+        recordSubjectId: String,
+        recordTopicId: String,
+        recordTopicName: String,
+        topic: YksTopic
+    ): Boolean {
+        val sameSubject = recordSubjectId.isBlank() ||
+            recordSubjectId.equals(topic.subjectId, ignoreCase = true)
+        return sameSubject && (
+            recordTopicId.equals(topic.id, ignoreCase = true) ||
+                (recordTopicId.isBlank() &&
+                    recordSubjectId.equals(topic.subjectId, ignoreCase = true) &&
+                    recordTopicName.equals(topic.name, ignoreCase = true))
+            )
+    }
+
     private fun collectRealPoolQuestionsForTopicAndLevel(
         topic: YksTopic,
         level: TopicTestLevel
     ): List<YksQuestion> {
         if (level == TopicTestLevel.IKIZ) {
-            val solvedInTopic = _userTestResults.value.filter { it.topicId == topic.id && it.isSolvedAttempt }
+            val solvedInTopic = _userTestResults.value.filter { it.isSolvedAttempt && matchesTopic(it.subjectId, it.topicId, it.topicName, topic) }
             if (solvedInTopic.isEmpty()) return emptyList()
 
             val baseTopicQuestions = buildRealBaseQuestionsForTopic(topic, null)
@@ -730,38 +746,12 @@ class SoruLabViewModel(
         return buildRealBaseQuestionsForTopic(topic, level)
     }
 
-    /**
-     * Kural 5: Soru Pratiği ekranından bir konu seçildiğinde veritabanından ASLA başka konunun sorusunu çekme.
-     * (question.topic == selectedTopic şartını hem ID hem de OCR metin sınıflandırmasıyla katı uygular)
-     */
-    private fun isQuestionStrictlyInTopic(cq: CustomQuestionRecord, topic: YksTopic): Boolean {
-        val classified = SoruLabCatalog.classifyQuestionTopicFromText(
-            examTypeHint = cq.examType,
-            subjectNameHint = cq.subjectName,
-            questionText = cq.questionText,
-            suggestedTopicName = cq.topicName
-        )
-        if (classified != null) {
-            val classifiedTopic = classified.second
-            return classifiedTopic.id.equals(topic.id, ignoreCase = true) ||
-                classifiedTopic.name.equals(topic.name, ignoreCase = true)
-        }
-        val resolved = SoruLabCatalog.resolveTopicFast(cq.topicId, cq.topicName)
-        if (resolved != null) {
-            return resolved.id.equals(topic.id, ignoreCase = true) ||
-                resolved.name.equals(topic.name, ignoreCase = true)
-        }
-        return cq.topicId.equals(topic.id, ignoreCase = true) ||
-            (cq.topicId.isBlank() && cq.subjectId.equals(topic.subjectId, ignoreCase = true) &&
-                cq.topicName.equals(topic.name, ignoreCase = true))
-    }
-
     private fun buildRealBaseQuestionsForTopic(
         topic: YksTopic,
         levelFilter: TopicTestLevel?
     ): List<YksQuestion> {
-        val topicPool = _userCustomQuestions.value.filter { cq ->
-            isQuestionStrictlyInTopic(cq, topic)
+        val topicPool = _userCustomQuestions.value.filter { question ->
+            matchesTopic(question.subjectId, question.topicId, question.topicName, topic)
         }
 
         val filteredCustom = if (levelFilter == null) {
@@ -839,12 +829,12 @@ class SoruLabViewModel(
         sourceFilter: QuestionSourceFilter
     ): List<YksQuestion> {
         val strictTopicPool = _userCustomQuestions.value.filter { cq ->
-            isQuestionStrictlyInTopic(cq, topic)
+            matchesTopic(cq.subjectId, cq.topicId, cq.topicName, topic)
         }
         if (strictTopicPool.isEmpty()) return emptyList()
 
         val solvedRecordsForTopic = _userTestResults.value.filter {
-            it.isSolvedAttempt && (it.topicId.equals(topic.id, ignoreCase = true) || it.topicName.equals(topic.name, ignoreCase = true))
+            it.isSolvedAttempt && matchesTopic(it.subjectId, it.topicId, it.topicName, topic)
         }
         val allKnownTests = _generatedTopicTests.value.values.flatten()
 
@@ -931,7 +921,7 @@ class SoruLabViewModel(
      */
     fun checkPoolAvailability(topic: YksTopic, level: TopicTestLevel): PoolAvailabilityCheck {
         val strictTopicPool = _userCustomQuestions.value.filter { cq ->
-            isQuestionStrictlyInTopic(cq, topic)
+            matchesTopic(cq.subjectId, cq.topicId, cq.topicName, topic)
         }
         val countsByDiff = DifficultyLevel.entries.associateWith { diff ->
             strictTopicPool.count { it.difficultyLevel5 == diff }
@@ -1840,16 +1830,11 @@ class SoruLabViewModel(
         val matchedSubject = classifiedTopic?.first ?: SoruLabCatalog.allSubjects.firstOrNull {
             it.examType.name.equals(examType, ignoreCase = true) &&
                 it.name.equals(subjectName, ignoreCase = true)
-        } ?: SoruLabCatalog.allSubjects.firstOrNull {
-            it.name.equals(subjectName, ignoreCase = true)
         }
         val matchedTopic = classifiedTopic?.second ?: matchedSubject?.topics?.firstOrNull {
             it.name.equals(topicName, ignoreCase = true) ||
                 topicName.contains(it.name, ignoreCase = true) ||
                 it.name.contains(topicName, ignoreCase = true)
-        } ?: SoruLabCatalog.allSubjects.flatMap { it.topics }.firstOrNull {
-            it.name.equals(topicName, ignoreCase = true) ||
-                topicName.contains(it.name, ignoreCase = true)
         }
         if (matchedSubject == null || matchedTopic == null) {
             showBanner("Soru konusu müfredatla eşleştirilemedi; soru kaydedilmedi.")
@@ -1957,26 +1942,25 @@ class SoruLabViewModel(
                     suggestedTopicName = item.topicName
                 )
                 val subKey = "${item.examType}|${item.subjectName}"
-                val matchedSubject = classifiedTopic?.first ?: subjectMemo.getOrPut(subKey) {
+                val matchedSubject = classifiedTopic?.first ?: subjectMemo[subKey] ?:
                     SoruLabCatalog.allSubjects.firstOrNull {
                         it.examType.name.equals(item.examType, ignoreCase = true) &&
                             it.name.equals(item.subjectName, ignoreCase = true)
-                    } ?: SoruLabCatalog.allSubjects.firstOrNull {
-                        it.name.equals(item.subjectName, ignoreCase = true) ||
-                            item.subjectName.contains(it.name, ignoreCase = true)
-                    } ?: SoruLabCatalog.allSubjects.first()
+                    }
+                if (matchedSubject == null) {
+                    withContext(Dispatchers.Main) {
+                        showBanner("“${item.subjectName}” dersi ${item.examType} müfredatında bulunamadı; PDF aktarımı durduruldu.")
+                    }
+                    return@launch
                 }
+                subjectMemo[subKey] = matchedSubject
 
                 val matchedTopic = classifiedTopic?.second
-                    ?: SoruLabCatalog.resolveTopicFast("", item.topicName)?.takeIf {
-                        it.subjectId == matchedSubject.id
-                    }
                     ?: matchedSubject.topics.firstOrNull {
                         it.name.equals(item.topicName, ignoreCase = true) ||
                             item.topicName.contains(it.name, ignoreCase = true) ||
                             it.name.contains(item.topicName, ignoreCase = true)
                     }
-                    ?: SoruLabCatalog.resolveTopicFast("", item.topicName)
                 if (matchedTopic == null) {
                     withContext(Dispatchers.Main) {
                         showBanner("“${item.topicName}” konusu müfredatla eşleştirilemedi; PDF aktarımı durduruldu.")

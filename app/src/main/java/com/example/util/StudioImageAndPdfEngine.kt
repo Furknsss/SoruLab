@@ -53,6 +53,10 @@ object StudioImageAndPdfEngine {
         return bitmapCache.get(path)?.takeIf { !it.isRecycled }
     }
 
+    fun invalidateCachedBitmap(path: String) {
+        if (path.isNotBlank()) bitmapCache.remove(path)
+    }
+
     /**
      * Loads and caches cropped question / publisher logo bitmaps in RAM so LazyColumn / Book Page
      * scrolling and page turning run at 120 FPS without repeated disk decoding or OOM.

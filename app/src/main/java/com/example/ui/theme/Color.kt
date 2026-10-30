@@ -3,9 +3,9 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // SoruLab Premium Light Theme Palette (High-contrast black/white + vibrant royal cobalt, emerald, amber, violet)
-val SoruLabBackground = Color(0xFFF6F8FC)
+val SoruLabBackground = Color(0xFFF1F2F8)
 val SoruLabSurface = Color(0xFFFFFFFF)
-val SoruLabSurfaceVariant = Color(0xFFEEF2F9)
+val SoruLabSurfaceVariant = Color(0xFFE9EBF3)
 val SoruLabInkBlack = Color(0xFF0F172A)
 val SoruLabSlateDark = Color(0xFF1E293B)
 val SoruLabSlateMuted = Color(0xFF64748B)

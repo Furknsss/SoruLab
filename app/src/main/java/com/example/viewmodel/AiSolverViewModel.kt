@@ -8,6 +8,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AiStructuredSolution
+import com.example.data.DifficultyLevel
 import com.example.data.SoruLabCatalog
 import com.example.data.SoruLabPublisherPresets
 import com.example.data.YksPublisherInfo
@@ -36,6 +37,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 
 data class AiChatMessage(
     val id: String,
@@ -546,12 +548,19 @@ class AiSolverViewModel : ViewModel() {
         imagePath: String,
         examTypeHint: String,
         subjectNameHint: String,
+        pageTopicHint: String,
+        visualDifficultyHint: String,
         hasDiagramOrGraph: Boolean,
         lineCountEstimate: Int,
         aiStatus: PdfAiStatus
     ): QuestionOcrClassification? {
         val questionBitmap = withContext(Dispatchers.IO) {
-            BitmapFactory.decodeFile(imagePath)
+            val decoded = BitmapFactory.decodeFile(imagePath) ?: return@withContext null
+            if (decoded.isMutable) {
+                decoded
+            } else {
+                decoded.copy(Bitmap.Config.ARGB_8888, true).also { decoded.recycle() }
+            }
         } ?: throw IllegalStateException("Kırpılan soru görseli OCR için açılamadı.")
 
         try {
@@ -584,14 +593,23 @@ class AiSolverViewModel : ViewModel() {
                         questionText = obj.optString("questionText", "").trim(),
                         examTypeHint = examTypeHint,
                         subjectNameHint = obj.optString("subjectName", subjectNameHint).trim(),
-                        suggestedTopicName = obj.optString("topicName", "").trim(),
+                        suggestedTopicName = obj.optString("topicName", "").trim().ifBlank { pageTopicHint },
                         hasQuestionStemOrFigure = obj.optBoolean("hasQuestionStemOrFigure"),
                         hasAllFiveOptions = obj.optBoolean("hasAllFiveOptions"),
                         hasDiagramOrGraph = hasDiagramOrGraph,
                         lineCountEstimate = lineCountEstimate,
+                        visualDifficultyHint = visualDifficultyHint,
                         usedLocalOcr = false
                     )
-                    if (classification != null) return classification
+                    if (classification != null) {
+                        try {
+                            recognizeAndCleanLeadingQuestionNumber(questionBitmap, imagePath)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                        }
+                        return classification
+                    }
                     aiStatus.unavailableReason = "Gemini soru kökü ve A-E şıklarını doğrulayamadı."
                 } catch (e: TimeoutCancellationException) {
                     aiStatus.unavailableReason = "Gemini isteği zaman aşımına uğradı."
@@ -602,28 +620,91 @@ class AiSolverViewModel : ViewModel() {
                 }
             }
 
-            val localText = withContext(Dispatchers.IO) {
-                val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-                try {
-                    recognizer.process(InputImage.fromBitmap(questionBitmap, 0)).await().text
-                } finally {
-                    recognizer.close()
-                }
-            }
+            val localText = recognizeAndCleanLeadingQuestionNumber(questionBitmap, imagePath)
             return buildQuestionOcrClassification(
                 questionText = localText,
                 examTypeHint = examTypeHint,
                 subjectNameHint = subjectNameHint,
-                suggestedTopicName = "",
+                suggestedTopicName = pageTopicHint,
                 hasQuestionStemOrFigure = false,
                 hasAllFiveOptions = false,
                 hasDiagramOrGraph = hasDiagramOrGraph,
                 lineCountEstimate = lineCountEstimate,
+                visualDifficultyHint = visualDifficultyHint,
                 usedLocalOcr = true
             )
         } finally {
             questionBitmap.recycle()
         }
+    }
+
+    private suspend fun recognizeAndCleanLeadingQuestionNumber(bitmap: Bitmap, imagePath: String): String =
+        withContext(Dispatchers.IO) {
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            val recognizedText = try {
+                recognizer.process(InputImage.fromBitmap(bitmap, 0)).await()
+            } finally {
+                recognizer.close()
+            }
+
+            if (removeLeadingPrintedQuestionNumber(bitmap, recognizedText)) {
+                FileOutputStream(imagePath).use { output ->
+                    val format = if (imagePath.endsWith(".webp", ignoreCase = true)) {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                            Bitmap.CompressFormat.WEBP_LOSSY
+                        } else {
+                            @Suppress("DEPRECATION")
+                            Bitmap.CompressFormat.WEBP
+                        }
+                    } else {
+                        Bitmap.CompressFormat.PNG
+                    }
+                    bitmap.compress(format, 92, output)
+                }
+                StudioImageAndPdfEngine.invalidateCachedBitmap(imagePath)
+            }
+
+            recognizedText.text
+        }
+
+    private fun removeLeadingPrintedQuestionNumber(
+        bitmap: Bitmap,
+        recognizedText: com.google.mlkit.vision.text.Text
+    ): Boolean {
+        val firstLine = recognizedText.textBlocks
+            .flatMap { it.lines }
+            .minByOrNull { it.boundingBox?.top ?: Int.MAX_VALUE }
+            ?: return false
+        val marker = firstLine.elements.firstOrNull() ?: return false
+        if (!Regex("""^\d{1,3}[.)]?$""").matches(marker.text.trim())) return false
+
+        val markerBounds = marker.boundingBox ?: return false
+        if (markerBounds.left > bitmap.width * 0.14f ||
+            markerBounds.top > bitmap.height * 0.20f ||
+            markerBounds.width() > bitmap.width * 0.12f ||
+            markerBounds.height() > bitmap.height * 0.08f
+        ) {
+            return false
+        }
+
+        val nextBounds = firstLine.elements.getOrNull(1)?.boundingBox
+        if (nextBounds != null && nextBounds.left - markerBounds.right < (bitmap.width * 0.006f).toInt().coerceAtLeast(3)) {
+            return false
+        }
+
+        val padding = (bitmap.width * 0.008f).toInt().coerceAtLeast(2)
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            style = android.graphics.Paint.Style.FILL
+        }
+        android.graphics.Canvas(bitmap).drawRect(
+            (markerBounds.left - padding).coerceAtLeast(0).toFloat(),
+            (markerBounds.top - padding).coerceAtLeast(0).toFloat(),
+            (markerBounds.right + padding).coerceAtMost(bitmap.width).toFloat(),
+            (markerBounds.bottom + padding).coerceAtMost(bitmap.height).toFloat(),
+            paint
+        )
+        return true
     }
 
     private fun buildQuestionOcrClassification(
@@ -635,6 +716,7 @@ class AiSolverViewModel : ViewModel() {
         hasAllFiveOptions: Boolean,
         hasDiagramOrGraph: Boolean,
         lineCountEstimate: Int,
+        visualDifficultyHint: String,
         usedLocalOcr: Boolean
     ): QuestionOcrClassification? {
         val hasAllOptionLabels = listOf("A", "B", "C", "D", "E").all { option ->
@@ -666,10 +748,15 @@ class AiSolverViewModel : ViewModel() {
             if (hasDiagramOrGraph) appendLine("\nşekil grafik")
             repeat(lineCountEstimate.coerceAtMost(30)) { appendLine("x") }
         }
-        val difficulty = SoruLabCatalog.classifyDifficulty5FromText(
+        val textDifficulty = SoruLabCatalog.classifyDifficulty5FromText(
             rawDifficultyHint = "",
             headerOrQuestionText = difficultySignal
         )
+        val visualDifficulty = DifficultyLevel.fromLabel(visualDifficultyHint)
+        val combinedDifficultyWeight = (textDifficulty.weight + visualDifficulty.weight) / 2f
+        val difficulty = DifficultyLevel.entries.minByOrNull {
+            kotlin.math.abs(it.weight - combinedDifficultyWeight)
+        } ?: textDifficulty
         val targetLevel = when (difficulty) {
             com.example.data.DifficultyLevel.KOLAY -> "BASLANGIC"
             com.example.data.DifficultyLevel.ORTA -> "PEKISTIRME"
@@ -1165,6 +1252,8 @@ class AiSolverViewModel : ViewModel() {
                                         imagePath = cropBox.croppedImagePath,
                                         examTypeHint = pageInfo.examType,
                                         subjectNameHint = pageInfo.subjectName,
+                                        pageTopicHint = pageInfo.topicName,
+                                        visualDifficultyHint = cropBox.estimatedDifficulty5,
                                         hasDiagramOrGraph = cropBox.hasDiagramOrGraph,
                                         lineCountEstimate = cropBox.lineCountEstimate,
                                         aiStatus = aiStatus

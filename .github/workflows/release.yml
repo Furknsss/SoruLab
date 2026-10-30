@@ -36,16 +36,28 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: gradle :app:assembleRelease --no-daemon
 
+      - name: Read app version
+        id: app_version
+        run: |
+          VERSION_NAME=$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' app/build.gradle.kts | head -n 1)
+          if [[ -z "$VERSION_NAME" ]]; then
+            echo "Could not read app versionName from app/build.gradle.kts"
+            exit 1
+          fi
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+
       - name: Rename APK
+        env:
+          VERSION_NAME: ${{ steps.app_version.outputs.version_name }}
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/*.apk out/SoruLab-v1.0.${{ github.run_number }}.apk
+          cp app/build/outputs/apk/release/*.apk "out/SoruLab-v${VERSION_NAME}.apk"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: SoruLab v1.0.${{ github.run_number }}
+          tag_name: v${{ steps.app_version.outputs.version_name }}
+          name: SoruLab v${{ steps.app_version.outputs.version_name }}
           body: ${{ github.event.head_commit.message }}
           make_latest: true
           files: out/*.apk

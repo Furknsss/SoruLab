@@ -19,6 +19,21 @@ class SoruLabQuestionClassificationTest {
     }
 
     @Test
+    fun suggestedPageTopicIsUsedWhenQuestionTextHasNoTopicSignal() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Matematik",
+            questionText = "Verilen koşullara göre doğru seçeneği bulunuz.",
+            suggestedTopicName = "Polinomlar"
+        )
+
+        assertNotNull(result)
+        assertEquals("AYT", result?.first?.examType?.name)
+        assertEquals("Matematik", result?.first?.name)
+        assertEquals("Polinomlar", result?.second?.name)
+    }
+
+    @Test
     fun complexNumberKeywordsSelectComplexNumbers() {
         val result = SoruLabCatalog.classifyQuestionTopicFromText(
             examTypeHint = "AYT",

@@ -385,8 +385,13 @@ class SoruLabRepository(
             .whereEqualTo("userId", userId)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    handleFirestoreError(error, OperationType.LIST, "test_results")
-                    close(error)
+                    val reportedError = try {
+                        handleFirestoreError(error, OperationType.LIST, "test_results")
+                        error
+                    } catch (loggedError: RuntimeException) {
+                        loggedError
+                    }
+                    close(reportedError)
                     return@addSnapshotListener
                 }
                 if (snapshot != null) {
@@ -403,8 +408,13 @@ class SoruLabRepository(
             .whereEqualTo("userId", userId)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    handleFirestoreError(error, OperationType.LIST, "custom_questions")
-                    close(error)
+                    val reportedError = try {
+                        handleFirestoreError(error, OperationType.LIST, "custom_questions")
+                        error
+                    } catch (loggedError: RuntimeException) {
+                        loggedError
+                    }
+                    close(reportedError)
                     return@addSnapshotListener
                 }
                 if (snapshot != null) {

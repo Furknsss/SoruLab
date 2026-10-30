@@ -38,7 +38,6 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.ExamType
@@ -63,6 +62,7 @@ fun IstatistiklerimScreen(
     val solvedResults = remember(testResults) { testResults.filter { it.isSolvedAttempt } }
     val examResults = remember(solvedResults, selectedExam) {
         solvedResults.filter { it.examType.equals(selectedExam.name, ignoreCase = true) }
+            .sortedByDescending { it.createdAt?.toDate()?.time ?: Long.MIN_VALUE }
     }
     val subjects = remember(selectedExam) {
         SoruLabCatalog.allSubjects.filter { it.examType == selectedExam }
@@ -113,7 +113,8 @@ fun IstatistiklerimScreen(
     val totalUngraded = examResults.sumOf { it.ungradedCount }
     val totalQuestions = totalCorrect + totalWrong + totalEmpty + totalUngraded
     val totalGradedQuestions = totalCorrect + totalWrong + totalEmpty
-    val totalNet = totalCorrect - totalWrong * 0.25
+    val totalNet = (totalCorrect - totalWrong * 0.25)
+        .takeIf { totalGradedQuestions > 0 }
     val totalAccuracy = accuracyRatio(totalCorrect, totalWrong, totalEmpty)
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy • HH:mm", Locale.forLanguageTag("tr-TR")) }
 
@@ -126,17 +127,46 @@ fun IstatistiklerimScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Column {
-                Text(
-                    text = "Genel İstatistik",
-                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
-                    color = SoruLabInkBlack
-                )
-                Text(
-                    text = "Ders ve konu performansın, çözdüğün testlerden hesaplanır",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = SoruLabSlateMuted
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .shadow(10.dp, RoundedCornerShape(17.dp), ambientColor = SoruLabCobaltBlue.copy(alpha = 0.18f))
+                        .clip(RoundedCornerShape(17.dp))
+                        .background(Brush.linearGradient(listOf(SoruLabRoyalBlue, SoruLabCobaltBlue))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Insights,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(25.dp)
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "PERFORMANS MERKEZİ",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.1.sp
+                        ),
+                        color = SoruLabRoyalBlue
+                    )
+                    Text(
+                        text = "İstatistiklerim",
+                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
+                        color = SoruLabInkBlack
+                    )
+                    Text(
+                        text = "Gelişimini verilerle takip et",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = SoruLabSlateMuted
+                    )
+                }
             }
         }
 
@@ -151,68 +181,18 @@ fun IstatistiklerimScreen(
         }
 
         item {
-            Card(
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = SoruLabSurface)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, SoruLabBorderLight, RoundedCornerShape(18.dp))
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "${selectedExam.name} GENEL",
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                color = SoruLabCobaltBlue
-                            )
-                            Text(
-                                text = "${examResults.size} test • $totalQuestions soru",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = SoruLabSlateMuted
-                            )
-                            Text(
-                                text = "$customQuestionsCount soru havuzda",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = SoruLabSlateMuted
-                            )
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                text = if (totalGradedQuestions > 0) "%$totalAccuracy" else "—",
-                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold),
-                                color = SoruLabCobaltBlue
-                            )
-                            Text("Doğruluk", style = MaterialTheme.typography.labelSmall, color = SoruLabSlateMuted)
-                        }
-                    }
-                    HorizontalDivider(color = SoruLabBorderLight)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        SummaryValue("Doğru", "$totalCorrect", SoruLabEmerald)
-                        SummaryValue("Yanlış", "$totalWrong", SoruLabCoralRed)
-                        SummaryValue("Boş", "$totalEmpty", SoruLabSlateMuted)
-                        SummaryValue(
-                            "Net",
-                            if (totalGradedQuestions > 0) {
-                                String.format(Locale.forLanguageTag("tr-TR"), "%.2f", totalNet)
-                            } else {
-                                "—"
-                            },
-                            SoruLabCobaltBlue
-                        )
-                    }
-                }
-            }
+            StatsOverviewCard(
+                exam = selectedExam,
+                testCount = examResults.size,
+                questionCount = totalQuestions,
+                accuracy = totalAccuracy.takeIf { totalGradedQuestions > 0 },
+                correct = totalCorrect,
+                wrong = totalWrong,
+                empty = totalEmpty,
+                ungraded = totalUngraded,
+                net = totalNet,
+                questionPoolCount = customQuestionsCount
+            )
         }
 
         item {
@@ -235,9 +215,9 @@ fun IstatistiklerimScreen(
                         )
                     }
                     Text(
-                        text = "${subjects.size} ders",
+                        text = "${subjects.size} DERS",
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = SoruLabSlateMuted
+                        color = SoruLabRoyalBlue
                     )
                 }
                 Row(
@@ -334,7 +314,7 @@ fun IstatistiklerimScreen(
 
         item {
             Text(
-                text = "${selectedExam.name} Test Geçmişi",
+                text = "Son Testler",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                 color = SoruLabInkBlack
             )
@@ -360,9 +340,23 @@ fun IstatistiklerimScreen(
                             .fillMaxWidth()
                             .border(1.dp, SoruLabBorderLight, RoundedCornerShape(14.dp))
                             .padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(RoundedCornerShape(13.dp))
+                                .background(SoruLabSkyTint),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.ReceiptLong,
+                                contentDescription = null,
+                                tint = SoruLabRoyalBlue,
+                                modifier = Modifier.size(21.dp)
+                            )
+                        }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "${res.examType} • ${res.subjectName}",
@@ -375,9 +369,10 @@ fun IstatistiklerimScreen(
                                 color = SoruLabInkBlack
                             )
                             Text(
-                                text = "$dateStr • ${res.correctCount}D ${res.wrongCount}Y ${res.emptyCount}B ${res.ungradedCount}P (${String.format(Locale.US, "%.2f", res.netScore)} Net)",
+                                text = "$dateStr\n${res.correctCount} doğru  •  ${res.wrongCount} yanlış  •  ${String.format(Locale.forLanguageTag("tr-TR"), "%.2f", res.netScore)} net",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = SoruLabSlateMuted
+                                color = SoruLabSlateMuted,
+                                maxLines = 2
                             )
                         }
                         Icon(
@@ -439,31 +434,188 @@ private fun accuracyRatio(correct: Int, wrong: Int, empty: Int): Int {
 }
 
 @Composable
-private fun ExamTypeSelector(selectedExam: ExamType, onSelect: (ExamType) -> Unit) {
-    Row(
+private fun StatsOverviewCard(
+    exam: ExamType,
+    testCount: Int,
+    questionCount: Int,
+    accuracy: Int?,
+    correct: Int,
+    wrong: Int,
+    empty: Int,
+    ungraded: Int,
+    net: Double?,
+    questionPoolCount: Int
+) {
+    val shape = RoundedCornerShape(24.dp)
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(SoruLabSurfaceVariant)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+            .shadow(14.dp, shape, ambientColor = SoruLabRoyalBlue.copy(alpha = 0.18f))
+            .clip(shape)
+            .background(Brush.linearGradient(listOf(Color(0xFF101B3C), Color(0xFF1D4ED8))))
     ) {
-        ExamType.values().forEach { exam ->
-            val selected = exam == selectedExam
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(11.dp))
-                    .background(if (selected) SoruLabCobaltBlue else Color.Transparent)
-                    .clickable { onSelect(exam) }
-                    .padding(vertical = 10.dp),
-                contentAlignment = Alignment.Center
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = 58.dp, y = (-72).dp)
+                .size(190.dp)
+                .background(Color.White.copy(alpha = 0.055f), CircleShape)
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .offset(x = 26.dp, y = 52.dp)
+                .size(112.dp)
+                .background(Color.White.copy(alpha = 0.045f), CircleShape)
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
             ) {
-                Text(
-                    text = exam.name,
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                    color = if (selected) Color.White else SoruLabSlateMuted
-                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AutoGraph,
+                            contentDescription = null,
+                            tint = Color(0xFFBFDBFE),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "${exam.name} • GENEL PERFORMANS",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.7.sp
+                            ),
+                            color = Color(0xFFBFDBFE)
+                        )
+                    }
+                    Text(
+                        text = net?.let { String.format(Locale.forLanguageTag("tr-TR"), "%.2f", it) } ?: "—",
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            fontSize = 36.sp,
+                            lineHeight = 42.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        ),
+                        color = Color.White
+                    )
+                    Text(
+                        text = "NET PUAN",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.1.sp
+                        ),
+                        color = Color.White.copy(alpha = 0.72f)
+                    )
+                    Text(
+                        text = "$testCount test  •  $questionCount soru",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.82f)
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .padding(top = 5.dp)
+                        .size(76.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        progress = { (accuracy ?: 0) / 100f },
+                        modifier = Modifier.fillMaxSize(),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.22f),
+                        strokeWidth = 6.dp
+                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = accuracy?.let { "$it%" } ?: "—",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                            color = Color.White
+                        )
+                        Text(
+                            text = "doğruluk",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                            color = Color.White.copy(alpha = 0.78f)
+                        )
+                    }
+                }
+            }
+            HorizontalDivider(color = Color.White.copy(alpha = 0.18f))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                SummaryValue("Doğru", "$correct", Color(0xFF6EE7B7), modifier = Modifier.weight(1f), inverse = true)
+                SummaryValue("Yanlış", "$wrong", Color(0xFFFCA5A5), modifier = Modifier.weight(1f), inverse = true)
+                SummaryValue("Boş", "$empty", Color.White, modifier = Modifier.weight(1f), inverse = true)
+                SummaryValue("Bekleyen", "$ungraded", Color(0xFFFDE68A), modifier = Modifier.weight(1f), inverse = true)
+            }
+            Text(
+                text = "Soru havuzunda $questionPoolCount soru",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.68f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExamTypeSelector(selectedExam: ExamType, onSelect: (ExamType) -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(17.dp),
+        color = SoruLabSurface,
+        shadowElevation = 3.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .border(1.dp, SoruLabBorderLight.copy(alpha = 0.8f), RoundedCornerShape(17.dp))
+                .padding(5.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            ExamType.values().forEach { exam ->
+                val selected = exam == selectedExam
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(
+                            if (selected) Brush.horizontalGradient(listOf(SoruLabRoyalBlue, SoruLabCobaltBlue))
+                            else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+                        )
+                        .clickable { onSelect(exam) }
+                        .padding(vertical = 11.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (selected) {
+                        Icon(
+                            imageVector = Icons.Filled.CheckCircle,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier
+                                .padding(end = 6.dp)
+                                .size(16.dp)
+                        )
+                    }
+                    Text(
+                        text = exam.name,
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                        color = if (selected) Color.White else SoruLabSlateMuted
+                    )
+                }
             }
         }
     }
@@ -478,75 +630,112 @@ private fun SubjectPerformanceCard(
     val accent = Color(stat.subject.accentColorHex)
     Card(
         modifier = Modifier
-            .width(116.dp)
+            .width(138.dp)
             .clickable(onClick = onClick)
             .testTag("stats_subject_${stat.subject.id}"),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = if (selected) Color(0xFFF8FAFF) else SoruLabSurface)
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) accent.copy(alpha = 0.07f) else SoruLabSurface
+        )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(154.dp)
+                .height(142.dp)
                 .border(
-                    width = if (selected) 2.dp else 1.dp,
-                    color = if (selected) SoruLabCobaltBlue else SoruLabBorderLight,
-                    shape = RoundedCornerShape(14.dp)
+                    width = if (selected) 1.5.dp else 1.dp,
+                    color = if (selected) accent.copy(alpha = 0.72f) else SoruLabBorderLight,
+                    shape = RoundedCornerShape(18.dp)
                 )
-                .padding(horizontal = 9.dp, vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+                .padding(horizontal = 12.dp, vertical = 11.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp)
         ) {
-            Text(
-                text = stat.subject.name,
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = SoruLabInkBlack,
-                maxLines = 1
-            )
-            Box(contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(
-                    progress = { 1f },
-                    modifier = Modifier.size(62.dp),
-                    color = SoruLabSurfaceVariant,
-                    strokeWidth = 6.dp
-                )
-                CircularProgressIndicator(
-                    progress = { (stat.accuracyPercent ?: 0) / 100f },
-                    modifier = Modifier.size(62.dp),
-                    color = if (stat.accuracyPercent != null) accent else SoruLabBorderLight,
-                    strokeWidth = 6.dp
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(25.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(accent.copy(alpha = 0.13f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MenuBook,
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
                 Text(
-                    text = stat.accuracyPercent?.let { "%$it" } ?: "—",
+                    text = stat.subject.name,
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = if (stat.accuracyPercent != null) SoruLabInkBlack else SoruLabSlateMuted
+                    color = SoruLabInkBlack,
+                    maxLines = 1
                 )
             }
-            Text(
-                text = if (stat.solvedTestsCount > 0) "${stat.solvedTestsCount} test" else "Veri yok",
-                style = MaterialTheme.typography.labelSmall,
-                color = SoruLabSlateMuted
-            )
-            Text(
-                text = "Gözat",
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                color = Color.White,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(if (selected) SoruLabCobaltBlue else SoruLabRoyalBlue.copy(alpha = 0.88f))
-                    .padding(vertical = 6.dp),
-                textAlign = TextAlign.Center
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        progress = { 1f },
+                        modifier = Modifier.size(50.dp),
+                        color = accent.copy(alpha = 0.13f),
+                        strokeWidth = 5.dp
+                    )
+                    CircularProgressIndicator(
+                        progress = { (stat.accuracyPercent ?: 0) / 100f },
+                        modifier = Modifier.size(50.dp),
+                        color = if (stat.accuracyPercent != null) accent else SoruLabBorderLight,
+                        strokeWidth = 5.dp
+                    )
+                    Text(
+                        text = stat.accuracyPercent?.let { "$it%" } ?: "—",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                        color = SoruLabInkBlack
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "${stat.solvedTestsCount}",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                        color = SoruLabInkBlack
+                    )
+                    Text(
+                        text = "tamamlanan test",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                        color = SoruLabSlateMuted
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun SummaryValue(label: String, value: String, color: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun SummaryValue(
+    label: String,
+    value: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    inverse: Boolean = false
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
         Text(value, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = color)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = SoruLabSlateMuted)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (inverse) Color.White.copy(alpha = 0.72f) else SoruLabSlateMuted
+        )
     }
 }
 

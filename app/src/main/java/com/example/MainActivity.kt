@@ -400,16 +400,18 @@ private fun DenemelerTabHost(
     val batchStatusText by aiViewModel.batchStatusText.collectAsStateWithLifecycle()
     val batchProgressPercent by aiViewModel.batchProgressPercent.collectAsStateWithLifecycle()
     val batchErrorText by aiViewModel.batchErrorText.collectAsStateWithLifecycle()
+    val batchWarningText by aiViewModel.batchWarningText.collectAsStateWithLifecycle()
 
     var selectedExamFilter by remember { mutableStateOf<ExamType?>(null) }
 
     if (showPdfCropperStudio) {
-        val batchState = remember(isAutoTagging, batchStatusText, batchProgressPercent, batchErrorText) {
+        val batchState = remember(isAutoTagging, batchStatusText, batchProgressPercent, batchErrorText, batchWarningText) {
             BatchPdfCropState(
                 isAnalyzing = isAutoTagging,
                 progressPercent = batchProgressPercent,
                 progressMessage = batchStatusText.orEmpty(),
-                errorMessage = batchErrorText
+                errorMessage = batchErrorText,
+                warningMessage = batchWarningText
             )
         }
         val selectedPubLogoLookup = remember(customPublishers) {

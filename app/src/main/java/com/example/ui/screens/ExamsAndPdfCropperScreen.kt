@@ -1149,6 +1149,41 @@ fun SoruHavuzuAndPdfStudioView(
                                     }
                                 }
                             }
+                            AnimatedVisibility(
+                                visible = !batchCropState.warningMessage.isNullOrBlank(),
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically()
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = Color(0xFFFFFBEB),
+                                    border = BorderStroke(1.5.dp, Color(0xFFF59E0B)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("pdf_warning_alert_box")
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Info,
+                                            contentDescription = null,
+                                            tint = Color(0xFFB45309),
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Text(
+                                            text = batchCropState.warningMessage.orEmpty(),
+                                            color = Color(0xFF92400E),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

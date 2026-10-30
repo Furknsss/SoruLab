@@ -708,9 +708,42 @@ object SoruLabCatalog {
             else -> ""
         }
         val preferredName = forcedTopicName.ifBlank { suggestedTopicName.trim() }
-        if (preferredName.isBlank()) return null
-
         val preferredExam = if (examTypeHint.contains("AYT", ignoreCase = true)) ExamType.AYT else ExamType.TYT
+        val preferredSubject = subjectNameHint
+            .replace("TYT ", "", ignoreCase = true)
+            .replace("AYT ", "", ignoreCase = true)
+            .trim()
+
+        if (preferredName.isBlank()) {
+            val examSubjects = allSubjects
+                .filter { it.examType == preferredExam }
+                .sortedByDescending { it.name.equals(preferredSubject, ignoreCase = true) }
+            val text = questionText.lowercase()
+            val bestMatch = examSubjects
+                .flatMap { subject -> subject.topics.map { subject to it } }
+                .mapNotNull { (subject, topic) ->
+                    val aliases = topicKeywordAliases[topic.id].orEmpty()
+                    val aliasScore = aliases.count { alias ->
+                        val normalizedAlias = alias.lowercase()
+                        if (normalizedAlias.length <= 3) {
+                            Regex("""\b${Regex.escape(normalizedAlias)}\b""").containsMatchIn(text)
+                        } else {
+                            text.contains(normalizedAlias)
+                        }
+                    } * 3
+                    val topicWordScore = topic.name
+                        .split(" ", "-", "ve")
+                        .map { it.trim().lowercase() }
+                        .filter { it.length >= 5 }
+                        .count { word -> text.contains(word) } * 2
+                    val score = aliasScore + topicWordScore
+                    if (score > 0) Triple(subject, topic, score) else null
+                }
+                .maxByOrNull { it.third }
+                ?.takeIf { it.third >= 3 }
+            return bestMatch?.let { it.first to it.second }
+        }
+
         val exactMatches = allSubjects.flatMap { subject ->
             subject.topics.map { topic -> subject to topic }
         }.filter { (_, topic) ->
@@ -720,10 +753,6 @@ object SoruLabCatalog {
                 (preferredName == "Limit ve Süreklilik" &&
                     topic.name.contains("Limit", ignoreCase = true))
         }
-        val preferredSubject = subjectNameHint
-            .removePrefix("TYT ")
-            .removePrefix("AYT ")
-            .trim()
         return exactMatches.firstOrNull { (subject, _) ->
             subject.examType == preferredExam && subject.name.equals(preferredSubject, ignoreCase = true)
         } ?: exactMatches.firstOrNull { (subject, _) -> subject.examType == preferredExam }

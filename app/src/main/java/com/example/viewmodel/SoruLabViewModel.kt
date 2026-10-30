@@ -26,6 +26,7 @@ import com.example.data.YksTopic
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.auth
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -194,7 +195,15 @@ class SoruLabViewModel(
     private fun saveCustomQuestionsCacheAsync(uid: String, list: List<CustomQuestionRecord>) {
         cacheSaveJob?.cancel()
         cacheSaveJob = viewModelScope.launch(Dispatchers.IO) {
-            repository.saveCachedCustomQuestions(uid, list)
+            try {
+                repository.saveCachedCustomQuestions(uid, list)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    showBanner("Sorular cihazdaki yerel depoya yazılamadı. Depolama alanını kontrol edip yeniden deneyin.")
+                }
+            }
         }
     }
 
@@ -1879,7 +1888,11 @@ class SoruLabViewModel(
 
         val updatedList = listOf(record) + _userCustomQuestions.value
         _userCustomQuestions.value = updatedList
-        repository.saveCachedCustomQuestions(uid, updatedList)
+        try {
+            repository.saveCachedCustomQuestions(uid, updatedList)
+        } catch (_: Exception) {
+            showBanner("Soru oturumda eklendi ancak cihazdaki yerel depoya yazılamadı.")
+        }
         syncPdfPoolToPracticeTests(updatedList)
 
         val firebaseUid = _currentUser.value?.uid
@@ -1985,7 +1998,7 @@ class SoruLabViewModel(
                         topicId = topicId,
                         topicName = resolvedTopicName,
                         difficulty = firestoreCompatDiff,
-                        correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "C",
+                        correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty(),
                         questionText = item.questionText.ifBlank { "$resolvedSubjectName • $resolvedTopicName" }.take(1800),
                         publisherTag = finalPubName,
                         aiSolutionSummary = packedSolution,
@@ -1998,19 +2011,59 @@ class SoruLabViewModel(
             updatedList.addAll(newRecords)
             updatedList.addAll(_userCustomQuestions.value)
 
-            withContext(Dispatchers.Main) {
-                _userCustomQuestions.value = updatedList
-                showBanner("'$bookOrTestName' kaynağından ${newRecords.size} soru Kitaplığınıza ve Soru Pratiğine eklendi!")
+            var localCacheSaved = true
+            try {
+                withContext(Dispatchers.IO) {
+                    repository.saveCachedCustomQuestions(uid, updatedList)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                localCacheSaved = false
             }
 
-            saveCustomQuestionsCacheAsync(uid, updatedList)
+            withContext(Dispatchers.Main) {
+                _userCustomQuestions.value = updatedList
+                showBanner(
+                    if (localCacheSaved) {
+                        "'$bookOrTestName' kaynağından ${newRecords.size} soru cihazınıza eklendi."
+                    } else {
+                        "Sorular oturumda açıldı ancak cihaz depolamasına yazılamadı; uygulamayı kapatmayın ve depolama alanını kontrol edin."
+                    }
+                )
+            }
+
             syncPdfPoolToPracticeTests(updatedList)
 
             val firebaseUid = _currentUser.value?.uid
             if (firebaseUid != null) {
                 launch(Dispatchers.IO) {
                     val cloudBatch = newRecords.map { it.copy(userId = firebaseUid) }
-                    runCatching { repository.saveCustomQuestionsBatch(cloudBatch) }
+                    try {
+                        repository.saveCustomQuestionsBatch(cloudBatch)
+                        withContext(Dispatchers.Main) {
+                            showBanner(
+                                if (localCacheSaved) {
+                                    "'$bookOrTestName' soruları bulut hesabınızla eşitlendi."
+                                } else {
+                                    "Bulut eşitlemesi tamamlandı; cihaz önbelleği yazılamadı."
+                                }
+                            )
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            showBanner(
+                                "Sorular cihazda ${if (localCacheSaved) "kaydedildi" else "oturumda tutuluyor"}; buluta eşitlenemedi. " +
+                                    cloudSaveProblem(e)
+                            )
+                        }
+                    }
+                }
+            } else if (localCacheSaved) {
+                withContext(Dispatchers.Main) {
+                    showBanner("Sorular cihazınıza kaydedildi. Bulut eşitlemesi için hesabınızla giriş yapın.")
                 }
             }
         }
@@ -2126,6 +2179,19 @@ class SoruLabViewModel(
             if (_statusBannerMessage.value == message) {
                 _statusBannerMessage.value = null
             }
+        }
+    }
+
+    private fun cloudSaveProblem(error: Exception): String {
+        return when ((error as? com.google.firebase.firestore.FirebaseFirestoreException)?.code) {
+            com.google.firebase.firestore.FirebaseFirestoreException.Code.UNAUTHENTICATED ->
+                "Oturum doğrulanamadı; yeniden giriş yapın."
+            com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED ->
+                "Firebase erişim izni reddedildi; güvenlik kuralları ve hesap izinleri kontrol edilmeli."
+            com.google.firebase.firestore.FirebaseFirestoreException.Code.UNAVAILABLE,
+            com.google.firebase.firestore.FirebaseFirestoreException.Code.DEADLINE_EXCEEDED ->
+                "Bağlantı kurulamadı; internetinizi kontrol edip eşitlemeyi yeniden deneyin."
+            else -> "Eşitlemeyi yeniden deneyin veya uygulama desteğine başvurun."
         }
     }
 

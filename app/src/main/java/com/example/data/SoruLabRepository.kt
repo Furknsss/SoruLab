@@ -10,6 +10,8 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
@@ -31,7 +33,9 @@ class SoruLabRepository(
 
     constructor(context: Context) : this(
         db = kotlin.run {
-            ensureFirebaseInitialized(context.applicationContext)
+            check(ensureFirebaseInitialized(context.applicationContext)) {
+                "Firebase yapılandırması eksik. google-services.json dosyasını ve Android uygulama kimliğini kontrol edin."
+            }
             FirebaseFirestore.getInstance(
                 FirebaseApp.getInstance(),
                 context.applicationContext.getString(R.string.firestore_database_id)
@@ -523,7 +527,7 @@ class SoruLabRepository(
                 "topicId" to record.topicId.ifBlank { "temel_kavramlar" }.take(64),
                 "topicName" to record.topicName.ifBlank { "Temel Kavramlar" }.take(120),
                 "difficulty" to (record.difficulty.takeIf { it in listOf("Kolay", "Orta", "Zor") } ?: "Orta"),
-                "correctOption" to (record.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "C"),
+                "correctOption" to (record.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty()),
                 "questionText" to record.questionText.ifBlank { "YKS Sorusu" }.take(1950),
                 "publisherTag" to record.publisherTag.ifBlank { "YKS Yayınları" }.take(115),
                 "aiSolutionSummary" to record.aiSolutionSummary.take(3950),
@@ -565,42 +569,65 @@ class SoruLabRepository(
     suspend fun saveCustomQuestionsBatch(records: List<CustomQuestionRecord>) {
         if (records.isEmpty()) return
         records.chunked(350).forEach { chunk ->
-            try {
-                val batch = db.batch()
-                chunk.forEach { record ->
-                    val docRef = if (record.id.isNotBlank()) {
-                        customQuestionsCollection.document(record.id.take(120))
-                    } else {
-                        customQuestionsCollection.document()
-                    }
-                    val safeRatio = if (record.cropAspectRatio.isFinite()) {
-                        record.cropAspectRatio.coerceIn(0.25, 4.8)
-                    } else {
-                        1.25
-                    }
-                    val payload = mapOf(
-                        "userId" to record.userId,
-                        "examType" to if (record.examType.equals("AYT", ignoreCase = true)) "AYT" else "TYT",
-                        "subjectId" to record.subjectId.ifBlank { "tyt_mat" }.take(64),
-                        "subjectName" to record.subjectName.ifBlank { "Matematik" }.take(100),
-                        "topicId" to record.topicId.ifBlank { "temel_kavramlar" }.take(64),
-                        "topicName" to record.topicName.ifBlank { "Temel Kavramlar" }.take(120),
-                        "difficulty" to (record.difficulty.takeIf { it in listOf("Kolay", "Orta", "Zor") } ?: "Orta"),
-                        "correctOption" to (record.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "C"),
-                        "questionText" to record.questionText.ifBlank { "YKS Sorusu" }.take(1950),
-                        "publisherTag" to record.publisherTag.ifBlank { "YKS Yayınları" }.take(115),
-                        "aiSolutionSummary" to record.aiSolutionSummary.take(3950),
-                        "cropAspectRatio" to safeRatio,
-                        "createdAt" to FieldValue.serverTimestamp(),
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                    batch.set(docRef, payload)
+            val documentRefs = chunk.map { record ->
+                if (record.id.isNotBlank()) {
+                    customQuestionsCollection.document(record.id.take(120))
+                } else {
+                    customQuestionsCollection.document()
                 }
-                batch.commit().await()
-            } catch (e: Exception) {
-                handleFirestoreError(e, OperationType.CREATE, "custom_questions/batch")
+            }
+            var attempt = 0
+            while (true) {
+                try {
+                    val batch = db.batch()
+                    chunk.forEachIndexed { index, record ->
+                        batch.set(documentRefs[index], customQuestionFirestorePayload(record))
+                    }
+                    batch.commit().await()
+                    break
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    val code = (e as? com.google.firebase.firestore.FirebaseFirestoreException)?.code
+                    val retryable = code in setOf(
+                        com.google.firebase.firestore.FirebaseFirestoreException.Code.UNAVAILABLE,
+                        com.google.firebase.firestore.FirebaseFirestoreException.Code.DEADLINE_EXCEEDED,
+                        com.google.firebase.firestore.FirebaseFirestoreException.Code.ABORTED
+                    )
+                    if (retryable && attempt < 2) {
+                        delay(500L shl attempt)
+                        attempt++
+                    } else {
+                        handleFirestoreError(e, OperationType.CREATE, "custom_questions/batch")
+                        throw e
+                    }
+                }
             }
         }
+    }
+
+    private fun customQuestionFirestorePayload(record: CustomQuestionRecord): Map<String, Any> {
+        val safeRatio = if (record.cropAspectRatio.isFinite()) {
+            record.cropAspectRatio.coerceIn(0.25, 4.8)
+        } else {
+            1.25
+        }
+        return mapOf(
+            "userId" to record.userId,
+            "examType" to if (record.examType.equals("AYT", ignoreCase = true)) "AYT" else "TYT",
+            "subjectId" to record.subjectId.ifBlank { "tyt_mat" }.take(64),
+            "subjectName" to record.subjectName.ifBlank { "Matematik" }.take(100),
+            "topicId" to record.topicId.ifBlank { "temel_kavramlar" }.take(64),
+            "topicName" to record.topicName.ifBlank { "Temel Kavramlar" }.take(120),
+            "difficulty" to (record.difficulty.takeIf { it in listOf("Kolay", "Orta", "Zor") } ?: "Orta"),
+            "correctOption" to (record.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty()),
+            "questionText" to record.questionText.ifBlank { "YKS Sorusu" }.take(1950),
+            "publisherTag" to record.publisherTag.ifBlank { "YKS Yayınları" }.take(115),
+            "aiSolutionSummary" to record.aiSolutionSummary.take(3950),
+            "cropAspectRatio" to safeRatio,
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
     }
 
     suspend fun deleteCustomQuestionsBatch(questionIds: List<String>) {
@@ -674,10 +701,12 @@ class SoruLabRepository(
     }
 
     fun saveCachedCustomQuestions(userId: String, records: List<CustomQuestionRecord>) {
-        val ctx = appContext ?: return
+        val ctx = appContext ?: throw IllegalStateException("Yerel soru deposu kullanılamıyor.")
         try {
             val cacheDir = java.io.File(ctx.filesDir, "sorulab_question_cache")
-            if (!cacheDir.exists()) cacheDir.mkdirs()
+            if (!cacheDir.exists() && !cacheDir.mkdirs()) {
+                throw java.io.IOException("Soru önbelleği oluşturulamadı.")
+            }
             val arr = JSONArray()
             val seenIds = HashSet<String>(records.size)
             for (rec in records) {
@@ -712,7 +741,8 @@ class SoruLabRepository(
                     .remove("custom_questions_global_device")
                     .apply()
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            throw IllegalStateException("Sorular cihazdaki yerel depoya yazılamadı.", e)
         }
     }
 

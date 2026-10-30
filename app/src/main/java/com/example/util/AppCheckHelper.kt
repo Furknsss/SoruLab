@@ -5,7 +5,6 @@ import android.content.Intent
 import android.util.Log
 import com.example.BuildConfig
 import com.google.firebase.FirebaseApp
-import com.google.firebase.FirebaseOptions
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import com.google.firebase.appcheck.recaptcha.RecaptchaAppCheckProviderFactory
@@ -21,19 +20,19 @@ fun ensureFirebaseInitialized(context: Context): Boolean {
     return try {
         val appCtx = context.applicationContext ?: context
         if (FirebaseApp.getApps(appCtx).isEmpty()) {
-            val defaultApp = FirebaseApp.initializeApp(appCtx)
-            if (defaultApp == null && FirebaseApp.getApps(appCtx).isEmpty()) {
-                val fallbackOptions = FirebaseOptions.Builder()
-                    .setProjectId("sorulab-yks-local")
-                    .setApplicationId("1:100000000000:android:0000000000000000")
-                    .setApiKey("AIzaSyDummyKeyForLocalOfflineExecution000")
-                    .build()
-                FirebaseApp.initializeApp(appCtx, fallbackOptions)
-            }
+            FirebaseApp.initializeApp(appCtx)
         }
-        FirebaseApp.getApps(appCtx).isNotEmpty()
+        val defaultApp = FirebaseApp.getApps(appCtx)
+            .firstOrNull { it.name == "[DEFAULT]" }
+            ?: return false
+        val apiKey = defaultApp.options.apiKey
+        if (apiKey.isNullOrBlank() || apiKey.contains("dummy", ignoreCase = true)) {
+            Log.e(TAG, "Firebase yapılandırmasında geçerli bir API anahtarı bulunamadı.")
+            return false
+        }
+        true
     } catch (e: Exception) {
-        Log.w(TAG, "Firebase initialization fallback skipped: ${e.message}")
+        Log.e(TAG, "Firebase başlatılamadı (${e.javaClass.simpleName}).")
         false
     }
 }
@@ -41,6 +40,7 @@ fun ensureFirebaseInitialized(context: Context): Boolean {
 fun configureAppCheck(context: Context, intent: Intent?) {
     try {
         if (!ensureFirebaseInitialized(context)) {
+            Log.e(TAG, "App Check kurulamadı: Firebase yapılandırması eksik veya geçersiz.")
             return
         }
 
@@ -82,6 +82,6 @@ fun configureAppCheck(context: Context, intent: Intent?) {
             }
         }
     } catch (e: Exception) {
-        Log.e(TAG, "Failed to initialize Firebase App Check", e)
+        Log.e(TAG, "Firebase App Check kurulamadı (${e.javaClass.simpleName}).")
     }
 }

@@ -485,7 +485,7 @@ fun LiveSolvingBoardScreen(
                             .fillMaxSize()
                             .testTag("single_question_horizontal_pager")
                     ) { qIdx ->
-                        val currentQuestion = questions.getOrNull(qIdx) ?: questions.first()
+                        val currentQuestion = questions.getOrNull(qIdx) ?: return@HorizontalPager
                         val pageOffset = (singleQuestionPagerState.currentPage - qIdx) + singleQuestionPagerState.currentPageOffsetFraction
 
                         Box(

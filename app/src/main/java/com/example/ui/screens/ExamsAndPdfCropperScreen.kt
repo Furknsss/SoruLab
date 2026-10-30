@@ -522,6 +522,7 @@ private fun MockExamCardItem(
 fun SoruHavuzuAndPdfStudioView(
     customQuestions: List<CustomQuestionRecord>,
     customPublishers: List<YksPublisherInfo>,
+    selectedTestLevel: TopicTestLevel,
     batchCropState: BatchPdfCropState,
     onStartFastParallelPdfExtraction: (
         pdfUri: Uri,
@@ -609,7 +610,6 @@ fun SoruHavuzuAndPdfStudioView(
     }
 
     var selectedBookForTestPanel by remember { mutableStateOf<LibraryBookCardModel?>(null) }
-    var selectedQuestionsPerTest by remember { mutableIntStateOf(12) }
 
     val pdfPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -1403,15 +1403,9 @@ fun SoruHavuzuAndPdfStudioView(
                 }.ifEmpty { sortedBookQuestions }
             }
         }
-        val effectiveChunkSize = if (selectedQuestionsPerTest <= 0) {
-            filteredQuestionsForChunks.size.coerceAtLeast(1)
-        } else {
-            selectedQuestionsPerTest.coerceAtLeast(1)
+        val testChunks = remember(filteredQuestionsForChunks, selectedTestLevel) {
+            automaticBookTestChunks(filteredQuestionsForChunks, selectedTestLevel)
         }
-        val testChunks = remember(filteredQuestionsForChunks, effectiveChunkSize) {
-            filteredQuestionsForChunks.chunked(effectiveChunkSize)
-        }
-        val countOptions = listOf(8, 10, 12, 16, 20, 0)
 
         Dialog(onDismissRequest = { selectedBookForTestPanel = null }) {
             Surface(
@@ -1551,50 +1545,21 @@ fun SoruHavuzuAndPdfStudioView(
                         }
                     }
 
-                    // Soru Sayısı Seçici (8, 10, 12, 16, 20, Tümünü Al)
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "Her Testteki Soru Sayısı",
-                            color = Color(0xFF0F172A),
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 13.5.sp
-                        )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            countOptions.forEach { opt ->
-                                val isSel = selectedQuestionsPerTest == opt
-                                val label = if (opt == 0) "Tümünü Al (${filteredQuestionsForChunks.size})" else "$opt Soru"
-                                Surface(
-                                    onClick = { selectedQuestionsPerTest = opt },
-                                    shape = RoundedCornerShape(50),
-                                    color = if (isSel) Color(0xFF1E3A8A) else Color(0xFFF1F5F9),
-                                    border = BorderStroke(1.dp, if (isSel) Color(0xFF1E3A8A) else Color(0xFFCBD5E1))
-                                ) {
-                                    Text(
-                                        text = label,
-                                        color = if (isSel) Color.White else Color(0xFF334155),
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 12.sp,
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-
                     HorizontalDivider(color = Color(0xFFE2E8F0))
 
-                    // Oluşturulan Testler Listesi ("[Konu Adı] - Test 1", "[Konu Adı] - Test 2"...)
                     Text(
-                        text = "Oluşturulan Konu Testleri (${testChunks.size} Test • ${filteredQuestionsForChunks.size} Soru)",
+                        text = "${selectedTestLevel.displayTitle} • Otomatik testler (en fazla $AUTOMATIC_TEST_QUESTION_COUNT soru)",
                         color = Color(0xFF0F172A),
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 13.5.sp
                     )
+                    if (testChunks.isEmpty()) {
+                        Text(
+                            text = "Bu kitapta seçili seviyeye uygun soru bulunamadı.",
+                            color = Color(0xFF64748B),
+                            fontSize = 13.sp
+                        )
+                    }
 
                     LazyColumn(
                         modifier = Modifier

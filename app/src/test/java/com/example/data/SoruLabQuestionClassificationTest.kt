@@ -7,6 +7,32 @@ import org.junit.Test
 
 class SoruLabQuestionClassificationTest {
     @Test
+    fun automaticBookTestsUseWheelDifficultyAndAtMostTwelveQuestions() {
+        val questions = buildList {
+            repeat(13) { index ->
+                add(bookQuestion("hard_$index", "Zor", index + 1))
+            }
+            add(bookQuestion("osym", "ÖSYM", 14))
+            add(bookQuestion("medium", "Orta", 15))
+        }
+
+        val chunks = automaticBookTestChunks(questions, TopicTestLevel.DERECE)
+
+        assertEquals(listOf(12, 2), chunks.map { it.size })
+        assertTrue(chunks.flatten().all { it.difficultyLevel5 in TopicTestLevel.DERECE.recommendedDifficultyLevels() })
+        assertEquals(listOf(1), automaticBookTestChunks(questions, TopicTestLevel.BASLANGIC).map { it.size })
+    }
+
+    private fun bookQuestion(id: String, difficulty: String, number: Int) = CustomQuestionRecord(
+        id = id,
+        aiSolutionSummary = CustomQuestionRecord.packSolutionWithMeta(
+            solutionText = "",
+            questionNumberInBook = number,
+            fiveTierDifficulty = difficulty
+        )
+    )
+
+    @Test
     fun publisherPickerContainsOnlyUserAddedPublishers() {
         val publisher = YksPublisherInfo(
             id = "custom_apotemi",

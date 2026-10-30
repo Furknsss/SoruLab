@@ -3054,18 +3054,9 @@ private fun SoruLabAiTestGeneratorDialog(
     onStartGeneratedTest: (YksTestItem) -> Unit,
     onGoToPdfStudio: () -> Unit
 ) {
-    var isSetupPhase by remember(topic.id, level) { mutableStateOf(true) }
+    var isSetupPhase by remember(topic.id, level) { mutableStateOf(false) }
     var selectedDifficulties by remember(topic.id, level) {
-        mutableStateOf(
-            when (level) {
-                TopicTestLevel.BASLANGIC -> setOf(DifficultyLevel.KOLAY, DifficultyLevel.ORTA)
-                TopicTestLevel.PEKISTIRME -> setOf(DifficultyLevel.KOLAY, DifficultyLevel.ORTA, DifficultyLevel.OSYM)
-                TopicTestLevel.GELISIYORUM -> setOf(DifficultyLevel.ORTA, DifficultyLevel.OSYM, DifficultyLevel.ZOR)
-                TopicTestLevel.OSYM -> setOf(DifficultyLevel.OSYM, DifficultyLevel.ORTA, DifficultyLevel.ZOR)
-                TopicTestLevel.DERECE -> setOf(DifficultyLevel.ZOR, DifficultyLevel.COK_ZOR, DifficultyLevel.OSYM)
-                TopicTestLevel.IKIZ -> DifficultyLevel.entries.toSet()
-            }
-        )
+        mutableStateOf(level.recommendedDifficultyLevels())
     }
     var selectedSourceFilter by remember(topic.id, level) {
         mutableStateOf(
@@ -3080,16 +3071,15 @@ private fun SoruLabAiTestGeneratorDialog(
     val maxAvailableCount = matchingDiffCount.coerceAtLeast(0)
     val safeMaxAvailableCount = maxAvailableCount.coerceAtLeast(1)
     var selectedQuestionCount by remember(topic.id, level, safeMaxAvailableCount) {
-        mutableIntStateOf(12.coerceAtMost(safeMaxAvailableCount).coerceAtLeast(1))
+        mutableIntStateOf(AUTOMATIC_TEST_QUESTION_COUNT.coerceAtMost(safeMaxAvailableCount))
     }
-
     var currentStep by remember { mutableIntStateOf(1) }
     var progressTarget by remember { mutableFloatStateOf(0.20f) }
     var createdTest by remember { mutableStateOf<YksTestItem?>(null) }
     var generationFailed by remember { mutableStateOf(false) }
 
     // Never show "Soru Bulunamadı" if a test was already created or if poolCheck.canGenerate is true!
-    if (!poolCheck.canGenerate && createdTest == null && currentStep <= 1) {
+    if ((!poolCheck.canGenerate || maxAvailableCount == 0) && createdTest == null && currentStep <= 1) {
         Dialog(onDismissRequest = onDismiss) {
             Card(
                 shape = RoundedCornerShape(26.dp),
@@ -3151,7 +3141,11 @@ private fun SoruLabAiTestGeneratorDialog(
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
-                        text = poolCheck.reasonMessage,
+                        text = if (poolCheck.canGenerate && maxAvailableCount == 0) {
+                            "Seçili ${level.displayTitle} seviyesinde bu konuda henüz uygun soru yok."
+                        } else {
+                            poolCheck.reasonMessage
+                        },
                         style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
                         color = Color(0xFF475569),
                         textAlign = TextAlign.Center
@@ -3513,7 +3507,7 @@ private fun SoruLabAiTestGeneratorDialog(
         label = "ai_gen_progress"
     )
 
-    val realCount = selectedQuestionCount.coerceIn(1, safeMaxAvailableCount)
+    val realCount = matchingDiffCount.coerceAtMost(AUTOMATIC_TEST_QUESTION_COUNT)
     val step1Text = remember(topic, selectedSourceFilter, realCount) {
         "'${topic.name}' konusundan (${selectedSourceFilter.label}) $realCount gerçek soru seçiliyor..."
     }
@@ -3534,7 +3528,7 @@ private fun SoruLabAiTestGeneratorDialog(
             currentStep = 3
             progressTarget = 1.0f
             delay(400L)
-            if (createdTest == null) {
+            if (createdTest == null && realCount > 0) {
                 createdTest = poolCheck.onGenerateCustomTest?.invoke(
                     selectedDifficulties,
                     selectedSourceFilter,
@@ -3667,7 +3661,7 @@ private fun SoruLabAiTestGeneratorDialog(
                         }
 
                         Button(
-                            onClick = { onStartGeneratedTest(createdTest!!) },
+                            onClick = { createdTest?.let(onStartGeneratedTest) },
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF1D63DC),
@@ -3698,16 +3692,10 @@ private fun SoruLabAiTestGeneratorDialog(
                             Text("Kapat")
                         }
                         Button(
-                            onClick = {
-                                generationFailed = false
-                                currentStep = 1
-                                progressTarget = 0.20f
-                                createdTest = null
-                                isSetupPhase = true
-                            },
+                            onClick = onGoToPdfStudio,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("Ayarlara Dön")
+                            Text("PDF'ten Soru Ekle")
                         }
                     }
                 }

@@ -392,6 +392,7 @@ private fun DenemelerTabHost(
     aiViewModel: AiSolverViewModel
 ) {
     val context = LocalContext.current
+    val selectedTestLevel by mainViewModel.selectedTestLevel.collectAsStateWithLifecycle()
     val showPdfCropperStudio by mainViewModel.showPdfCropperStudio.collectAsStateWithLifecycle()
     val userCustomQuestions by mainViewModel.userCustomQuestions.collectAsStateWithLifecycle()
     val customPublishers by mainViewModel.customPublishers.collectAsStateWithLifecycle()
@@ -427,6 +428,7 @@ private fun DenemelerTabHost(
         SoruHavuzuAndPdfStudioView(
             customQuestions = userCustomQuestions,
             customPublishers = customPublishers,
+            selectedTestLevel = selectedTestLevel,
             batchCropState = batchState,
             onStartFastParallelPdfExtraction = { pdfUri, fileNameHint, publisher, onComplete ->
                 val logoUri = publisher.customLogoPath.ifBlank {

@@ -5,6 +5,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.AUTOMATIC_TEST_QUESTION_COUNT
 import com.example.data.CustomQuestionRecord
 import com.example.data.DifficultyLevel
 import com.example.data.ExamType
@@ -23,6 +24,7 @@ import com.example.data.YksPublisherInfo
 import com.example.data.YksQuestion
 import com.example.data.YksTestItem
 import com.example.data.YksTopic
+import com.example.data.recommendedDifficultyLevels
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.auth
@@ -1247,14 +1249,7 @@ class SoruLabViewModel(
     }
 
     fun generateNewAiLevelTest(topic: YksTopic, level: TopicTestLevel): YksTestItem? {
-        val defaultDiffs = when (level) {
-            TopicTestLevel.BASLANGIC -> setOf(DifficultyLevel.KOLAY, DifficultyLevel.ORTA)
-            TopicTestLevel.PEKISTIRME -> setOf(DifficultyLevel.KOLAY, DifficultyLevel.ORTA, DifficultyLevel.OSYM)
-            TopicTestLevel.GELISIYORUM -> setOf(DifficultyLevel.ORTA, DifficultyLevel.OSYM, DifficultyLevel.ZOR)
-            TopicTestLevel.OSYM -> setOf(DifficultyLevel.OSYM, DifficultyLevel.ORTA, DifficultyLevel.ZOR)
-            TopicTestLevel.DERECE -> setOf(DifficultyLevel.ZOR, DifficultyLevel.COK_ZOR, DifficultyLevel.OSYM)
-            TopicTestLevel.IKIZ -> DifficultyLevel.entries.toSet()
-        }
+        val defaultDiffs = level.recommendedDifficultyLevels()
         val defaultSource = if (level == TopicTestLevel.IKIZ) {
             QuestionSourceFilter.YANLIS_YAPTIKLARIM
         } else {
@@ -1291,6 +1286,10 @@ class SoruLabViewModel(
         initialQuestionIndex: Int = 0,
         preloadedDurationSeconds: Int? = null
     ) {
+        if (testItem.questions.isEmpty()) {
+            showBanner("Bu testte çözülecek soru bulunamadı. Başka bir test seçin.")
+            return
+        }
         _dialogTestItem.value = null
         val subject = SoruLabCatalog.allSubjects.find { it.id == topic.subjectId }
         val examType = subject?.examType ?: _selectedExamType.value
@@ -1426,7 +1425,17 @@ class SoruLabViewModel(
         selectedChunkIndex: Int = 0
     ) {
         if (records.isEmpty()) return
-        val firstRecord = records.first()
+        val level = _selectedTestLevel.value
+        val eligibleRecords = records
+            .filter { it.difficultyLevel5 in level.recommendedDifficultyLevels() }
+            .sortedBy {
+                if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE
+            }
+        if (eligibleRecords.isEmpty()) {
+            showBanner("Seçili ${level.displayTitle} seviyesine uygun kitap sorusu bulunamadı.")
+            return
+        }
+        val firstRecord = eligibleRecords.first()
         val matchedSubject = SoruLabCatalog.allSubjects.find { it.id == firstRecord.subjectId }
             ?: SoruLabCatalog.allSubjects.find { it.name.equals(firstRecord.subjectName, ignoreCase = true) }
             ?: SoruLabCatalog.allSubjects.first()
@@ -1434,15 +1443,15 @@ class SoruLabViewModel(
             ?: matchedSubject.topics.find { it.name.equals(firstRecord.topicName, ignoreCase = true) }
             ?: matchedSubject.topics.first()
 
-        val sortedRecords = records.sortedBy {
-            if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE
-        }
-
         val effectiveRecords = if (questionsPerTest > 0) {
-            val chunks = sortedRecords.chunked(questionsPerTest)
-            chunks.getOrNull(selectedChunkIndex) ?: chunks.firstOrNull() ?: sortedRecords
+            val chunks = eligibleRecords.chunked(questionsPerTest)
+            chunks.getOrNull(selectedChunkIndex) ?: chunks.firstOrNull().orEmpty()
         } else {
-            sortedRecords
+            eligibleRecords.take(AUTOMATIC_TEST_QUESTION_COUNT)
+        }
+        if (effectiveRecords.isEmpty()) {
+            showBanner("Seçili seviyede bu test için uygun soru bulunamadı.")
+            return
         }
 
         val testQuestions = effectiveRecords.mapIndexed { idx, record ->
@@ -1478,25 +1487,17 @@ class SoruLabViewModel(
             )
         }
 
-        val avgBookWeight = testQuestions.map { it.difficulty.weight }.average().toFloat().coerceIn(0.18f, 0.94f)
-        val dominantBookDiff = when {
-            avgBookWeight < 0.29f -> DifficultyLevel.KOLAY
-            avgBookWeight < 0.50f -> DifficultyLevel.ORTA
-            avgBookWeight < 0.67f -> DifficultyLevel.OSYM
-            avgBookWeight < 0.85f -> DifficultyLevel.ZOR
-            else -> DifficultyLevel.COK_ZOR
-        }
         val cleanTitle = "${matchedTopic.name} - Test ${selectedChunkIndex + 1}"
         val bookTest = YksTestItem(
             id = "book_test_${matchedTopic.id}_${selectedChunkIndex + 1}_${System.currentTimeMillis() % 100000}",
             topicId = matchedTopic.id,
             title = cleanTitle,
             fullTitle = cleanTitle,
-            difficulty = dominantBookDiff,
-            difficultyPosition = avgBookWeight,
+            difficulty = level.defaultDifficulty,
+            difficultyPosition = level.difficultyPosition,
             defaultCompleted = false,
             starRating = 0,
-            level = TopicTestLevel.OSYM,
+            level = level,
             questions = testQuestions.mapIndexed { idx, q ->
                 q.copy(
                     number = idx + 1,
@@ -1577,6 +1578,7 @@ class SoruLabViewModel(
 
     fun selectQuestionIndex(index: Int) {
         val cur = _activeSession.value ?: return
+        if (cur.testItem.questions.isEmpty()) return
         val safeIdx = index.coerceIn(0, cur.testItem.questions.lastIndex)
         _activeSession.value = cur.copy(currentQuestionIndex = safeIdx)
     }

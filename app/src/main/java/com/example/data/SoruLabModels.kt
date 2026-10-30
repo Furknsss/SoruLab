@@ -457,6 +457,25 @@ enum class TopicTestLevel(
     )
 }
 
+fun TopicTestLevel.recommendedDifficultyLevels(): Set<DifficultyLevel> = when (this) {
+    TopicTestLevel.BASLANGIC -> setOf(DifficultyLevel.KOLAY, DifficultyLevel.ORTA)
+    TopicTestLevel.IKIZ -> DifficultyLevel.entries.toSet()
+    TopicTestLevel.PEKISTIRME -> setOf(DifficultyLevel.KOLAY, DifficultyLevel.ORTA, DifficultyLevel.OSYM)
+    TopicTestLevel.GELISIYORUM -> setOf(DifficultyLevel.ORTA, DifficultyLevel.OSYM, DifficultyLevel.ZOR)
+    TopicTestLevel.OSYM -> setOf(DifficultyLevel.ORTA, DifficultyLevel.OSYM, DifficultyLevel.ZOR)
+    TopicTestLevel.DERECE -> setOf(DifficultyLevel.OSYM, DifficultyLevel.ZOR, DifficultyLevel.COK_ZOR)
+}
+
+const val AUTOMATIC_TEST_QUESTION_COUNT = 12
+
+fun automaticBookTestChunks(
+    questions: List<CustomQuestionRecord>,
+    level: TopicTestLevel
+): List<List<CustomQuestionRecord>> =
+    questions
+        .filter { it.difficultyLevel5 in level.recommendedDifficultyLevels() }
+        .chunked(AUTOMATIC_TEST_QUESTION_COUNT)
+
 enum class QuestionVisualType {
     NONE,
     MARKET_RECEIPT,

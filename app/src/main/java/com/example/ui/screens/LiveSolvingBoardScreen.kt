@@ -45,12 +45,15 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -1309,7 +1312,7 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isLeftPopoverOpen) 60f else 1f)
                         .padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = if (leftColumnQuestions.size > 1) Arrangement.SpaceBetween else Arrangement.Top
+                    verticalArrangement = Arrangement.Top
                 ) {
                     leftColumnQuestions.forEachIndexed { idx, q ->
                         BookPageQuestionItem345(
@@ -1347,7 +1350,7 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isRightPopoverOpen) 60f else 1f)
                         .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = if (rightColumnQuestions.size > 1) Arrangement.SpaceBetween else Arrangement.Top
+                    verticalArrangement = Arrangement.Top
                 ) {
                     if (rightColumnQuestions.isEmpty()) {
                         Spacer(modifier = Modifier.height(80.dp))
@@ -1411,7 +1414,7 @@ private fun RealTwoColumnBookPageSurface(
 
 /**
  * KİTAP SAYFASINDAKİ TEKİL SORU GÖRÜNÜMÜ (KUTUSUZ / KARTSIZ SAF KİTAP DÜZENİ):
- * - Sol başta: Yayınevi Logosu + Soru Numarası (`1.`, `2.`, `3.`, `4.`)
+ * - Sol başta: Uygulama soru numarası (`1.`, `2.`, `3.`, `4.`)
  * - Test Bittiğinde (`isReviewMode = true`):
  *   * Sol üst köşede (soru numarasının hemen üstünde/yanında):
  *     - Doğruysa: Yeşil Tik (`✓`, `#16A34A`)
@@ -1445,16 +1448,15 @@ private fun BookPageQuestionItem345(
             .zIndex(if (isThreeDotMenuOpen) 55f else 1f)
             .testTag("book_question_${question.number}")
     ) {
-        // 1. SORU İÇERİĞİ: Sol Başta Yayınevi Logosu + Soru No, Sağında Saf Soru Görseli
+        // 1. SORU İÇERİĞİ: Sol başta soru numarası, sağında saf soru görseli
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Sol Baş: Yayınevi Logosu + Mavi Soru Numarası ("1.", "2."...)
+            // Sol kenarda yalnızca uygulamanın soru numarası gösterilir.
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier.width(30.dp)
             ) {
                 Text(
@@ -1463,15 +1465,6 @@ private fun BookPageQuestionItem345(
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 15.sp
                 )
-                if (question.publisherName.isNotBlank() || question.publisherLogoUri.isNotBlank()) {
-                    PublisherLogoEmblem(
-                        publisherName = question.publisherName.ifBlank { "3D Yayınları" },
-                        customLogoUri = question.publisherLogoUri,
-                        customPublishers = customPublishers,
-                        sizeDp = 22.dp,
-                        showNameAlongside = false
-                    )
-                }
             }
 
             // Sağ Kısım: Numarasız Saf Kırpılmış Soru Görseli (veya Metin/Diyagram)
@@ -1480,18 +1473,21 @@ private fun BookPageQuestionItem345(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (croppedBitmap != null) {
-                    val aspect = (croppedBitmap.width.toFloat() / croppedBitmap.height.toFloat().coerceAtLeast(1f))
-                        .coerceIn(0.42f, 2.85f)
-                    Image(
-                        bitmap = croppedBitmap.asImageBitmap(),
-                        contentDescription = "${question.number}. Soru",
-                        contentScale = ContentScale.Fit,
-                        alignment = Alignment.TopStart,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(aspect)
-                            .background(Color.White)
-                    )
+                    val aspect = croppedBitmap.width.toFloat() / croppedBitmap.height.toFloat().coerceAtLeast(1f)
+                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                        val nativeWidth = with(LocalDensity.current) { croppedBitmap.width.toDp() }
+                        val imageWidth = minOf(maxWidth, 300.dp * aspect, nativeWidth)
+                        Image(
+                            bitmap = croppedBitmap.asImageBitmap(),
+                            contentDescription = "${question.number}. Soru",
+                            contentScale = ContentScale.Fit,
+                            alignment = Alignment.TopStart,
+                            modifier = Modifier
+                                .width(imageWidth)
+                                .aspectRatio(aspect)
+                                .background(Color.White)
+                        )
+                    }
                     // Kitap sayfasında her kırpılmış sorunun hemen altında hızlı şık işaretleme barı (A B C D E)
                     Row(
                         modifier = Modifier
@@ -2873,15 +2869,17 @@ private fun FullScreenTwinQuestionComparisonView(
             )
         }
 
-        // 3. Yan Yana 2 Kart: Sol ("İkiz Sorusu" - Turuncu) ve Sağ ("Test Sorusu" - Koyu Lacivert)
-        Row(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // 1. SOL KART: "İkiz Sorusu" (Turuncu #EA580C Sekme & Kenarlık)
+        // RTL places the twin card on the right while keeping each card's content LTR.
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+            // İkiz kartı sağda, Test Sorusu kartı solda yer alır.
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -2928,6 +2926,21 @@ private fun FullScreenTwinQuestionComparisonView(
                                     textAlign = TextAlign.Center
                                 )
                             }
+                        } else if (twinData.errorMessage != null) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = twinData.errorMessage,
+                                    color = Color(0xFFB91C1C),
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
                         } else {
                             Column(
                                 modifier = Modifier
@@ -2948,15 +2961,6 @@ private fun FullScreenTwinQuestionComparisonView(
                                         lineHeight = 21.sp,
                                         fontWeight = FontWeight.Medium
                                     )
-
-                                    if (twinData.visualType != QuestionVisualType.NONE) {
-                                        QuestionVectorDiagram(
-                                            visualType = twinData.visualType,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(145.dp)
-                                        )
-                                    }
 
                                     Row(
                                         modifier = Modifier
@@ -3146,8 +3150,10 @@ private fun FullScreenTwinQuestionComparisonView(
                     }
                 }
             }
+            }
 
-            // 2. SAĞ KART: "Test Sorusu" (Koyu Lacivert #1E1B4B Sekme & Orijinal Soru Görseli)
+            // Test kartı, RTL düzeni nedeniyle sol tarafta.
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -3189,16 +3195,20 @@ private fun FullScreenTwinQuestionComparisonView(
                             contentAlignment = Alignment.TopCenter
                         ) {
                             if (originalBitmap != null) {
-                                val aspect = (originalBitmap.width.toFloat() / originalBitmap.height.toFloat().coerceAtLeast(1f))
-                                    .coerceIn(0.45f, 3.0f)
-                                Image(
-                                    bitmap = originalBitmap.asImageBitmap(),
-                                    contentDescription = "Orijinal Test Sorusu",
-                                    contentScale = ContentScale.FillWidth,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(aspect)
-                                )
+                                val aspect = originalBitmap.width.toFloat() /
+                                    originalBitmap.height.toFloat().coerceAtLeast(1f)
+                                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                                    val nativeWidth = with(LocalDensity.current) { originalBitmap.width.toDp() }
+                                    val imageWidth = minOf(maxWidth, 300.dp * aspect, nativeWidth)
+                                    Image(
+                                        bitmap = originalBitmap.asImageBitmap(),
+                                        contentDescription = "Orijinal Test Sorusu",
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier
+                                            .width(imageWidth)
+                                            .aspectRatio(aspect)
+                                    )
+                                }
                             } else {
                                 Text(
                                     text = originalQuestion.stemTop.ifBlank { "${originalQuestion.number}. Soru" },
@@ -3276,6 +3286,8 @@ private fun FullScreenTwinQuestionComparisonView(
                                             fontSize = 14.sp
                                         )
                                     }
+                                }
+                            }
                                 }
                             }
                         }
@@ -3825,35 +3837,8 @@ fun QuestionVectorDiagram(
         val cx = w / 2f
         val cy = h / 2f
         val primaryStroke = Color(0xFF1E3A8A)
-        val accentStroke = Color(0xFFDC2626)
 
         when (visualType) {
-            QuestionVisualType.VENN_DIAGRAM -> {
-                val r = min(w, h) * 0.28f
-                drawCircle(
-                    color = primaryStroke.copy(alpha = 0.12f),
-                    radius = r,
-                    center = Offset(cx - r * 0.45f, cy)
-                )
-                drawCircle(
-                    color = accentStroke.copy(alpha = 0.12f),
-                    radius = r,
-                    center = Offset(cx + r * 0.45f, cy)
-                )
-                drawCircle(
-                    color = primaryStroke,
-                    radius = r,
-                    center = Offset(cx - r * 0.45f, cy),
-                    style = Stroke(width = 3f)
-                )
-                drawCircle(
-                    color = accentStroke,
-                    radius = r,
-                    center = Offset(cx + r * 0.45f, cy),
-                    style = Stroke(width = 3f)
-                )
-            }
-
             QuestionVisualType.FUNCTION_GRAPH -> {
                 drawLine(
                     color = Color(0xFF64748B),

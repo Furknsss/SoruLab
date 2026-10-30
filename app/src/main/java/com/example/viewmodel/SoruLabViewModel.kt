@@ -1801,26 +1801,44 @@ class SoruLabViewModel(
         bookCoverPath: String = ""
     ) {
         val uid = effectiveUserId() ?: "device_yks_student_tr"
-        val matchedSubject = SoruLabCatalog.allSubjects.firstOrNull {
+        val classifiedTopic = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = examType,
+            subjectNameHint = subjectName,
+            questionText = questionText,
+            suggestedTopicName = topicName
+        )
+        val matchedSubject = classifiedTopic?.first ?: SoruLabCatalog.allSubjects.firstOrNull {
             it.examType.name.equals(examType, ignoreCase = true) &&
                 it.name.equals(subjectName, ignoreCase = true)
         } ?: SoruLabCatalog.allSubjects.firstOrNull {
             it.name.equals(subjectName, ignoreCase = true)
         }
-        val matchedTopic = matchedSubject?.topics?.firstOrNull {
+        val matchedTopic = classifiedTopic?.second ?: matchedSubject?.topics?.firstOrNull {
             it.name.equals(topicName, ignoreCase = true) ||
                 topicName.contains(it.name, ignoreCase = true) ||
                 it.name.contains(topicName, ignoreCase = true)
         } ?: SoruLabCatalog.allSubjects.flatMap { it.topics }.firstOrNull {
             it.name.equals(topicName, ignoreCase = true) ||
                 topicName.contains(it.name, ignoreCase = true)
-        } ?: matchedSubject?.topics?.firstOrNull()
+        }
+        if (matchedSubject == null || matchedTopic == null) {
+            showBanner("Soru konusu müfredatla eşleştirilemedi; soru kaydedilmedi.")
+            return
+        }
 
         val resolvedExamType = matchedSubject?.examType?.name ?: if (examType.equals("AYT", true)) "AYT" else "TYT"
         val subjectId = matchedSubject?.id ?: if (resolvedExamType == "AYT") "ayt_mat" else "tyt_mat"
         val resolvedSubjectName = matchedSubject?.name ?: subjectName.ifBlank { "Matematik" }
         val topicId = matchedTopic?.id ?: topicName.lowercase().replace(" ", "_").take(32).ifBlank { "temel_kavramlar" }
-        val resolvedTopicName = matchedTopic?.name ?: topicName.ifBlank { "Temel Kavramlar" }
+        val resolvedTopicName = matchedTopic.name
+        val resolvedDifficulty = if (questionText.length >= 25) {
+            SoruLabCatalog.classifyDifficulty5FromText(
+                rawDifficultyHint = "",
+                headerOrQuestionText = questionText
+            ).label
+        } else {
+            difficulty
+        }
 
         val resolvedPublisher = SoruLabPublisherPresets.resolvePublisher(publisherTag, _customPublishers.value)
         val finalLogoUri = publisherLogoUri.ifBlank { resolvedPublisher.customLogoPath }
@@ -1834,12 +1852,12 @@ class SoruLabViewModel(
             questionNumberInBook = questionNumberInBook,
             bookOrTestName = bookOrTestName,
             bookCoverPath = bookCoverPath,
-            fiveTierDifficulty = difficulty
+            fiveTierDifficulty = resolvedDifficulty
         )
 
         val firestoreCompatDiff = when {
-            difficulty.equals("Kolay", ignoreCase = true) -> "Kolay"
-            difficulty.equals("Zor", ignoreCase = true) || difficulty.equals("Çok Zor", ignoreCase = true) -> "Zor"
+            resolvedDifficulty.equals("Kolay", ignoreCase = true) -> "Kolay"
+            resolvedDifficulty.equals("Zor", ignoreCase = true) || resolvedDifficulty.equals("Çok Zor", ignoreCase = true) -> "Zor"
             else -> "Orta"
         }
 
@@ -1894,13 +1912,18 @@ class SoruLabViewModel(
 
         viewModelScope.launch(Dispatchers.Default) {
             val subjectMemo = HashMap<String, com.example.data.YksSubject>(32)
-            val topicMemo = HashMap<String, YksTopic>(128)
             val batchTimestamp = System.currentTimeMillis()
 
             val newRecords = ArrayList<CustomQuestionRecord>(extractedItems.size)
             for ((idx, item) in extractedItems.withIndex()) {
+                val classifiedTopic = SoruLabCatalog.classifyQuestionTopicFromText(
+                    examTypeHint = item.examType,
+                    subjectNameHint = item.subjectName,
+                    questionText = item.questionText,
+                    suggestedTopicName = item.topicName
+                )
                 val subKey = "${item.examType}|${item.subjectName}"
-                val matchedSubject = subjectMemo.getOrPut(subKey) {
+                val matchedSubject = classifiedTopic?.first ?: subjectMemo.getOrPut(subKey) {
                     SoruLabCatalog.allSubjects.firstOrNull {
                         it.examType.name.equals(item.examType, ignoreCase = true) &&
                             it.name.equals(item.subjectName, ignoreCase = true)
@@ -1910,15 +1933,21 @@ class SoruLabViewModel(
                     } ?: SoruLabCatalog.allSubjects.first()
                 }
 
-                val topKey = "${matchedSubject.id}|${item.topicName}"
-                val matchedTopic = topicMemo.getOrPut(topKey) {
-                    SoruLabCatalog.resolveTopicFast("", item.topicName)?.takeIf { it.subjectId == matchedSubject.id }
-                        ?: matchedSubject.topics.firstOrNull {
-                            it.name.equals(item.topicName, ignoreCase = true) ||
-                                item.topicName.contains(it.name, ignoreCase = true) ||
-                                it.name.contains(item.topicName, ignoreCase = true)
-                        } ?: SoruLabCatalog.resolveTopicFast("", item.topicName)
-                        ?: matchedSubject.topics.first()
+                val matchedTopic = classifiedTopic?.second
+                    ?: SoruLabCatalog.resolveTopicFast("", item.topicName)?.takeIf {
+                        it.subjectId == matchedSubject.id
+                    }
+                    ?: matchedSubject.topics.firstOrNull {
+                        it.name.equals(item.topicName, ignoreCase = true) ||
+                            item.topicName.contains(it.name, ignoreCase = true) ||
+                            it.name.contains(item.topicName, ignoreCase = true)
+                    }
+                    ?: SoruLabCatalog.resolveTopicFast("", item.topicName)
+                if (matchedTopic == null) {
+                    withContext(Dispatchers.Main) {
+                        showBanner("“${item.topicName}” konusu müfredatla eşleştirilemedi; PDF aktarımı durduruldu.")
+                    }
+                    return@launch
                 }
 
                 val resolvedExamType = matchedSubject.examType.name

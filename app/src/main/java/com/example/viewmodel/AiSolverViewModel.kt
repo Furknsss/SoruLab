@@ -67,7 +67,8 @@ data class TwinQuestionModalData(
         "E" to ""
     ),
     val correctOption: String = "C",
-    val solutionExplanation: String = ""
+    val solutionExplanation: String = "",
+    val errorMessage: String? = null
 )
 
 @Immutable
@@ -90,6 +91,15 @@ data class ExtractedPdfQuestionItem(
     val cropAspectRatio: Double,
     val bookCoverPath: String = "",
     val boxNormalized: List<Float> = listOf(0.05f, 0.05f, 0.95f, 0.48f)
+)
+
+private data class QuestionOcrClassification(
+    val questionText: String,
+    val examType: String,
+    val subjectName: String,
+    val topicName: String,
+    val difficulty: String,
+    val targetLevel: String
 )
 
 @Immutable
@@ -205,6 +215,26 @@ class AiSolverViewModel : ViewModel() {
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
                 responseSchema = twinQuestionSchema
+            }
+        )
+    }
+
+    private val questionOcrSchema = Schema.obj(
+        mapOf(
+            "questionText" to Schema.string("Soru kökü ve A-E şıkları dahil, görseldeki sorunun OCR metni"),
+            "subjectName" to Schema.string("Soruya ait YKS dersi"),
+            "topicName" to Schema.string("Soruya ait müfredat konusu"),
+            "hasQuestionStemOrFigure" to Schema.boolean("Soru kökü veya soruya ait şekil/grafik bulunuyor mu?"),
+            "hasAllFiveOptions" to Schema.boolean("A, B, C, D ve E şıklarının tamamı bu soru bloğunda bulunuyor mu?")
+        )
+    )
+
+    private val questionOcrModel by lazy {
+        Firebase.ai.generativeModel(
+            modelName = "gemini-3.8-flash",
+            generationConfig = generationConfig {
+                responseMimeType = "application/json"
+                responseSchema = questionOcrSchema
             }
         )
     }
@@ -427,206 +457,160 @@ class AiSolverViewModel : ViewModel() {
                     null
                 }
             }
-
-            val contextualTwin = buildContextualRealTwinQuestion(question)
-
-            val prompt = buildString {
-                appendLine("Sen uzman bir ÖSYM YKS soru yazarısın.")
-                appendLine("Konu: ${question.topicHeader}")
-                appendLine("Zorluk: ${question.difficulty.label}")
-                if (question.stemTop.isNotBlank()) {
-                    appendLine("Orijinal Soru: ${question.stemTop}")
-                }
-                appendLine("Bu sorunun ölçtüğü kazanım, sayısal yapı ve çözüm mantığıyla birebir aynı (sayıları ve kurgusu farklı) ÖSYM formatında tam metinli ve A-E şıklı gerçek bir İKİZ SORU üret.")
+            if (questionBmp == null) {
+                onResult(
+                    TwinQuestionModalData(
+                        topicTitle = question.topicHeader,
+                        difficultyLabel = question.difficulty.label,
+                        errorMessage = "Orijinal sorunun kırpılmış görseli bulunamadı; ikiz soru üretilemedi."
+                    )
+                )
+                return@launch
             }
 
             try {
+                val prompt = buildString {
+                    appendLine("Sen uzman bir ÖSYM YKS soru yazarısın.")
+                    appendLine("Bu YKS sorusunun matematiksel/bilimsel kazanımını, denklemini ve zorluk seviyesini birebir koruyarak, sadece fonksiyonu/sayıları/bağlamı değiştirip ÖSYM formatında, LaTeX/düzgün matematiksel gösterimli, gerçek bir İkiz Soru ve A-E şıkları üret.")
+                    appendLine("Orijinal soru yalnızca ekli kırpılmış görseldir. Görseli dikkatle çözümle; yeni soru aynı kazanım ve çözüm mantığını ölçmeli.")
+                    appendLine("Konu bağlamı: ${question.topicHeader}")
+                    appendLine("Zorluk seviyesi: ${question.difficulty.label}")
+                    appendLine("Beş şıkkın her birini doldur, doğru cevabı kontrol et ve adım adım çözüm ver.")
+                }
                 val response = withTimeout(45_000L) {
-                    if (questionBmp != null) {
-                        twinQuestionGeneratorModel.generateContent(
-                            content {
-                                image(questionBmp)
-                                text(prompt)
-                            }
-                        )
-                    } else {
-                        twinQuestionGeneratorModel.generateContent(prompt)
-                    }
-                }
-                val raw = response.text.orEmpty()
-                val obj = JSONObject(raw)
-                val stem = obj.optString("questionStem", "").trim()
-                val optA = obj.optString("optionA", "").trim()
-                val optB = obj.optString("optionB", "").trim()
-                val optC = obj.optString("optionC", "").trim()
-                val optD = obj.optString("optionD", "").trim()
-                val optE = obj.optString("optionE", "").trim()
-                val correct = obj.optString("correctOption", contextualTwin.correctOption)
-                    .uppercase()
-                    .takeIf { it in listOf("A", "B", "C", "D", "E") } ?: contextualTwin.correctOption
-                val explanation = obj.optString("solutionExplanation", "").trim()
-
-                if (stem.length >= 25 && optA.isNotBlank() && optB.isNotBlank()) {
-                    onResult(
-                        TwinQuestionModalData(
-                            topicTitle = question.topicHeader,
-                            difficultyLabel = question.difficulty.label,
-                            questionStem = stem,
-                            visualType = contextualTwin.visualType,
-                            options = mapOf(
-                                "A" to optA,
-                                "B" to optB,
-                                "C" to optC.ifBlank { contextualTwin.options["C"].orEmpty() },
-                                "D" to optD.ifBlank { contextualTwin.options["D"].orEmpty() },
-                                "E" to optE.ifBlank { contextualTwin.options["E"].orEmpty() }
-                            ),
-                            correctOption = correct,
-                            solutionExplanation = explanation.ifBlank { contextualTwin.solutionExplanation }
-                        )
+                    twinQuestionGeneratorModel.generateContent(
+                        content {
+                            image(questionBmp)
+                            text(prompt)
+                        }
                     )
-                    return@launch
                 }
-            } catch (_: Exception) {
-            }
+                val obj = JSONObject(cleanJsonResponse(response.text.orEmpty()))
+                val stem = obj.optString("questionStem", "").trim()
+                val options = mapOf(
+                    "A" to obj.optString("optionA", "").trim(),
+                    "B" to obj.optString("optionB", "").trim(),
+                    "C" to obj.optString("optionC", "").trim(),
+                    "D" to obj.optString("optionD", "").trim(),
+                    "E" to obj.optString("optionE", "").trim()
+                )
+                val correct = obj.optString("correctOption", "").uppercase()
+                val explanation = obj.optString("solutionExplanation", "").trim()
+                if (stem.length < 25 || options.values.any(String::isBlank) ||
+                    correct !in options.keys || explanation.isBlank()
+                ) {
+                    throw IllegalStateException("Gemini geçerli bir A-E ikiz soru yanıtı döndürmedi.")
+                }
 
-            onResult(contextualTwin)
+                onResult(
+                    TwinQuestionModalData(
+                        topicTitle = question.topicHeader,
+                        difficultyLabel = question.difficulty.label,
+                        questionStem = stem,
+                        options = options,
+                        correctOption = correct,
+                        solutionExplanation = explanation
+                    )
+                )
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException && e !is TimeoutCancellationException) throw e
+                onResult(
+                    TwinQuestionModalData(
+                        topicTitle = question.topicHeader,
+                        difficultyLabel = question.difficulty.label,
+                        errorMessage = "İkiz soru üretilemedi: ${e.localizedMessage ?: "Gemini yanıt hatası"}"
+                    )
+                )
+            } finally {
+                questionBmp.recycle()
+            }
         }
     }
 
-    private fun buildContextualRealTwinQuestion(question: YksQuestion): TwinQuestionModalData {
-        val topicUpper = question.topicHeader.uppercase()
-        val k = (question.number % 5) + 2
-        val targetCorrect = question.correctOption.takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "C"
+    private suspend fun classifyCroppedQuestion(
+        imagePath: String,
+        examTypeHint: String,
+        subjectNameHint: String,
+        hasDiagramOrGraph: Boolean,
+        lineCountEstimate: Int
+    ): QuestionOcrClassification? {
+        val questionBitmap = withContext(Dispatchers.IO) {
+            BitmapFactory.decodeFile(imagePath)
+        } ?: throw IllegalStateException("Kırpılan soru görseli OCR için açılamadı.")
 
-        fun assignCorrectToTarget(correctVal: String, distractors: List<String>): Map<String, String> {
-            val keys = listOf("A", "B", "C", "D", "E")
-            val map = mutableMapOf<String, String>()
-            var dIdx = 0
-            for (key in keys) {
-                if (key == targetCorrect) {
-                    map[key] = correctVal
-                } else {
-                    map[key] = distractors.getOrElse(dIdx) { "${dIdx + 1}" }
-                    dIdx++
+        try {
+            val catalogTopics = SoruLabCatalog.allSubjects
+                .filter { it.examType.name.equals(examTypeHint, ignoreCase = true) }
+                .joinToString("\n") { subject ->
+                    "${subject.name}: ${subject.topics.joinToString(", ") { it.name }}"
                 }
+            val prompt = buildString {
+                appendLine("Ekli kırpılmış görseldeki tek YKS sorusunu OCR ile eksiksiz oku.")
+                appendLine("Matematiksel sembolleri, üsleri, kesirleri, şekil/tablo açıklamalarını ve A), B), C), D), E) şıklarını koru.")
+                appendLine("Soru kökü veya soruya ait şekil/grafik ile A-E şıklarının tamamı aynı blokta yoksa ilgili boolean alanını false yap.")
+                appendLine("Ders ve konu adını aşağıdaki müfredattan seç; konu adını aynen yaz.")
+                appendLine(catalogTopics)
+                appendLine("Kitap bağlamı (yalnızca ipucu): $examTypeHint $subjectNameHint")
+                appendLine("Yalnızca istenen JSON alanlarını doldur.")
             }
-            return map
-        }
-
-        return when {
-            topicUpper.contains("TÜREV") || topicUpper.contains("FONKSİYON") || topicUpper.contains("PARABOL") || topicUpper.contains("LİMİT") || topicUpper.contains("İNTEGRAL") -> {
-                val a = k
-                val b = k * 3
-                val x0 = 2
-                val resultVal = 3 * a * x0 * x0 - 2 * b * x0 + 4
-                val opts = assignCorrectToTarget(
-                    correctVal = resultVal.toString(),
-                    distractors = listOf(
-                        (resultVal - 6).toString(),
-                        (resultVal - 2).toString(),
-                        (resultVal + 4).toString(),
-                        (resultVal + 8).toString()
-                    )
+            val response = withTimeout(30_000L) {
+                questionOcrModel.generateContent(
+                    content {
+                        image(questionBitmap)
+                        text(prompt)
+                    }
                 )
-                TwinQuestionModalData(
-                    topicTitle = question.topicHeader,
-                    difficultyLabel = question.difficulty.label,
-                    questionStem = "Gerçel sayılar kümesi üzerinde tanımlı ve türevlenebilir bir f fonksiyonu\n" +
-                        "f(x) = ${a}x³ - ${b}x² + 4x - 5\n" +
-                        "biçiminde veriliyor.\n\n" +
-                        "Buna göre, y = f(x) eğrisine x = $x0 apsisli noktasından çizilen teğetin eğimi kaçtır?",
-                    visualType = com.example.data.QuestionVisualType.FUNCTION_GRAPH,
-                    options = opts,
-                    correctOption = targetCorrect,
-                    solutionExplanation = "1. Adım: Fonksiyonun türevi alındığında f'(x) = ${3 * a}x² - ${2 * b}x + 4 elde edilir.\n" +
-                        "2. Adım: x = $x0 değeri yerine yazılırsa f'($x0) = ${3 * a}·($x0)² - ${2 * b}·($x0) + 4 = $resultVal bulunur.\n" +
-                        "Doğru seçenek $targetCorrect şıkkıdır."
-                )
+            }
+            val obj = JSONObject(cleanJsonResponse(response.text.orEmpty()))
+            val questionText = obj.optString("questionText", "").trim()
+            val hasAllOptionLabels = listOf("A", "B", "C", "D", "E").all { option ->
+                Regex("""(?im)(?:^|[\s(])$option\s*[).:]""").containsMatchIn(questionText)
+            }
+            if (questionText.length < 25 ||
+                !obj.optBoolean("hasQuestionStemOrFigure") ||
+                !obj.optBoolean("hasAllFiveOptions") ||
+                !hasAllOptionLabels
+            ) {
+                return null
             }
 
-            topicUpper.contains("ÜÇGEN") || topicUpper.contains("ÇEMBER") || topicUpper.contains("DÖRTGEN") || topicUpper.contains("ANALİTİK") || topicUpper.contains("GEOMETRİ") -> {
-                val baseLen = k * 4
-                val heightLen = k * 3
-                val areaVal = (baseLen * heightLen) / 2
-                val opts = assignCorrectToTarget(
-                    correctVal = areaVal.toString(),
-                    distractors = listOf(
-                        (areaVal - 6).toString(),
-                        (areaVal - 3).toString(),
-                        (areaVal + 6).toString(),
-                        (areaVal + 12).toString()
-                    )
-                )
-                TwinQuestionModalData(
-                    topicTitle = question.topicHeader,
-                    difficultyLabel = question.difficulty.label,
-                    questionStem = "Bir ABC dik üçgeninde [AB] ⊥ [BC], |AB| = $heightLen birim ve |BC| = $baseLen birim olarak veriliyor.\n\n" +
-                        "Buna göre, ABC üçgeninin alanı kaç birimkaredir?",
-                    visualType = com.example.data.QuestionVisualType.GEOMETRY_TRIANGLE,
-                    options = opts,
-                    correctOption = targetCorrect,
-                    solutionExplanation = "1. Adım: Dik üçgenin alanı dik kenarların çarpımının yarısına eşittir: Alan(ABC) = (|AB| · |BC|) / 2.\n" +
-                        "2. Adım: Alan(ABC) = ($heightLen · $baseLen) / 2 = $areaVal birimkare bulunur.\n" +
-                        "Doğru seçenek $targetCorrect şıkkıdır."
-                )
-            }
+            val suggestedSubject = obj.optString("subjectName", subjectNameHint).trim()
+            val suggestedTopic = obj.optString("topicName", "").trim()
+            val topicClassification = SoruLabCatalog.classifyQuestionTopicFromText(
+                examTypeHint = examTypeHint,
+                subjectNameHint = suggestedSubject,
+                questionText = questionText,
+                suggestedTopicName = suggestedTopic
+            ) ?: throw IllegalStateException(
+                "OCR metni için YKS müfredatında geçerli bir konu bulunamadı: $suggestedTopic"
+            )
 
-            topicUpper.contains("HAREKET") || topicUpper.contains("KUVVET") || topicUpper.contains("ENERJİ") || topicUpper.contains("VEKTÖR") || topicUpper.contains("ATIŞ") || topicUpper.contains("TORK") || topicUpper.contains("ELEKTRİK") -> {
-                val v1 = k * 6
-                val v2 = k * 2
-                val relV = v1 + v2
-                val tSec = 4
-                val dist = relV * tSec
-                val opts = assignCorrectToTarget(
-                    correctVal = "$dist m",
-                    distractors = listOf(
-                        "${dist - 16} m",
-                        "${dist - 8} m",
-                        "${dist + 12} m",
-                        "${dist + 24} m"
-                    )
-                )
-                TwinQuestionModalData(
-                    topicTitle = question.topicHeader,
-                    difficultyLabel = question.difficulty.label,
-                    questionStem = "Doğrusal bir yolda birbirine paralel raylarda sabit büyüklükteki hızlarla zıt yönde hareket eden K ve L araçlarından K'nin yere göre hızı Doğu yönünde $v1 m/s, L'nin yere göre hızı Batı yönünde $v2 m/s'dir.\n\n" +
-                        "Buna göre, K aracındaki gözlemciye göre L aracı $tSec saniyede kaç metre yer değiştirir?",
-                    visualType = com.example.data.QuestionVisualType.PHYSICS_VECTORS,
-                    options = opts,
-                    correctOption = targetCorrect,
-                    solutionExplanation = "1. Adım: Zıt yönde hareket eden araçların bağıl hız büyüklüğü V_bağıl = |V_L - V_K| = $v1 + $v2 = $relV m/s'dir.\n" +
-                        "2. Adım: Δx = V_bağıl · t = $relV · $tSec = $dist m bulunur.\n" +
-                        "Doğru seçenek $targetCorrect şıkkıdır."
-                )
+            val difficultySignal = buildString {
+                append(questionText)
+                if (hasDiagramOrGraph) appendLine("\nşekil grafik")
+                repeat(lineCountEstimate.coerceAtMost(30)) { appendLine("x") }
             }
-
-            else -> {
-                val n1 = k * 5
-                val n2 = k * 3
-                val ansNum = n1 + n2 * 2
-                val opts = assignCorrectToTarget(
-                    correctVal = ansNum.toString(),
-                    distractors = listOf(
-                        (ansNum - 5).toString(),
-                        (ansNum - 2).toString(),
-                        (ansNum + 3).toString(),
-                        (ansNum + 7).toString()
-                    )
-                )
-                TwinQuestionModalData(
-                    topicTitle = question.topicHeader,
-                    difficultyLabel = question.difficulty.label,
-                    questionStem = "a ve b pozitif tam sayılar olmak üzere, ${question.topicHeader} kazanımına göre tanımlanan işlemde\n" +
-                        "a = $n1 ve b = $n2 değerleri için A = a + 2b bağıntısı veriliyor.\n\n" +
-                        "Buna göre, A ifadesinin sayısal değeri kaçtır?",
-                    visualType = if (question.visualType != com.example.data.QuestionVisualType.NONE) question.visualType else com.example.data.QuestionVisualType.VENN_DIAGRAM,
-                    options = opts,
-                    correctOption = targetCorrect,
-                    solutionExplanation = "1. Adım: Verilen a = $n1 ve b = $n2 değerleri A = a + 2b bağıntısında yerine yazılır.\n" +
-                        "2. Adım: A = $n1 + 2·($n2) = $ansNum elde edilir.\n" +
-                        "Doğru seçenek $targetCorrect şıkkıdır."
-                )
+            val difficulty = SoruLabCatalog.classifyDifficulty5FromText(
+                rawDifficultyHint = "",
+                headerOrQuestionText = difficultySignal
+            )
+            val targetLevel = when (difficulty) {
+                com.example.data.DifficultyLevel.KOLAY -> "BASLANGIC"
+                com.example.data.DifficultyLevel.ORTA -> "PEKISTIRME"
+                com.example.data.DifficultyLevel.OSYM -> "OSYM"
+                com.example.data.DifficultyLevel.ZOR -> "GELISIYORUM"
+                com.example.data.DifficultyLevel.COK_ZOR -> "DERECE"
             }
+            return QuestionOcrClassification(
+                questionText = questionText,
+                examType = topicClassification.first.examType.name,
+                subjectName = topicClassification.first.name,
+                topicName = topicClassification.second.name,
+                difficulty = difficulty.label,
+                targetLevel = targetLevel
+            )
+        } finally {
+            questionBitmap.recycle()
         }
     }
 
@@ -988,7 +972,6 @@ class AiSolverViewModel : ViewModel() {
 
                 val allExtractedQuestions = mutableListOf<ExtractedPdfQuestionItem>()
                 val defaultAnswerCycle = listOf("C", "D", "B", "E", "A")
-                val fiveTierDifficultyCycle = listOf("Kolay", "Orta", "ÖSYM", "Zor", "Çok Zor")
 
                 // Scan every content page in the book (only skip outer cover page 0 on multi-page books >= 6 pages)
                 val firstContentPage = if (totalPdfPages >= 6) 1 else 0
@@ -1018,8 +1001,8 @@ class AiSolverViewModel : ViewModel() {
                                     pageIndex = pageIdx,
                                     examType = defaultExamType,
                                     subjectName = defaultSubject,
-                                    topicName = localBlueprint.defaultTopicName,
-                                    difficulty = fiveTierDifficultyCycle[scanPos % fiveTierDifficultyCycle.size]
+                                    topicName = "",
+                                    difficulty = "Orta"
                                 )
 
                                 val nowMs = System.currentTimeMillis()
@@ -1044,55 +1027,37 @@ class AiSolverViewModel : ViewModel() {
                                 )
 
                                 for ((boxIdx, cropBox) in croppedBoxes.withIndex()) {
+                                    val classification = classifyCroppedQuestion(
+                                        imagePath = cropBox.croppedImagePath,
+                                        examTypeHint = pageInfo.examType,
+                                        subjectNameHint = pageInfo.subjectName,
+                                        hasDiagramOrGraph = cropBox.hasDiagramOrGraph,
+                                        lineCountEstimate = cropBox.lineCountEstimate
+                                    ) ?: continue
+
                                     val globalQuestionNum = allExtractedQuestions.size + 1
                                     val localTestQuestionNum = ((globalQuestionNum - 1) % 12) + 1
-                                    val matchedOpt = mergedAnswerKey[globalQuestionNum]
+                                    val verifiedAnswer = mergedAnswerKey[globalQuestionNum]
                                         ?: mergedAnswerKey[localTestQuestionNum]
+                                    val matchedOpt = verifiedAnswer
                                         ?: defaultAnswerCycle[(globalQuestionNum - 1) % defaultAnswerCycle.size]
-
-                                    // Combine per-question visual structural difficulty with any explicit header difficulty keyword
-                                    val headerTextUpper = "${pageInfo.topicName} $finalBookTitle ${pageInfo.difficulty}".uppercase()
-                                    val hasExplicitHeaderDiff = headerTextUpper.contains("TÜMEVARIM") ||
-                                        headerTextUpper.contains("BARIŞÇA") ||
-                                        headerTextUpper.contains("ÖSYM") ||
-                                        headerTextUpper.contains("PEKİŞTİRME") ||
-                                        headerTextUpper.contains("KAZANIM")
-                                    val combinedDiffHint = if (hasExplicitHeaderDiff) {
-                                        // Blend header tier with individual question visual complexity
-                                        pageInfo.difficulty.ifBlank { cropBox.estimatedDifficulty5 }
-                                    } else {
-                                        cropBox.estimatedDifficulty5
-                                    }
-
-                                    val diffLevel5 = SoruLabCatalog.classifyDifficulty5FromText(
-                                        rawDifficultyHint = combinedDiffHint,
-                                        headerOrQuestionText = "${pageInfo.topicName} $finalBookTitle",
-                                        questionIndexInPage = boxIdx
-                                    )
-                                    val diffLabel = diffLevel5.label
-                                    val targetLevel = when (diffLevel5) {
-                                        com.example.data.DifficultyLevel.KOLAY -> "BASLANGIC"
-                                        com.example.data.DifficultyLevel.ORTA -> "PEKISTIRME"
-                                        com.example.data.DifficultyLevel.OSYM -> "OSYM"
-                                        com.example.data.DifficultyLevel.ZOR -> "GELISIYORUM"
-                                        com.example.data.DifficultyLevel.COK_ZOR -> "DERECE"
-                                    }
 
                                     allExtractedQuestions.add(
                                         ExtractedPdfQuestionItem(
                                             id = "local_q_${System.currentTimeMillis()}_p${pageIdx + 1}_${boxIdx + 1}_$globalQuestionNum",
                                             questionNumber = globalQuestionNum,
-                                            examType = defaultExamType,
-                                            subjectName = pageInfo.subjectName,
-                                            topicName = pageInfo.topicName,
-                                            difficulty = diffLabel,
-                                            targetLevel = targetLevel,
+                                            examType = classification.examType,
+                                            subjectName = classification.subjectName,
+                                            topicName = classification.topicName,
+                                            difficulty = classification.difficulty,
+                                            targetLevel = classification.targetLevel,
                                             correctOption = matchedOpt,
-                                            answerKeyMatched = true,
+                                            answerKeyMatched = verifiedAnswer != null,
                                             publisherName = finalPubName,
                                             publisherLogoUri = finalLogoUri,
-                                            questionText = "${pageInfo.subjectName} • ${pageInfo.topicName} • $diffLabel Seviye",
-                                            solutionSummary = "Kaynak: $finalPubName ($finalBookTitle) • Konu: ${pageInfo.topicName} • Zorluk: $diffLabel • Cevap Anahtarı: $matchedOpt",
+                                            questionText = classification.questionText,
+                                            solutionSummary = "Kaynak: $finalPubName ($finalBookTitle) • Konu: ${classification.topicName} • Zorluk: ${classification.difficulty} • " +
+                                                if (verifiedAnswer != null) "Doğrulanmış Cevap: $matchedOpt" else "Cevap anahtarı eşleşmesi bulunamadı",
                                             croppedImagePath = cropBox.croppedImagePath,
                                             cropAspectRatio = cropBox.aspectRatio,
                                             bookCoverPath = coverPath,
@@ -1107,28 +1072,10 @@ class AiSolverViewModel : ViewModel() {
                     }
                 }
 
-                // Only use single-page fallback if the PDF itself is a 1-2 page worksheet (NEVER crop a multi-page book cover as a question!)
-                if (allExtractedQuestions.isEmpty() && totalPdfPages <= 2 && coverPath.isNotBlank() && File(coverPath).exists()) {
-                    allExtractedQuestions.add(
-                        ExtractedPdfQuestionItem(
-                            id = "local_q_${System.currentTimeMillis()}_p1_1",
-                            questionNumber = 1,
-                            examType = defaultExamType,
-                            subjectName = defaultSubject,
-                            topicName = localBlueprint.defaultTopicName,
-                            difficulty = "Orta",
-                            targetLevel = "OSYM",
-                            correctOption = mergedAnswerKey[1] ?: "C",
-                            answerKeyMatched = true,
-                            publisherName = finalPubName,
-                            publisherLogoUri = finalLogoUri,
-                            questionText = "$defaultSubject • ${localBlueprint.defaultTopicName}",
-                            solutionSummary = "",
-                            croppedImagePath = coverPath,
-                            cropAspectRatio = 0.75,
-                            bookCoverPath = coverPath
-                        )
-                    )
+                if (allExtractedQuestions.isEmpty()) {
+                    _batchErrorText.value = "PDF'te OCR ile doğrulanmış, soru kökü ve A-E şıkları birlikte bulunan bir soru bloğu bulunamadı."
+                    onComplete(emptyList(), coverPath, finalBookTitle)
+                    return@launch
                 }
 
                 _batchProgressPercent.value = 100
@@ -1149,4 +1096,3 @@ class AiSolverViewModel : ViewModel() {
         }
     }
 }
-

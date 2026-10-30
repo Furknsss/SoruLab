@@ -507,7 +507,6 @@ enum class QuestionVisualType {
     NONE,
     MARKET_RECEIPT,
     LEGO_BLOCKS,
-    VENN_DIAGRAM,
     FUNCTION_GRAPH,
     GEOMETRY_TRIANGLE,
     PHYSICS_VECTORS
@@ -629,53 +628,106 @@ object SoruLabCatalog {
         questionIndexInPage: Int = 0
     ): DifficultyLevel {
         val combined = "$rawDifficultyHint $headerOrQuestionText".lowercase()
-        return when {
-            combined.contains("tümevarım") ||
-                combined.contains("tumevarim") ||
-                combined.contains("barışça") ||
-                combined.contains("barisca") ||
-                combined.contains("çok zor") ||
-                combined.contains("cok zor") ||
-                combined.contains("derece") ||
-                combined.contains("orijinal sorular") ||
-                combined.contains("kırmızı test") ||
-                combined.contains("ileri seviye") -> DifficultyLevel.COK_ZOR
+        val textLength = headerOrQuestionText.length
+        val nonEmptyLines = headerOrQuestionText.lines().count { it.isNotBlank() }
+        val premiseCount = Regex("""(?m)(?:^|\s)(?:I{1,3}|IV|V)[).,:]""")
+            .findAll(headerOrQuestionText)
+            .count()
+        val conceptGroups = listOf(
+            listOf("limit", "lim", "süreklilik", "sağdan", "soldan"),
+            listOf("türev", "f'(x)", "dy/dx", "ekstremum", "teğet"),
+            listOf("fonksiyon", "grafik", "parabol", "tepe noktası"),
+            listOf("denklem", "eşitsizlik", "kök", "polinom"),
+            listOf("tablo", "olasılık", "kombinasyon", "permütasyon"),
+            listOf("hız", "ivme", "kuvvet", "enerji")
+        ).count { group -> group.any(combined::contains) }
 
-            combined.contains("ösym tadında") ||
-                combined.contains("osym tadinda") ||
-                combined.contains("ösym tarzı") ||
-                combined.contains("osym tarzi") ||
-                combined.contains("birebir ösym") ||
-                combined.contains("birebir osym") ||
-                combined.contains("çıkmış") ||
-                combined.contains("cikmis") ||
-                combined.contains("günlük hayat") ||
-                combined.contains("gunluk hayat") ||
-                rawDifficultyHint.equals("ÖSYM", ignoreCase = true) ||
-                rawDifficultyHint.equals("OSYM", ignoreCase = true) -> DifficultyLevel.OSYM
-
-            combined.contains("zor") ||
-                combined.contains("pekiştirme 3") ||
-                combined.contains("test 4") ||
-                combined.contains("test 5") -> DifficultyLevel.ZOR
-
-            combined.contains("kolay") ||
-                combined.contains("kazanım") ||
-                combined.contains("kazanim") ||
-                combined.contains("başlangıç") ||
-                combined.contains("baslangic") ||
-                combined.contains("temel") ||
-                combined.contains("test 1") -> DifficultyLevel.KOLAY
-
-            rawDifficultyHint.isNotBlank() -> DifficultyLevel.fromLabel(rawDifficultyHint)
-            else -> when (questionIndexInPage % 5) {
-                0 -> DifficultyLevel.KOLAY
-                1 -> DifficultyLevel.ORTA
-                2 -> DifficultyLevel.OSYM
-                3 -> DifficultyLevel.ZOR
-                else -> DifficultyLevel.COK_ZOR
-            }
+        var score = when {
+            textLength >= 700 -> 3
+            textLength >= 420 -> 2
+            textLength >= 220 -> 1
+            else -> 0
         }
+        score += when {
+            nonEmptyLines >= 15 -> 2
+            nonEmptyLines >= 9 -> 1
+            else -> 0
+        }
+        score += when {
+            premiseCount >= 3 -> 2
+            premiseCount >= 1 -> 1
+            else -> 0
+        }
+        if (Regex("""grafik|şekil|sekil|tablo|çizim|cizim""").containsMatchIn(combined)) score++
+        score += when {
+            conceptGroups >= 4 -> 2
+            conceptGroups >= 2 -> 1
+            else -> 0
+        }
+
+        return when {
+            score <= 1 -> DifficultyLevel.KOLAY
+            score <= 3 -> DifficultyLevel.ORTA
+            score <= 5 -> DifficultyLevel.OSYM
+            score <= 7 -> DifficultyLevel.ZOR
+            else -> DifficultyLevel.COK_ZOR
+        }
+    }
+
+    fun classifyQuestionTopicFromText(
+        examTypeHint: String,
+        subjectNameHint: String,
+        questionText: String,
+        suggestedTopicName: String = ""
+    ): Pair<YksSubject, YksTopic>? {
+        val normalizedText = questionText.lowercase()
+        val hasDerivativeSymbol = normalizedText.contains("'") ||
+            Regex("""\bd\s*/\s*dx\b""").containsMatchIn(normalizedText)
+        val forcedTopicName = when {
+            Regex("""\b[qp]\s*\(\s*x\s*\)""", RegexOption.IGNORE_CASE).containsMatchIn(questionText) ||
+                listOf("polinom", "derece", "bölümünden kalan").any(normalizedText::contains) ->
+                "Polinomlar"
+
+            Regex("""i\s*\^\s*2\s*=\s*-1|re\s*\(\s*z\s*\)|im\s*\(\s*z\s*\)""", RegexOption.IGNORE_CASE)
+                .containsMatchIn(questionText) ||
+                listOf("eşlenik", "eslenik", "karmaşık", "karmasik").any(normalizedText::contains) ->
+                "Karmaşık Sayılar"
+
+            listOf("tepe noktası", "tepe noktasi", "parabol", "simetri ekseni").any(normalizedText::contains) ->
+                "Parabol"
+
+            Regex("""f\s*['′]\s*\(\s*x\s*\)|dy\s*/\s*dx""", RegexOption.IGNORE_CASE).containsMatchIn(questionText) ||
+                listOf("türev", "turev", "teğetin eğimi", "tegetin egimi", "ekstremum").any(normalizedText::contains) ->
+                "Türev Alma Kuralları"
+
+            !hasDerivativeSymbol &&
+                (Regex("""\blim(?:\b|[_\s({])""").containsMatchIn(normalizedText) ||
+                    listOf("limit", "süreklilik", "sureklilik", "sağdan limit", "sagdan limit", "soldan limit").any(normalizedText::contains)) ->
+                "Limit ve Süreklilik"
+
+            else -> ""
+        }
+        val preferredName = forcedTopicName.ifBlank { suggestedTopicName.trim() }
+        if (preferredName.isBlank()) return null
+
+        val preferredExam = if (examTypeHint.contains("AYT", ignoreCase = true)) ExamType.AYT else ExamType.TYT
+        val exactMatches = allSubjects.flatMap { subject ->
+            subject.topics.map { topic -> subject to topic }
+        }.filter { (_, topic) ->
+            topic.name.equals(preferredName, ignoreCase = true) ||
+                (preferredName == "Türev Alma Kuralları" &&
+                    topic.name.contains("Türev", ignoreCase = true)) ||
+                (preferredName == "Limit ve Süreklilik" &&
+                    topic.name.contains("Limit", ignoreCase = true))
+        }
+        val preferredSubject = subjectNameHint
+            .removePrefix("TYT ")
+            .removePrefix("AYT ")
+            .trim()
+        return exactMatches.firstOrNull { (subject, _) ->
+            subject.examType == preferredExam && subject.name.equals(preferredSubject, ignoreCase = true)
+        } ?: exactMatches.firstOrNull { (subject, _) -> subject.examType == preferredExam }
+            ?: exactMatches.firstOrNull()
     }
 
     private val topicKeywordAliases: Map<String, List<String>> = mapOf(
@@ -1270,4 +1322,3 @@ object SoruLabCatalog {
         return null
     }
 }
-

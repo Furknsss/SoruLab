@@ -858,25 +858,11 @@ object StudioImageAndPdfEngine {
             }
         }
 
-        // Resolve primary topic from file name first, then from full text using deterministic matchBestTopic
-        val (primarySubjectObj, primaryTopicObj) = if (cleanFileHint.length >= 4 &&
-            !cleanFileHint.startsWith("staged_", ignoreCase = true) &&
-            !cleanFileHint.startsWith("document", ignoreCase = true) &&
-            !cleanFileHint.startsWith("msf:", ignoreCase = true)
-        ) {
-            com.example.data.SoruLabCatalog.matchBestTopic(
-                examTypeHint = examType,
-                subjectNameHint = detectedSubject,
-                topicOrQuestionText = cleanFileHint,
-                fallbackTopicName = rawTextBuilder.toString().take(1200)
-            )
-        } else {
-            com.example.data.SoruLabCatalog.matchBestTopic(
-                examTypeHint = examType,
-                subjectNameHint = detectedSubject,
-                topicOrQuestionText = rawTextBuilder.toString().take(3600)
-            )
-        }
+        val (primarySubjectObj, primaryTopicObj) = com.example.data.SoruLabCatalog.matchBestTopic(
+            examTypeHint = examType,
+            subjectNameHint = detectedSubject,
+            topicOrQuestionText = rawTextBuilder.toString().take(3600)
+        )
 
         val primaryTopicName = primaryTopicObj.name
         detectedSubject = primarySubjectObj.name
@@ -897,23 +883,13 @@ object StudioImageAndPdfEngine {
             else -> "$publisherName $examType $detectedSubject Soru Bankası"
         }
 
-        // Check if the file name explicitly names a single topic (e.g., "Fonksiyonlarda Uygulamalar", "Türev", "Bağıl Hareket")
-        val fileExplicitlyNamesTopic = primarySubjectObj.topics.any { t ->
-            lowerFile.contains(t.name.lowercase()) ||
-                (t.id == "fonksiyonlar" && lowerFile.contains("fonksiyon"))
-        }
-
         val pageMap = mutableMapOf<Int, LocalPageMapEntry>()
-        val fiveTierCycle = listOf("Kolay", "Orta", "ÖSYM", "Zor", "Çok Zor")
         val skipPageKeywords = listOf(
             "içindekiler", "icindekiler", "önsöz", "onsoz", "istiklal marşı",
             "gençliğe hitabe", "künye", "kunye", "basım yeri", "isbn",
             "tüm hakları saklıdır", "reklam", "tanıtım", "diğer yayınlarımız",
             "kampanya", "notlarım"
         )
-        val subjectTopics = primarySubjectObj.topics.ifEmpty {
-            com.example.data.SoruLabCatalog.allSubjects.first().topics
-        }
 
         for (pageIdx in 0 until totalPages) {
             // Map page index proportionally to decodedStreamChunks if stream count differs from page count
@@ -935,43 +911,21 @@ object StudioImageAndPdfEngine {
                 skipPageKeywords.any { kw -> lowerSnippet.contains(kw) }
             val isOuterCoverOnly = (totalPages >= 4 && pageIdx == 0 && !hasQuestionOptionPattern) || isNonQuestionMetaPage
 
-            // Curriculum-proportional fallback topic for multi-topic books when raw PDF streams are image/CID-encoded
-            val proportionalTopicForPage = if (totalPages >= 8 && !fileExplicitlyNamesTopic) {
-                val contentStart = if (totalPages >= 6) 1 else 0
-                val effectivePage = (pageIdx - contentStart).coerceAtLeast(0)
-                val effectiveTotal = (totalPages - contentStart).coerceAtLeast(1)
-                val topicIdx = ((effectivePage.toFloat() / effectiveTotal.toFloat()) * subjectTopics.size)
-                    .toInt()
-                    .coerceIn(0, subjectTopics.lastIndex)
-                subjectTopics[topicIdx]
-            } else {
-                primaryTopicObj
-            }
-
-            val (resolvedSubjForPage, resolvedTopicForPage) = if (fileExplicitlyNamesTopic) {
-                detectedSubject to primaryTopicObj.name
-            } else if (streamSnippet.length >= 16) {
+            val (resolvedSubjForPage, resolvedTopicForPage) = if (streamSnippet.length >= 16) {
                 val (matchedPageSubj, matchedPageTopic) = com.example.data.SoruLabCatalog.matchBestTopic(
                     examTypeHint = examType,
                     subjectNameHint = detectedSubject,
-                    topicOrQuestionText = streamSnippet,
-                    fallbackTopicName = proportionalTopicForPage.name
+                    topicOrQuestionText = streamSnippet
                 )
                 matchedPageSubj.name to matchedPageTopic.name
             } else {
-                detectedSubject to proportionalTopicForPage.name
+                detectedSubject to ""
             }
 
             val classifiedDiff = com.example.data.SoruLabCatalog.classifyDifficulty5FromText(
                 rawDifficultyHint = "",
-                headerOrQuestionText = "$cleanFileHint $streamSnippet",
-                questionIndexInPage = pageIdx
+                headerOrQuestionText = streamSnippet
             )
-            val diffForPage = if (streamSnippet.isNotBlank()) {
-                classifiedDiff.label
-            } else {
-                fiveTierCycle[pageIdx % fiveTierCycle.size]
-            }
 
             pageMap[pageIdx] = LocalPageMapEntry(
                 pageIndex = pageIdx,
@@ -979,7 +933,7 @@ object StudioImageAndPdfEngine {
                 examType = examType,
                 subjectName = resolvedSubjForPage,
                 topicName = resolvedTopicForPage,
-                difficulty = diffForPage
+                difficulty = classifiedDiff.label
             )
         }
 
@@ -1216,7 +1170,7 @@ object StudioImageAndPdfEngine {
         var bodyTop = (height * 0.055f).roundToInt().coerceIn(24, height / 4)
         var bodyBottom = (height * 0.945f).roundToInt().coerceIn(bodyTop + 200, height - 24)
 
-        val headerProbeLimit = (height * 0.12f).roundToInt().coerceAtMost(height / 4)
+        val headerProbeLimit = (height * 0.16f).roundToInt().coerceAtMost(height / 4)
         val probeLeft = (width * 0.055f).roundToInt()
         val probeRight = (width * 0.945f).roundToInt()
         val probeSpan = (probeRight - probeLeft).coerceAtLeast(1)
@@ -1243,10 +1197,10 @@ object StudioImageAndPdfEngine {
         if (lastHeaderBannerY != -1) {
             bodyTop = (lastHeaderBannerY + (height * 0.008f).roundToInt()).coerceAtMost(headerProbeLimit)
         } else {
-            // Look for whitespace gap below top running header text (within 4%..9.5%)
+            // Look for whitespace gap below a top answer-key strip or running header.
             var sawTopInk = false
             var zeroRunTop = 0
-            for (y in (height * 0.035f).roundToInt()..(height * 0.095f).roundToInt()) {
+            for (y in (height * 0.025f).roundToInt()..headerProbeLimit) {
                 var rInk = 0
                 val rOff = y * width
                 for (x in probeLeft..probeRight step 3) {
@@ -1257,12 +1211,71 @@ object StudioImageAndPdfEngine {
                     zeroRunTop = 0
                 } else if (sawTopInk) {
                     zeroRunTop++
-                    if (zeroRunTop >= (height * 0.008f).roundToInt().coerceAtLeast(8)) {
+                    if (zeroRunTop >= (height * 0.004f).roundToInt().coerceAtLeast(8)) {
                         bodyTop = y
                         break
                     }
                 }
             }
+        }
+
+        // A compact row of separated glyph groups followed by a thin rule is an answer-key strip,
+        // not part of the first question.
+        var answerRowStart = -1
+        var answerRowEnd = -1
+        fun trimAnswerKeyRow(groupStart: Int, groupEnd: Int): Boolean {
+            val groupHeight = groupEnd - groupStart + 1
+            if (groupHeight !in 4..(height * 0.025f).roundToInt().coerceAtLeast(12)) return false
+            val maxRuleSearch = (groupEnd + (height * 0.016f).roundToInt()).coerceAtMost(headerProbeLimit)
+            for (lineY in (groupEnd + 1)..maxRuleSearch) {
+                var lineInk = 0
+                val rowOff = lineY * width
+                for (x in probeLeft..probeRight step 2) {
+                    if (isInkPixel(pixels[rowOff + x])) lineInk++
+                }
+                if (lineInk >= (probeSpan / 2) * 0.68f) {
+                    bodyTop = max(bodyTop, lineY + 2)
+                    return true
+                }
+            }
+            return false
+        }
+
+        for (y in (height * 0.025f).roundToInt()..headerProbeLimit) {
+            var ink = 0
+            var clusters = 0
+            var spanLeft = probeRight
+            var spanRight = probeLeft
+            var whiteRun = 2
+            var inCluster = false
+            val rowOff = y * width
+            for (x in probeLeft..probeRight step 2) {
+                if (isInkPixel(pixels[rowOff + x])) {
+                    ink++
+                    spanLeft = min(spanLeft, x)
+                    spanRight = max(spanRight, x)
+                    if (!inCluster && whiteRun >= 2) clusters++
+                    inCluster = true
+                    whiteRun = 0
+                } else {
+                    whiteRun++
+                    if (whiteRun >= 2) inCluster = false
+                }
+            }
+            val isCompactKeyText = clusters >= 6 &&
+                ink in 12..(probeSpan * 0.34f).roundToInt() &&
+                spanRight - spanLeft >= (probeSpan * 0.28f).roundToInt()
+            if (isCompactKeyText) {
+                if (answerRowStart == -1) answerRowStart = y
+                answerRowEnd = y
+            } else if (answerRowStart != -1) {
+                if (trimAnswerKeyRow(answerRowStart, answerRowEnd)) break
+                answerRowStart = -1
+                answerRowEnd = -1
+            }
+        }
+        if (answerRowStart != -1) {
+            trimAnswerKeyRow(answerRowStart, answerRowEnd)
         }
 
         // Check bottom 89%..96% for bottom page number / "1-A 2-C..." answer key strip separated by whitespace
@@ -1447,7 +1460,9 @@ object StudioImageAndPdfEngine {
                 val padX = (colWidth * 0.022f).roundToInt().coerceIn(8, 22)
                 val padY = (height * 0.008f).roundToInt().coerceIn(8, 20)
 
-                val finalLeft = (minX - padX).coerceAtLeast(colLeft)
+                val finalLeft = (minX - padX).coerceAtLeast(
+                    colLeft + (colWidth * 0.05f).roundToInt()
+                )
                 val finalRight = (maxX + padX).coerceAtMost(colRight)
                 val finalTop = (rawTop - padY).coerceAtLeast(bodyTop)
                 val finalBottom = (rawBottom + padY).coerceAtMost(bodyBottom)
@@ -1487,9 +1502,7 @@ object StudioImageAndPdfEngine {
                 val estimatedDiff5 = estimateVisualQuestionDifficulty5(
                     metrics = structureMetrics,
                     bandHeightRatio = bandH.toFloat() / height.toFloat(),
-                    inkDensity = inkDensity,
-                    questionOrderOnPage = questionOrderOnPage,
-                    pageIndex = pageIndex
+                    inkDensity = inkDensity
                 )
 
                 results.add(
@@ -1626,7 +1639,24 @@ object StudioImageAndPdfEngine {
         }
 
         val hasDiagramOrGraph = maxContiguousActiveBlock >= 34 || (bandH >= 360 && lineTransitions >= 6)
-        val isValid = activeOptionBuckets >= 2 || bottomLineTransitions >= 3 || (hasDiagramOrGraph && activeOptionBuckets >= 1)
+        val stemBottom = bandTop + (bandH * 0.55f).roundToInt()
+        var stemInkRows = 0
+        for (y in bandTop..stemBottom) {
+            val rowOff = y * pageWidth
+            var rowInk = 0
+            var x = colLeft
+            while (x <= colRight) {
+                if (isInkPixel(pixels[rowOff + x])) rowInk++
+                x += 2
+            }
+            if (rowInk.toFloat() / sampledCols.toFloat() in 0.008f..0.60f) stemInkRows++
+        }
+
+        val hasStemOrFigure = stemInkRows >= 3
+        val hasCompleteOptionBlock = activeOptionBuckets >= 4 ||
+            bottomLineTransitions >= 4 ||
+            (hasDiagramOrGraph && activeOptionBuckets >= 3)
+        val isValid = hasStemOrFigure && hasCompleteOptionBlock
 
         return QuestionBlockMetrics(
             isValidQuestion = isValid,
@@ -1650,9 +1680,7 @@ object StudioImageAndPdfEngine {
     private fun estimateVisualQuestionDifficulty5(
         metrics: QuestionBlockMetrics,
         bandHeightRatio: Float,
-        inkDensity: Float,
-        questionOrderOnPage: Int,
-        pageIndex: Int
+        inkDensity: Float
     ): String {
         var complexityScore = 0
         // 1. Height of question on page (story + figure + premises take more vertical space)
@@ -1671,10 +1699,8 @@ object StudioImageAndPdfEngine {
         if (metrics.hasDiagramOrGraph) {
             complexityScore += 1
         }
-        // 4. Ink density & later questions on page/test tend to be more synthetic
+        // 4. Dense print or a figure adds complexity; page position is not a difficulty signal.
         if (inkDensity >= 0.065f) complexityScore += 1
-        if (questionOrderOnPage >= 3) complexityScore += 1
-        if (pageIndex % 4 == 3) complexityScore += 1
 
         return when {
             complexityScore <= 1 -> "Kolay"
@@ -1765,11 +1791,11 @@ object StudioImageAndPdfEngine {
         }
 
         // Bridge internal question gaps (line spacing, gap between diagram/graph and stem, gap before A-E options):
-        // 1. Always bridge gaps <= 2.3% of page height.
-        // 2. Also bridge medium gaps (up to 3.6% of page height) UNLESS the block immediately above the gap
+        // 1. Bridge gaps within a multi-part stem, including space around figures and tables.
+        // 2. Do not bridge a gap after a complete horizontal option row.
         //    already ends with a horizontal A-B-C-D-E option row (>= 3 option buckets active).
-        val baseInternalGap = (pageHeight * 0.023f).roundToInt().coerceIn(22, 46)
-        val extendedInternalGap = (pageHeight * 0.036f).roundToInt().coerceIn(34, 72)
+        val baseInternalGap = (pageHeight * 0.027f).roundToInt().coerceIn(26, 54)
+        val extendedInternalGap = (pageHeight * 0.05f).roundToInt().coerceIn(44, 96)
         val bucketWForGap = (colW / 5).coerceAtLeast(1)
 
         var i = 0
@@ -1997,4 +2023,3 @@ object StudioImageAndPdfEngine {
         return whitened
     }
 }
-

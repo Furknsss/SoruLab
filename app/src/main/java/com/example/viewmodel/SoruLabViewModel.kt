@@ -730,13 +730,38 @@ class SoruLabViewModel(
         return buildRealBaseQuestionsForTopic(topic, level)
     }
 
+    /**
+     * Kural 5: Soru Pratiği ekranından bir konu seçildiğinde veritabanından ASLA başka konunun sorusunu çekme.
+     * (question.topic == selectedTopic şartını hem ID hem de OCR metin sınıflandırmasıyla katı uygular)
+     */
+    private fun isQuestionStrictlyInTopic(cq: CustomQuestionRecord, topic: YksTopic): Boolean {
+        val classified = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = cq.examType,
+            subjectNameHint = cq.subjectName,
+            questionText = cq.questionText,
+            suggestedTopicName = cq.topicName
+        )
+        if (classified != null) {
+            val classifiedTopic = classified.second
+            return classifiedTopic.id.equals(topic.id, ignoreCase = true) ||
+                classifiedTopic.name.equals(topic.name, ignoreCase = true)
+        }
+        val resolved = SoruLabCatalog.resolveTopicFast(cq.topicId, cq.topicName)
+        if (resolved != null) {
+            return resolved.id.equals(topic.id, ignoreCase = true) ||
+                resolved.name.equals(topic.name, ignoreCase = true)
+        }
+        return cq.topicId.equals(topic.id, ignoreCase = true) ||
+            (cq.topicId.isBlank() && cq.subjectId.equals(topic.subjectId, ignoreCase = true) &&
+                cq.topicName.equals(topic.name, ignoreCase = true))
+    }
+
     private fun buildRealBaseQuestionsForTopic(
         topic: YksTopic,
         levelFilter: TopicTestLevel?
     ): List<YksQuestion> {
-        val topicPool = _userCustomQuestions.value.filter {
-            it.topicId.equals(topic.id, ignoreCase = true) ||
-                it.topicName.equals(topic.name, ignoreCase = true)
+        val topicPool = _userCustomQuestions.value.filter { cq ->
+            isQuestionStrictlyInTopic(cq, topic)
         }
 
         val filteredCustom = if (levelFilter == null) {
@@ -814,9 +839,7 @@ class SoruLabViewModel(
         sourceFilter: QuestionSourceFilter
     ): List<YksQuestion> {
         val strictTopicPool = _userCustomQuestions.value.filter { cq ->
-            cq.topicId.equals(topic.id, ignoreCase = true) ||
-                (cq.topicId.isBlank() && cq.subjectId.equals(topic.subjectId, ignoreCase = true) &&
-                    cq.topicName.equals(topic.name, ignoreCase = true))
+            isQuestionStrictlyInTopic(cq, topic)
         }
         if (strictTopicPool.isEmpty()) return emptyList()
 
@@ -908,9 +931,7 @@ class SoruLabViewModel(
      */
     fun checkPoolAvailability(topic: YksTopic, level: TopicTestLevel): PoolAvailabilityCheck {
         val strictTopicPool = _userCustomQuestions.value.filter { cq ->
-            cq.topicId.equals(topic.id, ignoreCase = true) ||
-                (cq.topicId.isBlank() && cq.subjectId.equals(topic.subjectId, ignoreCase = true) &&
-                    cq.topicName.equals(topic.name, ignoreCase = true))
+            isQuestionStrictlyInTopic(cq, topic)
         }
         val countsByDiff = DifficultyLevel.entries.associateWith { diff ->
             strictTopicPool.count { it.difficultyLevel5 == diff }

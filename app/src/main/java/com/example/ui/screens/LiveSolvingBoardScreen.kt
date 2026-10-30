@@ -1295,82 +1295,133 @@ private fun RealTwoColumnBookPageSurface(
                 )
             }
 
-            // ÇİFT SÜTUNLU (SOL SÜTUN & SAĞ SÜTUN) VE ORTADAN İNCE DİKEY ÇİZGİLİ TAM SAYFA DÜZENİ
-            Row(
+            // 2x2 YAPRAK TEST GÖRÜNÜMÜ: SATIR BAZLI ÜSTTEN HİZALAMA (Alignment.Top)
+            // Sol ve sağ sütundaki soruların birinin yukarıda birinin aşağıda durmasını engeller
+            val qTopLeft = pageQuestions.getOrNull(0)
+            val qBottomLeft = pageQuestions.getOrNull(1)
+            val qTopRight = pageQuestions.getOrNull(2)
+            val qBottomRight = pageQuestions.getOrNull(3)
+
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = (pageMinHeight - 76.dp).coerceAtLeast(360.dp))
-                    .height(IntrinsicSize.Min),
-                horizontalArrangement = Arrangement.spacedBy(0.dp),
-                verticalAlignment = Alignment.Top
             ) {
-                // SOL SÜTUN (Soru 1 ve 2) — Gerçek kitap sayfası gibi dengeli dikey yerleşim
-                val isLeftPopoverOpen = leftColumnQuestions.any { it.number == openThreeDotQuestionNumber }
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .zIndex(if (isLeftPopoverOpen) 60f else 1f)
-                        .padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = Arrangement.Top
-                ) {
-                    leftColumnQuestions.forEachIndexed { idx, q ->
-                        BookPageQuestionItem345(
-                            question = q,
-                            isReviewMode = session.isReviewMode,
-                            selectedOption = session.selectedAnswers[q.number],
-                            isThreeDotMenuOpen = openThreeDotQuestionNumber == q.number,
-                            customPublishers = customPublishers,
-                            onToggleThreeDotMenu = { onToggleThreeDotMenu(q.number) },
-                            onSelectOption = { opt -> onSelectOptionInBook(q.number, opt) },
-                            onOpenTopicLecture = { onOpenTopicLecture(q) },
-                            onOpenSolutionModal = { onOpenSolutionModal(q) },
-                            onOpenTwinScreen = { onOpenTwinScreen(q) },
-                            onAddToKumbara = { onAddToKumbara(q) }
-                        )
-                        if (idx == 0 && leftColumnQuestions.size > 1) {
-                            Spacer(modifier = Modifier.height(18.dp))
-                        }
-                    }
-                }
-
-                // ORTADAKİ İNCE DİKEY KİTAP SAYFASI ÇİZGİSİ
+                // Ortadaki ince dikey kitap çizgisi (tüm sayfa yüksekliğince uzanır)
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
                         .width(1.dp)
                         .background(Color(0xFFCBD5E1))
+                        .align(Alignment.Center)
                 )
 
-                // SAĞ SÜTUN (Soru 3 ve 4) — Gerçek kitap sayfası gibi dengeli dikey yerleşim
-                val isRightPopoverOpen = rightColumnQuestions.any { it.number == openThreeDotQuestionNumber }
                 Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .zIndex(if (isRightPopoverOpen) 60f else 1f)
-                        .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = Arrangement.Top
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(22.dp)
                 ) {
-                    if (rightColumnQuestions.isEmpty()) {
-                        Spacer(modifier = Modifier.height(80.dp))
-                    } else {
-                        rightColumnQuestions.forEachIndexed { idx, q ->
-                            BookPageQuestionItem345(
-                                question = q,
-                                isReviewMode = session.isReviewMode,
-                                selectedOption = session.selectedAnswers[q.number],
-                                isThreeDotMenuOpen = openThreeDotQuestionNumber == q.number,
-                                customPublishers = customPublishers,
-                                onToggleThreeDotMenu = { onToggleThreeDotMenu(q.number) },
-                                onSelectOption = { opt -> onSelectOptionInBook(q.number, opt) },
-                                onOpenTopicLecture = { onOpenTopicLecture(q) },
-                                onOpenSolutionModal = { onOpenSolutionModal(q) },
-                                onOpenTwinScreen = { onOpenTwinScreen(q) },
-                                onAddToKumbara = { onAddToKumbara(q) }
-                            )
-                            if (idx == 0 && rightColumnQuestions.size > 1) {
-                                Spacer(modifier = Modifier.height(18.dp))
+                    // 1. SATIR: Soru 1 (Sol) ve Soru 3 (Sağ) - ÜSTTEN KESİN HİZALI (Alignment.Top)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 16.dp, top = 4.dp, bottom = 4.dp)
+                        ) {
+                            if (qTopLeft != null) {
+                                BookPageQuestionItem345(
+                                    question = qTopLeft,
+                                    isReviewMode = session.isReviewMode,
+                                    selectedOption = session.selectedAnswers[qTopLeft.number],
+                                    isThreeDotMenuOpen = openThreeDotQuestionNumber == qTopLeft.number,
+                                    customPublishers = customPublishers,
+                                    onToggleThreeDotMenu = { onToggleThreeDotMenu(qTopLeft.number) },
+                                    onSelectOption = { opt -> onSelectOptionInBook(qTopLeft.number, opt) },
+                                    onOpenTopicLecture = { onOpenTopicLecture(qTopLeft) },
+                                    onOpenSolutionModal = { onOpenSolutionModal(qTopLeft) },
+                                    onOpenTwinScreen = { onOpenTwinScreen(qTopLeft) },
+                                    onAddToKumbara = { onAddToKumbara(qTopLeft) }
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(1.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 16.dp, top = 4.dp, bottom = 4.dp)
+                        ) {
+                            if (qTopRight != null) {
+                                BookPageQuestionItem345(
+                                    question = qTopRight,
+                                    isReviewMode = session.isReviewMode,
+                                    selectedOption = session.selectedAnswers[qTopRight.number],
+                                    isThreeDotMenuOpen = openThreeDotQuestionNumber == qTopRight.number,
+                                    customPublishers = customPublishers,
+                                    onToggleThreeDotMenu = { onToggleThreeDotMenu(qTopRight.number) },
+                                    onSelectOption = { opt -> onSelectOptionInBook(qTopRight.number, opt) },
+                                    onOpenTopicLecture = { onOpenTopicLecture(qTopRight) },
+                                    onOpenSolutionModal = { onOpenSolutionModal(qTopRight) },
+                                    onOpenTwinScreen = { onOpenTwinScreen(qTopRight) },
+                                    onAddToKumbara = { onAddToKumbara(qTopRight) }
+                                )
+                            }
+                        }
+                    }
+
+                    // 2. SATIR: Soru 2 (Sol) ve Soru 4 (Sağ) - ÜSTTEN KESİN HİZALI (Alignment.Top)
+                    if (qBottomLeft != null || qBottomRight != null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 16.dp, top = 4.dp, bottom = 4.dp)
+                            ) {
+                                if (qBottomLeft != null) {
+                                    BookPageQuestionItem345(
+                                        question = qBottomLeft,
+                                        isReviewMode = session.isReviewMode,
+                                        selectedOption = session.selectedAnswers[qBottomLeft.number],
+                                        isThreeDotMenuOpen = openThreeDotQuestionNumber == qBottomLeft.number,
+                                        customPublishers = customPublishers,
+                                        onToggleThreeDotMenu = { onToggleThreeDotMenu(qBottomLeft.number) },
+                                        onSelectOption = { opt -> onSelectOptionInBook(qBottomLeft.number, opt) },
+                                        onOpenTopicLecture = { onOpenTopicLecture(qBottomLeft) },
+                                        onOpenSolutionModal = { onOpenSolutionModal(qBottomLeft) },
+                                        onOpenTwinScreen = { onOpenTwinScreen(qBottomLeft) },
+                                        onAddToKumbara = { onAddToKumbara(qBottomLeft) }
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(1.dp))
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 16.dp, top = 4.dp, bottom = 4.dp)
+                            ) {
+                                if (qBottomRight != null) {
+                                    BookPageQuestionItem345(
+                                        question = qBottomRight,
+                                        isReviewMode = session.isReviewMode,
+                                        selectedOption = session.selectedAnswers[qBottomRight.number],
+                                        isThreeDotMenuOpen = openThreeDotQuestionNumber == qBottomRight.number,
+                                        customPublishers = customPublishers,
+                                        onToggleThreeDotMenu = { onToggleThreeDotMenu(qBottomRight.number) },
+                                        onSelectOption = { opt -> onSelectOptionInBook(qBottomRight.number, opt) },
+                                        onOpenTopicLecture = { onOpenTopicLecture(qBottomRight) },
+                                        onOpenSolutionModal = { onOpenSolutionModal(qBottomRight) },
+                                        onOpenTwinScreen = { onOpenTwinScreen(qBottomRight) },
+                                        onAddToKumbara = { onAddToKumbara(qBottomRight) }
+                                    )
+                                }
                             }
                         }
                     }
@@ -1474,16 +1525,29 @@ private fun BookPageQuestionItem345(
             ) {
                 if (croppedBitmap != null) {
                     val aspect = croppedBitmap.width.toFloat() / croppedBitmap.height.toFloat().coerceAtLeast(1f)
-                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                        val nativeWidth = with(LocalDensity.current) { croppedBitmap.width.toDp() }
-                        val imageWidth = minOf(maxWidth, 300.dp * aspect, nativeWidth)
+                    BoxWithConstraints(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.TopStart
+                    ) {
+                        // Gerçek PDF kitap sayfası orantısı ve ölçekleme:
+                        // Kısa denklemli soruların tüm sütuna yayılıp devasa ve bulanık büyümesini kesin olarak engeller.
+                        val maxDisplayHeight = 340.dp
+                        val baseScaleFactor = 0.85f // Gerçek basılı kitap punto dengesi
+                        val naturalWidthDp = with(LocalDensity.current) { (croppedBitmap.width * baseScaleFactor).toDp() }
+                        val naturalHeightDp = with(LocalDensity.current) { (croppedBitmap.height * baseScaleFactor).toDp() }
+
+                        val boundedHeight = minOf(naturalHeightDp, maxDisplayHeight)
+                        val derivedWidthFromHeight = boundedHeight * aspect
+                        val finalWidth = minOf(maxWidth, naturalWidthDp, derivedWidthFromHeight).coerceAtLeast(120.dp)
+
                         Image(
                             bitmap = croppedBitmap.asImageBitmap(),
                             contentDescription = "${question.number}. Soru",
                             contentScale = ContentScale.Fit,
                             alignment = Alignment.TopStart,
                             modifier = Modifier
-                                .width(imageWidth)
+                                .width(finalWidth)
+                                .heightIn(max = maxDisplayHeight)
                                 .aspectRatio(aspect)
                                 .background(Color.White)
                         )
@@ -2826,10 +2890,17 @@ private fun FullScreenTwinQuestionComparisonView(
 ) {
     var twinSelectedOption by remember(originalQuestion.id) { mutableStateOf<String?>(null) }
     var isTwinAnswerRevealed by remember(originalQuestion.id) { mutableStateOf(false) }
+
+    // Çizim Katmanı State'leri: Hem Test Sorusu (sol) hem de İkiz Soru (sağ) üzerinde bağımsız çizim yapılır
     var twinStrokes by remember(originalQuestion.id) { mutableStateOf<List<DrawStroke>>(emptyList()) }
     val liveTwinPath = remember { Path() }
     val liveTwinPoints = remember { mutableListOf<Offset>() }
     val liveTwinDrawTick = remember { mutableIntStateOf(0) }
+
+    var testStrokes by remember(originalQuestion.id) { mutableStateOf<List<DrawStroke>>(emptyList()) }
+    val liveTestPath = remember { Path() }
+    val liveTestPoints = remember { mutableListOf<Offset>() }
+    val liveTestDrawTick = remember { mutableIntStateOf(0) }
 
     val strokeWidths = listOf(4.5f, 8.0f, 13.0f)
     val currentStrokePx = strokeWidths.getOrElse(selectedStrokeSizeIndex) { 8.0f }
@@ -2865,21 +2936,258 @@ private fun FullScreenTwinQuestionComparisonView(
                 onToggleZoom = {},
                 onSelectStrokeSize = onSelectStrokeSize,
                 onSelectPenColor = onSelectPenColor,
-                onClearCanvas = { twinStrokes = emptyList() }
+                onClearCanvas = {
+                    twinStrokes = emptyList()
+                    testStrokes = emptyList()
+                }
             )
         }
 
-        // RTL places the twin card on the right while keeping each card's content LTR.
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-            Row(
+        // KURAL 1: Yan yana görünümde SOL tarafa "Test Sorusu"nu, SAĞ tarafa "İkiz Sorusu"nu yerleştir ve her ikisinin üzerinde de S-Pen ile çizim yapılabilsin.
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // ==================== SOL TARAF: TEST SORUSU ====================
+            Column(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    .fillMaxHeight()
             ) {
-            // İkiz kartı sağda, Test Sorusu kartı solda yer alır.
-            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Surface(
+                    shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
+                    color = Color(0xFF1E1B4B)
+                ) {
+                    Text(
+                        text = "Test Sorusu",
+                        color = Color.White,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 13.5.sp,
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp)
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(topEnd = 14.dp, bottomStart = 14.dp, bottomEnd = 14.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.5.dp, Color(0xFF475569)),
+                    shadowElevation = 2.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 20.dp, vertical = 16.dp),
+                            verticalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                                    .verticalScroll(rememberScrollState()),
+                                contentAlignment = Alignment.TopCenter
+                            ) {
+                                if (originalBitmap != null) {
+                                    val aspect = originalBitmap.width.toFloat() /
+                                        originalBitmap.height.toFloat().coerceAtLeast(1f)
+                                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                                        val nativeWidth = with(LocalDensity.current) { originalBitmap.width.toDp() }
+                                        val imageWidth = minOf(maxWidth, 300.dp * aspect, nativeWidth)
+                                        Image(
+                                            bitmap = originalBitmap.asImageBitmap(),
+                                            contentDescription = "Orijinal Test Sorusu",
+                                            contentScale = ContentScale.Fit,
+                                            modifier = Modifier
+                                                .width(imageWidth)
+                                                .aspectRatio(aspect)
+                                        )
+                                    }
+                                } else {
+                                    Text(
+                                        text = originalQuestion.stemTop.ifBlank { "${originalQuestion.number}. Soru" },
+                                        color = Color(0xFF1E293B),
+                                        fontSize = 14.sp,
+                                        lineHeight = 20.sp
+                                    )
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Doğru Cevap:",
+                                        color = Color(0xFF334155),
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 13.5.sp
+                                    )
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (originalQuestion.answerKeyVerified) Color(0xFF15803D) else Color(0xFFB45309),
+                                        modifier = Modifier.size(34.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = if (originalQuestion.answerKeyVerified) originalQuestion.correctOption else "?",
+                                                color = Color.White,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 14.sp
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Senin Cevabın:",
+                                        color = Color(0xFF334155),
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 13.5.sp
+                                    )
+                                    val hasStudentAns = !studentAnswer.isNullOrBlank()
+                                    val isStudentRight = originalQuestion.answerKeyVerified && studentAnswer == originalQuestion.correctOption
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = when {
+                                            !hasStudentAns -> Color.White
+                                            isStudentRight -> Color(0xFF15803D)
+                                            !originalQuestion.answerKeyVerified -> Color(0xFFB45309)
+                                            else -> Color(0xFFDC2626)
+                                        },
+                                        border = BorderStroke(
+                                            1.2.dp,
+                                            if (!hasStudentAns) Color(0xFFCBD5E1) else Color.Transparent
+                                        ),
+                                        modifier = Modifier.size(34.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = studentAnswer?.ifBlank { "-" } ?: "-",
+                                                color = if (!hasStudentAns) Color(0xFF64748B) else Color.White,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 14.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // TEST SORUSU ÜZERİNDE S-PEN & FARE ÇİZİM KATMANI
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                                .then(
+                                    if (activeTool == DrawingTool.PEN ||
+                                        activeTool == DrawingTool.HIGHLIGHTER ||
+                                        activeTool == DrawingTool.SMART_SHAPE ||
+                                        activeTool == DrawingTool.ERASER
+                                    ) {
+                                        Modifier.pointerInput(activeTool, selectedStrokeSizeIndex, selectedPenColorHex) {
+                                            awaitEachGesture {
+                                                val down = awaitFirstDown(requireUnconsumed = false)
+                                                val isStylusOrMouse = down.type == PointerType.Stylus ||
+                                                    down.type == PointerType.Eraser ||
+                                                    down.type == PointerType.Mouse
+                                                if (!isStylusOrMouse) return@awaitEachGesture
+
+                                                val dragStart = awaitTouchSlopOrCancellation(down.id) { change, _ ->
+                                                    change.consume()
+                                                }
+                                                if (dragStart != null) {
+                                                    liveTestPoints.clear()
+                                                    liveTestPoints.add(down.position)
+                                                    liveTestPoints.add(dragStart.position)
+                                                    liveTestPath.reset()
+                                                    liveTestPath.moveTo(down.position.x, down.position.y)
+                                                    liveTestPath.lineTo(dragStart.position.x, dragStart.position.y)
+                                                    liveTestDrawTick.intValue++
+
+                                                    var prevPt = dragStart.position
+                                                    drag(dragStart.id) { change ->
+                                                        change.consume()
+                                                        val curPt = change.position
+                                                        liveTestPoints.add(curPt)
+                                                        val midX = (prevPt.x + curPt.x) * 0.5f
+                                                        val midY = (prevPt.y + curPt.y) * 0.5f
+                                                        liveTestPath.quadraticTo(prevPt.x, prevPt.y, midX, midY)
+                                                        prevPt = curPt
+                                                        liveTestDrawTick.intValue++
+                                                    }
+                                                    if (liveTestPoints.size >= 2) {
+                                                        val isEr = activeTool == DrawingTool.ERASER
+                                                        val isHigh = activeTool == DrawingTool.HIGHLIGHTER
+                                                        val isShape = activeTool == DrawingTool.SMART_SHAPE
+                                                        testStrokes = testStrokes + DrawStroke(
+                                                            points = liveTestPoints.toList(),
+                                                            colorHex = if (isEr) 0x00000000L else selectedPenColorHex,
+                                                            strokeWidthPx = when {
+                                                                isEr -> 38f
+                                                                isHigh -> currentStrokePx * 2.6f
+                                                                else -> currentStrokePx
+                                                            },
+                                                            isSmartShape = isShape,
+                                                            isEraser = isEr,
+                                                            isHighlighter = isHigh
+                                                        )
+                                                    }
+                                                    liveTestPoints.clear()
+                                                    liveTestPath.reset()
+                                                    liveTestDrawTick.intValue++
+                                                }
+                                            }
+                                        }
+                                    } else Modifier
+                                )
+                        ) {
+                            val tick = liveTestDrawTick.intValue
+                            testStrokes.forEach { drawSmoothStroke(it) }
+                            if (tick >= 0 && liveTestPoints.size >= 2) {
+                                val isEr = activeTool == DrawingTool.ERASER
+                                val isHigh = activeTool == DrawingTool.HIGHLIGHTER
+                                drawPath(
+                                    path = liveTestPath,
+                                    color = when {
+                                        isEr -> Color.Transparent
+                                        isHigh -> Color(selectedPenColorHex).copy(alpha = 0.36f)
+                                        else -> Color(selectedPenColorHex)
+                                    },
+                                    style = Stroke(
+                                        width = when {
+                                            isEr -> 38f
+                                            isHigh -> currentStrokePx * 2.6f
+                                            else -> currentStrokePx
+                                        },
+                                        cap = StrokeCap.Round,
+                                        join = StrokeJoin.Round
+                                    ),
+                                    blendMode = if (isEr) BlendMode.Clear else BlendMode.SrcOver
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==================== SAĞ TARAF: İKİZ SORUSU ====================
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -3054,7 +3362,7 @@ private fun FullScreenTwinQuestionComparisonView(
                             }
                         }
 
-                        // İkiz Soru S-Pen & Fare Sıfır Gecikmeli Çizim Katmanı + BlendMode.Clear Silgi
+                        // İKİZ SORU S-PEN & FARE SIFIR GECİKMELİ ÇİZİM KATMANI + BLENDMODE.CLEAR SİLGİ
                         Canvas(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -3145,150 +3453,6 @@ private fun FullScreenTwinQuestionComparisonView(
                                     ),
                                     blendMode = if (isEr) BlendMode.Clear else BlendMode.SrcOver
                                 )
-                            }
-                        }
-                    }
-                }
-            }
-            }
-
-            // Test kartı, RTL düzeni nedeniyle sol tarafta.
-            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
-                    color = Color(0xFF1E1B4B)
-                ) {
-                    Text(
-                        text = "Test Sorusu",
-                        color = Color.White,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 13.5.sp,
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp)
-                    )
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(topEnd = 14.dp, bottomStart = 14.dp, bottomEnd = 14.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.5.dp, Color(0xFF475569)),
-                    shadowElevation = 2.dp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 20.dp, vertical = 16.dp),
-                        verticalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .verticalScroll(rememberScrollState()),
-                            contentAlignment = Alignment.TopCenter
-                        ) {
-                            if (originalBitmap != null) {
-                                val aspect = originalBitmap.width.toFloat() /
-                                    originalBitmap.height.toFloat().coerceAtLeast(1f)
-                                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                                    val nativeWidth = with(LocalDensity.current) { originalBitmap.width.toDp() }
-                                    val imageWidth = minOf(maxWidth, 300.dp * aspect, nativeWidth)
-                                    Image(
-                                        bitmap = originalBitmap.asImageBitmap(),
-                                        contentDescription = "Orijinal Test Sorusu",
-                                        contentScale = ContentScale.Fit,
-                                        modifier = Modifier
-                                            .width(imageWidth)
-                                            .aspectRatio(aspect)
-                                    )
-                                }
-                            } else {
-                                Text(
-                                    text = originalQuestion.stemTop.ifBlank { "${originalQuestion.number}. Soru" },
-                                    color = Color(0xFF1E293B),
-                                    fontSize = 14.sp,
-                                    lineHeight = 20.sp
-                                )
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = "Doğru Cevap:",
-                                    color = Color(0xFF334155),
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 13.5.sp
-                                )
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (originalQuestion.answerKeyVerified) Color(0xFF15803D) else Color(0xFFB45309),
-                                    modifier = Modifier.size(34.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = if (originalQuestion.answerKeyVerified) originalQuestion.correctOption else "?",
-                                            color = Color.White,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 14.sp
-                                        )
-                                    }
-                                }
-                            }
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = "Senin Cevabın:",
-                                    color = Color(0xFF334155),
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 13.5.sp
-                                )
-                                val hasStudentAns = !studentAnswer.isNullOrBlank()
-                                val isStudentRight = originalQuestion.answerKeyVerified && studentAnswer == originalQuestion.correctOption
-                                Surface(
-                                    shape = CircleShape,
-                                    color = when {
-                                        !hasStudentAns -> Color.White
-                                        isStudentRight -> Color(0xFF15803D)
-                                        !originalQuestion.answerKeyVerified -> Color(0xFFB45309)
-                                        else -> Color(0xFFDC2626)
-                                    },
-                                    border = BorderStroke(
-                                        1.2.dp,
-                                        if (!hasStudentAns) Color(0xFFCBD5E1) else Color.Transparent
-                                    ),
-                                    modifier = Modifier.size(34.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = studentAnswer?.ifBlank { "-" } ?: "-",
-                                            color = if (!hasStudentAns) Color(0xFF64748B) else Color.White,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 14.sp
-                                        )
-                                    }
-                                }
-                            }
-                                }
                             }
                         }
                     }

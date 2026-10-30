@@ -620,7 +620,11 @@ object SoruLabCatalog {
     }
 
     /**
-     * Classifies 5-tier difficulty (`Kolay`, `Orta`, `ÖSYM`, `Zor`, `Çok Zor`) from PDF headers/text.
+     * Classifies 5-tier difficulty (`Kolay`, `Orta`, `ÖSYM`, `Zor`, `Çok Zor`) from question text and structural signals:
+     * - İşlem adımı sayısı ve denklem/satır yoğunluğu
+     * - Öncül sayısı (I, II, III, IV)
+     * - Grafik/şekil/tablo varlığı
+     * - Birleşik kazanım yoğunluğu
      */
     fun classifyDifficulty5FromText(
         rawDifficultyHint: String,
@@ -633,43 +637,46 @@ object SoruLabCatalog {
         val premiseCount = Regex("""(?m)(?:^|\s)(?:I{1,3}|IV|V)[).,:]""")
             .findAll(headerOrQuestionText)
             .count()
+        val hasGraphOrTable = Regex("""grafik|şekil|sekil|tablo|çizim|cizim|koordinat|düzlem|diyagram""").containsMatchIn(combined)
         val conceptGroups = listOf(
             listOf("limit", "lim", "süreklilik", "sağdan", "soldan"),
-            listOf("türev", "f'(x)", "dy/dx", "ekstremum", "teğet"),
-            listOf("fonksiyon", "grafik", "parabol", "tepe noktası"),
-            listOf("denklem", "eşitsizlik", "kök", "polinom"),
-            listOf("tablo", "olasılık", "kombinasyon", "permütasyon"),
-            listOf("hız", "ivme", "kuvvet", "enerji")
+            listOf("türev", "f'(x)", "g'(x)", "dy/dx", "ekstremum", "teğet", "artan", "azalan"),
+            listOf("fonksiyon", "grafik", "parabol", "tepe noktası", "simetri ekseni"),
+            listOf("denklem", "eşitsizlik", "kök", "polinom", "başkatsayı", "derece"),
+            listOf("tablo", "olasılık", "kombinasyon", "permütasyon", "binom"),
+            listOf("integral", "alan", "riemann", "diferansiyel"),
+            listOf("hız", "ivme", "kuvvet", "enerji", "momentum", "tork")
         ).count { group -> group.any(combined::contains) }
 
         var score = when {
-            textLength >= 700 -> 3
-            textLength >= 420 -> 2
-            textLength >= 220 -> 1
+            textLength >= 650 -> 3
+            textLength >= 380 -> 2
+            textLength >= 180 -> 1
             else -> 0
         }
         score += when {
-            nonEmptyLines >= 15 -> 2
-            nonEmptyLines >= 9 -> 1
+            nonEmptyLines >= 14 -> 2
+            nonEmptyLines >= 8 -> 1
             else -> 0
         }
         score += when {
-            premiseCount >= 3 -> 2
+            premiseCount >= 3 -> 3
             premiseCount >= 1 -> 1
             else -> 0
         }
-        if (Regex("""grafik|şekil|sekil|tablo|çizim|cizim""").containsMatchIn(combined)) score++
+        if (hasGraphOrTable) score += 2
         score += when {
-            conceptGroups >= 4 -> 2
-            conceptGroups >= 2 -> 1
+            conceptGroups >= 3 -> 3
+            conceptGroups >= 2 -> 2
+            conceptGroups == 1 -> 1
             else -> 0
         }
 
         return when {
-            score <= 1 -> DifficultyLevel.KOLAY
-            score <= 3 -> DifficultyLevel.ORTA
-            score <= 5 -> DifficultyLevel.OSYM
-            score <= 7 -> DifficultyLevel.ZOR
+            score <= 2 -> DifficultyLevel.KOLAY
+            score in 3..4 -> DifficultyLevel.ORTA
+            score in 5..6 -> DifficultyLevel.OSYM
+            score in 7..8 -> DifficultyLevel.ZOR
             else -> DifficultyLevel.COK_ZOR
         }
     }
@@ -682,34 +689,44 @@ object SoruLabCatalog {
     ): Pair<YksSubject, YksTopic>? {
         val normalizedText = questionText.lowercase()
         val hasDerivativeSymbol = normalizedText.contains("'") ||
-            Regex("""\bd\s*/\s*dx\b""").containsMatchIn(normalizedText)
+            normalizedText.contains("′") ||
+            Regex("""\bd\s*/\s*dx\b""").containsMatchIn(normalizedText) ||
+            Regex("""\b[fg]\s*['′]\s*\(\s*x\s*\)""").containsMatchIn(normalizedText)
+
+        // KATI YKS ANAHTAR KELİME SINIFLANDIRICISI (Rastgele veya dosya adına göre atamayı KESİNLİKLE engeller)
         val forcedTopicName = when {
+            // 1. İçinde P(x), Q(x), polinom, derece, bölümünden kalan, başkatsayı geçenler -> KESİNLİKLE Polinomlar
             Regex("""\b[qp]\s*\(\s*x\s*\)""", RegexOption.IGNORE_CASE).containsMatchIn(questionText) ||
-                listOf("polinom", "derece", "bölümünden kalan").any(normalizedText::contains) ->
+                listOf("polinom", "derece", "bölümünden kalan", "bolumunden kalan", "başkatsayı", "baskatsayi", "katsayılar toplamı", "sabit terim").any(normalizedText::contains) ->
                 "Polinomlar"
 
-            Regex("""i\s*\^\s*2\s*=\s*-1|re\s*\(\s*z\s*\)|im\s*\(\s*z\s*\)""", RegexOption.IGNORE_CASE)
+            // 2. İçinde i^2 = -1, Re(z), Im(z), eşlenik, karmaşık geçenler -> Karmaşık Sayılar
+            Regex("""i\s*\^?\s*2\s*=\s*-1|i²\s*=\s*-1|re\s*\(\s*z\s*\)|im\s*\(\s*z\s*\)""", RegexOption.IGNORE_CASE)
                 .containsMatchIn(questionText) ||
-                listOf("eşlenik", "eslenik", "karmaşık", "karmasik").any(normalizedText::contains) ->
+                listOf("eşlenik", "eslenik", "karmaşık", "karmasik", "sanal birim", "z = a + ib").any(normalizedText::contains) ->
                 "Karmaşık Sayılar"
 
-            listOf("tepe noktası", "tepe noktasi", "parabol", "simetri ekseni").any(normalizedText::contains) ->
+            // 3. İçinde tepe noktası, parabol, simetri ekseni geçenler -> Parabol
+            listOf("tepe noktası", "tepe noktasi", "parabol", "simetri ekseni", "f(x) = ax^2", "f(x) = ax²").any(normalizedText::contains) ->
                 "Parabol"
 
-            Regex("""f\s*['′]\s*\(\s*x\s*\)|dy\s*/\s*dx""", RegexOption.IGNORE_CASE).containsMatchIn(questionText) ||
-                listOf("türev", "turev", "teğetin eğimi", "tegetin egimi", "ekstremum").any(normalizedText::contains) ->
+            // 4. İçinde f'(x), g'(x), dy/dx, türev, teğet, ekstremum geçenler -> KESİNLİKLE Türev (Asla Limit'e atma!)
+            hasDerivativeSymbol ||
+                listOf("türev", "turev", "teğet", "teget", "ekstremum", "yerel maksimum", "yerel minimum", "artan", "azalan").any(normalizedText::contains) ->
                 "Türev Alma Kuralları"
 
+            // 5. İçinde lim, süreklilik geçen ve türev sembolü (', dy/dx) OLMAYANLAR -> Limit ve Süreklilik
             !hasDerivativeSymbol &&
                 (Regex("""\blim(?:\b|[_\s({])""").containsMatchIn(normalizedText) ||
-                    listOf("limit", "süreklilik", "sureklilik", "sağdan limit", "sagdan limit", "soldan limit").any(normalizedText::contains)) ->
+                    listOf("limit", "süreklilik", "sureklilik", "sağdan limit", "sagdan limit", "soldan limit", "belirsizlik").any(normalizedText::contains)) ->
                 "Limit ve Süreklilik"
 
             else -> ""
         }
+
         val preferredName = forcedTopicName.ifBlank { suggestedTopicName.trim() }
-        val preferredExam = if (examTypeHint.contains("AYT", ignoreCase = true)) ExamType.AYT else ExamType.TYT
-        val preferredSubject = subjectNameHint
+        val preferredExam = if (forcedTopicName.isNotBlank() || examTypeHint.contains("AYT", ignoreCase = true)) ExamType.AYT else ExamType.TYT
+        val preferredSubject = if (forcedTopicName.isNotBlank()) "Matematik" else subjectNameHint
             .replace("TYT ", "", ignoreCase = true)
             .replace("AYT ", "", ignoreCase = true)
             .trim()

@@ -486,11 +486,11 @@ class AiSolverViewModel : ViewModel() {
             try {
                 val prompt = buildString {
                     appendLine("Sen uzman bir ÖSYM YKS soru yazarısın.")
-                    appendLine("Bu YKS sorusunun matematiksel/bilimsel kazanımını, denklemini ve zorluk seviyesini birebir koruyarak, sadece fonksiyonu/sayıları/bağlamı değiştirip ÖSYM formatında, LaTeX/düzgün matematiksel gösterimli, gerçek bir İkiz Soru ve A-E şıkları üret.")
-                    appendLine("Orijinal soru yalnızca ekli kırpılmış görseldir. Görseli dikkatle çözümle; yeni soru aynı kazanım ve çözüm mantığını ölçmeli.")
+                    appendLine("KURAL: Bu YKS sorusunun matematiksel/bilimsel kazanımını, denklemini ve zorluk seviyesini birebir koruyarak, sadece fonksiyonu/sayıları değiştirip ÖSYM formatında, düzgün matematiksel gösterimli gerçek bir İkiz Soru ve A-E şıkları üret.")
+                    appendLine("Orijinal soru yalnızca ekli kırpılmış görseldir. Görseli dikkatle çözümle; yeni soru aynı kazanım, denklem yapısı ve çözüm mantığını ölçmeli.")
                     appendLine("Konu bağlamı: ${question.topicHeader}")
                     appendLine("Zorluk seviyesi: ${question.difficulty.label}")
-                    appendLine("Beş şıkkın her birini doldur, doğru cevabı kontrol et ve adım adım çözüm ver.")
+                    appendLine("Beş şıkkın (A, B, C, D, E) her birini eksiksiz doldur, doğru cevabı kontrol et ve adım adım net çözüm ver.")
                 }
                 val response = withTimeout(45_000L) {
                     twinQuestionGeneratorModel.generateContent(

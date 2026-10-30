@@ -1197,7 +1197,7 @@ object StudioImageAndPdfEngine {
         if (lastHeaderBannerY != -1) {
             bodyTop = (lastHeaderBannerY + (height * 0.008f).roundToInt()).coerceAtMost(headerProbeLimit)
         } else {
-            // Look for whitespace gap below a top answer-key strip or running header.
+            // Look for whitespace gap below a top answer-key strip, running header, or Test 02 / Test 05 title banner box.
             var sawTopInk = false
             var zeroRunTop = 0
             for (y in (height * 0.025f).roundToInt()..headerProbeLimit) {
@@ -1212,33 +1212,58 @@ object StudioImageAndPdfEngine {
                 } else if (sawTopInk) {
                     zeroRunTop++
                     if (zeroRunTop >= (height * 0.004f).roundToInt().coerceAtLeast(8)) {
-                        bodyTop = y
+                        bodyTop = y + 4
                         break
                     }
                 }
             }
         }
 
-        // A compact row of separated glyph groups followed by a thin rule is an answer-key strip,
+        // KURAL 3: Soruların tepesinde kalan '1B 2D 3D 4E...' cevap anahtarı şeritlerini
+        // ve yeşil/siyah/koyu 'Test 02 / Test 05' başlık kutularını tespit edip kırpma kutusunun
+        // üst sınırını bunların ALTINDAN başlat!
+        for (y in (height * 0.02f).roundToInt()..headerProbeLimit) {
+            var bannerPixels = 0
+            val rowOff = y * width
+            for (x in probeLeft..probeRight step 2) {
+                val px = pixels[rowOff + x]
+                val r = (px shr 16) and 0xFF
+                val g = (px shr 8) and 0xFF
+                val b = px and 0xFF
+                val maxCh = max(r, max(g, b))
+                val minCh = min(r, min(g, b))
+                val lum = (r * 77 + g * 150 + b * 29) shr 8
+                // Renkli (yeşil/mavi/turuncu) veya koyu siyah Test Başlık Kutusu (Test 01, Test 02, vb.)
+                if ((maxCh - minCh >= 32 && lum in 40..225) || lum < 85) {
+                    bannerPixels++
+                }
+            }
+            if (bannerPixels >= (probeSpan / 2) * 0.28f) {
+                bodyTop = max(bodyTop, y + 16)
+            }
+        }
+
+        // A compact row of separated glyph groups followed by a thin rule is an answer-key strip (1B 2D 3D 4E...),
         // not part of the first question.
         var answerRowStart = -1
         var answerRowEnd = -1
         fun trimAnswerKeyRow(groupStart: Int, groupEnd: Int): Boolean {
             val groupHeight = groupEnd - groupStart + 1
-            if (groupHeight !in 4..(height * 0.025f).roundToInt().coerceAtLeast(12)) return false
-            val maxRuleSearch = (groupEnd + (height * 0.016f).roundToInt()).coerceAtMost(headerProbeLimit)
+            if (groupHeight !in 4..(height * 0.035f).roundToInt().coerceAtLeast(16)) return false
+            val maxRuleSearch = (groupEnd + (height * 0.025f).roundToInt()).coerceAtMost(headerProbeLimit)
             for (lineY in (groupEnd + 1)..maxRuleSearch) {
                 var lineInk = 0
                 val rowOff = lineY * width
                 for (x in probeLeft..probeRight step 2) {
                     if (isInkPixel(pixels[rowOff + x])) lineInk++
                 }
-                if (lineInk >= (probeSpan / 2) * 0.68f) {
-                    bodyTop = max(bodyTop, lineY + 2)
+                if (lineInk >= (probeSpan / 2) * 0.55f) {
+                    bodyTop = max(bodyTop, lineY + 12)
                     return true
                 }
             }
-            return false
+            bodyTop = max(bodyTop, groupEnd + 12)
+            return true
         }
 
         for (y in (height * 0.025f).roundToInt()..headerProbeLimit) {
@@ -1652,11 +1677,14 @@ object StudioImageAndPdfEngine {
             if (rowInk.toFloat() / sampledCols.toFloat() in 0.008f..0.60f) stemInkRows++
         }
 
-        val hasStemOrFigure = stemInkRows >= 3
+        // KURAL 3: Yarım Kırpma Önleyici — Sadece şıkları veya sadece 'olduğuna göre...' alt satırını tek başına soru diye kırpma!
+        // Bir soru kutusunun üstteki tanım metni, ortadaki şekli/tablosu ve alttaki A-E şıklarıyla tek parça halinde bütün olması şarttır.
+        val hasStemOrFigure = stemInkRows >= 4 || (hasDiagramOrGraph && stemInkRows >= 2)
         val hasCompleteOptionBlock = activeOptionBuckets >= 4 ||
             bottomLineTransitions >= 4 ||
             (hasDiagramOrGraph && activeOptionBuckets >= 3)
-        val isValid = hasStemOrFigure && hasCompleteOptionBlock
+        val notIsolatedOptionRow = bandH >= 115 && lineTransitions >= 3 && activeRows >= 15
+        val isValid = hasStemOrFigure && hasCompleteOptionBlock && notIsolatedOptionRow
 
         return QuestionBlockMetrics(
             isValidQuestion = isValid,
@@ -1790,12 +1818,10 @@ object StudioImageAndPdfEngine {
             activeRow[i] = (c0 >= minInkPerActiveRow) || ((c0 + cPrev + cNext) >= minInkPerActiveRow * 2)
         }
 
-        // Bridge internal question gaps (line spacing, gap between diagram/graph and stem, gap before A-E options):
-        // 1. Bridge gaps within a multi-part stem, including space around figures and tables.
-        // 2. Do not bridge a gap after a complete horizontal option row.
-        //    already ends with a horizontal A-B-C-D-E option row (>= 3 option buckets active).
-        val baseInternalGap = (pageHeight * 0.027f).roundToInt().coerceIn(26, 54)
-        val extendedInternalGap = (pageHeight * 0.05f).roundToInt().coerceIn(44, 96)
+        // KURAL 3: Parçalar arası dikey boşluk birleştirme eşiğini (vertical merge threshold) artır!
+        // Bir soru kutusunun üstteki tanım metni, ortadaki şekli/tablosu ve alttaki A-E şıklarıyla tek parça halinde bütün kalması sağlanır.
+        val baseInternalGap = (pageHeight * 0.048f).roundToInt().coerceIn(48, 110)
+        val extendedInternalGap = (pageHeight * 0.095f).roundToInt().coerceIn(95, 200)
         val bucketWForGap = (colW / 5).coerceAtLeast(1)
 
         var i = 0
@@ -2014,6 +2040,35 @@ object StudioImageAndPdfEngine {
             val clearH = (lastBannerRow + 3).coerceAtMost(topBannerScanH)
             val whiteBannerFill = IntArray(w * clearH) { -0x1 }
             mutableCrop.setPixels(whiteBannerFill, 0, w, 0, 0, w, clearH)
+        }
+
+        // KURAL 3: PDF'in kendi orijinal soru numaralarını (yeşil 10., 11., 3. vb.)
+        // sol üst köşe beyazlatmasıyla temizle ki uygulamanın kendi verdiği soru numarasıyla (1., 2.)
+        // yan yana çift numara oluşmasın!
+        val numBadgeW = (w * 0.10f).roundToInt().coerceIn(16, 52)
+        val numBadgeH = (h * 0.16f).roundToInt().coerceIn(18, 56)
+        var hasLeftNumberBadge = false
+        val badgePixels = IntArray(numBadgeW * numBadgeH)
+        mutableCrop.getPixels(badgePixels, 0, numBadgeW, 0, 0, numBadgeW, numBadgeH)
+        var coloredOrDarkCount = 0
+        for (c in badgePixels) {
+            val r = (c shr 16) and 0xFF
+            val g = (c shr 8) and 0xFF
+            val b = c and 0xFF
+            val maxCh = max(r, max(g, b))
+            val minCh = min(r, min(g, b))
+            val lum = (r * 77 + g * 150 + b * 29) shr 8
+            // Yeşil, kırmızı, mavi daire rozet veya koyu numara karakteri
+            if ((maxCh - minCh >= 26 && lum in 35..230) || lum < 80) {
+                coloredOrDarkCount++
+            }
+        }
+        if (coloredOrDarkCount >= (numBadgeW * numBadgeH * 0.04f)) {
+            hasLeftNumberBadge = true
+        }
+        if (hasLeftNumberBadge) {
+            val whiteBadgeFill = IntArray(numBadgeW * numBadgeH) { -0x1 }
+            mutableCrop.setPixels(whiteBadgeFill, 0, numBadgeW, 0, 0, numBadgeW, numBadgeH)
         }
 
         val whitened = applyAdaptiveContrastAndBackgroundWhitening(mutableCrop)

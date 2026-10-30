@@ -16,6 +16,7 @@ import com.example.data.SoruLabCatalog
 import com.example.data.SoruLabPublisherPresets
 import com.example.data.SoruLabRepository
 import com.example.data.TestResultRecord
+import com.example.data.TestSnapshotCodec
 import com.example.data.TopicProgressSummary
 import com.example.data.TopicTestLevel
 import com.example.data.YksPublisherInfo
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.util.UUID
 
 enum class MainNavTab(val title: String) {
     ANA_SAYFA("Anasayfa"),
@@ -65,7 +67,8 @@ data class PoolAvailabilityCheck(
     val countsByDifficulty: Map<DifficultyLevel, Int> = emptyMap(),
     val countsBySource: Map<QuestionSourceFilter, Int> = emptyMap(),
     val matchingQuestions: List<YksQuestion> = emptyList(),
-    val onGenerateCustomTest: ((Set<DifficultyLevel>, QuestionSourceFilter, Int) -> YksTestItem?)? = null
+    val onGenerateCustomTest: ((Set<DifficultyLevel>, QuestionSourceFilter, Int) -> YksTestItem?)? = null,
+    val questionCountForSelection: ((Set<DifficultyLevel>, QuestionSourceFilter) -> Int)? = null
 )
 
 @Immutable
@@ -222,9 +225,7 @@ class SoruLabViewModel(
             if (recognized != null) {
                 hydrateLocalSessionData(recognized.uid)
             } else {
-                allCloudTestRecords = emptyList()
-                _userTestResults.value = emptyList()
-                _userCustomQuestions.value = emptyList()
+                resetUserScopedData()
             }
         }
     }
@@ -278,6 +279,7 @@ class SoruLabViewModel(
             val cachedCustomQuestions = repository.loadCachedCustomQuestions(uid)
                 .filterNot { isLegacyDemoQuestion(it) }
             val cachedEntries = repository.loadCachedGeneratedTestKeys(uid)
+            val cachedSnapshots = repository.loadCachedGeneratedTestSnapshots(uid)
             val cachedResults = repository.loadCachedSolvedTestResults(uid)
                 .filterNot { isLegacyDemoTestRecord(it) }
             val cachedStrokes = repository.loadCachedBoardStrokes(uid)
@@ -295,8 +297,13 @@ class SoruLabViewModel(
                     _boardStrokes.value = cachedStrokes
                 }
                 syncPdfPoolToPracticeTests(_userCustomQuestions.value)
-                if (cachedEntries.isNotEmpty() && _userCustomQuestions.value.isNotEmpty()) {
-                    mergeGeneratedEntriesIntoState(uid, cachedEntries, persistCache = false)
+                if (cachedEntries.isNotEmpty()) {
+                    mergeGeneratedEntriesIntoState(
+                        uid,
+                        cachedEntries,
+                        persistCache = false,
+                        snapshotJsonByTestId = cachedSnapshots
+                    )
                 }
             }
         }
@@ -305,6 +312,7 @@ class SoruLabViewModel(
     private fun startFirestoreListeners(uid: String) {
         resultsListenerJob?.cancel()
         customQuestionsListenerJob?.cancel()
+        resetUserScopedData()
 
         // 1. Fast non-blocking background hydration for generated tests, custom questions & solved results
         hydrateLocalSessionData(uid)
@@ -345,8 +353,15 @@ class SoruLabViewModel(
                     val cloudGeneratedEntries = cleanRecords.mapNotNull { rec ->
                         parseGeneratedEntryFromRecord(rec)
                     }
-                    if (cloudGeneratedEntries.isNotEmpty() && _userCustomQuestions.value.isNotEmpty()) {
-                        mergeGeneratedEntriesIntoState(uid, cloudGeneratedEntries, persistCache = true)
+                    if (cloudGeneratedEntries.isNotEmpty()) {
+                        mergeGeneratedEntriesIntoState(
+                            uid,
+                            cloudGeneratedEntries,
+                            persistCache = true,
+                            snapshotJsonByTestId = cleanRecords
+                                .filter { it.testSnapshotJson.isNotBlank() }
+                                .associate { it.testId to it.testSnapshotJson }
+                        )
                     }
                 }
         }
@@ -400,6 +415,17 @@ class SoruLabViewModel(
         }
     }
 
+    private fun resetUserScopedData() {
+        allCloudTestRecords = emptyList()
+        _userTestResults.value = emptyList()
+        _userCustomQuestions.value = emptyList()
+        _generatedTopicTests.value = emptyMap()
+        _deletedTestIds.value = emptySet()
+        _boardStrokes.value = emptyMap()
+        _dialogTestItem.value = null
+        _activeSession.value = null
+    }
+
     /**
      * Automatically creates and syncs 345 All Star style homework/practice tests
      * (e.g., "3D Yayınları - Türev Ödev 1") under the corresponding Subject & Topic
@@ -414,7 +440,6 @@ class SoruLabViewModel(
     private fun syncPdfPoolToPracticeTests(poolQuestions: List<CustomQuestionRecord>) {
         poolSyncJob?.cancel()
         if (poolQuestions.isEmpty()) {
-            _generatedTopicTests.value = emptyMap()
             refreshTopicProgressSummaries()
             return
         }
@@ -475,7 +500,7 @@ class SoruLabViewModel(
                         .distinctBy { it.id }
 
                     val solvedTopicResults = solvedByTopicId[topic.id].orEmpty()
-                    val solvedQuestionsCount = solvedTopicResults.sumOf { it.correctCount + it.wrongCount }
+                    val solvedQuestionsCount = solvedTopicResults.sumOf { it.correctCount + it.wrongCount + it.ungradedCount }
                         .coerceAtMost(topicPoolCount.coerceAtLeast(solvedTopicResults.sumOf { it.totalQuestions }))
                     val totalQuestionsCount = maxOf(
                         topicPoolCount,
@@ -528,6 +553,7 @@ class SoruLabViewModel(
 
         val uid = effectiveUserId() ?: "device_yks_student_tr"
         repository.saveCachedDeletedTestIds(uid, updatedDeleted)
+        repository.removeCachedGeneratedTestSnapshot(uid, test.id)
         val allEntries = currentMap.flatMap { (mapKey, list) ->
             if (mapKey.endsWith("_AUTO_PDF")) {
                 emptyList()
@@ -582,10 +608,12 @@ class SoruLabViewModel(
     private fun mergeGeneratedEntriesIntoState(
         uid: String,
         entries: List<Triple<String, TopicTestLevel, Int>>,
-        persistCache: Boolean
+        persistCache: Boolean,
+        snapshotJsonByTestId: Map<String, String> = emptyMap()
     ) {
         val updatedMap = _generatedTopicTests.value.toMutableMap()
         val deleted = _deletedTestIds.value
+        val cachedSnapshots = repository.loadCachedGeneratedTestSnapshots(uid)
         var changed = false
         for ((topicId, level, testNumber) in entries) {
             val topic = allTopicsById[topicId] ?: continue
@@ -593,11 +621,18 @@ class SoruLabViewModel(
             val currentList = updatedMap[key].orEmpty()
             val expectedTestId = "${topic.id}_${level.name.lowercase()}_test_$testNumber"
             if (expectedTestId !in deleted && currentList.none { it.id == expectedTestId }) {
-                val realQuestions = collectRealPoolQuestionsForTopicAndLevel(topic, level)
-                if (realQuestions.isNotEmpty()) {
+                val snapshot = TestSnapshotCodec.decode(
+                    snapshotJsonByTestId[expectedTestId] ?: cachedSnapshots[expectedTestId].orEmpty()
+                )?.takeIf { it.id == expectedTestId }
+                val realQuestions = if (snapshot == null) {
+                    collectRealPoolQuestionsForTopicAndLevel(topic, level)
+                } else {
+                    emptyList()
+                }
+                if (snapshot != null || realQuestions.isNotEmpty()) {
                     val shortTitle = "${topic.name} - Test $testNumber"
                     val fullTitle = "${topic.name} - Test $testNumber"
-                    val testItem = YksTestItem(
+                    val generatedFromPool = YksTestItem(
                         id = expectedTestId,
                         topicId = topic.id,
                         title = shortTitle,
@@ -616,6 +651,7 @@ class SoruLabViewModel(
                             )
                         }
                     )
+                    val testItem = snapshot ?: generatedFromPool
                     updatedMap[key] = (currentList + testItem).sortedBy {
                         it.id.substringAfterLast("_test_").toIntOrNull() ?: 1
                     }
@@ -770,7 +806,8 @@ class SoruLabViewModel(
     ): List<YksQuestion> {
         val strictTopicPool = _userCustomQuestions.value.filter { cq ->
             cq.topicId.equals(topic.id, ignoreCase = true) ||
-                cq.topicName.equals(topic.name, ignoreCase = true)
+                (cq.topicId.isBlank() && cq.subjectId.equals(topic.subjectId, ignoreCase = true) &&
+                    cq.topicName.equals(topic.name, ignoreCase = true))
         }
         if (strictTopicPool.isEmpty()) return emptyList()
 
@@ -863,7 +900,8 @@ class SoruLabViewModel(
     fun checkPoolAvailability(topic: YksTopic, level: TopicTestLevel): PoolAvailabilityCheck {
         val strictTopicPool = _userCustomQuestions.value.filter { cq ->
             cq.topicId.equals(topic.id, ignoreCase = true) ||
-                cq.topicName.equals(topic.name, ignoreCase = true)
+                (cq.topicId.isBlank() && cq.subjectId.equals(topic.subjectId, ignoreCase = true) &&
+                    cq.topicName.equals(topic.name, ignoreCase = true))
         }
         val countsByDiff = DifficultyLevel.entries.associateWith { diff ->
             strictTopicPool.count { it.difficultyLevel5 == diff }
@@ -886,6 +924,13 @@ class SoruLabViewModel(
                 requestedQuestionCount = reqCount
             )
         }
+        val questionCountForSelection: (Set<DifficultyLevel>, QuestionSourceFilter) -> Int = { diffs, source ->
+            if (level == TopicTestLevel.IKIZ && source == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
+                collectRealPoolQuestionsForTopicAndLevel(topic, level).count { it.difficulty in diffs }
+            } else {
+                collectQuestionsByTopicSourceAndDifficulty(topic, diffs, source).size
+            }
+        }
 
         if (level == TopicTestLevel.IKIZ) {
             val realCandidates = collectRealPoolQuestionsForTopicAndLevel(topic, level)
@@ -898,7 +943,8 @@ class SoruLabViewModel(
                     countsByDifficulty = countsByDiff,
                     countsBySource = countsBySource,
                     matchingQuestions = emptyList(),
-                    onGenerateCustomTest = customBuilder
+                    onGenerateCustomTest = customBuilder,
+                    questionCountForSelection = questionCountForSelection
                 )
             }
             val effectiveList = realCandidates.ifEmpty { allTopicQuestions }
@@ -910,7 +956,8 @@ class SoruLabViewModel(
                 countsByDifficulty = countsByDiff,
                 countsBySource = countsBySource,
                 matchingQuestions = effectiveList,
-                onGenerateCustomTest = customBuilder
+                onGenerateCustomTest = customBuilder,
+                questionCountForSelection = questionCountForSelection
             )
         }
 
@@ -923,7 +970,8 @@ class SoruLabViewModel(
                 countsByDifficulty = countsByDiff,
                 countsBySource = countsBySource,
                 matchingQuestions = emptyList(),
-                onGenerateCustomTest = customBuilder
+                onGenerateCustomTest = customBuilder,
+                questionCountForSelection = questionCountForSelection
             )
         }
 
@@ -935,7 +983,8 @@ class SoruLabViewModel(
             countsByDifficulty = countsByDiff,
             countsBySource = countsBySource,
             matchingQuestions = allTopicQuestions,
-            onGenerateCustomTest = customBuilder
+            onGenerateCustomTest = customBuilder,
+            questionCountForSelection = questionCountForSelection
         )
     }
 
@@ -995,15 +1044,14 @@ class SoruLabViewModel(
         sourceFilter: QuestionSourceFilter,
         requestedQuestionCount: Int
     ): YksTestItem? {
-        val strictCandidates = collectQuestionsByTopicSourceAndDifficulty(
-            topic = topic,
-            selectedDifficulties = selectedDifficulties,
-            sourceFilter = sourceFilter
-        ).ifEmpty {
+        val strictCandidates = if (level == TopicTestLevel.IKIZ && sourceFilter == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
+            collectRealPoolQuestionsForTopicAndLevel(topic, level)
+                .filter { it.difficulty in selectedDifficulties }
+        } else {
             collectQuestionsByTopicSourceAndDifficulty(
                 topic = topic,
                 selectedDifficulties = selectedDifficulties,
-                sourceFilter = QuestionSourceFilter.TUM_SORULAR
+                sourceFilter = sourceFilter
             )
         }
         if (strictCandidates.isEmpty()) return null
@@ -1011,7 +1059,15 @@ class SoruLabViewModel(
         val key = "${topic.id}_${level.name}"
         val existingList = _generatedTopicTests.value[key].orEmpty()
         val allTestsInTopic = getTestsForTopicAndLevel(topic, level)
-        val nextTestNumber = maxOf(existingList.size, allTestsInTopic.size) + 1
+        val deletedTestNumbers = _deletedTestIds.value.mapNotNull { deletedId ->
+            deletedId.takeIf { it.startsWith("${topic.id}_${level.name.lowercase()}_test_") }
+                ?.substringAfterLast("_test_")
+                ?.toIntOrNull()
+        }
+        val nextTestNumber = (
+            (existingList + allTestsInTopic).mapNotNull { it.id.substringAfterLast("_test_").toIntOrNull() } +
+                deletedTestNumbers
+            ).maxOrNull()?.plus(1) ?: 1
 
         // Daha önceki testlerde kullanılmış soruları tespit et; yeni testlerde önce kullanılmamış soruları seç
         val usedSignatures = allTestsInTopic
@@ -1075,6 +1131,7 @@ class SoruLabViewModel(
         refreshTopicProgressSummaries()
 
         val uid = effectiveUserId() ?: "device_yks_student_tr"
+        repository.saveCachedGeneratedTestSnapshot(uid, generatedTest)
         val allEntries = updatedMap.flatMap { (mapKey, list) ->
             if (mapKey.endsWith("_AUTO_PDF")) {
                 emptyList()
@@ -1112,7 +1169,8 @@ class SoruLabViewModel(
                             wrongCount = 0,
                             emptyCount = generatedTest.questions.size,
                             durationSeconds = 0,
-                            answersMapJson = """{"_status":"GENERATED","level":"${level.name}","testNumber":$nextTestNumber}"""
+                            answersMapJson = """{"_status":"GENERATED","level":"${level.name}","testNumber":$nextTestNumber}""",
+                            testSnapshotJson = TestSnapshotCodec.encode(generatedTest)
                         )
                         repository.saveTestResult(cloudRecord)
                     } catch (_: Exception) {
@@ -1166,7 +1224,8 @@ class SoruLabViewModel(
         isReviewMode: Boolean = false,
         openOpticalFormFirst: Boolean = false,
         preloadedAnswers: Map<Int, String>? = null,
-        initialQuestionIndex: Int = 0
+        initialQuestionIndex: Int = 0,
+        preloadedDurationSeconds: Int? = null
     ) {
         _dialogTestItem.value = null
         val subject = SoruLabCatalog.allSubjects.find { it.id == topic.subjectId }
@@ -1179,7 +1238,11 @@ class SoruLabViewModel(
         } else {
             emptyMap()
         }
-        val initialSeconds = if (isReviewMode) (existingRecord?.durationSeconds ?: 0) else 0
+        val initialSeconds = if (isReviewMode) {
+            preloadedDurationSeconds ?: existingRecord?.durationSeconds ?: 0
+        } else {
+            0
+        }
         _elapsedSeconds.value = initialSeconds
 
         val safeQuestionIdx = initialQuestionIndex.coerceIn(0, (testItem.questions.size - 1).coerceAtLeast(0))
@@ -1404,23 +1467,28 @@ class SoruLabViewModel(
             ?: SoruLabCatalog.allSubjects.first { it.id == "tyt_mat" }
         val matchingTopic = matchingSubject.topics.find { it.id == record.topicId }
             ?: matchingSubject.topics.first()
-        val matchingTest = _generatedTopicTests.value.values.flatten().find { it.id == record.testId }
-            ?: matchingTopic.tests.find { it.id == record.testId }
-            ?: SoruLabCatalog.buildDefaultPracticeTest(
-                topicId = matchingTopic.id,
-                topicName = matchingTopic.name,
-                suffix = "review",
-                shortTitle = record.testTitle.substringAfter("- ").ifBlank { "Test 1" },
-                pos = 0.52f,
-                completed = true
-            ).copy(id = record.testId, fullTitle = record.testTitle)
+        val savedTest = TestSnapshotCodec.decode(record.testSnapshotJson)?.takeIf { it.id == record.testId }
+        val isGeneratedResult = runCatching { JSONObject(record.answersMapJson).has("level") }.getOrDefault(false)
+        val matchingTest = savedTest ?: if (isGeneratedResult) {
+            null
+        } else {
+            _generatedTopicTests.value.values.flatten().find { it.id == record.testId }
+                ?: matchingTopic.tests.find { it.id == record.testId }
+                ?: SoruLabCatalog.mockExams.firstOrNull { it.linkedTest.id == record.testId }?.linkedTest
+        }
+
+        if (matchingTest == null) {
+            showBanner("Bu sonuca ait test içeriği saklanmamış. Yanlış soru göstermemek için sonuç açılmadı.")
+            return
+        }
 
         startSolvingSession(
             topic = matchingTopic,
             testItem = matchingTest,
             initialViewMode = BoardViewMode.FULL_PAGE,
             isReviewMode = true,
-            preloadedAnswers = parseAnswersJson(record.answersMapJson).orEmpty()
+            preloadedAnswers = parseAnswersJson(record.answersMapJson).orEmpty(),
+            preloadedDurationSeconds = record.durationSeconds
         )
     }
 
@@ -1492,11 +1560,15 @@ class SoruLabViewModel(
         var correct = 0
         var wrong = 0
         var empty = 0
+        var ungraded = 0
         val jsonObj = JSONObject()
 
         cur.testItem.questions.forEach { q ->
             val chosen = cur.selectedAnswers[q.number]
-            if (chosen.isNullOrBlank()) {
+            if (!q.answerKeyVerified) {
+                ungraded++
+                if (!chosen.isNullOrBlank()) jsonObj.put(q.number.toString(), chosen)
+            } else if (chosen.isNullOrBlank()) {
                 empty++
             } else {
                 jsonObj.put(q.number.toString(), chosen)
@@ -1522,10 +1594,9 @@ class SoruLabViewModel(
         )
 
         val uid = effectiveUserId() ?: "device_yks_student_tr"
-        val docId = "${uid.take(8)}_${cur.testItem.id}".take(78)
-        val existingCloud = allCloudTestRecords.firstOrNull { it.id == docId || it.testId == cur.testItem.id }
+        val docId = "${uid.take(8)}_${UUID.randomUUID()}".take(78)
         val record = TestResultRecord(
-            id = existingCloud?.id ?: docId,
+            id = docId,
             userId = uid,
             examType = cur.examType.name,
             subjectId = cur.subjectId,
@@ -1537,12 +1608,14 @@ class SoruLabViewModel(
             correctCount = correct,
             wrongCount = wrong,
             emptyCount = empty,
+            ungradedCount = ungraded,
             durationSeconds = finalDuration,
             answersMapJson = jsonObj.toString(),
-            createdAt = existingCloud?.createdAt
+            testSnapshotJson = TestSnapshotCodec.encode(cur.testItem),
+            createdAt = com.google.firebase.Timestamp.now()
         )
 
-        val updatedSolved = listOf(record) + _userTestResults.value.filterNot { it.testId == record.testId }
+        val updatedSolved = listOf(record) + _userTestResults.value
         _userTestResults.value = updatedSolved
         repository.saveCachedSolvedTestResults(uid, updatedSolved)
         refreshTopicProgressSummaries()

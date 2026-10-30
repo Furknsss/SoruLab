@@ -16,8 +16,8 @@ service cloud.firestore {
     function isValidTestResult(data) {
       let keys = [
         'userId', 'examType', 'subjectId', 'subjectName', 'topicId', 'topicName',
-        'testId', 'testTitle', 'correctCount', 'wrongCount', 'emptyCount',
-        'durationSeconds', 'answersMapJson', 'createdAt', 'updatedAt'
+        'testId', 'testTitle', 'correctCount', 'wrongCount', 'emptyCount', 'ungradedCount',
+        'durationSeconds', 'answersMapJson', 'testSnapshotJson', 'createdAt', 'updatedAt'
       ];
       return data.keys().hasAll(keys)
         && data.keys().hasOnly(keys)
@@ -32,8 +32,10 @@ service cloud.firestore {
         && data.correctCount is int && data.correctCount >= 0 && data.correctCount <= 200
         && data.wrongCount is int && data.wrongCount >= 0 && data.wrongCount <= 200
         && data.emptyCount is int && data.emptyCount >= 0 && data.emptyCount <= 200
+        && data.ungradedCount is int && data.ungradedCount >= 0 && data.ungradedCount <= 200
         && data.durationSeconds is int && data.durationSeconds >= 0 && data.durationSeconds <= 36000
         && data.answersMapJson is string && data.answersMapJson.size() >= 0 && data.answersMapJson.size() <= 5000
+        && data.testSnapshotJson is string && data.testSnapshotJson.size() <= 900000
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }

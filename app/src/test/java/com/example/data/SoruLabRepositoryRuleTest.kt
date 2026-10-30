@@ -46,7 +46,8 @@ class SoruLabRepositoryRuleTest : FirestoreEmulatorTestBase() {
             wrongCount = 1,
             emptyCount = 1,
             durationSeconds = 360,
-            answersMapJson = """{"1":"B","2":"E"}"""
+            answersMapJson = """{"1":"B","2":"E"}""",
+            testSnapshotJson = """{"id":"temel_kavramlar_odev_5"}"""
         )
 
         val savedId = runRepoCall { repository.saveTestResult(record) }
@@ -56,6 +57,7 @@ class SoruLabRepositoryRuleTest : FirestoreEmulatorTestBase() {
         assertNotNull(fetched)
         assertEquals("Temel Kavramlar - Ödev 5", fetched?.testTitle)
         assertEquals(8, fetched?.correctCount)
+        assertEquals(record.testSnapshotJson, fetched?.testSnapshotJson)
 
         val list = runRepoCall { repository.getUserTestResultsList(aliceUid) }
         assertEquals(1, list.size)

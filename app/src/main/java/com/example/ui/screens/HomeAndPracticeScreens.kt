@@ -17,6 +17,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -46,6 +47,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -65,6 +68,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.*
 import com.example.ui.theme.*
+import com.example.util.StudioImageAndPdfEngine
 import com.example.viewmodel.MainNavTab
 import com.example.viewmodel.PoolAvailabilityCheck
 import kotlinx.coroutines.delay
@@ -339,7 +343,7 @@ fun AnaSayfaScreen(
         allTestResults.sumOf { it.correctCount }
     }
     val totalSolvedQuestions = remember(allTestResults) {
-        allTestResults.sumOf { it.correctCount + it.wrongCount + it.emptyCount }
+        allTestResults.sumOf { it.correctCount + it.wrongCount + it.emptyCount + it.ungradedCount }
     }
 
     val initials = remember(userName) {
@@ -758,10 +762,20 @@ fun AnaSayfaScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                     StatMiniPill(label = "Doğru", value = "${recentResult.correctCount}", color = SoruLabEmerald)
                                     StatMiniPill(label = "Yanlış", value = "${recentResult.wrongCount}", color = SoruLabCoralRed)
                                     StatMiniPill(label = "Boş", value = "${recentResult.emptyCount}", color = SoruLabSlateMuted)
+                                    if (recentResult.ungradedCount > 0) {
+                                        StatMiniPill(
+                                            label = "Puanlanmadı",
+                                            value = "${recentResult.ungradedCount}",
+                                            color = Color(0xFFB45309)
+                                        )
+                                    }
                                     StatMiniPill(
                                         label = "Net",
                                         value = String.format(Locale.US, "%.2f", recentResult.netScore),
@@ -1635,7 +1649,6 @@ fun SoruPratigiScreen(
     onSelectTopic: (YksTopic) -> Unit,
     onCloseTopic: () -> Unit,
     onSelectTestLevel: (TopicTestLevel) -> Unit,
-    onGenerateAiLevelTest: (YksTopic, TopicTestLevel) -> YksTestItem?,
     onTestClicked: (YksTopic, YksTestItem) -> Unit,
     onDismissDialog: () -> Unit,
     onStartTestAction: (YksTopic, YksTestItem, Boolean, Boolean) -> Unit,
@@ -1653,7 +1666,6 @@ fun SoruPratigiScreen(
             onCheckPoolAvailability = { onCheckPoolAvailability(selectedTopic, selectedTestLevel) },
             onBack = onCloseTopic,
             onSelectTestLevel = onSelectTestLevel,
-            onGenerateAiLevelTest = { onGenerateAiLevelTest(selectedTopic, selectedTestLevel) },
             onTestClicked = { test -> onTestClicked(selectedTopic, test) },
             onStartTestImmediately = { test ->
                 onStartTestAction(selectedTopic, test, false, false)
@@ -1935,6 +1947,8 @@ fun SoruPratigiScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(max = 700.dp)
+                        .verticalScroll(rememberScrollState())
                         .padding(horizontal = 28.dp, vertical = 28.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
@@ -2006,6 +2020,63 @@ fun SoruPratigiScreen(
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
                             color = Color(0xFF1E293B),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Soru Önizlemesi",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color(0xFF0F172A),
+                        modifier = Modifier.align(Alignment.Start)
+                    )
+                    testItem.questions.take(3).forEach { question ->
+                        val questionBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(question.croppedImagePath)
+                        Surface(
+                            color = Color.White,
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "${question.number}. Soru${if (question.answerKeyVerified) "" else " • Cevap anahtarı doğrulanmadı"}",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = if (question.answerKeyVerified) Color(0xFF334155) else Color(0xFFB45309)
+                                )
+                                if (questionBitmap != null) {
+                                    Image(
+                                        bitmap = questionBitmap.asImageBitmap(),
+                                        contentDescription = "${question.number}. soru önizlemesi",
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = 150.dp)
+                                    )
+                                } else {
+                                    Text(
+                                        text = listOf(question.stemTop, question.stemBottom)
+                                            .filter { it.isNotBlank() }
+                                            .joinToString("\n")
+                                            .ifBlank { "Soru metni mevcut değil." },
+                                        color = Color(0xFF475569),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 4,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (testItem.questions.size > 3) {
+                        Text(
+                            text = "ve ${testItem.questions.size - 3} soru daha",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color(0xFF64748B),
+                            modifier = Modifier.align(Alignment.Start)
                         )
                     }
 
@@ -2313,7 +2384,6 @@ private fun TopicTestsDetailView(
     onCheckPoolAvailability: () -> PoolAvailabilityCheck,
     onBack: () -> Unit,
     onSelectTestLevel: (TopicTestLevel) -> Unit,
-    onGenerateAiLevelTest: () -> YksTestItem?,
     onTestClicked: (YksTestItem) -> Unit,
     onStartTestImmediately: (YksTestItem) -> Unit,
     onDeleteTest: (YksTestItem) -> Unit,
@@ -2637,6 +2707,13 @@ private fun TopicTestsDetailView(
                                                 maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis
                                             )
+                                            Text(
+                                                text = "${testItem.questions.size} soru • ${testItem.difficulty.label}${if (solved) " • Çözüldü" else ""}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF64748B),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
                                         }
 
                                         Spacer(modifier = Modifier.width(12.dp))
@@ -2742,9 +2819,6 @@ private fun TopicTestsDetailView(
                 level = selectedTestLevel,
                 nextTestNumber = nextTestNo,
                 poolCheck = poolCheck,
-                onGenerateFinished = {
-                    onGenerateAiLevelTest()
-                },
                 onDismiss = {
                     showAiGeneratorModal = false
                 },
@@ -2975,7 +3049,6 @@ private fun SoruLabAiTestGeneratorDialog(
     level: TopicTestLevel,
     nextTestNumber: Int,
     poolCheck: PoolAvailabilityCheck,
-    onGenerateFinished: () -> YksTestItem?,
     onDismiss: () -> Unit,
     onStartGeneratedTest: (YksTestItem) -> Unit,
     onGoToPdfStudio: () -> Unit
@@ -2999,22 +3072,20 @@ private fun SoruLabAiTestGeneratorDialog(
         )
     }
 
-    val matchingDiffCount = remember(selectedDifficulties, poolCheck.countsByDifficulty, poolCheck.availableQuestionCount) {
-        if (poolCheck.countsByDifficulty.isEmpty()) {
-            poolCheck.availableQuestionCount
-        } else {
-            val sum = selectedDifficulties.sumOf { poolCheck.countsByDifficulty[it] ?: 0 }
-            if (sum > 0) sum else poolCheck.availableQuestionCount
-        }
+    val matchingDiffCount = remember(selectedDifficulties, selectedSourceFilter, poolCheck) {
+        poolCheck.questionCountForSelection?.invoke(selectedDifficulties, selectedSourceFilter)
+            ?: poolCheck.availableQuestionCount
     }
-    val maxAvailableCount = matchingDiffCount.coerceAtLeast(1)
-    var selectedQuestionCount by remember(topic.id, level, maxAvailableCount) {
-        mutableIntStateOf(12.coerceAtMost(maxAvailableCount).coerceAtLeast(1))
+    val maxAvailableCount = matchingDiffCount.coerceAtLeast(0)
+    val safeMaxAvailableCount = maxAvailableCount.coerceAtLeast(1)
+    var selectedQuestionCount by remember(topic.id, level, safeMaxAvailableCount) {
+        mutableIntStateOf(12.coerceAtMost(safeMaxAvailableCount).coerceAtLeast(1))
     }
 
     var currentStep by remember { mutableIntStateOf(1) }
     var progressTarget by remember { mutableFloatStateOf(0.20f) }
     var createdTest by remember { mutableStateOf<YksTestItem?>(null) }
+    var generationFailed by remember { mutableStateOf(false) }
 
     // Never show "Soru Bulunamadı" if a test was already created or if poolCheck.canGenerate is true!
     if (!poolCheck.canGenerate && createdTest == null && currentStep <= 1) {
@@ -3202,7 +3273,10 @@ private fun SoruLabAiTestGeneratorDialog(
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(DifficultyLevel.entries) { diff ->
                                 val isSelected = diff in selectedDifficulties
-                                val countForDiff = poolCheck.countsByDifficulty[diff] ?: 0
+                                val countForDiff = poolCheck.questionCountForSelection
+                                    ?.invoke(setOf(diff), selectedSourceFilter)
+                                    ?: poolCheck.countsByDifficulty[diff]
+                                    ?: 0
                                 val chipColor = Color(diff.colorHex)
                                 Surface(
                                     onClick = {
@@ -3260,7 +3334,10 @@ private fun SoruLabAiTestGeneratorDialog(
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(QuestionSourceFilter.entries) { srcFilter ->
                                 val isSel = selectedSourceFilter == srcFilter
-                                val srcCount = poolCheck.countsBySource[srcFilter] ?: poolCheck.availableQuestionCount
+                                val srcCount = poolCheck.questionCountForSelection
+                                    ?.invoke(selectedDifficulties, srcFilter)
+                                    ?: poolCheck.countsBySource[srcFilter]
+                                    ?: poolCheck.availableQuestionCount
                                 Surface(
                                     onClick = { selectedSourceFilter = srcFilter },
                                     shape = RoundedCornerShape(50),
@@ -3331,6 +3408,7 @@ private fun SoruLabAiTestGeneratorDialog(
                                 val isCurrent = selectedQuestionCount == effectiveVal
                                 Surface(
                                     onClick = { selectedQuestionCount = effectiveVal },
+                                    enabled = maxAvailableCount >= preset,
                                     shape = RoundedCornerShape(50),
                                     color = if (isCurrent) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
                                     border = BorderStroke(
@@ -3372,6 +3450,13 @@ private fun SoruLabAiTestGeneratorDialog(
                                 }
                             }
                         }
+                        if (maxAvailableCount == 0) {
+                            Text(
+                                text = "Bu kaynak ve zorluk kesişiminde soru yok. Filtreleri değiştirin.",
+                                color = Color(0xFFB91C1C),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
@@ -3392,6 +3477,7 @@ private fun SoruLabAiTestGeneratorDialog(
 
                         Button(
                             onClick = { isSetupPhase = false },
+                            enabled = maxAvailableCount > 0,
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF1D63DC),
@@ -3426,7 +3512,7 @@ private fun SoruLabAiTestGeneratorDialog(
         label = "ai_gen_progress"
     )
 
-    val realCount = selectedQuestionCount.coerceIn(1, maxAvailableCount)
+    val realCount = selectedQuestionCount.coerceIn(1, safeMaxAvailableCount)
     val step1Text = remember(topic, selectedSourceFilter, realCount) {
         "'${topic.name}' konusundan (${selectedSourceFilter.label}) $realCount gerçek soru seçiliyor..."
     }
@@ -3437,7 +3523,7 @@ private fun SoruLabAiTestGeneratorDialog(
         "${topic.name} - Test $nextTestNumber optik formu ve canlı çözüm tahtası hazırlanıyor..."
     }
 
-    LaunchedEffect(isSetupPhase, topic.id, level) {
+    LaunchedEffect(isSetupPhase, topic.id, level, selectedDifficulties, selectedSourceFilter, realCount) {
         if (!isSetupPhase) {
             progressTarget = 0.36f
             delay(450L)
@@ -3452,13 +3538,14 @@ private fun SoruLabAiTestGeneratorDialog(
                     selectedDifficulties,
                     selectedSourceFilter,
                     realCount
-                ) ?: onGenerateFinished()
+                )
+                generationFailed = createdTest == null
             }
             currentStep = 4
         }
     }
 
-    Dialog(onDismissRequest = { if (createdTest != null) onDismiss() }) {
+    Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(26.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -3497,7 +3584,11 @@ private fun SoruLabAiTestGeneratorDialog(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Text(
-                    text = if (isDone) "Test Oluşturuldu!" else "Gerçek Havuzdan Oluşturuluyor...",
+                    text = when {
+                        isDone -> "Test Oluşturuldu!"
+                        generationFailed -> "Test Oluşturulamadı"
+                        else -> "Gerçek Havuzdan Oluşturuluyor..."
+                    },
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 20.sp
@@ -3508,7 +3599,8 @@ private fun SoruLabAiTestGeneratorDialog(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = "${topic.name} • ${level.displayTitle} Test-$nextTestNumber ($realCount Soru)",
+                    text = if (generationFailed) "Seçilen filtrelerle soru bulunamadı. Ayarları değiştirip tekrar deneyin."
+                    else "${topic.name} • ${level.displayTitle} Test-$nextTestNumber ($realCount Soru)",
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = Color(0xFF1D63DC),
                     textAlign = TextAlign.Center
@@ -3589,6 +3681,32 @@ private fun SoruLabAiTestGeneratorDialog(
                                 text = "Teste Başla",
                                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                             )
+                        }
+                    }
+                }
+                if (generationFailed) {
+                    Spacer(modifier = Modifier.height(18.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Kapat")
+                        }
+                        Button(
+                            onClick = {
+                                generationFailed = false
+                                currentStep = 1
+                                progressTarget = 0.20f
+                                createdTest = null
+                                isSetupPhase = true
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Ayarlara Dön")
                         }
                     }
                 }

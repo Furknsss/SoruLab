@@ -364,9 +364,6 @@ private fun SoruPratigiTabHost(
         onSelectTopic = { mainViewModel.openTopic(it) },
         onCloseTopic = { mainViewModel.closeTopic() },
         onSelectTestLevel = { mainViewModel.selectTestLevel(it) },
-        onGenerateAiLevelTest = { topic, level ->
-            mainViewModel.generateNewAiLevelTest(topic, level)
-        },
         onTestClicked = { topic, test -> mainViewModel.onTestItemClicked(topic, test) },
         onDismissDialog = { mainViewModel.dismissTestDialog() },
         onStartTestAction = { topic, test, isReview, openOpticalFirst ->
@@ -468,15 +465,10 @@ private fun DenemelerTabHost(
                 val bookQuestions = questionsByBookName[bookName].orEmpty().ifEmpty { listOf(firstRecord) }
                 mainViewModel.solveBookQuestionsInPractice(bookName, bookQuestions)
             },
-            onSolveBookChunkInPractice = { firstRecord, questionsPerTest, chunkIdx ->
+            onSolveBookChunkInPractice = { chunkQuestions ->
+                val firstRecord = chunkQuestions.first()
                 val bookName = firstRecord.bookOrTestName.ifBlank { "${firstRecord.publisherTag} Soru Bankası" }
-                val bookQuestions = questionsByBookName[bookName].orEmpty().ifEmpty { listOf(firstRecord) }
-                mainViewModel.solveBookQuestionsInPractice(
-                    bookTitle = bookName,
-                    records = bookQuestions,
-                    questionsPerTest = questionsPerTest,
-                    selectedChunkIndex = chunkIdx
-                )
+                mainViewModel.solveBookQuestionsInPractice(bookTitle = bookName, records = chunkQuestions)
             }
         )
     } else {

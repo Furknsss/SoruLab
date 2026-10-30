@@ -54,8 +54,10 @@ const validTestResult = (userId = 'alice_uid') => ({
   correctCount: 8,
   wrongCount: 1,
   emptyCount: 1,
+  ungradedCount: 0,
   durationSeconds: 420,
   answersMapJson: '{"1":"A","2":"C"}',
+  testSnapshotJson: '',
   createdAt: Timestamp.now(),
   updatedAt: Timestamp.now(),
 });

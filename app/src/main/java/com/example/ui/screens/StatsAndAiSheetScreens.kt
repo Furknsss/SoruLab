@@ -60,10 +60,12 @@ fun IstatistiklerimScreen(
     val totalCorrect = testResults.sumOf { it.correctCount }
     val totalWrong = testResults.sumOf { it.wrongCount }
     val totalEmpty = testResults.sumOf { it.emptyCount }
-    val totalQuestions = totalCorrect + totalWrong + totalEmpty
+    val totalUngraded = testResults.sumOf { it.ungradedCount }
+    val totalQuestions = totalCorrect + totalWrong + totalEmpty + totalUngraded
+    val totalGradedQuestions = totalCorrect + totalWrong + totalEmpty
     val totalNet = totalCorrect - (totalWrong * 0.25)
-    val accuracyRate = if (totalQuestions > 0) {
-        ((totalCorrect.toFloat() / totalQuestions.toFloat()) * 100f).toInt().coerceIn(0, 100)
+    val accuracyRate = if (totalGradedQuestions > 0) {
+        ((totalCorrect.toFloat() / totalGradedQuestions.toFloat()) * 100f).toInt().coerceIn(0, 100)
     } else {
         0
     }
@@ -285,7 +287,7 @@ fun IstatistiklerimScreen(
                                 color = SoruLabInkBlack
                             )
                             Text(
-                                text = "$dateStr • ${res.correctCount}D ${res.wrongCount}Y ${res.emptyCount}B (${String.format(Locale.US, "%.2f", res.netScore)} Net)",
+                                text = "$dateStr • ${res.correctCount}D ${res.wrongCount}Y ${res.emptyCount}B ${res.ungradedCount}P (${String.format(Locale.US, "%.2f", res.netScore)} Net)",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = SoruLabSlateMuted
                             )

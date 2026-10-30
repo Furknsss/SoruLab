@@ -539,7 +539,9 @@ fun SoruHavuzuAndPdfStudioView(
     onDismissError: () -> Unit = {},
     onBack: () -> Unit,
     onSolveBookInPractice: (CustomQuestionRecord) -> Unit = {},
-    onSolveBookChunkInPractice: (CustomQuestionRecord, Int, Int) -> Unit = { rec, _, _ -> onSolveBookInPractice(rec) }
+    onSolveBookChunkInPractice: (List<CustomQuestionRecord>) -> Unit = { questions ->
+        questions.firstOrNull()?.let { onSolveBookInPractice(it) }
+    }
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
@@ -1542,17 +1544,15 @@ fun SoruHavuzuAndPdfStudioView(
                         ) { chunkIdx ->
                             val chunkQuestions = testChunks[chunkIdx]
                             val firstInChunk = chunkQuestions.first()
+                            val verifiedAnswerCount = chunkQuestions.count { it.answerKeyVerified }
+                            val previewBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(firstInChunk.croppedImagePath)
                             val topicTitle = firstInChunk.topicName.ifBlank { "Genel Tekrar" }
                             val cleanTestName = "$topicTitle - Test ${chunkIdx + 1}"
 
                             Surface(
                                 onClick = {
                                     selectedBookForTestPanel = null
-                                    onSolveBookChunkInPractice(
-                                        firstInChunk,
-                                        effectiveChunkSize,
-                                        chunkIdx
-                                    )
+                                    onSolveBookChunkInPractice(chunkQuestions)
                                 },
                                 shape = RoundedCornerShape(14.dp),
                                 color = Color(0xFFF8FAFC),
@@ -1566,6 +1566,16 @@ fun SoruHavuzuAndPdfStudioView(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    if (previewBitmap != null) {
+                                        Image(
+                                            bitmap = previewBitmap.asImageBitmap(),
+                                            contentDescription = "$cleanTestName önizlemesi",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(width = 56.dp, height = 68.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                        )
+                                    }
                                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                         Text(
                                             text = cleanTestName,
@@ -1574,7 +1584,7 @@ fun SoruHavuzuAndPdfStudioView(
                                             fontSize = 14.5.sp
                                         )
                                         Text(
-                                            text = "${firstInChunk.examType} ${firstInChunk.subjectName} • ${chunkQuestions.size} Soru • Cevap Anahtarlı",
+                                            text = "${firstInChunk.examType} ${firstInChunk.subjectName} • ${chunkQuestions.size} Soru • $verifiedAnswerCount doğrulanmış anahtar",
                                             color = Color(0xFF64748B),
                                             fontWeight = FontWeight.SemiBold,
                                             fontSize = 11.5.sp

@@ -112,6 +112,8 @@ class SoruLabRepository(
                 prefs.all.keys.forEach { key ->
                     if (key.startsWith("solved_results_") ||
                         key.startsWith("gen_tests_") ||
+                        key.startsWith("gen_snapshots_") ||
+                        key.startsWith("gen_snapshot_") ||
                         key.startsWith("custom_questions_") ||
                         key == "custom_publishers_v1"
                     ) {
@@ -148,6 +150,8 @@ class SoruLabRepository(
             prefs.all.keys.forEach { key ->
                 if (key.startsWith("solved_results_") ||
                     key.startsWith("gen_tests_") ||
+                    key.startsWith("gen_snapshots_") ||
+                    key.startsWith("gen_snapshot_") ||
                     key.startsWith("deleted_tests_") ||
                     key.startsWith("custom_questions_") ||
                     key.startsWith("board_strokes_")
@@ -157,6 +161,7 @@ class SoruLabRepository(
             }
             editor.remove("solved_results_$userId")
             editor.remove("gen_tests_$userId")
+            editor.remove("gen_snapshots_$userId")
             editor.remove("gen_tests_global_device")
             editor.remove("deleted_tests_$userId")
             editor.remove("deleted_tests_global_device")
@@ -195,8 +200,18 @@ class SoruLabRepository(
                         correctCount = obj.optInt("correctCount", 0),
                         wrongCount = obj.optInt("wrongCount", 0),
                         emptyCount = obj.optInt("emptyCount", 0),
+                        ungradedCount = obj.optInt("ungradedCount", 0),
                         durationSeconds = obj.optInt("durationSeconds", 0),
-                        answersMapJson = obj.optString("answersMapJson", "")
+                        answersMapJson = obj.optString("answersMapJson", ""),
+                        createdAt = if (obj.has("createdAtSeconds")) {
+                            com.google.firebase.Timestamp(
+                                obj.optLong("createdAtSeconds"),
+                                obj.optInt("createdAtNanos", 0)
+                            )
+                        } else {
+                            null
+                        },
+                        testSnapshotJson = obj.optString("testSnapshotJson", "")
                     )
                 )
             }
@@ -211,7 +226,7 @@ class SoruLabRepository(
         try {
             val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
             val arr = JSONArray()
-            records.distinctBy { it.testId.ifBlank { it.id } }.forEach { rec ->
+            records.distinctBy { it.id.ifBlank { "${it.testId}_${it.createdAt?.seconds}" } }.forEach { rec ->
                 val obj = JSONObject()
                 obj.put("id", rec.id)
                 obj.put("userId", rec.userId)
@@ -225,8 +240,14 @@ class SoruLabRepository(
                 obj.put("correctCount", rec.correctCount)
                 obj.put("wrongCount", rec.wrongCount)
                 obj.put("emptyCount", rec.emptyCount)
+                obj.put("ungradedCount", rec.ungradedCount)
                 obj.put("durationSeconds", rec.durationSeconds)
                 obj.put("answersMapJson", rec.answersMapJson)
+                obj.put("testSnapshotJson", rec.testSnapshotJson)
+                rec.createdAt?.let {
+                    obj.put("createdAtSeconds", it.seconds)
+                    obj.put("createdAtNanos", it.nanoseconds)
+                }
                 arr.put(obj)
             }
             prefs.edit().putString("solved_results_$userId", arr.toString()).apply()
@@ -275,6 +296,45 @@ class SoruLabRepository(
             prefs.edit()
                 .putString("gen_tests_$userId", jsonStr)
                 .putString("gen_tests_global_device", jsonStr)
+                .apply()
+        } catch (_: Exception) {
+        }
+    }
+
+    fun loadCachedGeneratedTestSnapshots(userId: String): Map<String, String> {
+        val ctx = appContext ?: return emptyMap()
+        return try {
+            val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+            val prefix = "gen_snapshot_${userId}_"
+            buildMap {
+                prefs.all.forEach { (key, value) ->
+                    if (key.startsWith(prefix) && value is String && value.isNotBlank()) {
+                        put(key.removePrefix(prefix), value)
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    fun saveCachedGeneratedTestSnapshot(userId: String, test: YksTestItem) {
+        val ctx = appContext ?: return
+        try {
+            ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+                .edit()
+                .putString("gen_snapshot_${userId}_${test.id}", TestSnapshotCodec.encode(test))
+                .apply()
+        } catch (_: Exception) {
+        }
+    }
+
+    fun removeCachedGeneratedTestSnapshot(userId: String, testId: String) {
+        val ctx = appContext ?: return
+        try {
+            ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+                .edit()
+                .remove("gen_snapshot_${userId}_$testId")
                 .apply()
         } catch (_: Exception) {
         }
@@ -371,8 +431,10 @@ class SoruLabRepository(
                 "correctCount" to record.correctCount.coerceIn(0, 200),
                 "wrongCount" to record.wrongCount.coerceIn(0, 200),
                 "emptyCount" to record.emptyCount.coerceIn(0, 200),
+                "ungradedCount" to record.ungradedCount.coerceIn(0, 200),
                 "durationSeconds" to record.durationSeconds.coerceIn(0, 36000),
                 "answersMapJson" to record.answersMapJson.take(4900),
+                "testSnapshotJson" to record.testSnapshotJson,
                 "createdAt" to (record.createdAt ?: FieldValue.serverTimestamp()),
                 "updatedAt" to FieldValue.serverTimestamp()
             )
@@ -412,7 +474,8 @@ class SoruLabRepository(
         correctCount: Int,
         wrongCount: Int,
         emptyCount: Int,
-        answersMapJson: String
+        answersMapJson: String,
+        ungradedCount: Int = 0
     ) {
         try {
             testResultsCollection.document(resultId).update(
@@ -420,6 +483,7 @@ class SoruLabRepository(
                     "correctCount" to correctCount.coerceIn(0, 200),
                     "wrongCount" to wrongCount.coerceIn(0, 200),
                     "emptyCount" to emptyCount.coerceIn(0, 200),
+                    "ungradedCount" to ungradedCount.coerceIn(0, 200),
                     "answersMapJson" to answersMapJson.take(4900),
                     "updatedAt" to FieldValue.serverTimestamp()
                 )

@@ -190,16 +190,19 @@ fun LiveSolvingBoardScreen(
 
     // Compute Doğru / Yanlış / Boş counts for Review Mode & Karne
     val correctCount = remember(questions, session.selectedAnswers) {
-        questions.count { q -> session.selectedAnswers[q.number] == q.correctOption }
+        questions.count { q -> q.answerKeyVerified && session.selectedAnswers[q.number] == q.correctOption }
     }
     val wrongCount = remember(questions, session.selectedAnswers) {
         questions.count { q ->
             val chosen = session.selectedAnswers[q.number]
-            !chosen.isNullOrBlank() && chosen != q.correctOption
+            q.answerKeyVerified && !chosen.isNullOrBlank() && chosen != q.correctOption
         }
     }
-    val emptyCount = remember(questions, correctCount, wrongCount) {
-        (questions.size - correctCount - wrongCount).coerceAtLeast(0)
+    val ungradedCount = remember(questions, session.selectedAnswers) {
+        questions.count { q -> !q.answerKeyVerified }
+    }
+    val emptyCount = remember(questions, session.selectedAnswers) {
+        questions.count { q -> q.answerKeyVerified && session.selectedAnswers[q.number].isNullOrBlank() }
     }
 
     // =========================================================================
@@ -241,20 +244,24 @@ fun LiveSolvingBoardScreen(
             correctCount = correctCount,
             wrongCount = wrongCount,
             emptyCount = emptyCount,
+            ungradedCount = ungradedCount,
+            showTwinSuggestion = wrongCount > 0,
             onBackToBookPage = {
                 showFullReportCardScreen = false
             },
             onSolveTwinTestForWrongQuestions = {
-                val firstWrongOrFirst = questions.firstOrNull { q ->
-                    session.selectedAnswers[q.number] != q.correctOption
-                } ?: questions.first()
-                showFullReportCardScreen = false
-                activeTwinScreenQuestion = firstWrongOrFirst
-                activeTwinScreenData = null
-                isGeneratingTwin = true
-                onGenerateTwinQuestion(firstWrongOrFirst) { generated ->
-                    activeTwinScreenData = generated
-                    isGeneratingTwin = false
+                val firstWrong = questions.firstOrNull { q ->
+                    q.answerKeyVerified && session.selectedAnswers[q.number].let { !it.isNullOrBlank() && it != q.correctOption }
+                }
+                if (firstWrong != null) {
+                    showFullReportCardScreen = false
+                    activeTwinScreenQuestion = firstWrong
+                    activeTwinScreenData = null
+                    isGeneratingTwin = true
+                    onGenerateTwinQuestion(firstWrong) { generated ->
+                        activeTwinScreenData = generated
+                        isGeneratingTwin = false
+                    }
                 }
             },
             onWatchQuestionSolution = { q ->
@@ -699,6 +706,7 @@ fun LiveSolvingBoardScreen(
                     correctCount = correctCount,
                     wrongCount = wrongCount,
                     emptyCount = emptyCount,
+                    ungradedCount = ungradedCount,
                     onToggleDrawer = onToggleStatsDrawer,
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
@@ -759,8 +767,9 @@ fun LiveSolvingBoardScreen(
                                     fontSize = 17.sp
                                 )
                                 Text(
-                                    text = "${solutionQ.topicHeader} • Doğru Yanıt: ${solutionQ.correctOption}",
-                                    color = Color(0xFF16A34A),
+                                    text = if (solutionQ.answerKeyVerified) "${solutionQ.topicHeader} • Doğru Yanıt: ${solutionQ.correctOption}"
+                                    else "${solutionQ.topicHeader} • Cevap anahtarı doğrulanmadı",
+                                    color = if (solutionQ.answerKeyVerified) Color(0xFF16A34A) else Color(0xFFB45309),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.5.sp
                                 )
@@ -1427,7 +1436,8 @@ private fun BookPageQuestionItem345(
 ) {
     val croppedBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(question.croppedImagePath)
     val isEmpty = selectedOption.isNullOrBlank()
-    val isCorrect = !isEmpty && selectedOption == question.correctOption
+    val isUngraded = !question.answerKeyVerified
+    val isCorrect = !isEmpty && question.answerKeyVerified && selectedOption == question.correctOption
 
     Box(
         modifier = Modifier
@@ -1492,8 +1502,8 @@ private fun BookPageQuestionItem345(
                     ) {
                         listOf("A", "B", "C", "D", "E").forEach { optKey ->
                             val isChosen = selectedOption == optKey
-                            val isRightOpt = isReviewMode && optKey == question.correctOption
-                            val isWrongChosen = isReviewMode && isChosen && optKey != question.correctOption
+                            val isRightOpt = isReviewMode && question.answerKeyVerified && optKey == question.correctOption
+                            val isWrongChosen = isReviewMode && question.answerKeyVerified && isChosen && optKey != question.correctOption
                             Surface(
                                 shape = CircleShape,
                                 color = when {
@@ -1587,7 +1597,7 @@ private fun BookPageQuestionItem345(
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(
                                         when {
-                                            isReviewMode && optKey == question.correctOption -> Color(0xFFDCFCE7)
+                                            isReviewMode && question.answerKeyVerified && optKey == question.correctOption -> Color(0xFFDCFCE7)
                                             isChosen -> Color(0xFFDBEAFE)
                                             else -> Color.Transparent
                                         }
@@ -1613,12 +1623,23 @@ private fun BookPageQuestionItem345(
             HandDrawnBrushMark345(
                 isEmpty = isEmpty,
                 isCorrect = isCorrect,
+                isUngraded = isUngraded,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .offset(x = (-6).dp, y = (-4).dp)
                     .size(48.dp)
                     .zIndex(40f)
             )
+            if (isUngraded) {
+                Text(
+                    text = "?",
+                    color = Color(0xFFB45309),
+                    fontWeight = FontWeight.ExtraBold,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset(x = 10.dp, y = 8.dp)
+                )
+            }
 
             // 3. SAĞ ÜST KÖŞEDE AÇIK MAVİ (`#60A5FA`) YUVARLAK `⋮` (ÜÇ NOKTA) BUTONU (Yüksek Z-Index + Popup ile Her Zaman Tıklanabilir!)
             Box(
@@ -1743,6 +1764,7 @@ private fun SingleQuestionFocusedPageSurface(
 private fun HandDrawnBrushMark345(
     isEmpty: Boolean,
     isCorrect: Boolean,
+    isUngraded: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier) {
@@ -1772,6 +1794,14 @@ private fun HandDrawnBrushMark345(
                         cap = StrokeCap.Round,
                         join = StrokeJoin.Round
                     )
+                )
+            }
+            isUngraded -> {
+                drawCircle(
+                    color = Color(0xFFB45309),
+                    radius = min(w, h) * 0.33f,
+                    center = Offset(w * 0.46f, h * 0.46f),
+                    style = Stroke(width = w * 0.10f)
                 )
             }
             isEmpty -> {
@@ -1838,8 +1868,9 @@ private fun ThreeDotQuestionPopoverCard345(
     onAddToKumbara: () -> Unit
 ) {
     val isEmpty = selectedOption.isNullOrBlank()
-    val isCorrect = !isEmpty && selectedOption == question.correctOption
+    val isCorrect = !isEmpty && question.answerKeyVerified && selectedOption == question.correctOption
     val statusText = when {
+        !question.answerKeyVerified -> "Cevap anahtarı doğrulanmadı"
         isCorrect -> "Doğru Yanıt"
         isEmpty -> "Boş Bırakıldı"
         else -> "Yanlış Yanıt"
@@ -2198,6 +2229,7 @@ private fun RightSlidingStatsDrawer345(
     correctCount: Int,
     wrongCount: Int,
     emptyCount: Int,
+    ungradedCount: Int,
     onToggleDrawer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -2247,6 +2279,13 @@ private fun RightSlidingStatsDrawer345(
                         emptyCount = emptyCount,
                         circleSizeDp = 82
                     )
+                    if (ungradedCount > 0) {
+                        Text(
+                            text = "Doğrulanmamış: $ungradedCount",
+                            color = Color(0xFFB45309),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
@@ -3189,12 +3228,12 @@ private fun FullScreenTwinQuestionComparisonView(
                                 )
                                 Surface(
                                     shape = CircleShape,
-                                    color = Color(0xFF15803D),
+                                    color = if (originalQuestion.answerKeyVerified) Color(0xFF15803D) else Color(0xFFB45309),
                                     modifier = Modifier.size(34.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Text(
-                                            text = originalQuestion.correctOption,
+                                            text = if (originalQuestion.answerKeyVerified) originalQuestion.correctOption else "?",
                                             color = Color.White,
                                             fontWeight = FontWeight.ExtraBold,
                                             fontSize = 14.sp
@@ -3214,12 +3253,13 @@ private fun FullScreenTwinQuestionComparisonView(
                                     fontSize = 13.5.sp
                                 )
                                 val hasStudentAns = !studentAnswer.isNullOrBlank()
-                                val isStudentRight = studentAnswer == originalQuestion.correctOption
+                                val isStudentRight = originalQuestion.answerKeyVerified && studentAnswer == originalQuestion.correctOption
                                 Surface(
                                     shape = CircleShape,
                                     color = when {
                                         !hasStudentAns -> Color.White
                                         isStudentRight -> Color(0xFF15803D)
+                                        !originalQuestion.answerKeyVerified -> Color(0xFFB45309)
                                         else -> Color(0xFFDC2626)
                                     },
                                     border = BorderStroke(
@@ -3271,6 +3311,8 @@ private fun FullScreenSuccessReportCardView(
     correctCount: Int,
     wrongCount: Int,
     emptyCount: Int,
+    ungradedCount: Int,
+    showTwinSuggestion: Boolean,
     onBackToBookPage: () -> Unit,
     onSolveTwinTestForWrongQuestions: () -> Unit,
     onWatchQuestionSolution: (YksQuestion) -> Unit,
@@ -3279,8 +3321,9 @@ private fun FullScreenSuccessReportCardView(
     val questions = session.testItem.questions
     var expandedQuestionNumber by remember { mutableStateOf<Int?>(null) }
 
-    val headlineText = remember(correctCount, questions.size) {
-        val ratio = correctCount.toFloat() / questions.size.coerceAtLeast(1).toFloat()
+    val gradedQuestionCount = questions.count { it.answerKeyVerified }
+    val headlineText = remember(correctCount, gradedQuestionCount) {
+        val ratio = correctCount.toFloat() / gradedQuestionCount.coerceAtLeast(1).toFloat()
         if (ratio >= 0.7f) "Harika iş çıkardın!" else "Çok yaklaştın!"
     }
 
@@ -3431,11 +3474,19 @@ private fun FullScreenSuccessReportCardView(
                         emptyCount = emptyCount,
                         circleSizeDp = 92
                     )
+                    if (ungradedCount > 0) {
+                        Text(
+                            text = "$ungradedCount soru cevap anahtarı doğrulanmadığı için puanlanmadı",
+                            color = Color(0xFFB45309),
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
 
             // 2. İKİZ TEST ÖNERİ KUTUSU (`#F1F5F9` yuvarlatılmış kutu + `İkiz Testi Çöz` mavi hap buton)
-            item {
+            if (showTwinSuggestion) item {
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     color = Color(0xFFF1F5F9),
@@ -3581,7 +3632,7 @@ private fun FullScreenSuccessReportCardView(
                             modifier = Modifier.weight(1.1f)
                         )
                         Text(
-                            text = q.correctOption,
+                            text = if (q.answerKeyVerified) q.correctOption else "?",
                             color = Color(0xFF0F172A),
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
@@ -3592,6 +3643,7 @@ private fun FullScreenSuccessReportCardView(
                             text = studentOpt,
                             color = when {
                                 studentOpt == "-" -> Color(0xFF64748B)
+                                !q.answerKeyVerified -> Color(0xFFB45309)
                                 studentOpt == q.correctOption -> Color(0xFF16A34A)
                                 else -> Color(0xFFDC2626)
                             },
@@ -3661,7 +3713,8 @@ private fun FullScreenSuccessReportCardView(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "${q.topicHeader} • Doğru Cevap: ${q.correctOption}",
+                                    text = if (q.answerKeyVerified) "${q.topicHeader} • Doğru Cevap: ${q.correctOption}"
+                                    else "${q.topicHeader} • Cevap anahtarı doğrulanmadı",
                                     color = Color(0xFF334155),
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 13.sp

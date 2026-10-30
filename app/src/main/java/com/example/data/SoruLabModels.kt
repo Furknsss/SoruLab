@@ -20,8 +20,10 @@ data class TestResultRecord(
     val correctCount: Int = 0,
     val wrongCount: Int = 0,
     val emptyCount: Int = 0,
+    val ungradedCount: Int = 0,
     val durationSeconds: Int = 0,
     val answersMapJson: String = "{}",
+    val testSnapshotJson: String = "",
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 ) {
@@ -31,7 +33,7 @@ data class TestResultRecord(
 
     @get:Exclude
     val totalQuestions: Int
-        get() = (correctCount + wrongCount + emptyCount).coerceAtLeast(1)
+        get() = (correctCount + wrongCount + emptyCount + ungradedCount).coerceAtLeast(1)
 
     @get:Exclude
     val netScore: Double
@@ -39,7 +41,11 @@ data class TestResultRecord(
 
     @get:Exclude
     val accuracyPercent: Int
-        get() = ((correctCount.toFloat() / totalQuestions.toFloat()) * 100f).toInt().coerceIn(0, 100)
+        get() {
+            val gradedQuestionCount = correctCount + wrongCount + emptyCount
+            return if (gradedQuestionCount == 0) 0 else
+                ((correctCount.toFloat() / gradedQuestionCount.toFloat()) * 100f).toInt().coerceIn(0, 100)
+        }
 }
 
 @Immutable

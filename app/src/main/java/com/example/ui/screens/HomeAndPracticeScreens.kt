@@ -497,7 +497,7 @@ fun AnaSayfaScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(26.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF0B132B))
+                colors = CardDefaults.cardColors(containerColor = Color.White)
             ) {
                 Box(
                     modifier = Modifier
@@ -505,16 +505,16 @@ fun AnaSayfaScreen(
                         .background(
                             Brush.linearGradient(
                                 colors = listOf(
-                                    Color(0xFF0A1128),
-                                    Color(0xFF17317E),
-                                    Color(0xFF1E40AF)
+                                    Color(0xFFFFFFFF),
+                                    Color(0xFFF4F8FF),
+                                    Color(0xFFE8F0FF)
                                 )
                             )
                         )
                         .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(26.dp))
                         .drawWithCache {
-                            val ringColor = Color.White.copy(alpha = 0.06f)
-                            val accentGlow = Color(0xFF38BDF8).copy(alpha = 0.12f)
+                            val ringColor = Color(0xFF2563EB).copy(alpha = 0.08f)
+                            val accentGlow = Color(0xFF60A5FA).copy(alpha = 0.16f)
                             onDrawBehind {
                                 drawCircle(
                                     color = accentGlow,
@@ -544,7 +544,7 @@ fun AnaSayfaScreen(
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 22.sp
                             ),
-                            color = Color.White
+                            color = Color(0xFF0F172A)
                         )
 
                         // Real Live Status Strip inside Welcome Card
@@ -552,8 +552,8 @@ fun AnaSayfaScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(Color.White.copy(alpha = 0.09f))
-                                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
+                                .background(Color(0xFF0F2557).copy(alpha = 0.06f))
+                                .border(1.dp, Color(0xFF2563EB).copy(alpha = 0.12f), RoundedCornerShape(16.dp))
                                 .padding(horizontal = 14.dp, vertical = 10.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
@@ -563,14 +563,14 @@ fun AnaSayfaScreen(
                                 modifier = Modifier
                                     .width(1.dp)
                                     .height(26.dp)
-                                    .background(Color.White.copy(alpha = 0.16f))
+                                    .background(Color(0xFF2563EB).copy(alpha = 0.16f))
                             )
                             HeroMetricColumn(value = "$totalSolvedQuestions", label = "Çözülen Soru")
                             Box(
                                 modifier = Modifier
                                     .width(1.dp)
                                     .height(26.dp)
-                                    .background(Color.White.copy(alpha = 0.16f))
+                                    .background(Color(0xFF2563EB).copy(alpha = 0.16f))
                             )
                             HeroMetricColumn(value = "$customQuestionsCount", label = "Havuz Sorusu")
                         }
@@ -606,7 +606,7 @@ fun AnaSayfaScreen(
                             OutlinedButton(
                                 onClick = { onNavigateTab(MainNavTab.DENEMELER) },
                                 shape = RoundedCornerShape(14.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.2.dp, Color.White.copy(alpha = 0.45f)),
+                                border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF2563EB).copy(alpha = 0.28f)),
                                 modifier = Modifier
                                     .height(46.dp)
                                     .testTag("hero_denemeler_button")
@@ -614,7 +614,7 @@ fun AnaSayfaScreen(
                                 Text(
                                     text = "Denemeler",
                                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                    color = Color.White
+                                    color = Color(0xFF1D4ED8)
                                 )
                             }
                         }
@@ -1285,7 +1285,7 @@ private fun ProfileCenterBottomSheet(
                                         modifier = Modifier
                                             .size(44.dp)
                                             .clip(RoundedCornerShape(12.dp))
-                                            .background(Color.White.copy(alpha = 0.16f)),
+                                            .background(Color(0xFF2563EB).copy(alpha = 0.16f)),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(

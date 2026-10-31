@@ -66,6 +66,36 @@ internal fun <T> interleaveByGroup(items: List<T>, groupKey: (T) -> String): Lis
     }
 }
 
+private fun hasAllAnswerOptions(questionText: String): Boolean {
+    return listOf("A", "B", "C", "D", "E").all { option ->
+        Regex("""(?im)(?:^|[\s(])$option\s*[).:]""").containsMatchIn(questionText)
+    }
+}
+
+private fun computeImportQualityScore(
+    questionText: String,
+    answerKeyVerified: Boolean,
+    importedWithLocalOcr: Boolean,
+    targetLevel: String,
+    hasImage: Boolean
+): Int {
+    var score = 32
+    val normalizedLength = questionText.trim().length
+    score += when {
+        normalizedLength >= 220 -> 22
+        normalizedLength >= 120 -> 17
+        normalizedLength >= 60 -> 11
+        normalizedLength >= 30 -> 6
+        else -> 0
+    }
+    if (hasAllAnswerOptions(questionText)) score += 12
+    if (answerKeyVerified) score += 18
+    score += if (importedWithLocalOcr) 6 else 14
+    if (targetLevel.isNotBlank()) score += 4
+    if (hasImage) score += 4
+    return score.coerceIn(0, 100)
+}
+
 enum class DrawingTool {
     PEN,
     HIGHLIGHTER,
@@ -1966,7 +1996,34 @@ class SoruLabViewModel(
             questionText = questionText.ifBlank { "PDF'ten kırpılan YKS sorusu" }.take(1800),
             publisherTag = publisherTag.ifBlank { resolvedPublisher.name }.take(100),
             aiSolutionSummary = packedSolution,
-            cropAspectRatio = cropAspectRatio.coerceIn(0.3, 4.5)
+            cropAspectRatio = cropAspectRatio.coerceIn(0.3, 4.5),
+            targetLevel = targetLevel.take(48),
+            croppedImageFilePath = croppedImagePath.take(1024),
+            publisherLogoPath = finalLogoUri.take(1024),
+            bookName = bookOrTestName.take(180),
+            bookCoverImagePath = bookCoverPath.take(1024),
+            answerKeyVerifiedFlag = answerKeyVerified,
+            questionNumberInSource = questionNumberInBook,
+            fiveTierDifficulty = resolvedDifficulty.take(32),
+            importSource = "manual_crop",
+            sourcePageIndex = 0,
+            sourceQuestionOrder = 0,
+            contentFingerprint = CustomQuestionRecord.buildContentFingerprint(
+                examType = resolvedExamType,
+                subjectName = resolvedSubjectName,
+                topicName = resolvedTopicName,
+                questionText = questionText,
+                bookOrTestName = bookOrTestName,
+                publisherTag = publisherTag.ifBlank { resolvedPublisher.name },
+                questionNumberInBook = questionNumberInBook
+            ).take(720),
+            importQualityScore = computeImportQualityScore(
+                questionText = questionText,
+                answerKeyVerified = answerKeyVerified,
+                importedWithLocalOcr = false,
+                targetLevel = targetLevel,
+                hasImage = croppedImagePath.isNotBlank()
+            )
         )
 
         val updatedList = listOf(record) + _userCustomQuestions.value
@@ -2008,11 +2065,15 @@ class SoruLabViewModel(
                     item.correctOption.trim().uppercase() in setOf("A", "B", "C", "D", "E")
             }
             .distinctBy { item ->
-                val normalizedText = item.questionText
-                    .lowercase()
-                    .replace(Regex("\\s+"), " ")
-                    .trim()
-                "${item.examType}|${item.subjectName}|${item.questionNumber}|$normalizedText"
+                CustomQuestionRecord.buildContentFingerprint(
+                    examType = item.examType,
+                    subjectName = item.subjectName,
+                    topicName = item.topicName,
+                    questionText = item.questionText,
+                    bookOrTestName = bookOrTestName,
+                    publisherTag = publisherName,
+                    questionNumberInBook = item.questionNumber
+                )
             }
             .toList()
 
@@ -2081,21 +2142,52 @@ class SoruLabViewModel(
                 }
 
                 newRecords.add(
-                    CustomQuestionRecord(
-                        id = "cq_${batchTimestamp}_${idx}_${(100..999).random()}",
-                        userId = uid,
-                        examType = resolvedExamType,
-                        subjectId = subjectId,
-                        subjectName = resolvedSubjectName,
-                        topicId = topicId,
-                        topicName = resolvedTopicName,
-                        difficulty = firestoreCompatDiff,
-                        correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "D",
-                        questionText = item.questionText.ifBlank { "$resolvedSubjectName • $resolvedTopicName" }.take(1800),
-                        publisherTag = finalPubName,
-                        aiSolutionSummary = packedSolution,
-                        cropAspectRatio = item.cropAspectRatio.coerceIn(0.3, 4.5)
-                    )
+                    run {
+                        val fingerprint = CustomQuestionRecord.buildContentFingerprint(
+                            examType = resolvedExamType,
+                            subjectName = resolvedSubjectName,
+                            topicName = resolvedTopicName,
+                            questionText = item.questionText,
+                            bookOrTestName = bookOrTestName,
+                            publisherTag = finalPubName,
+                            questionNumberInBook = item.questionNumber
+                        )
+                        val importQualityScore = computeImportQualityScore(
+                            questionText = item.questionText,
+                            answerKeyVerified = item.answerKeyMatched,
+                            importedWithLocalOcr = item.importedWithLocalOcr,
+                            targetLevel = item.targetLevel,
+                            hasImage = item.croppedImagePath.isNotBlank()
+                        )
+                        CustomQuestionRecord(
+                            id = "cq_${batchTimestamp}_${idx}_${(100..999).random()}",
+                            userId = uid,
+                            examType = resolvedExamType,
+                            subjectId = subjectId,
+                            subjectName = resolvedSubjectName,
+                            topicId = topicId,
+                            topicName = resolvedTopicName,
+                            difficulty = firestoreCompatDiff,
+                            correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "D",
+                            questionText = item.questionText.ifBlank { "$resolvedSubjectName • $resolvedTopicName" }.take(1800),
+                            publisherTag = finalPubName,
+                            aiSolutionSummary = packedSolution,
+                            cropAspectRatio = item.cropAspectRatio.coerceIn(0.3, 4.5),
+                            targetLevel = item.targetLevel.take(48),
+                            croppedImageFilePath = item.croppedImagePath.take(1024),
+                            publisherLogoPath = finalLogoUri.take(1024),
+                            bookName = bookOrTestName.take(180),
+                            bookCoverImagePath = effectiveCover.take(1024),
+                            answerKeyVerifiedFlag = item.answerKeyMatched,
+                            questionNumberInSource = item.questionNumber,
+                            fiveTierDifficulty = item.difficulty.take(32),
+                            importSource = "pdf_studio",
+                            sourcePageIndex = item.sourcePageIndex,
+                            sourceQuestionOrder = item.sourceQuestionOrder,
+                            contentFingerprint = fingerprint.take(720),
+                            importQualityScore = importQualityScore
+                        )
+                    }
                 )
             }
 

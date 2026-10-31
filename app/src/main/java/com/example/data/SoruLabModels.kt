@@ -162,6 +162,19 @@ data class CustomQuestionRecord(
     val publisherTag: String = "3D Yayınları",
     val aiSolutionSummary: String = "",
     val cropAspectRatio: Double = 1.25,
+    val targetLevel: String = "",
+    val croppedImageFilePath: String = "",
+    val publisherLogoPath: String = "",
+    val bookName: String = "",
+    val bookCoverImagePath: String = "",
+    val answerKeyVerifiedFlag: Boolean? = null,
+    val questionNumberInSource: Int = 0,
+    val fiveTierDifficulty: String = "",
+    val importSource: String = "",
+    val sourcePageIndex: Int = 0,
+    val sourceQuestionOrder: Int = 0,
+    val contentFingerprint: String = "",
+    val importQualityScore: Int = 0,
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 ) {
@@ -184,31 +197,31 @@ data class CustomQuestionRecord(
     @delegate:Transient
     @get:Exclude
     val targetLevelName: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        parsedMetaMap["level"].orEmpty()
+        targetLevel.ifBlank { parsedMetaMap["level"].orEmpty() }
     }
 
     @delegate:Transient
     @get:Exclude
     val croppedImagePath: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        parsedMetaMap["img"].orEmpty()
+        croppedImageFilePath.ifBlank { parsedMetaMap["img"].orEmpty() }
     }
 
     @delegate:Transient
     @get:Exclude
     val publisherLogoUri: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        parsedMetaMap["logo"].orEmpty()
+        publisherLogoPath.ifBlank { parsedMetaMap["logo"].orEmpty() }
     }
 
     @delegate:Transient
     @get:Exclude
     val bookOrTestName: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        parsedMetaMap["book"].orEmpty()
+        bookName.ifBlank { parsedMetaMap["book"].orEmpty() }
     }
 
     @delegate:Transient
     @get:Exclude
     val bookCoverPath: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        parsedMetaMap["cover"].orEmpty()
+        bookCoverImagePath.ifBlank { parsedMetaMap["cover"].orEmpty() }
     }
 
     @delegate:Transient
@@ -220,19 +233,37 @@ data class CustomQuestionRecord(
     @delegate:Transient
     @get:Exclude
     val answerKeyVerified: Boolean by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        parsedMetaMap["ak"] != "0"
+        answerKeyVerifiedFlag ?: (parsedMetaMap["ak"] != "0")
     }
 
     @delegate:Transient
     @get:Exclude
     val questionNumberInBook: Int by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        parsedMetaMap["qnum"]?.toIntOrNull() ?: 0
+        questionNumberInSource.takeIf { it > 0 } ?: (parsedMetaMap["qnum"]?.toIntOrNull() ?: 0)
     }
 
     @delegate:Transient
     @get:Exclude
     val effectiveDifficultyLabel: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        parsedMetaMap["diff5"]?.takeIf { it.isNotBlank() } ?: difficulty
+        fiveTierDifficulty.takeIf { it.isNotBlank() }
+            ?: parsedMetaMap["diff5"]?.takeIf { it.isNotBlank() }
+            ?: difficulty
+    }
+
+    @delegate:Transient
+    @get:Exclude
+    val stableContentFingerprint: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        contentFingerprint.ifBlank {
+            buildContentFingerprint(
+                examType = examType,
+                subjectName = subjectName,
+                topicName = topicName,
+                questionText = questionText,
+                bookOrTestName = bookOrTestName,
+                publisherTag = publisherTag,
+                questionNumberInBook = questionNumberInBook
+            )
+        }
     }
 
     @delegate:Transient
@@ -258,6 +289,50 @@ data class CustomQuestionRecord(
     }
 
     companion object {
+        private fun sanitizeMetaValue(raw: String): String = raw.replace("|", "").replace("]", "")
+
+        fun normalizeFingerprintText(raw: String): String {
+            return raw
+                .lowercase()
+                .replace("ç", "c")
+                .replace("ğ", "g")
+                .replace("ı", "i")
+                .replace("ö", "o")
+                .replace("ş", "s")
+                .replace("ü", "u")
+                .replace(Regex("""\s+"""), " ")
+                .replace(Regex("""[^\p{L}\p{N}\s]"""), " ")
+                .replace(Regex("""\s+"""), " ")
+                .trim()
+        }
+
+        fun buildContentFingerprint(
+            examType: String,
+            subjectName: String,
+            topicName: String,
+            questionText: String,
+            bookOrTestName: String = "",
+            publisherTag: String = "",
+            questionNumberInBook: Int = 0
+        ): String {
+            val normalizedQuestion = normalizeFingerprintText(questionText).take(320)
+            val normalizedBook = normalizeFingerprintText(bookOrTestName).take(120)
+            val normalizedPublisher = normalizeFingerprintText(publisherTag).take(80)
+            val normalizedTopic = normalizeFingerprintText(topicName).take(80)
+            val normalizedSubject = normalizeFingerprintText(subjectName).take(40)
+            val normalizedExam = normalizeFingerprintText(examType).take(16)
+            val numberPart = questionNumberInBook.takeIf { it > 0 }?.toString().orEmpty()
+            return listOf(
+                normalizedExam,
+                normalizedSubject,
+                normalizedTopic,
+                normalizedBook,
+                normalizedPublisher,
+                numberPart,
+                normalizedQuestion
+            ).joinToString("|")
+        }
+
         fun packSolutionWithMeta(
             solutionText: String,
             targetLevel: String = "",
@@ -276,12 +351,12 @@ data class CustomQuestionRecord(
                 solutionText.trim()
             }
             val metaParts = buildList {
-                if (targetLevel.isNotBlank()) add("level=${targetLevel.replace("|", "").replace("]", "")}")
-                if (fiveTierDifficulty.isNotBlank()) add("diff5=${fiveTierDifficulty.replace("|", "").replace("]", "")}")
-                if (croppedImagePath.isNotBlank()) add("img=${croppedImagePath.replace("|", "").replace("]", "")}")
-                if (publisherLogoUri.isNotBlank()) add("logo=${publisherLogoUri.replace("|", "").replace("]", "")}")
-                if (bookOrTestName.isNotBlank()) add("book=${bookOrTestName.replace("|", "").replace("]", "")}")
-                if (bookCoverPath.isNotBlank()) add("cover=${bookCoverPath.replace("|", "").replace("]", "")}")
+                if (targetLevel.isNotBlank()) add("level=${sanitizeMetaValue(targetLevel)}")
+                if (fiveTierDifficulty.isNotBlank()) add("diff5=${sanitizeMetaValue(fiveTierDifficulty)}")
+                if (croppedImagePath.isNotBlank()) add("img=${sanitizeMetaValue(croppedImagePath)}")
+                if (publisherLogoUri.isNotBlank()) add("logo=${sanitizeMetaValue(publisherLogoUri)}")
+                if (bookOrTestName.isNotBlank()) add("book=${sanitizeMetaValue(bookOrTestName)}")
+                if (bookCoverPath.isNotBlank()) add("cover=${sanitizeMetaValue(bookCoverPath)}")
                 if (isInKumbara) add("kumbara=1")
                 add("ak=${if (answerKeyVerified) "1" else "0"}")
                 if (questionNumberInBook > 0) add("qnum=$questionNumberInBook")

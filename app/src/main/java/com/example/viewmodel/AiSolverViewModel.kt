@@ -99,7 +99,10 @@ data class ExtractedPdfQuestionItem(
     val croppedImagePath: String,
     val cropAspectRatio: Double,
     val bookCoverPath: String = "",
-    val boxNormalized: List<Float> = listOf(0.05f, 0.05f, 0.95f, 0.48f)
+    val boxNormalized: List<Float> = listOf(0.05f, 0.05f, 0.95f, 0.48f),
+    val sourcePageIndex: Int = 0,
+    val sourceQuestionOrder: Int = 0,
+    val importedWithLocalOcr: Boolean = false
 )
 
 private data class QuestionOcrClassification(
@@ -1284,6 +1287,7 @@ class AiSolverViewModel : ViewModel() {
                                     val globalQuestionNum = allExtractedQuestions.size + 1
                                     val localTestQuestionNum = ((globalQuestionNum - 1) % 12) + 1
                                     val verifiedAnswer = mergedAnswerKey[globalQuestionNum]
+                                        ?: mergedAnswerKey[cropBox.questionOrderInPage]
                                         ?: mergedAnswerKey[localTestQuestionNum]
 
                                     allExtractedQuestions.add(
@@ -1305,7 +1309,10 @@ class AiSolverViewModel : ViewModel() {
                                             croppedImagePath = cropBox.croppedImagePath,
                                             cropAspectRatio = cropBox.aspectRatio,
                                             bookCoverPath = coverPath,
-                                            boxNormalized = cropBox.boxNormalized
+                                            boxNormalized = cropBox.boxNormalized,
+                                            sourcePageIndex = pageIdx + 1,
+                                            sourceQuestionOrder = cropBox.questionOrderInPage,
+                                            importedWithLocalOcr = classification.usedLocalOcr
                                         )
                                     )
                                 }

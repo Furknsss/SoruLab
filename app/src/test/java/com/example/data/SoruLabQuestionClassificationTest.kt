@@ -240,4 +240,68 @@ class SoruLabQuestionClassificationTest {
         assertEquals(true, record.answerKeyVerified)
         assertEquals("Zor", record.difficultyLevel5.label)
     }
+
+    @Test
+    fun explicitStructuredFieldsOverrideLegacyMetaWhenPresent() {
+        val legacyPacked = CustomQuestionRecord.packSolutionWithMeta(
+            solutionText = "Eski çözüm",
+            targetLevel = "PEKISTIRME",
+            croppedImagePath = "/legacy/crop.png",
+            publisherLogoUri = "/legacy/logo.png",
+            answerKeyVerified = false,
+            questionNumberInBook = 3,
+            bookOrTestName = "Legacy Book",
+            bookCoverPath = "/legacy/cover.png",
+            fiveTierDifficulty = "Kolay"
+        )
+
+        val record = CustomQuestionRecord(
+            aiSolutionSummary = legacyPacked,
+            targetLevel = "OSYM",
+            croppedImageFilePath = "/new/crop.png",
+            publisherLogoPath = "/new/logo.png",
+            bookName = "Yeni Kitap",
+            bookCoverImagePath = "/new/cover.png",
+            answerKeyVerifiedFlag = true,
+            questionNumberInSource = 11,
+            fiveTierDifficulty = "Çok Zor",
+            contentFingerprint = "fingerprint_v2",
+            importQualityScore = 97
+        )
+
+        assertEquals("OSYM", record.targetLevelName)
+        assertEquals("/new/crop.png", record.croppedImagePath)
+        assertEquals("/new/logo.png", record.publisherLogoUri)
+        assertEquals("Yeni Kitap", record.bookOrTestName)
+        assertEquals("/new/cover.png", record.bookCoverPath)
+        assertEquals(true, record.answerKeyVerified)
+        assertEquals(11, record.questionNumberInBook)
+        assertEquals("Çok Zor", record.effectiveDifficultyLabel)
+        assertEquals("fingerprint_v2", record.stableContentFingerprint)
+        assertEquals(97, record.importQualityScore)
+    }
+
+    @Test
+    fun contentFingerprintNormalizesWhitespaceAndPunctuation() {
+        val fingerprintA = CustomQuestionRecord.buildContentFingerprint(
+            examType = "AYT",
+            subjectName = "Matematik",
+            topicName = "Polinomlar",
+            questionText = "P(x)   polinomunun, derecesi kaçtır?",
+            bookOrTestName = "3D AYT Matematik",
+            publisherTag = "3D Yayınları",
+            questionNumberInBook = 7
+        )
+        val fingerprintB = CustomQuestionRecord.buildContentFingerprint(
+            examType = "AYT",
+            subjectName = "Matematik",
+            topicName = "Polinomlar",
+            questionText = "P(x) polinomunun derecesi kactir !",
+            bookOrTestName = "3D   AYT   Matematik",
+            publisherTag = "3D Yayınları",
+            questionNumberInBook = 7
+        )
+
+        assertEquals(fingerprintA, fingerprintB)
+    }
 }

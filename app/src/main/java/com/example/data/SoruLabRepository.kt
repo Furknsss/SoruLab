@@ -551,6 +551,19 @@ class SoruLabRepository(
                 "publisherTag" to record.publisherTag.ifBlank { "YKS Yayınları" }.take(115),
                 "aiSolutionSummary" to record.aiSolutionSummary.take(3950),
                 "cropAspectRatio" to safeRatio,
+                "targetLevel" to record.targetLevel.take(48),
+                "croppedImageFilePath" to record.croppedImagePath.take(1024),
+                "publisherLogoPath" to record.publisherLogoUri.take(1024),
+                "bookName" to record.bookOrTestName.take(180),
+                "bookCoverImagePath" to record.bookCoverPath.take(1024),
+                "answerKeyVerifiedFlag" to record.answerKeyVerified,
+                "questionNumberInSource" to record.questionNumberInBook,
+                "fiveTierDifficulty" to record.effectiveDifficultyLabel.take(32),
+                "importSource" to record.importSource.take(40),
+                "sourcePageIndex" to record.sourcePageIndex,
+                "sourceQuestionOrder" to record.sourceQuestionOrder,
+                "contentFingerprint" to record.stableContentFingerprint.take(720),
+                "importQualityScore" to record.importQualityScore.coerceIn(0, 100),
                 "createdAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp()
             )
@@ -644,6 +657,19 @@ class SoruLabRepository(
             "publisherTag" to record.publisherTag.ifBlank { "YKS Yayınları" }.take(115),
             "aiSolutionSummary" to record.aiSolutionSummary.take(3950),
             "cropAspectRatio" to safeRatio,
+            "targetLevel" to record.targetLevel.take(48),
+            "croppedImageFilePath" to record.croppedImagePath.take(1024),
+            "publisherLogoPath" to record.publisherLogoUri.take(1024),
+            "bookName" to record.bookOrTestName.take(180),
+            "bookCoverImagePath" to record.bookCoverPath.take(1024),
+            "answerKeyVerifiedFlag" to record.answerKeyVerified,
+            "questionNumberInSource" to record.questionNumberInBook,
+            "fiveTierDifficulty" to record.effectiveDifficultyLabel.take(32),
+            "importSource" to record.importSource.take(40),
+            "sourcePageIndex" to record.sourcePageIndex,
+            "sourceQuestionOrder" to record.sourceQuestionOrder,
+            "contentFingerprint" to record.stableContentFingerprint.take(720),
+            "importQualityScore" to record.importQualityScore.coerceIn(0, 100),
             "createdAt" to FieldValue.serverTimestamp(),
             "updatedAt" to FieldValue.serverTimestamp()
         )
@@ -710,7 +736,20 @@ class SoruLabRepository(
                         questionText = obj.optString("questionText", ""),
                         publisherTag = obj.optString("publisherTag", "ÜçDörtBeş Yayınları"),
                         aiSolutionSummary = obj.optString("aiSolutionSummary", ""),
-                        cropAspectRatio = obj.optDouble("cropAspectRatio", 1.25)
+                        cropAspectRatio = obj.optDouble("cropAspectRatio", 1.25),
+                        targetLevel = obj.optString("targetLevel", ""),
+                        croppedImageFilePath = obj.optString("croppedImageFilePath", ""),
+                        publisherLogoPath = obj.optString("publisherLogoPath", ""),
+                        bookName = obj.optString("bookName", ""),
+                        bookCoverImagePath = obj.optString("bookCoverImagePath", ""),
+                        answerKeyVerifiedFlag = if (obj.has("answerKeyVerifiedFlag")) obj.optBoolean("answerKeyVerifiedFlag") else null,
+                        questionNumberInSource = obj.optInt("questionNumberInSource", 0),
+                        fiveTierDifficulty = obj.optString("fiveTierDifficulty", ""),
+                        importSource = obj.optString("importSource", ""),
+                        sourcePageIndex = obj.optInt("sourcePageIndex", 0),
+                        sourceQuestionOrder = obj.optInt("sourceQuestionOrder", 0),
+                        contentFingerprint = obj.optString("contentFingerprint", ""),
+                        importQualityScore = obj.optInt("importQualityScore", 0)
                     )
                 )
             }
@@ -745,6 +784,19 @@ class SoruLabRepository(
                 obj.put("publisherTag", rec.publisherTag)
                 obj.put("aiSolutionSummary", rec.aiSolutionSummary)
                 obj.put("cropAspectRatio", rec.cropAspectRatio)
+                obj.put("targetLevel", rec.targetLevel)
+                obj.put("croppedImageFilePath", rec.croppedImagePath)
+                obj.put("publisherLogoPath", rec.publisherLogoUri)
+                obj.put("bookName", rec.bookOrTestName)
+                obj.put("bookCoverImagePath", rec.bookCoverPath)
+                obj.put("answerKeyVerifiedFlag", rec.answerKeyVerified)
+                obj.put("questionNumberInSource", rec.questionNumberInBook)
+                obj.put("fiveTierDifficulty", rec.effectiveDifficultyLabel)
+                obj.put("importSource", rec.importSource)
+                obj.put("sourcePageIndex", rec.sourcePageIndex)
+                obj.put("sourceQuestionOrder", rec.sourceQuestionOrder)
+                obj.put("contentFingerprint", rec.stableContentFingerprint)
+                obj.put("importQualityScore", rec.importQualityScore)
                 arr.put(obj)
             }
             val jsonStr = arr.toString()

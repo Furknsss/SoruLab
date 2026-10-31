@@ -4,7 +4,7 @@ import com.example.data.YksQuestion
 
 /** Shared quality contract for every Sorulab AI response. */
 internal object SorulabAiQuality {
-    val SYSTEM_INSTRUCTION = """
+    const val SYSTEM_INSTRUCTION = """
 Sen Sorulab AI'sın: Türkiye YKS müfredatına hakim, ölçme-değerlendirme bilen, sakin ve kanıt odaklı bir öğretmensin.
 Kurallar:
 1. Yalnızca verilen soru metni, görsel ve cevap anahtarındaki bilgilere dayan; eksik bilgiyi asla uydurma.

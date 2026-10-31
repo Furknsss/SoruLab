@@ -2003,7 +2003,9 @@ class SoruLabViewModel(
         val cleanItems = extractedItems
             .asSequence()
             .filter { item ->
-                (item.questionText.trim().length >= 6 || item.croppedImagePath.isNotBlank())
+                (item.questionText.trim().length >= 12 || item.croppedImagePath.isNotBlank()) &&
+                    item.topicName.isNotBlank() &&
+                    item.correctOption.trim().uppercase() in setOf("A", "B", "C", "D", "E")
             }
             .distinctBy { item ->
                 val normalizedText = item.questionText

@@ -7,6 +7,26 @@ import org.junit.Test
 
 class SoruLabQuestionClassificationTest {
     @Test
+    fun packedQuestionMetadataSanitizesDelimitersInCropAndLogoPaths() {
+        val packed = CustomQuestionRecord.packSolutionWithMeta(
+            solutionText = "Çözüm",
+            croppedImagePath = "/cache/page]|crop.png",
+            publisherLogoUri = "/cache/logo]|mark.png",
+            targetLevel = "ÖSYM]"
+        )
+        val record = CustomQuestionRecord(aiSolutionSummary = packed)
+
+        assertEquals("/cache/pagecrop.png", record.croppedImagePath)
+        assertEquals("/cache/logomark.png", record.publisherLogoUri)
+        assertEquals("ÖSYM", record.targetLevelName)
+    }
+
+    @Test
+    fun emptyTestResultHasZeroQuestions() {
+        assertEquals(0, TestResultRecord().totalQuestions)
+    }
+
+    @Test
     fun automaticBookTestsUseWheelDifficultyAndAtMostTwelveQuestions() {
         val questions = buildList {
             repeat(13) { index ->
@@ -58,6 +78,34 @@ class SoruLabQuestionClassificationTest {
         )
 
         assertNotNull(result)
+        assertEquals("Polinomlar", result?.second?.name)
+    }
+
+    @Test
+    fun physicsQuestionWithDegreeDoesNotJumpToAytMathPolynomial() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Fizik",
+            questionText = "Bir cisim 30 derece açıyla atılıyor. Menzili kaç metredir?",
+            suggestedTopicName = "Atışlar"
+        )
+
+        assertNotNull(result)
+        assertEquals("Fizik", result?.first?.name)
+        assertEquals("Atışlar", result?.second?.name)
+    }
+
+    @Test
+    fun suggestedPageTopicCannotOverrideMathSpecificSignal() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Matematik",
+            questionText = "P(x) polinomunun derecesi 4 olduğuna göre kalan kaçtır?",
+            suggestedTopicName = "Limit ve Süreklilik"
+        )
+
+        assertNotNull(result)
+        assertEquals("Matematik", result?.first?.name)
         assertEquals("Polinomlar", result?.second?.name)
     }
 
@@ -123,5 +171,73 @@ class SoruLabQuestionClassificationTest {
 
         assertNotNull(result)
         assertEquals("Limit ve Süreklilik", result?.second?.name)
+    }
+
+    @Test
+    fun aytMathQuestionWithPhysicsWordsNeverClassifiedAsPhysics() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Matematik",
+            questionText = "f(t) bir hareketlinin t anındaki konum fonksiyonudur. f'(t) anlık hız fonksiyonu olduğuna göre türevi kaçtır?",
+            suggestedTopicName = ""
+        )
+
+        assertNotNull(result)
+        assertEquals("Matematik", result?.first?.name)
+        assertTrue(result?.first?.name != "Fizik")
+        assertEquals("Türev Alma Kuralları", result?.second?.name)
+    }
+
+    @Test
+    fun uncertainQuestionWithoutSignalRoutesToIncelemeBekliyor() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Matematik",
+            questionText = "Yukarıda verilen bilgilere göre x kaçtır?",
+            suggestedTopicName = "Bilinmeyen Başlık"
+        )
+
+        assertNotNull(result)
+        assertEquals("Matematik", result?.first?.name)
+        assertEquals("İnceleme Bekliyor", result?.second?.name)
+        assertEquals("inceleme_bekliyor", result?.second?.id)
+    }
+
+    @Test
+    fun questionMetadataAndLogoPersistenceArePreserved() {
+        val originalSolution = "Açıklamalı Çözüm Adımları"
+        val originalCrop = "/data/crops/crop_101.png"
+        val originalLogo = "/data/logos/3d_logo.png"
+        val originalLevel = "ÖSYM"
+        val originalBook = "3D AYT Matematik"
+        val originalCover = "/data/covers/cover_101.png"
+        val originalDiff = "Zor"
+
+        val packed = CustomQuestionRecord.packSolutionWithMeta(
+            solutionText = originalSolution,
+            targetLevel = originalLevel,
+            croppedImagePath = originalCrop,
+            publisherLogoUri = originalLogo,
+            answerKeyVerified = true,
+            questionNumberInBook = 7,
+            bookOrTestName = originalBook,
+            bookCoverPath = originalCover,
+            fiveTierDifficulty = originalDiff
+        )
+
+        val record = CustomQuestionRecord(
+            id = "test_q1",
+            aiSolutionSummary = packed,
+            publisherTag = "3D Yayınları",
+            correctOption = "B"
+        )
+
+        assertEquals(originalCrop, record.croppedImagePath)
+        assertEquals(originalLogo, record.publisherLogoUri)
+        assertEquals(originalBook, record.bookOrTestName)
+        assertEquals(originalDiff, record.effectiveDifficultyLabel)
+        assertEquals(7, record.questionNumberInBook)
+        assertEquals(true, record.answerKeyVerified)
+        assertEquals("Zor", record.difficultyLevel5.label)
     }
 }

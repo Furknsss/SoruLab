@@ -53,6 +53,19 @@ enum class BoardViewMode {
     SINGLE_QUESTION
 }
 
+internal fun <T> interleaveByGroup(items: List<T>, groupKey: (T) -> String): List<T> {
+    val groups = items
+        .groupBy { groupKey(it).trim().lowercase() }
+        .values
+        .sortedBy { group -> group.firstOrNull()?.let(groupKey).orEmpty().lowercase() }
+    return buildList {
+        val maxGroupSize = groups.maxOfOrNull { it.size } ?: 0
+        for (round in 0 until maxGroupSize) {
+            groups.forEach { group -> group.getOrNull(round)?.let(::add) }
+        }
+    }
+}
+
 enum class DrawingTool {
     PEN,
     HIGHLIGHTER,
@@ -820,7 +833,8 @@ class SoruLabViewModel(
             (exactLevelMatches + difficultyMatches).distinctBy { it.id }.ifEmpty { topicPool }
         }
 
-        val customMatches = filteredCustom.mapIndexed { index, custom ->
+        val mixedCustom = interleaveByGroup(filteredCustom) { it.publisherTag }
+        val customMatches = mixedCustom.mapIndexed { index, custom ->
             val diff = custom.difficultyLevel5
             val resolvedPub = SoruLabPublisherPresets.resolvePublisher(
                 custom.publisherTag,
@@ -921,7 +935,10 @@ class SoruLabViewModel(
             cq.difficultyLevel5 in activeDiffs
         }
 
-        return difficultyFilteredPool.mapIndexed { index, custom ->
+        // Aynı konu testinde kaynak çeşitliliğini korumak için yayınevlerini tur tur karıştırır.
+        val mixedPool = interleaveByGroup(difficultyFilteredPool) { it.publisherTag }
+
+        return mixedPool.mapIndexed { index, custom ->
             val diff = custom.difficultyLevel5
             val resolvedPub = SoruLabPublisherPresets.resolvePublisher(
                 custom.publisherTag,
@@ -1983,7 +2000,25 @@ class SoruLabViewModel(
         bookOrTestName: String,
         bookCoverPath: String
     ) {
-        if (extractedItems.isEmpty()) return
+        val cleanItems = extractedItems
+            .asSequence()
+            .filter { item ->
+                (item.questionText.trim().length >= 6 || item.croppedImagePath.isNotBlank())
+            }
+            .distinctBy { item ->
+                val normalizedText = item.questionText
+                    .lowercase()
+                    .replace(Regex("\\s+"), " ")
+                    .trim()
+                "${item.examType}|${item.subjectName}|${item.questionNumber}|$normalizedText"
+            }
+            .toList()
+
+        if (cleanItems.isEmpty()) {
+            showBanner("PDF içinde aktarılabilecek doğrulanmış soru bulunamadı.")
+            return
+        }
+
         val uid = effectiveUserId() ?: "device_yks_student_tr"
         val resolvedPublisher = SoruLabPublisherPresets.resolvePublisher(publisherName, _customPublishers.value)
         val finalPubName = publisherName.ifBlank { resolvedPublisher.name }.take(100)
@@ -1993,8 +2028,8 @@ class SoruLabViewModel(
             val subjectMemo = HashMap<String, com.example.data.YksSubject>(32)
             val batchTimestamp = System.currentTimeMillis()
 
-            val newRecords = ArrayList<CustomQuestionRecord>(extractedItems.size)
-            for ((idx, item) in extractedItems.withIndex()) {
+            val newRecords = ArrayList<CustomQuestionRecord>(cleanItems.size)
+            for ((idx, item) in cleanItems.withIndex()) {
                 val classifiedTopic = SoruLabCatalog.classifyQuestionTopicFromText(
                     examTypeHint = item.examType,
                     subjectNameHint = item.subjectName,
@@ -2006,13 +2041,9 @@ class SoruLabViewModel(
                     SoruLabCatalog.allSubjects.firstOrNull {
                         it.examType.name.equals(item.examType, ignoreCase = true) &&
                             it.name.equals(item.subjectName, ignoreCase = true)
-                    }
-                if (matchedSubject == null) {
-                    withContext(Dispatchers.Main) {
-                        showBanner("“${item.subjectName}” dersi ${item.examType} müfredatında bulunamadı; PDF aktarımı durduruldu.")
-                    }
-                    return@launch
-                }
+                    } ?: SoruLabCatalog.allSubjects.firstOrNull {
+                        it.examType.name.equals(item.examType, ignoreCase = true)
+                    } ?: SoruLabCatalog.allSubjects.first()
                 subjectMemo[subKey] = matchedSubject
 
                 val matchedTopic = classifiedTopic?.second
@@ -2020,13 +2051,7 @@ class SoruLabViewModel(
                         it.name.equals(item.topicName, ignoreCase = true) ||
                             item.topicName.contains(it.name, ignoreCase = true) ||
                             it.name.contains(item.topicName, ignoreCase = true)
-                    }
-                if (matchedTopic == null) {
-                    withContext(Dispatchers.Main) {
-                        showBanner("“${item.topicName}” konusu müfredatla eşleştirilemedi; PDF aktarımı durduruldu.")
-                    }
-                    return@launch
-                }
+                    } ?: SoruLabCatalog.getReviewTopicForSubject(matchedSubject)
 
                 val resolvedExamType = matchedSubject.examType.name
                 val subjectId = matchedSubject.id
@@ -2063,7 +2088,7 @@ class SoruLabViewModel(
                         topicId = topicId,
                         topicName = resolvedTopicName,
                         difficulty = firestoreCompatDiff,
-                        correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty(),
+                        correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "D",
                         questionText = item.questionText.ifBlank { "$resolvedSubjectName • $resolvedTopicName" }.take(1800),
                         publisherTag = finalPubName,
                         aiSolutionSummary = packedSolution,
@@ -2132,6 +2157,35 @@ class SoruLabViewModel(
                 }
             }
         }
+    }
+
+    /**
+     * Kullanıcının emin olunamayan veya 'İnceleme Bekliyor' durumundaki soruyu
+     * doğru ders ve konuya taşımasına / düzenlemesine imkan verir.
+     */
+    fun updateQuestionTopic(
+        questionId: String,
+        newSubjectId: String,
+        newSubjectName: String,
+        newTopicId: String,
+        newTopicName: String
+    ) {
+        val current = _userCustomQuestions.value
+        val updated = current.map { q ->
+            if (q.id == questionId) {
+                q.copy(
+                    subjectId = newSubjectId,
+                    subjectName = newSubjectName,
+                    topicId = newTopicId,
+                    topicName = newTopicName
+                )
+            } else q
+        }
+        _userCustomQuestions.value = updated
+        val uid = effectiveUserId() ?: "device_yks_student_tr"
+        saveCustomQuestionsCacheAsync(uid, updated)
+        syncPdfPoolToPracticeTests(updated)
+        showBanner("Soru konusu “$newTopicName” olarak güncellendi.")
     }
 
     fun addQuestionToKumbara(question: YksQuestion) {

@@ -33,7 +33,7 @@ data class TestResultRecord(
 
     @get:Exclude
     val totalQuestions: Int
-        get() = (correctCount + wrongCount + emptyCount + ungradedCount).coerceAtLeast(1)
+        get() = (correctCount + wrongCount + emptyCount + ungradedCount).coerceAtLeast(0)
 
     @get:Exclude
     val netScore: Double
@@ -276,10 +276,10 @@ data class CustomQuestionRecord(
                 solutionText.trim()
             }
             val metaParts = buildList {
-                if (targetLevel.isNotBlank()) add("level=${targetLevel.replace("|", "")}")
+                if (targetLevel.isNotBlank()) add("level=${targetLevel.replace("|", "").replace("]", "")}")
                 if (fiveTierDifficulty.isNotBlank()) add("diff5=${fiveTierDifficulty.replace("|", "").replace("]", "")}")
-                if (croppedImagePath.isNotBlank()) add("img=${croppedImagePath.replace("|", "")}")
-                if (publisherLogoUri.isNotBlank()) add("logo=${publisherLogoUri.replace("|", "")}")
+                if (croppedImagePath.isNotBlank()) add("img=${croppedImagePath.replace("|", "").replace("]", "")}")
+                if (publisherLogoUri.isNotBlank()) add("logo=${publisherLogoUri.replace("|", "").replace("]", "")}")
                 if (bookOrTestName.isNotBlank()) add("book=${bookOrTestName.replace("|", "").replace("]", "")}")
                 if (bookCoverPath.isNotBlank()) add("cover=${bookCoverPath.replace("|", "").replace("]", "")}")
                 if (isInKumbara) add("kumbara=1")
@@ -661,6 +661,13 @@ object SoruLabCatalog {
         suggestedTopicName: String = ""
     ): Pair<YksSubject, YksTopic>? {
         val normalizedText = questionText.lowercase()
+        val normalizedSubjectHint = subjectNameHint
+            .replace("TYT ", "", ignoreCase = true)
+            .replace("AYT ", "", ignoreCase = true)
+            .trim()
+        val isMathContext = normalizedSubjectHint.isBlank() ||
+            normalizedSubjectHint.contains("matematik", ignoreCase = true) ||
+            normalizedSubjectHint.contains("geometri", ignoreCase = true)
         val hasDerivativeSymbol = normalizedText.contains("'") ||
             normalizedText.contains("′") ||
             Regex("""\bd\s*/\s*dx\b""").containsMatchIn(normalizedText) ||
@@ -668,31 +675,34 @@ object SoruLabCatalog {
 
         // KATI YKS ANAHTAR KELİME SINIFLANDIRICISI (Rastgele veya dosya adına göre atamayı KESİNLİKLE engeller)
         val forcedTopicName = when {
-            // 1. İçinde P(x), Q(x), polinom, derece, bölümünden kalan, başkatsayı geçenler -> KESİNLİKLE Polinomlar
-            Regex("""\b[qp]\s*\(\s*x\s*\)""", RegexOption.IGNORE_CASE).containsMatchIn(questionText) ||
-                listOf("polinom", "derece", "bölümünden kalan", "bolumunden kalan", "başkatsayı", "baskatsayi", "katsayılar toplamı", "sabit terim").any(normalizedText::contains) ->
-                "Polinomlar"
+            // Matematik/geometri dışındaki derslerde "derece", "artan", "teğet" gibi
+            // ortak kelimeler AYT Matematik konusuna zorla taşınmamalıdır.
+            isMathContext && (
+                // 1. Polinom göstergeleri -> Polinomlar
+                Regex("""\b[qp]\s*\(\s*x\s*\)""", RegexOption.IGNORE_CASE).containsMatchIn(questionText) ||
+                    listOf("polinom", "derece", "bölümünden kalan", "bolumunden kalan", "başkatsayı", "baskatsayi", "katsayılar toplamı", "sabit terim").any(normalizedText::contains)
+                ) -> "Polinomlar"
 
-            // 2. İçinde i^2 = -1, Re(z), Im(z), eşlenik, karmaşık geçenler -> Karmaşık Sayılar
-            Regex("""i\s*\^?\s*2\s*=\s*-1|i²\s*=\s*-1|re\s*\(\s*z\s*\)|im\s*\(\s*z\s*\)""", RegexOption.IGNORE_CASE)
-                .containsMatchIn(questionText) ||
-                listOf("eşlenik", "eslenik", "karmaşık", "karmasik", "sanal birim", "z = a + ib").any(normalizedText::contains) ->
-                "Karmaşık Sayılar"
+            isMathContext && (
+                // 2. Karmaşık sayı göstergeleri -> Karmaşık Sayılar
+                Regex("""i\s*\^?\s*2\s*=\s*-1|i²\s*=\s*-1|re\s*\(\s*z\)|im\s*\(\s*z\)""", RegexOption.IGNORE_CASE)
+                    .containsMatchIn(questionText) ||
+                    listOf("eşlenik", "eslenik", "karmaşık", "karmasik", "sanal birim", "z = a + ib").any(normalizedText::contains)
+                ) -> "Karmaşık Sayılar"
 
-            // 3. İçinde tepe noktası, parabol, simetri ekseni geçenler -> Parabol
-            listOf("tepe noktası", "tepe noktasi", "parabol", "simetri ekseni", "f(x) = ax^2", "f(x) = ax²").any(normalizedText::contains) ->
+            isMathContext && listOf("tepe noktası", "tepe noktasi", "parabol", "simetri ekseni", "f(x) = ax^2", "f(x) = ax²").any(normalizedText::contains) ->
                 "Parabol"
 
-            // 4. İçinde f'(x), g'(x), dy/dx, türev, teğet, ekstremum geçenler -> KESİNLİKLE Türev (Asla Limit'e atma!)
-            hasDerivativeSymbol ||
-                listOf("türev", "turev", "teğet", "teget", "ekstremum", "yerel maksimum", "yerel minimum", "artan", "azalan").any(normalizedText::contains) ->
-                "Türev Alma Kuralları"
+            isMathContext && (
+                // Türev sinyali limit sinyalinden önce değerlendirilir.
+                hasDerivativeSymbol ||
+                    listOf("türev", "turev", "teğet", "teget", "ekstremum", "yerel maksimum", "yerel minimum", "artan", "azalan").any(normalizedText::contains)
+                ) -> "Türev Alma Kuralları"
 
-            // 5. İçinde lim, süreklilik geçen ve türev sembolü (', dy/dx) OLMAYANLAR -> Limit ve Süreklilik
-            !hasDerivativeSymbol &&
-                (Regex("""\blim(?:\b|[_\s({])""").containsMatchIn(normalizedText) ||
-                    listOf("limit", "süreklilik", "sureklilik", "sağdan limit", "sagdan limit", "soldan limit", "belirsizlik").any(normalizedText::contains)) ->
-                "Limit ve Süreklilik"
+            isMathContext && !hasDerivativeSymbol && (
+                Regex("""\blim(?:\b|[_\s({])""").containsMatchIn(normalizedText) ||
+                    listOf("limit", "süreklilik", "sureklilik", "sağdan limit", "sagdan limit", "soldan limit", "belirsizlik").any(normalizedText::contains)
+                ) -> "Limit ve Süreklilik"
 
             else -> ""
         }
@@ -704,12 +714,30 @@ object SoruLabCatalog {
             .replace("AYT ", "", ignoreCase = true)
             .trim()
 
-        if (preferredName.isBlank()) {
-            val examSubjects = allSubjects
-                .filter { it.examType == preferredExam }
-                .sortedByDescending { it.name.equals(preferredSubject, ignoreCase = true) }
+        val targetSubject = allSubjects.firstOrNull {
+            it.examType == preferredExam && it.name.equals(preferredSubject, ignoreCase = true)
+        } ?: allSubjects.firstOrNull {
+            it.examType == preferredExam && (it.name.contains("matematik", ignoreCase = true))
+        } ?: allSubjects.first { it.examType == preferredExam }
+
+        // Ders İzolasyonu: Matematik soruları asla Fizik havuzunda aranamaz;
+        // Fizik soruları da Matematik havuzuna karışamaz.
+        val subjectSearchPool = if (preferredSubject.isNotBlank()) {
+            val matched = allSubjects.filter {
+                it.examType == preferredExam && it.name.equals(preferredSubject, ignoreCase = true)
+            }
+            if (matched.isNotEmpty()) matched else listOf(targetSubject)
+        } else if (isMathContext) {
+            allSubjects.filter {
+                it.examType == preferredExam && (it.name.contains("matematik", ignoreCase = true) || it.name.contains("geometri", ignoreCase = true))
+            }
+        } else {
+            allSubjects.filter { it.examType == preferredExam }
+        }
+
+        val resultPair: Pair<YksSubject, YksTopic> = if (preferredName.isBlank()) {
             val text = questionText.lowercase()
-            val bestMatch = examSubjects
+            val bestMatch = subjectSearchPool
                 .flatMap { subject -> subject.topics.map { subject to it } }
                 .mapNotNull { (subject, topic) ->
                     val aliases = topicKeywordAliases[topic.id].orEmpty()
@@ -731,23 +759,58 @@ object SoruLabCatalog {
                 }
                 .maxByOrNull { it.third }
                 ?.takeIf { it.third >= 3 }
-            return bestMatch?.let { it.first to it.second }
+
+            if (bestMatch != null) {
+                bestMatch.first to bestMatch.second
+            } else {
+                targetSubject to getReviewTopicForSubject(targetSubject)
+            }
+        } else {
+            val exactMatches = subjectSearchPool.flatMap { subject ->
+                subject.topics.map { topic -> subject to topic }
+            }.filter { (_, topic) ->
+                topic.name.equals(preferredName, ignoreCase = true) ||
+                    (preferredName.equals("Atışlar", ignoreCase = true) && topic.id == "atislar") ||
+                    (preferredName == "Türev Alma Kuralları" &&
+                        topic.name.contains("Türev", ignoreCase = true)) ||
+                    (preferredName == "Limit ve Süreklilik" &&
+                        topic.name.contains("Limit", ignoreCase = true)) ||
+                    topicKeywordAliases[topic.id].orEmpty().any { it.equals(preferredName, ignoreCase = true) }
+            }
+
+            val matched = exactMatches.firstOrNull { (subject, _) ->
+                subject.examType == preferredExam && subject.name.equals(preferredSubject, ignoreCase = true)
+            } ?: exactMatches.firstOrNull { (subject, _) -> subject.examType == preferredExam }
+                ?: exactMatches.firstOrNull()
+
+            if (matched != null) {
+                matched
+            } else {
+                // Konu adı tam eşleşmediğinde sessizce alakasız bir konuya atama; İnceleme Bekliyor'a al
+                targetSubject to getReviewTopicForSubject(targetSubject)
+            }
         }
 
-        val exactMatches = allSubjects.flatMap { subject ->
-            subject.topics.map { topic -> subject to topic }
-        }.filter { (_, topic) ->
-            topic.name.equals(preferredName, ignoreCase = true) ||
-                (preferredName == "Türev Alma Kuralları" &&
-                    topic.name.contains("Türev", ignoreCase = true)) ||
-                (preferredName == "Limit ve Süreklilik" &&
-                    topic.name.contains("Limit", ignoreCase = true))
+        // KESİN GÜVENLİK KURALI: AYT Matematik soruları hiçbir durumda Fizik olarak etiketlenemez!
+        return if (isMathContext && resultPair.first.name.equals("Fizik", ignoreCase = true)) {
+            val mathSubject = allSubjects.first { it.examType == preferredExam && it.name == "Matematik" }
+            mathSubject to getReviewTopicForSubject(mathSubject)
+        } else {
+            resultPair
         }
-        return exactMatches.firstOrNull { (subject, _) ->
-            subject.examType == preferredExam && subject.name.equals(preferredSubject, ignoreCase = true)
-        } ?: exactMatches.firstOrNull { (subject, _) -> subject.examType == preferredExam }
-            ?: exactMatches.firstOrNull()
     }
+
+    fun getReviewTopicForSubject(subject: YksSubject): YksTopic = YksTopic(
+        id = "inceleme_bekliyor",
+        subjectId = subject.id,
+        name = "İnceleme Bekliyor",
+        questionCount = 0,
+        completedTests = 0,
+        totalTests = 0,
+        badgeColorHex = 0xFFF59E0B,
+        iconType = "help",
+        tests = emptyList()
+    )
 
     private val topicKeywordAliases: Map<String, List<String>> = mapOf(
         // AYT Matematik
@@ -767,7 +830,7 @@ object SoruLabCatalog {
         "belirli_integral_alan" to listOf("belirli integral", "integral ve alan", "boyalı bölgenin alanı", "riemann"),
         // TYT Matematik
         "temel_kavramlar" to listOf("temel kavram", "rakam", "tam sayı", "doğal sayı", "ardışık", "asal sayı", "faktöriyel"),
-        "sayi_basamaklari" to listOf("sayı basamak", "iki basamaklı", "üç basamaklı", "çözümleme"),
+        "sayi_basamaklari" to listOf("sayı basamak", "iki basamaklı", "üç basamaklı", "��özümleme"),
         "bolme_bolunebilme" to listOf("bölme", "bölünebilme", "kalan"),
         "ebob_ekok" to listOf("ebob", "ekok", "ortak bölen", "ortak kat"),
         "rasyonel_sayilar" to listOf("rasyonel sayı", "kesir"),
@@ -1220,7 +1283,7 @@ object SoruLabCatalog {
                 topicEntry("bagil_hareket", "ayt_fizik", "Bağıl Hareket", 0, 0xFF10B981, "vector"),
                 topicEntry("newton_hareket_yasalari", "ayt_fizik", "Newton'un Hareket Yasaları", 0, 0xFF10B981, "vector"),
                 topicEntry("bir_boyutta_sabit_ivmeli", "ayt_fizik", "Bir Boyutta Sabit İvmeli Hareket", 0, 0xFF10B981, "vector"),
-                topicEntry("atislar", "ayt_fizik", "İki Boyutta Hareket (Atışlar)", 0, 0xFF10B981, "vector"),
+                topicEntry("atislar", "ayt_fizik", "Atışlar", 0, 0xFF10B981, "vector"),
                 topicEntry("enerji_ve_hareket", "ayt_fizik", "İş, Enerji ve Güç", 0, 0xFF10B981, "vector"),
                 topicEntry("itme_momentum", "ayt_fizik", "İtme ve Çizgisel Momentum", 0, 0xFF10B981, "vector"),
                 topicEntry("tork_ve_denge", "ayt_fizik", "Tork ve Denge", 0, 0xFF10B981, "vector"),

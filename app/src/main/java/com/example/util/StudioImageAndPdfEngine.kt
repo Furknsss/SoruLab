@@ -36,6 +36,31 @@ import kotlin.math.sqrt
  * 3. Flood-Fill Background Removal (Dekupe) & Alpha Bounding Box Auto-Trim (64x64 Badge)
  * 4. 60 FPS In-Memory Bitmap LruCache + Real Question Structure Verification (0 Cover/Blank Crops)
  */
+internal data class NormalizedCropBounds(
+    val top: Int,
+    val left: Int,
+    val bottom: Int,
+    val right: Int
+)
+
+internal fun normalizeCropBounds(
+    ymin: Int,
+    xmin: Int,
+    ymax: Int,
+    xmax: Int
+): NormalizedCropBounds {
+    val rawYmin = minOf(ymin, ymax)
+    val rawYmax = maxOf(ymin, ymax)
+    val rawXmin = minOf(xmin, xmax)
+    val rawXmax = maxOf(xmin, xmax)
+
+    val left = rawXmin.coerceIn(70, 870)
+    val top = rawYmin.coerceIn(100, 840)
+    val right = rawXmax.coerceIn(left + 60, 930)
+    val bottom = rawYmax.coerceIn(top + 60, 900)
+    return NormalizedCropBounds(top = top, left = left, bottom = bottom, right = right)
+}
+
 object StudioImageAndPdfEngine {
 
     private val maxCacheBytes: Int = ((Runtime.getRuntime().maxMemory() / 1024L) / 6L)
@@ -270,7 +295,7 @@ object StudioImageAndPdfEngine {
                 }
             }
         } catch (_: Exception) {
-            1
+            0
         }
     }
 
@@ -356,11 +381,16 @@ object StudioImageAndPdfEngine {
             val dir = File(context.filesDir, "question_pool_crops")
             if (!dir.exists()) dir.mkdirs()
 
-            // Strict margin filter: exclude top 10%, bottom 10%, left 7%, and right 7%
-            val leftNorm = (xminNorm1000.coerceIn(70, 900)) / 1000f
-            val topNorm = (yminNorm1000.coerceIn(100, 860)) / 1000f
-            val rightNorm = (xmaxNorm1000.coerceIn((xminNorm1000.coerceAtLeast(70)) + 60, 930)) / 1000f
-            val bottomNorm = (ymaxNorm1000.coerceIn((yminNorm1000.coerceAtLeast(100)) + 60, 900)) / 1000f
+            val bounds = normalizeCropBounds(
+                ymin = yminNorm1000,
+                xmin = xminNorm1000,
+                ymax = ymaxNorm1000,
+                xmax = xmaxNorm1000
+            )
+            val leftNorm = bounds.left / 1000f
+            val topNorm = bounds.top / 1000f
+            val rightNorm = bounds.right / 1000f
+            val bottomNorm = bounds.bottom / 1000f
 
             val x = (leftNorm * sourcePageBitmap.width).roundToInt().coerceIn(0, sourcePageBitmap.width - 16)
             val y = (topNorm * sourcePageBitmap.height).roundToInt().coerceIn(0, sourcePageBitmap.height - 16)
@@ -834,11 +864,12 @@ object StudioImageAndPdfEngine {
 
         // Match Subject via YKS Curriculum Dictionary
         val subjectKeywords = listOf(
-            "Geometri" to listOf("geometri", "üçgen", "çember", "daire", "analitik", "katı cisim", "dörtgen", "yamuk", "paralelkenar"),
-            "Fizik" to listOf("fizik", "kuvvet", "hareket", "enerji", "optik", "dalga", "elektrik", "manyetizma", "basınç", "atış", "tork", "denge", "bağıl"),
-            "Kimya" to listOf("kimya", "atom", "periyodik", "mol", "tepkime", "asit", "baz", "çözelti", "gazlar", "entalpi", "elektrokimya", "organik"),
-            "Biyoloji" to listOf("biyoloji", "hücre", "kalıtım", "ekosistem", "bölünme", "fotosentez", "solunum", "sistemler", "dna", "rna", "bitki"),
-            "Türkçe" to listOf("türkçe", "paragraf", "cümlede anlam", "sözcükte anlam", "yazım", "noktalama", "dil bilgisi", "ses bilgisi", "fiil", "anlatım")
+            "Matematik" to listOf("matematik", "fonksiyon", "polinom", "türev", "integral", "limit", "trigonometri", "logaritma", "parabol", "denklem", "eşitsizlik", "dizi", "karmaşık sayı", "oran", "orantı", "sayı basamak", "çarpanlara ayırma", "olasılık", "permütasyon", "kombinasyon", "binom"),
+            "Geometri" to listOf("geometri", "üçgen", "çember", "daire", "analitik", "katı cisim", "dörtgen", "yamuk", "paralelkenar", "prizma", "piramit"),
+            "Fizik" to listOf("fizik", "kuvvet", "newton", "ivme", "optik", "dalga", "elektrik alanı", "manyetizma", "atışlar", "tork", "denge", "bağıl hareket", "harmonik"),
+            "Kimya" to listOf("kimya", "periyodik sistem", "mol kavramı", "tepkime", "asit baz", "çözelti", "gaz yasaları", "entalpi", "elektrokimya", "organik kimya"),
+            "Biyoloji" to listOf("biyoloji", "hücre", "kalıtım", "fotosentez", "kemosentez", "solunum", "sinir sistemi", "endokrin", "dolaşım", "boşaltım", "ekoloji"),
+            "Türkçe" to listOf("türkçe", "edebiyat", "paragraf", "cümlede anlam", "sözcükte anlam", "yazım kuralları", "noktalama", "dil bilgisi", "ses bilgisi")
         )
 
         val lowerFile = cleanFileHint.lowercase()
@@ -851,7 +882,12 @@ object StudioImageAndPdfEngine {
                 break
             }
         }
-        if (detectedSubject == "Matematik") {
+        val mathIndicators = listOf("matematik", "fonksiyon", "polinom", "türev", "integral", "limit", "trigonometri", "logaritma", "parabol", "karmaşık sayı", "dizi")
+        val hasStrongMathSignal = mathIndicators.any { lowerFile.contains(it) || lowerAll.contains(it) }
+
+        if (detectedSubject == "Matematik" || hasStrongMathSignal) {
+            detectedSubject = "Matematik"
+        } else {
             var bestHits = 0
             for ((subj, keys) in subjectKeywords) {
                 val hits = keys.count { lowerAll.contains(it) }

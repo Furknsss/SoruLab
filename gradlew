@@ -116,6 +116,39 @@ esac
 
 
 
+# Auto-bootstrap JDK if neither JAVA_HOME nor java in PATH exists (fixes Vercel, v0, and blank container runs)
+if [ -z "$JAVA_HOME" ] && ! command -v java >/dev/null 2>&1; then
+    LOCAL_JDK_DIR="${HOME:-/tmp}/.sorulab_jdk/jdk-21"
+    if [ ! -x "$LOCAL_JDK_DIR/bin/java" ]; then
+        echo "=========================================================="
+        echo "SoruLab: JAVA_HOME veya java komutu bulunamadı."
+        echo "Taşınabilir Eclipse Temurin JDK 21 otomatik kuruluyor..."
+        echo "=========================================================="
+        mkdir -p "${HOME:-/tmp}/.sorulab_jdk"
+        ARCH=$(uname -m)
+        case "$ARCH" in
+            x86_64) JDK_ARCH="x64" ;;
+            aarch64|arm64) JDK_ARCH="aarch64" ;;
+            *) JDK_ARCH="x64" ;;
+        esac
+        JDK_URL="https://api.adoptium.net/v3/binary/latest/21/ga/linux/${JDK_ARCH}/jdk/hotspot/normal/eclipse"
+        if command -v curl >/dev/null 2>&1; then
+            curl -L -s "$JDK_URL" | tar -xz -C "${HOME:-/tmp}/.sorulab_jdk" 2>/dev/null || true
+        elif command -v wget >/dev/null 2>&1; then
+            wget -qO- "$JDK_URL" 2>/dev/null | tar -xz -C "${HOME:-/tmp}/.sorulab_jdk" 2>/dev/null || true
+        fi
+        EXTRACTED_DIR=$(find "${HOME:-/tmp}/.sorulab_jdk" -maxdepth 1 -type d -name "jdk-21*" 2>/dev/null | head -n 1)
+        if [ -n "$EXTRACTED_DIR" ] && [ -x "$EXTRACTED_DIR/bin/java" ]; then
+            mv "$EXTRACTED_DIR" "$LOCAL_JDK_DIR"
+            echo "SoruLab: JDK 21 başarıyla kuruldu -> $LOCAL_JDK_DIR"
+        fi
+    fi
+    if [ -x "$LOCAL_JDK_DIR/bin/java" ]; then
+        export JAVA_HOME="$LOCAL_JDK_DIR"
+        export PATH="$JAVA_HOME/bin:$PATH"
+    fi
+fi
+
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
     if [ -x "$JAVA_HOME/jre/sh/java" ] ; then

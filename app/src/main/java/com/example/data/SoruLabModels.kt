@@ -661,6 +661,13 @@ object SoruLabCatalog {
         suggestedTopicName: String = ""
     ): Pair<YksSubject, YksTopic>? {
         val normalizedText = questionText.lowercase()
+        val normalizedSubjectHint = subjectNameHint
+            .replace("TYT ", "", ignoreCase = true)
+            .replace("AYT ", "", ignoreCase = true)
+            .trim()
+        val isMathContext = normalizedSubjectHint.isBlank() ||
+            normalizedSubjectHint.contains("matematik", ignoreCase = true) ||
+            normalizedSubjectHint.contains("geometri", ignoreCase = true)
         val hasDerivativeSymbol = normalizedText.contains("'") ||
             normalizedText.contains("′") ||
             Regex("""\bd\s*/\s*dx\b""").containsMatchIn(normalizedText) ||
@@ -668,31 +675,34 @@ object SoruLabCatalog {
 
         // KATI YKS ANAHTAR KELİME SINIFLANDIRICISI (Rastgele veya dosya adına göre atamayı KESİNLİKLE engeller)
         val forcedTopicName = when {
-            // 1. İçinde P(x), Q(x), polinom, derece, bölümünden kalan, başkatsayı geçenler -> KESİNLİKLE Polinomlar
-            Regex("""\b[qp]\s*\(\s*x\s*\)""", RegexOption.IGNORE_CASE).containsMatchIn(questionText) ||
-                listOf("polinom", "derece", "bölümünden kalan", "bolumunden kalan", "başkatsayı", "baskatsayi", "katsayılar toplamı", "sabit terim").any(normalizedText::contains) ->
-                "Polinomlar"
+            // Matematik/geometri dışındaki derslerde "derece", "artan", "teğet" gibi
+            // ortak kelimeler AYT Matematik konusuna zorla taşınmamalıdır.
+            isMathContext && (
+                // 1. Polinom göstergeleri -> Polinomlar
+                Regex("""\b[qp]\s*\(\s*x\s*\)""", RegexOption.IGNORE_CASE).containsMatchIn(questionText) ||
+                    listOf("polinom", "derece", "bölümünden kalan", "bolumunden kalan", "başkatsayı", "baskatsayi", "katsayılar toplamı", "sabit terim").any(normalizedText::contains)
+                ) -> "Polinomlar"
 
-            // 2. İçinde i^2 = -1, Re(z), Im(z), eşlenik, karmaşık geçenler -> Karmaşık Sayılar
-            Regex("""i\s*\^?\s*2\s*=\s*-1|i²\s*=\s*-1|re\s*\(\s*z\s*\)|im\s*\(\s*z\s*\)""", RegexOption.IGNORE_CASE)
-                .containsMatchIn(questionText) ||
-                listOf("eşlenik", "eslenik", "karmaşık", "karmasik", "sanal birim", "z = a + ib").any(normalizedText::contains) ->
-                "Karmaşık Sayılar"
+            isMathContext && (
+                // 2. Karmaşık sayı göstergeleri -> Karmaşık Sayılar
+                Regex("""i\s*\^?\s*2\s*=\s*-1|i²\s*=\s*-1|re\s*\(\s*z\)|im\s*\(\s*z\)""", RegexOption.IGNORE_CASE)
+                    .containsMatchIn(questionText) ||
+                    listOf("eşlenik", "eslenik", "karmaşık", "karmasik", "sanal birim", "z = a + ib").any(normalizedText::contains)
+                ) -> "Karmaşık Sayılar"
 
-            // 3. İçinde tepe noktası, parabol, simetri ekseni geçenler -> Parabol
-            listOf("tepe noktası", "tepe noktasi", "parabol", "simetri ekseni", "f(x) = ax^2", "f(x) = ax²").any(normalizedText::contains) ->
+            isMathContext && listOf("tepe noktası", "tepe noktasi", "parabol", "simetri ekseni", "f(x) = ax^2", "f(x) = ax²").any(normalizedText::contains) ->
                 "Parabol"
 
-            // 4. İçinde f'(x), g'(x), dy/dx, türev, teğet, ekstremum geçenler -> KESİNLİKLE Türev (Asla Limit'e atma!)
-            hasDerivativeSymbol ||
-                listOf("türev", "turev", "teğet", "teget", "ekstremum", "yerel maksimum", "yerel minimum", "artan", "azalan").any(normalizedText::contains) ->
-                "Türev Alma Kuralları"
+            isMathContext && (
+                // Türev sinyali limit sinyalinden önce değerlendirilir.
+                hasDerivativeSymbol ||
+                    listOf("türev", "turev", "teğet", "teget", "ekstremum", "yerel maksimum", "yerel minimum", "artan", "azalan").any(normalizedText::contains)
+                ) -> "Türev Alma Kuralları"
 
-            // 5. İçinde lim, süreklilik geçen ve türev sembolü (', dy/dx) OLMAYANLAR -> Limit ve Süreklilik
-            !hasDerivativeSymbol &&
-                (Regex("""\blim(?:\b|[_\s({])""").containsMatchIn(normalizedText) ||
-                    listOf("limit", "süreklilik", "sureklilik", "sağdan limit", "sagdan limit", "soldan limit", "belirsizlik").any(normalizedText::contains)) ->
-                "Limit ve Süreklilik"
+            isMathContext && !hasDerivativeSymbol && (
+                Regex("""\blim(?:\b|[_\s({])""").containsMatchIn(normalizedText) ||
+                    listOf("limit", "süreklilik", "sureklilik", "sağdan limit", "sagdan limit", "soldan limit", "belirsizlik").any(normalizedText::contains)
+                ) -> "Limit ve Süreklilik"
 
             else -> ""
         }
@@ -767,7 +777,7 @@ object SoruLabCatalog {
         "belirli_integral_alan" to listOf("belirli integral", "integral ve alan", "boyalı bölgenin alanı", "riemann"),
         // TYT Matematik
         "temel_kavramlar" to listOf("temel kavram", "rakam", "tam sayı", "doğal sayı", "ardışık", "asal sayı", "faktöriyel"),
-        "sayi_basamaklari" to listOf("sayı basamak", "iki basamaklı", "üç basamaklı", "çözümleme"),
+        "sayi_basamaklari" to listOf("sayı basamak", "iki basamaklı", "üç basamaklı", "��özümleme"),
         "bolme_bolunebilme" to listOf("bölme", "bölünebilme", "kalan"),
         "ebob_ekok" to listOf("ebob", "ekok", "ortak bölen", "ortak kat"),
         "rasyonel_sayilar" to listOf("rasyonel sayı", "kesir"),

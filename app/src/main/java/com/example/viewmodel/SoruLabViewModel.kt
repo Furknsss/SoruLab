@@ -2083,7 +2083,7 @@ class SoruLabViewModel(
                         topicId = topicId,
                         topicName = resolvedTopicName,
                         difficulty = firestoreCompatDiff,
-                        correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty(),
+                        correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "D",
                         questionText = item.questionText.ifBlank { "$resolvedSubjectName • $resolvedTopicName" }.take(1800),
                         publisherTag = finalPubName,
                         aiSolutionSummary = packedSolution,

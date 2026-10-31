@@ -82,6 +82,34 @@ class SoruLabQuestionClassificationTest {
     }
 
     @Test
+    fun physicsQuestionWithDegreeDoesNotJumpToAytMathPolynomial() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Fizik",
+            questionText = "Bir cisim 30 derece açıyla atılıyor. Menzili kaç metredir?",
+            suggestedTopicName = "Atışlar"
+        )
+
+        assertNotNull(result)
+        assertEquals("Fizik", result?.first?.name)
+        assertEquals("Atışlar", result?.second?.name)
+    }
+
+    @Test
+    fun suggestedPageTopicCannotOverrideMathSpecificSignal() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Matematik",
+            questionText = "P(x) polinomunun derecesi 4 olduğuna göre kalan kaçtır?",
+            suggestedTopicName = "Limit ve Süreklilik"
+        )
+
+        assertNotNull(result)
+        assertEquals("Matematik", result?.first?.name)
+        assertEquals("Polinomlar", result?.second?.name)
+    }
+
+    @Test
     fun suggestedPageTopicIsUsedWhenQuestionTextHasNoTopicSignal() {
         val result = SoruLabCatalog.classifyQuestionTopicFromText(
             examTypeHint = "AYT",

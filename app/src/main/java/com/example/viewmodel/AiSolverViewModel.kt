@@ -316,20 +316,9 @@ class AiSolverViewModel : ViewModel() {
 
         viewModelScope.launch {
             val fullPrompt = buildString {
-                appendLine("Sen Türkiye'nin en iyi YKS (TYT/AYT) soru çözüm öğretmeni olan SoruLab AI'sın.")
-                appendLine("Yalnızca verilen soru verilerine dayanarak 3 aşamalı çözümü (1. Kritik Bilgi & Teorem, 2. Adım Adım Çözüm, 3. ÖSYM Tuzak Notu) açıkla:")
-                appendLine("Yayın: ${question.publisherName}")
-                appendLine("Konu: ${question.topicHeader}")
-                if (question.stemTop.isNotBlank()) {
-                    appendLine("Soru Kökü: ${question.stemTop}")
-                }
-                if (question.bulletsOrSteps.isNotEmpty()) {
-                    appendLine("Öncüller/Veriler:\n${question.bulletsOrSteps.joinToString("\n")}")
-                }
-                appendLine("Kesin Doğru Cevap (Cevap Anahtarı): ${question.correctOption}")
-                if (question.stepByStepSolution.isNotBlank()) {
-                    appendLine("Referans Çözüm Özeti: ${question.stepByStepSolution}")
-                }
+                appendLine(SorulabAiQuality.SYSTEM_INSTRUCTION)
+                appendLine("Yanıt formatı: 1) Kritik Bilgi & Teorem 2) Adım Adım Çözüm 3) ÖSYM Tuzak Notu")
+                appendLine(SorulabAiQuality.questionContext(question))
                 if (customPrompt.isNotBlank()) {
                     appendLine("Öğrencinin Özel Sorusu: $customPrompt")
                 }
@@ -370,8 +359,7 @@ class AiSolverViewModel : ViewModel() {
                 _messages.value = _messages.value + AiChatMessage(
                     id = "ai_${System.currentTimeMillis()}",
                     isUser = false,
-                    text = "Adım Adım Çözüm (${question.topicHeader} - Soru ${question.number}):\n\n" +
-                        "${question.stepByStepSolution}\n\nDoğru Seçenek: ${question.correctOption}"
+                        text = SorulabAiQuality.fallbackNotice(question)
                 )
             } catch (_: Exception) {
                 _messages.value = _messages.value + AiChatMessage(
@@ -404,12 +392,8 @@ class AiSolverViewModel : ViewModel() {
             }
 
             val prompt = buildString {
-                appendLine("Sen uzman bir YKS (TYT/AYT) öğretmenisin.")
-                appendLine("Konu: ${question.topicHeader}")
-                appendLine("Cevap Anahtarındaki Doğru Seçenek: ${question.correctOption}")
-                if (question.stemTop.isNotBlank()) {
-                    appendLine("Soru Bilgisi: ${question.stemTop}")
-                }
+                appendLine(SorulabAiQuality.SYSTEM_INSTRUCTION)
+                appendLine(SorulabAiQuality.questionContext(question))
                 appendLine("Görseldeki soruyu dikkatle incele ve çözümü kesinlikle şu 3 aşamalı formatta net Türkçe ile yaz:")
                 appendLine("📌 Kritik Bilgi & Teorem: [Sorunun çözümünde kullanılan temel formül, kazanım ve teorem]")
                 appendLine("✏️ Adım Adım Çözüm: [1. Adım, 2. Adım ve 3. Adım olarak sonucun neden ${question.correctOption} seçeneği olduğunu işlemli göster]")

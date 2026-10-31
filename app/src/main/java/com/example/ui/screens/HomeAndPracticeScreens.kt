@@ -87,103 +87,108 @@ fun FloatingCircularBottomNav(
     onSelectTab: (MainNavTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(78.dp),
-        contentAlignment = Alignment.BottomCenter
+            .height(72.dp),
+        color = Color.White,
+        shadowElevation = 8.dp
     ) {
-        Surface(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp)
-                .shadow(
-                    elevation = 10.dp,
-                    ambientColor = Color.Black.copy(alpha = 0.10f),
-                    spotColor = Color.Black.copy(alpha = 0.10f)
-                ),
-            color = Color(0xFFF6F7FB),
-            tonalElevation = 2.dp
+                .fillMaxSize()
+                .drawWithCache {
+                    val borderPaintColor = Color(0xFFE2E8F0)
+                    onDrawBehind {
+                        drawLine(
+                            color = borderPaintColor,
+                            start = Offset(0f, 0f),
+                            end = Offset(size.width, 0f),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                    }
+                }
         ) {
-            Box(
+            Row(
                 modifier = Modifier
+                    .widthIn(max = 640.dp)
                     .fillMaxSize()
-                    .border(width = 0.8.dp, color = Color(0xFFE2E6F0))
-            )
-        }
+                    .align(Alignment.Center)
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                MainNavTab.entries.forEach { tab ->
+                    val isSelected = selectedTab == tab
+                    val tabTitle = when (tab) {
+                        MainNavTab.ANA_SAYFA -> "Ana Sayfa"
+                        MainNavTab.SORU_PRATIGI -> "Pratik"
+                        MainNavTab.DENEMELER -> "Denemeler"
+                        MainNavTab.ISTATISTIKLERIM -> "İstatistik"
+                    }
+                    val activeScale by animateFloatAsState(
+                        targetValue = if (isSelected) 1f else 0.94f,
+                        animationSpec = spring(dampingRatio = 0.75f, stiffness = 400f),
+                        label = "nav_tab_scale"
+                    )
 
-        Row(
-            modifier = Modifier
-                .widthIn(max = 760.dp)
-                .fillMaxWidth()
-                .fillMaxHeight()
-                .padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.Bottom
-        ) {
-            MainNavTab.entries.forEach { tab ->
-                val isSelected = selectedTab == tab
-                val interactionSource = remember { MutableInteractionSource() }
-                val activeScale by animateFloatAsState(
-                    targetValue = if (isSelected) 1f else 0.90f,
-                    animationSpec = spring(dampingRatio = 0.68f, stiffness = 420f),
-                    label = "nav_tab_scale"
-                )
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable(
-                            interactionSource = interactionSource,
-                            indication = null
-                        ) { onSelectTab(tab) }
-                        .testTag("nav_tab_${tab.name.lowercase()}"),
-                    contentAlignment = if (isSelected) Alignment.TopCenter else Alignment.BottomCenter
-                ) {
-                    if (isSelected) {
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 4.dp)
-                                .size(62.dp)
-                                .graphicsLayer {
-                                    scaleX = activeScale
-                                    scaleY = activeScale
-                                }
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(Color(0xFF42316B), Color(0xFF35265A))
-                                    )
-                                )
-                                .border(2.dp, Color.White.copy(alpha = 0.85f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            BottomNavCustomIcon(
-                                tab = tab,
-                                isSelected = true
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { onSelectTab(tab) }
+                            .testTag("nav_tab_${tab.name.lowercase()}"),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        if (isSelected) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .graphicsLayer {
+                                        scaleX = activeScale
+                                        scaleY = activeScale
+                                    }
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF2563EB))
+                                    .shadow(
+                                        elevation = 4.dp,
+                                        shape = CircleShape,
+                                        ambientColor = Color(0xFF2563EB).copy(alpha = 0.35f)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                BottomNavTabIcon(tab = tab, isSelected = true)
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = tabTitle,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                ),
+                                color = Color(0xFF2563EB),
+                                maxLines = 1
                             )
-                        }
-                    } else {
-                        Column(
-                            modifier = Modifier.padding(bottom = 8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            BottomNavCustomIcon(
-                                tab = tab,
-                                isSelected = false
-                            )
+                        } else {
+                            Box(
+                                modifier = Modifier.size(28.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                BottomNavTabIcon(tab = tab, isSelected = false)
+                            }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = tab.title,
+                                text = tabTitle,
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 11.sp
                                 ),
-                                color = Color(0xFF7C8698),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                color = Color(0xFF94A3B8),
+                                maxLines = 1
                             )
                         }
                     }
@@ -194,126 +199,176 @@ fun FloatingCircularBottomNav(
 }
 
 @Composable
-private fun BottomNavCustomIcon(
+private fun BottomNavTabIcon(
     tab: MainNavTab,
     isSelected: Boolean
 ) {
-    val activeColor = Color.White
-    val inactiveColor = Color(0xFFB4BCC8)
-
+    val tint = if (isSelected) Color.White else Color(0xFF94A3B8)
     Canvas(
-        modifier = Modifier.size(if (isSelected) 28.dp else 25.dp)
+        modifier = Modifier.size(if (isSelected) 22.dp else 24.dp)
     ) {
         val w = size.width
         val h = size.height
-        val tint = if (isSelected) activeColor else inactiveColor
+        val strokeWidth = 2.dp.toPx()
 
         when (tab) {
             MainNavTab.ANA_SAYFA -> {
                 val housePath = Path().apply {
-                    moveTo(w * 0.50f, h * 0.10f)
-                    lineTo(w * 0.90f, h * 0.42f)
+                    moveTo(w * 0.50f, h * 0.12f)
+                    lineTo(w * 0.90f, h * 0.44f)
                     lineTo(w * 0.82f, h * 0.88f)
                     lineTo(w * 0.18f, h * 0.88f)
-                    lineTo(w * 0.10f, h * 0.42f)
+                    lineTo(w * 0.10f, h * 0.44f)
                     close()
                 }
-                drawPath(
-                    path = housePath,
-                    color = tint,
-                    style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                )
-                drawPath(
-                    path = housePath,
-                    color = tint
-                )
-                val cutoutColor = if (isSelected) Color(0xFF392960) else Color(0xFFF6F7FB)
-                drawArc(
-                    color = cutoutColor,
-                    startAngle = 20f,
-                    sweepAngle = 140f,
-                    useCenter = false,
-                    topLeft = Offset(w * 0.34f, h * 0.52f),
-                    size = Size(w * 0.32f, h * 0.22f),
-                    style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round)
-                )
+                if (isSelected) {
+                    drawPath(path = housePath, color = tint)
+                    drawRoundRect(
+                        color = Color(0xFF2563EB),
+                        topLeft = Offset(w * 0.40f, h * 0.54f),
+                        size = Size(w * 0.20f, h * 0.34f),
+                        cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                    )
+                } else {
+                    drawPath(
+                        path = housePath,
+                        color = tint,
+                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    )
+                    drawRoundRect(
+                        color = tint,
+                        topLeft = Offset(w * 0.40f, h * 0.54f),
+                        size = Size(w * 0.20f, h * 0.34f),
+                        cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx()),
+                        style = Stroke(width = strokeWidth * 0.8f)
+                    )
+                }
             }
 
             MainNavTab.SORU_PRATIGI -> {
-                val nibCutout = if (isSelected) Color(0xFF392960) else Color(0xFFF6F7FB)
-                val penPath = Path().apply {
-                    moveTo(w * 0.50f, h * 0.10f)
-                    lineTo(w * 0.72f, h * 0.38f)
-                    lineTo(w * 0.72f, h * 0.86f)
-                    lineTo(w * 0.28f, h * 0.86f)
-                    lineTo(w * 0.28f, h * 0.38f)
-                    close()
+                val handlePath = Path().apply {
+                    moveTo(w * 0.36f, h * 0.22f)
+                    cubicTo(w * 0.36f, h * 0.10f, w * 0.64f, h * 0.10f, w * 0.64f, h * 0.22f)
                 }
-                drawPath(path = penPath, color = tint)
-                drawLine(
-                    color = nibCutout,
-                    start = Offset(w * 0.26f, h * 0.40f),
-                    end = Offset(w * 0.74f, h * 0.40f),
-                    strokeWidth = 2.2.dp.toPx()
+                drawPath(
+                    path = handlePath,
+                    color = tint,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                 )
-                drawLine(
-                    color = nibCutout,
-                    start = Offset(w * 0.50f, h * 0.40f),
-                    end = Offset(w * 0.50f, h * 0.86f),
-                    strokeWidth = 2.2.dp.toPx()
+                drawRoundRect(
+                    color = tint,
+                    topLeft = Offset(w * 0.14f, h * 0.24f),
+                    size = Size(w * 0.72f, h * 0.64f),
+                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
+                    style = if (isSelected) androidx.compose.ui.graphics.drawscope.Fill else Stroke(width = strokeWidth)
                 )
+                if (isSelected) {
+                    drawLine(
+                        color = Color(0xFF2563EB),
+                        start = Offset(w * 0.14f, h * 0.48f),
+                        end = Offset(w * 0.86f, h * 0.48f),
+                        strokeWidth = strokeWidth
+                    )
+                    drawRoundRect(
+                        color = Color(0xFF2563EB),
+                        topLeft = Offset(w * 0.42f, h * 0.42f),
+                        size = Size(w * 0.16f, h * 0.14f),
+                        cornerRadius = CornerRadius(1.5.dp.toPx(), 1.5.dp.toPx())
+                    )
+                } else {
+                    drawLine(
+                        color = tint,
+                        start = Offset(w * 0.14f, h * 0.48f),
+                        end = Offset(w * 0.86f, h * 0.48f),
+                        strokeWidth = strokeWidth * 0.8f
+                    )
+                    drawRoundRect(
+                        color = tint,
+                        topLeft = Offset(w * 0.42f, h * 0.42f),
+                        size = Size(w * 0.16f, h * 0.14f),
+                        cornerRadius = CornerRadius(1.5.dp.toPx(), 1.5.dp.toPx()),
+                        style = Stroke(width = strokeWidth * 0.8f)
+                    )
+                }
             }
 
             MainNavTab.DENEMELER -> {
-                // Clean Exam Booklet / Optical Form Sheet icon for "Denemeler"
-                val cutout = if (isSelected) Color(0xFF392960) else Color(0xFFF6F7FB)
                 drawRoundRect(
                     color = tint,
-                    topLeft = Offset(w * 0.18f, h * 0.12f),
-                    size = Size(w * 0.64f, h * 0.76f),
-                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                    topLeft = Offset(w * 0.36f, h * 0.10f),
+                    size = Size(w * 0.28f, h * 0.14f),
+                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx()),
+                    style = if (isSelected) androidx.compose.ui.graphics.drawscope.Fill else Stroke(width = strokeWidth)
                 )
-                // Optical form lines & bubbles inside the exam sheet
+                drawRoundRect(
+                    color = tint,
+                    topLeft = Offset(w * 0.18f, h * 0.18f),
+                    size = Size(w * 0.64f, h * 0.72f),
+                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
+                    style = if (isSelected) androidx.compose.ui.graphics.drawscope.Fill else Stroke(width = strokeWidth)
+                )
+                val lineTint = if (isSelected) Color(0xFF2563EB) else tint
                 drawLine(
-                    color = cutout,
-                    start = Offset(w * 0.30f, h * 0.32f),
-                    end = Offset(w * 0.70f, h * 0.32f),
-                    strokeWidth = 2.2.dp.toPx(),
+                    color = lineTint,
+                    start = Offset(w * 0.32f, h * 0.42f),
+                    end = Offset(w * 0.68f, h * 0.42f),
+                    strokeWidth = strokeWidth,
                     cap = StrokeCap.Round
                 )
                 drawLine(
-                    color = cutout,
-                    start = Offset(w * 0.30f, h * 0.50f),
-                    end = Offset(w * 0.70f, h * 0.50f),
-                    strokeWidth = 2.2.dp.toPx(),
+                    color = lineTint,
+                    start = Offset(w * 0.32f, h * 0.58f),
+                    end = Offset(w * 0.68f, h * 0.58f),
+                    strokeWidth = strokeWidth,
                     cap = StrokeCap.Round
                 )
                 drawLine(
-                    color = cutout,
-                    start = Offset(w * 0.30f, h * 0.68f),
-                    end = Offset(w * 0.56f, h * 0.68f),
-                    strokeWidth = 2.2.dp.toPx(),
+                    color = lineTint,
+                    start = Offset(w * 0.32f, h * 0.72f),
+                    end = Offset(w * 0.52f, h * 0.72f),
+                    strokeWidth = strokeWidth,
                     cap = StrokeCap.Round
                 )
             }
 
             MainNavTab.ISTATISTIKLERIM -> {
-                drawArc(
-                    color = tint,
-                    startAngle = 15f,
-                    sweepAngle = 255f,
-                    useCenter = true,
-                    topLeft = Offset(w * 0.12f, h * 0.14f),
-                    size = Size(w * 0.72f, h * 0.72f)
-                )
-                drawArc(
-                    color = tint,
-                    startAngle = -85f,
-                    sweepAngle = 85f,
-                    useCenter = true,
-                    topLeft = Offset(w * 0.20f, h * 0.08f),
-                    size = Size(w * 0.72f, h * 0.72f)
-                )
+                if (isSelected) {
+                    drawArc(
+                        color = tint,
+                        startAngle = 15f,
+                        sweepAngle = 250f,
+                        useCenter = true,
+                        topLeft = Offset(w * 0.12f, h * 0.14f),
+                        size = Size(w * 0.76f, h * 0.76f)
+                    )
+                    drawArc(
+                        color = tint,
+                        startAngle = -80f,
+                        sweepAngle = 75f,
+                        useCenter = true,
+                        topLeft = Offset(w * 0.20f, h * 0.08f),
+                        size = Size(w * 0.76f, h * 0.76f)
+                    )
+                } else {
+                    drawArc(
+                        color = tint,
+                        startAngle = 20f,
+                        sweepAngle = 245f,
+                        useCenter = false,
+                        topLeft = Offset(w * 0.12f, h * 0.14f),
+                        size = Size(w * 0.76f, h * 0.76f),
+                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                    )
+                    drawArc(
+                        color = tint,
+                        startAngle = -75f,
+                        sweepAngle = 70f,
+                        useCenter = true,
+                        topLeft = Offset(w * 0.22f, h * 0.08f),
+                        size = Size(w * 0.72f, h * 0.72f),
+                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                    )
+                }
             }
         }
     }
@@ -352,19 +407,23 @@ fun AnaSayfaScreen(
         when {
             parts.size >= 2 -> "${parts.first().first().uppercaseChar()}${parts.last().first().uppercaseChar()}"
             parts.size == 1 -> parts.first().take(2).uppercase()
-            else -> "ÖĞ"
+            else -> "KE"
         }
+    }
+
+    val firstName = remember(userName) {
+        userName.trim().split(" ").firstOrNull()?.takeIf { it.isNotBlank() } ?: "Ken"
     }
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFEDF2F8))
+            .background(Color(0xFFF8FAFD))
             .testTag("ana_sayfa_list"),
-        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 112.dp),
+        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. Top Executive Bar: Left Brand Identity + Right [Student Name on Left + Profile Photo on Right]
+        // 1. Top Header Bar: Left Brand Identity + Right User Chip with Initials & Online Status
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -377,45 +436,65 @@ fun AnaSayfaScreen(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(44.dp)
                             .clip(RoundedCornerShape(13.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color(0xFF0F2557), Color(0xFF1D4ED8))
-                                )
-                            )
-                            .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(13.dp)),
+                            .background(Color(0xFF2563EB))
+                            .shadow(
+                                elevation = 4.dp,
+                                shape = RoundedCornerShape(13.dp),
+                                ambientColor = Color(0xFF2563EB).copy(alpha = 0.35f)
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Filled.School,
                             contentDescription = "SoruLab",
                             tint = Color.White,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                     Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "SoruLab",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 20.sp
+                                ),
+                                color = Color(0xFF0F172A)
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFFEFF6FF),
+                                border = BorderStroke(1.dp, Color(0xFFBFDBFE))
+                            ) {
+                                Text(
+                                    text = "YKS 2026",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = Color(0xFF2563EB),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                         Text(
-                            text = "SoruLab",
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 20.sp
-                            ),
-                            color = Color(0xFF0F172A)
-                        )
-                        Text(
-                            text = "AKILLI YKS LABORATUVARI",
+                            text = "AKILLI HAZIRLIK SİSTEMİ",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp,
-                                letterSpacing = 0.7.sp
+                                letterSpacing = 0.8.sp
                             ),
-                            color = Color(0xFF475569)
+                            color = Color(0xFF64748B)
                         )
                     }
                 }
 
-                // Top-Right Student Name (on left) + Profile Photo Avatar (on right)
+                // Right Profile Chip Button (Matches Google Stitch Spec)
                 Surface(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
@@ -426,65 +505,58 @@ fun AnaSayfaScreen(
                         .testTag("profile_header_button"),
                     shape = RoundedCornerShape(50),
                     color = Color.White,
-                    shadowElevation = 4.dp
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    shadowElevation = 2.dp
                 ) {
                     Row(
-                        modifier = Modifier
-                            .border(1.2.dp, Color(0xFFD5E0F0), RoundedCornerShape(50))
-                            .padding(start = 14.dp, end = 5.dp, top = 5.dp, bottom = 5.dp),
+                        modifier = Modifier.padding(start = 14.dp, end = 5.dp, top = 5.dp, bottom = 5.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
-                                text = userName,
+                                text = firstName,
                                 style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 13.5.sp
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
                                 ),
                                 color = Color(0xFF0F172A),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "Profil • Soru Havuzu",
+                                text = "Soru Havuzu",
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.2.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium
                                 ),
-                                color = Color(0xFF1D4ED8)
+                                color = Color(0xFF64748B)
                             )
                         }
 
-                        // Profile Photo Avatar with Active Status Ring
                         Box(contentAlignment = Alignment.BottomEnd) {
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
+                                    .size(36.dp)
                                     .clip(CircleShape)
-                                    .background(
-                                        Brush.linearGradient(
-                                            listOf(Color(0xFF1D4ED8), Color(0xFF1E3A8A))
-                                        )
-                                    )
-                                    .border(2.dp, Color(0xFFDBEAFE), CircleShape),
+                                    .background(Color(0xFF0F172A)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = initials,
                                     style = MaterialTheme.typography.labelLarge.copy(
                                         fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 14.sp
+                                        fontSize = 13.sp
                                     ),
                                     color = Color.White
                                 )
                             }
                             Box(
                                 modifier = Modifier
-                                    .size(11.dp)
+                                    .size(10.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFF16A34A))
-                                    .border(1.8.dp, Color.White, CircleShape)
+                                    .background(Color(0xFF10B981))
+                                    .border(1.5.dp, Color.White, CircleShape)
                             )
                         }
                     }
@@ -492,12 +564,12 @@ fun AnaSayfaScreen(
             }
         }
 
-        // 2. Premium "Hoş Geldiniz" Architectural Hero Banner (No Countdown Timer)
+        // 2. Premium Midnight Blue Hero Card (Google Stitch Spec)
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(26.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White)
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0B1528))
             ) {
                 Box(
                     modifier = Modifier
@@ -505,100 +577,210 @@ fun AnaSayfaScreen(
                         .background(
                             Brush.linearGradient(
                                 colors = listOf(
-                                    Color(0xFFFFFFFF),
-                                    Color(0xFFF4F8FF),
-                                    Color(0xFFE8F0FF)
+                                    Color(0xFF0B1528),
+                                    Color(0xFF132A55),
+                                    Color(0xFF183870)
                                 )
                             )
                         )
-                        .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(26.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(26.dp))
                         .drawWithCache {
-                            val ringColor = Color(0xFF2563EB).copy(alpha = 0.08f)
-                            val accentGlow = Color(0xFF60A5FA).copy(alpha = 0.16f)
+                            val ringColor = Color(0xFF38BDF8).copy(alpha = 0.06f)
+                            val accentGlow = Color(0xFF2563EB).copy(alpha = 0.15f)
                             onDrawBehind {
                                 drawCircle(
                                     color = accentGlow,
-                                    radius = size.width * 0.34f,
+                                    radius = size.width * 0.40f,
                                     center = Offset(size.width * 0.90f, size.height * 0.20f)
                                 )
                                 drawCircle(
                                     color = ringColor,
-                                    radius = size.width * 0.26f,
+                                    radius = size.width * 0.28f,
                                     center = Offset(size.width * 0.88f, size.height * 0.22f),
                                     style = Stroke(width = 2.dp.toPx())
                                 )
-                                drawCircle(
-                                    color = ringColor,
-                                    radius = size.width * 0.16f,
-                                    center = Offset(size.width * 0.88f, size.height * 0.22f),
-                                    style = Stroke(width = 1.5.dp.toPx())
-                                )
                             }
                         }
-                        .padding(22.dp)
+                        .padding(20.dp)
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Text(
-                            text = "Hoş geldiniz, $userName",
-                            style = MaterialTheme.typography.headlineSmall.copy(
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 22.sp
-                            ),
-                            color = Color(0xFF0F172A)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "HEDEF: İLK 5.000",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 12.sp,
+                                    letterSpacing = 0.8.sp
+                                ),
+                                color = Color(0xFF38BDF8)
+                            )
 
-                        // Real Live Status Strip inside Welcome Card
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color.White.copy(alpha = 0.12f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Text(
+                                        text = "★",
+                                        color = Color(0xFFFBBF24),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "4 Gün Seri",
+                                        color = Color(0xFFFDE68A),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.5.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "Hoş geldin, $firstName",
+                                style = MaterialTheme.typography.headlineMedium.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 24.sp
+                                ),
+                                color = Color.White
+                            )
+                            Text(
+                                text = "👋",
+                                fontSize = 24.sp
+                            )
+                        }
+
+                        // Translucent Real Live Metrics Strip
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0xFF0F2557).copy(alpha = 0.06f))
-                                .border(1.dp, Color(0xFF2563EB).copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                                .background(Color(0xFF0A162B).copy(alpha = 0.65f))
+                                .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
+                                .padding(vertical = 14.dp, horizontal = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            HeroMetricColumn(value = "$totalSolvedTests", label = "Çözülen Test")
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "$totalSolvedTests",
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 22.sp
+                                    ),
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Çözülen Test",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = Color(0xFF94A3B8)
+                                )
+                            }
                             Box(
                                 modifier = Modifier
                                     .width(1.dp)
-                                    .height(26.dp)
-                                    .background(Color(0xFF2563EB).copy(alpha = 0.16f))
+                                    .height(30.dp)
+                                    .background(Color.White.copy(alpha = 0.12f))
                             )
-                            HeroMetricColumn(value = "$totalSolvedQuestions", label = "Çözülen Soru")
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "$totalSolvedQuestions",
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 22.sp
+                                    ),
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Çözülen Soru",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = Color(0xFF94A3B8)
+                                )
+                            }
                             Box(
                                 modifier = Modifier
                                     .width(1.dp)
-                                    .height(26.dp)
-                                    .background(Color(0xFF2563EB).copy(alpha = 0.16f))
+                                    .height(30.dp)
+                                    .background(Color.White.copy(alpha = 0.12f))
                             )
-                            HeroMetricColumn(value = "$customQuestionsCount", label = "Havuz Sorusu")
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "$customQuestionsCount",
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 22.sp
+                                    ),
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Havuz Sorusu",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = Color(0xFF94A3B8)
+                                )
+                            }
                         }
 
+                        // Action Buttons: White primary button + glassy dark secondary button
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Button(
                                 onClick = { onNavigateTab(MainNavTab.SORU_PRATIGI) },
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color.White,
-                                    contentColor = Color(0xFF0F2557)
+                                    contentColor = Color(0xFF0F172A)
                                 ),
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .height(46.dp)
+                                    .weight(1.25f)
+                                    .height(48.dp)
                                     .testTag("hero_soru_pratigi_button")
                             ) {
                                 Text(
-                                    text = "Soru Pratiğine Geç",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold)
+                                    text = "Soru Pratiğine Başla",
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                                     contentDescription = null,
+                                    tint = Color(0xFF2563EB),
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
@@ -606,15 +788,30 @@ fun AnaSayfaScreen(
                             OutlinedButton(
                                 onClick = { onNavigateTab(MainNavTab.DENEMELER) },
                                 shape = RoundedCornerShape(14.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF2563EB).copy(alpha = 0.28f)),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = Color.White.copy(alpha = 0.12f),
+                                    contentColor = Color.White
+                                ),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f)),
                                 modifier = Modifier
-                                    .height(46.dp)
+                                    .weight(0.95f)
+                                    .height(48.dp)
                                     .testTag("hero_denemeler_button")
                             ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Assignment,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "Denemeler",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                    color = Color(0xFF1D4ED8)
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    ),
+                                    color = Color.White
                                 )
                             }
                         }
@@ -623,7 +820,7 @@ fun AnaSayfaScreen(
             }
         }
 
-        // 3. Premium "Son Çözülen Test" Section (100% Real Data — 0 Hallucination Policy)
+        // 3. Premium "SON ÇÖZÜLEN TEST" Section with 4-Pack Metrics (DOĞRU, YANLIŞ, BOŞ, NET)
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
@@ -640,23 +837,34 @@ fun AnaSayfaScreen(
                                 .width(4.dp)
                                 .height(18.dp)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0xFF1D4ED8))
+                                .background(Color(0xFF2563EB))
                         )
                         Text(
-                            text = "Son Çözülen Test",
+                            text = "SON ÇÖZÜLEN TEST",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 18.sp
+                                fontSize = 15.sp,
+                                letterSpacing = 0.5.sp
                             ),
                             color = Color(0xFF0F172A)
                         )
                     }
 
-                    Text(
-                        text = if (totalSolvedTests > 0) "Toplam $totalSolvedTests Kayıt" else "Henüz Kayıt Yok",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = Color(0xFF1D4ED8)
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color(0xFFEFF6FF),
+                        border = BorderStroke(1.dp, Color(0xFFBFDBFE))
+                    ) {
+                        Text(
+                            text = if (totalSolvedTests > 0) "Toplam $totalSolvedTests Kayıt" else "Henüz Kayıt Yok",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            ),
+                            color = Color(0xFF2563EB),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                        )
+                    }
                 }
 
                 if (recentResult != null) {
@@ -666,21 +874,16 @@ fun AnaSayfaScreen(
                     }
 
                     Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .shadow(
-                                elevation = 10.dp,
-                                shape = RoundedCornerShape(24.dp),
-                                ambientColor = Color(0xFF1D4ED8).copy(alpha = 0.14f)
-                            ),
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White)
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .border(1.2.dp, Color(0xFFD5E0F0), RoundedCornerShape(24.dp))
-                                .padding(18.dp),
+                                .padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
                             Row(
@@ -694,115 +897,248 @@ fun AnaSayfaScreen(
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(50.dp)
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(
-                                                Brush.linearGradient(
-                                                    listOf(Color(0xFF1D4ED8), Color(0xFF1E3A8A))
-                                                )
-                                            ),
+                                            .size(46.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(Color(0xFFEFF6FF)),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = Icons.Filled.CheckCircle,
                                             contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(26.dp)
+                                            tint = Color(0xFF2563EB),
+                                            modifier = Modifier.size(24.dp)
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column {
-                                        Surface(
-                                            color = Color(0xFFEFF6FF),
-                                            shape = RoundedCornerShape(8.dp)
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
-                                            Text(
-                                                text = "${recentResult.examType} • ${recentResult.subjectName} • %${recentResult.accuracyPercent} Başarı",
-                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                                color = Color(0xFF1D4ED8),
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                            )
+                                            Surface(
+                                                color = Color(0xFFEFF6FF),
+                                                shape = RoundedCornerShape(6.dp),
+                                                border = BorderStroke(1.dp, Color(0xFFBFDBFE))
+                                            ) {
+                                                Text(
+                                                    text = "${recentResult.examType} • ${recentResult.subjectName}",
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 10.5.sp
+                                                    ),
+                                                    color = Color(0xFF2563EB),
+                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                )
+                                            }
+
+                                            val isGoodScore = recentResult.accuracyPercent >= 50
+                                            Surface(
+                                                color = if (isGoodScore) Color(0xFFF0FDF4) else Color(0xFFFEF2F2),
+                                                shape = RoundedCornerShape(6.dp),
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (isGoodScore) Color(0xFFBBF7D0) else Color(0xFFFECACA)
+                                                )
+                                            ) {
+                                                Text(
+                                                    text = "%${recentResult.accuracyPercent} Başarı",
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 10.5.sp
+                                                    ),
+                                                    color = if (isGoodScore) Color(0xFF16A34A) else Color(0xFFDC2626),
+                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                )
+                                            }
                                         }
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
                                             text = recentResult.testTitle,
-                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                            style = MaterialTheme.typography.titleMedium.copy(
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 15.sp
+                                            ),
                                             color = Color(0xFF0F172A),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
-                                        Text(
-                                            text = recentDateStr,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFF64748B)
-                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Schedule,
+                                                contentDescription = null,
+                                                tint = Color(0xFF64748B),
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Text(
+                                                text = recentDateStr,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF64748B),
+                                                fontSize = 11.5.sp
+                                            )
+                                        }
                                     }
                                 }
 
+                                Spacer(modifier = Modifier.width(8.dp))
+
                                 Button(
                                     onClick = { onInspectRecentResult(recentResult) },
-                                    shape = RoundedCornerShape(14.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFF1D4ED8),
+                                        containerColor = Color(0xFF2563EB),
                                         contentColor = Color.White
                                     ),
-                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                                     modifier = Modifier.testTag("sonucu_incele_button")
                                 ) {
                                     Text(
-                                        text = "Sonucu İncele",
-                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                                        text = "Sonuç",
+                                        style = MaterialTheme.typography.labelLarge.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp
+                                        )
                                     )
                                 }
                             }
 
-                            HorizontalDivider(color = Color(0xFFE2E8F0))
-
+                            // 4-Pack Metrics Row (DOĞRU, YANLIŞ, BOŞ, NET)
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                // DOĞRU
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(Color(0xFFF0FDF4))
+                                        .border(1.dp, Color(0xFFDCFCE7), RoundedCornerShape(14.dp))
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    StatMiniPill(label = "Doğru", value = "${recentResult.correctCount}", color = SoruLabEmerald)
-                                    StatMiniPill(label = "Yanlış", value = "${recentResult.wrongCount}", color = SoruLabCoralRed)
-                                    StatMiniPill(label = "Boş", value = "${recentResult.emptyCount}", color = SoruLabSlateMuted)
-                                    if (recentResult.ungradedCount > 0) {
-                                        StatMiniPill(
-                                            label = "Puanlanmadı",
-                                            value = "${recentResult.ungradedCount}",
-                                            color = Color(0xFFB45309)
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            text = "DOĞRU",
+                                            color = Color(0xFF16A34A),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "${recentResult.correctCount}",
+                                            color = Color(0xFF16A34A),
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.ExtraBold
                                         )
                                     }
-                                    StatMiniPill(
-                                        label = "Net",
-                                        value = String.format(Locale.US, "%.2f", recentResult.netScore),
-                                        color = SoruLabCobaltBlue
-                                    )
+                                }
+
+                                // YANLIŞ
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(Color(0xFFFEF2F2))
+                                        .border(1.dp, Color(0xFFFEE2E2), RoundedCornerShape(14.dp))
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            text = "YANLIŞ",
+                                            color = Color(0xFFDC2626),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "${recentResult.wrongCount}",
+                                            color = Color(0xFFDC2626),
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
+                                }
+
+                                // BOŞ
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(Color(0xFFF8FAFC))
+                                        .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(14.dp))
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            text = "BOŞ",
+                                            color = Color(0xFF64748B),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "${recentResult.emptyCount}",
+                                            color = Color(0xFF64748B),
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
+                                }
+
+                                // NET
+                                val isNetPositive = recentResult.netScore >= 0
+                                val netColor = if (isNetPositive) Color(0xFF2563EB) else Color(0xFFDC2626)
+                                val netBg = if (isNetPositive) Color(0xFFEFF6FF) else Color(0xFFFEF2F2)
+                                val netBorder = if (isNetPositive) Color(0xFFDBEAFE) else Color(0xFFFEE2E2)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(netBg)
+                                        .border(1.dp, netBorder, RoundedCornerShape(14.dp))
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            text = "NET",
+                                            color = netColor,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = String.format(Locale.US, "%.2f", recentResult.netScore),
+                                            color = netColor,
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 } else {
-                    // Honest Premium Card when no test has been solved yet
                     Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .shadow(
-                                elevation = 8.dp,
-                                shape = RoundedCornerShape(24.dp),
-                                ambientColor = Color(0xFF0F172A).copy(alpha = 0.10f)
-                            ),
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White)
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .border(1.2.dp, Color(0xFFD5E0F0), RoundedCornerShape(24.dp))
                                 .padding(18.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
@@ -813,28 +1149,29 @@ fun AnaSayfaScreen(
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(50.dp)
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(
-                                            Brush.linearGradient(
-                                                listOf(Color(0xFF1E293B), Color(0xFF334155))
-                                            )
-                                        ),
+                                        .size(46.dp)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(Color(0xFFEFF6FF)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.PlayCircleOutline,
                                         contentDescription = null,
-                                        tint = Color(0xFF38BDF8),
-                                        modifier = Modifier.size(28.dp)
+                                        tint = Color(0xFF2563EB),
+                                        modifier = Modifier.size(26.dp)
                                     )
                                 }
-                                Spacer(modifier = Modifier.width(14.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
                                 Column {
                                     Text(
                                         text = "Henüz Test Kaydı Yok",
                                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
                                         color = Color(0xFF0F172A)
+                                    )
+                                    Text(
+                                        text = "İlk testini çözerek analizini burada gör",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFF64748B)
                                     )
                                 }
                             }
@@ -843,9 +1180,9 @@ fun AnaSayfaScreen(
 
                             Button(
                                 onClick = onStartDefaultTest,
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF1D4ED8),
+                                    containerColor = Color(0xFF2563EB),
                                     contentColor = Color.White
                                 ),
                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
@@ -862,7 +1199,7 @@ fun AnaSayfaScreen(
             }
         }
 
-        // 4. Concise "Hızlı Erişim" Grid (No PDF Cropper on Home, No Verbose Text)
+        // 4. "HIZLI ERİŞİM" Grid (Bento Cards Matching Google Stitch Design)
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
@@ -879,40 +1216,54 @@ fun AnaSayfaScreen(
                                 .width(4.dp)
                                 .height(18.dp)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0xFF1E3A8A))
+                                .background(Color(0xFF2563EB))
                         )
                         Text(
-                            text = "Hızlı Erişim",
+                            text = "HIZLI ERİŞİM",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 18.sp
+                                fontSize = 15.sp,
+                                letterSpacing = 0.5.sp
                             ),
                             color = Color(0xFF0F172A)
                         )
                     }
+
+                    Text(
+                        text = "Tüm Modüller",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp
+                        ),
+                        color = Color(0xFF64748B)
+                    )
                 }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    ExecutiveQuickBentoCard(
+                    StitchQuickBentoCard(
                         title = "Soru Pratiği",
-                        subtitle = "TYT & AYT Konular",
+                        subtitle = "TYT & AYT Konu Bazlı",
                         badgeText = "Tüm Dersler",
-                        gradientColors = listOf(Color(0xFF1E3A8A), Color(0xFF2563EB)),
-                        icon = Icons.AutoMirrored.Filled.MenuBook,
+                        tintColor = Color(0xFF2563EB),
+                        tintBg = Color(0xFFEFF6FF),
+                        badgeBorder = Color(0xFFDBEAFE),
+                        icon = Icons.Outlined.PhoneAndroid,
                         onClick = { onNavigateTab(MainNavTab.SORU_PRATIGI) },
                         modifier = Modifier
                             .weight(1f)
                             .testTag("shortcut_soru_pratigi")
                     )
-                    ExecutiveQuickBentoCard(
+                    StitchQuickBentoCard(
                         title = "Denemeler",
-                        subtitle = "Genel Deneme Sınavları",
+                        subtitle = "Genel ve Branş Deneme",
                         badgeText = "TYT • AYT",
-                        gradientColors = listOf(Color(0xFF4C1D95), Color(0xFF7C3AED)),
-                        icon = Icons.AutoMirrored.Filled.Assignment,
+                        tintColor = Color(0xFF9333EA),
+                        tintBg = Color(0xFFFAF5FF),
+                        badgeBorder = Color(0xFFE9D5FF),
+                        icon = Icons.Outlined.Article,
                         onClick = { onNavigateTab(MainNavTab.DENEMELER) },
                         modifier = Modifier
                             .weight(1f)
@@ -924,34 +1275,37 @@ fun AnaSayfaScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    ExecutiveQuickBentoCard(
+                    StitchQuickBentoCard(
+                        title = "Soru Kumbaram",
+                        subtitle = "$customQuestionsCount Özel Soru",
+                        badgeText = "Soru Havuzu",
+                        tintColor = Color(0xFF059669),
+                        tintBg = Color(0xFFECFDF5),
+                        badgeBorder = Color(0xFFA7F3D0),
+                        icon = Icons.Outlined.CollectionsBookmark,
+                        onClick = onOpenPdfCropper,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("shortcut_soru_kumbaram")
+                    )
+                    StitchQuickBentoCard(
                         title = "SoruLab AI",
-                        subtitle = "Canlı Çözüm Asistanı",
-                        badgeText = "AI Sohbet",
-                        gradientColors = listOf(Color(0xFF065F46), Color(0xFF10B981)),
+                        subtitle = "Canlı Soru Çözücü",
+                        badgeText = "AI Asistan",
+                        tintColor = Color(0xFFD97706),
+                        tintBg = Color(0xFFFFFBEB),
+                        badgeBorder = Color(0xFFFDE68A),
                         icon = Icons.Filled.AutoAwesome,
                         onClick = onOpenAiAssistant,
                         modifier = Modifier
                             .weight(1f)
                             .testTag("shortcut_ai_solver")
                     )
-                    ExecutiveQuickBentoCard(
-                        title = "İstatistiklerim",
-                        subtitle = "$totalSolvedTests Test • $totalCorrectCount Doğru",
-                        badgeText = "Analiz",
-                        gradientColors = listOf(Color(0xFF0F172A), Color(0xFF1E40AF)),
-                        icon = Icons.Filled.Insights,
-                        onClick = { onNavigateTab(MainNavTab.ISTATISTIKLERIM) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("shortcut_istatistiklerim")
-                    )
                 }
             }
         }
     }
 
-    // Modern Sliding Bottom Sheet for Profil / Soru Havuzu / Başarılarım / Ayarlar
     if (showProfileSheet) {
         ProfileCenterBottomSheet(
             userName = userName,
@@ -981,47 +1335,27 @@ fun AnaSayfaScreen(
 }
 
 @Composable
-private fun HeroMetricColumn(
-    value: String,
-    label: String
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 18.sp
-            ),
-            color = Color.White
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.White.copy(alpha = 0.75f)
-        )
-    }
-}
-
-@Composable
-private fun ExecutiveQuickBentoCard(
+private fun StitchQuickBentoCard(
     title: String,
     subtitle: String,
     badgeText: String,
-    gradientColors: List<Color>,
+    tintColor: Color,
+    tintBg: Color,
+    badgeBorder: Color,
     icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val primaryAccent = gradientColors.last()
     Card(
         modifier = modifier.clickable { onClick() },
         shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.2.dp, Color(0xFFD5E0F0), RoundedCornerShape(22.dp))
                 .padding(16.dp)
         ) {
             Row(
@@ -1032,29 +1366,31 @@ private fun ExecutiveQuickBentoCard(
                 Box(
                     modifier = Modifier
                         .size(44.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Brush.linearGradient(gradientColors)),
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(tintBg),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = title,
-                        tint = Color.White,
+                        tint = tintColor,
                         modifier = Modifier.size(22.dp)
                     )
                 }
+
                 Surface(
-                    color = primaryAccent.copy(alpha = 0.12f),
-                    shape = RoundedCornerShape(50)
+                    color = tintBg,
+                    shape = RoundedCornerShape(50),
+                    border = BorderStroke(1.dp, badgeBorder)
                 ) {
                     Text(
                         text = badgeText,
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.ExtraBold,
+                            fontWeight = FontWeight.Bold,
                             fontSize = 10.5.sp
                         ),
-                        color = gradientColors.first(),
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                        color = tintColor,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
                     )
                 }
             }
@@ -1070,36 +1406,17 @@ private fun ExecutiveQuickBentoCard(
                 color = Color(0xFF0F172A)
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(3.dp))
 
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall.copy(
-                    lineHeight = 16.5.sp
+                    fontSize = 12.sp
                 ),
-                color = Color(0xFF475569),
-                maxLines = 2,
+                color = Color(0xFF64748B),
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = "Aç",
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = primaryAccent
-                )
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = null,
-                    tint = primaryAccent,
-                    modifier = Modifier.size(13.dp)
-                )
-            }
         }
     }
 }

@@ -36,6 +36,26 @@ import kotlin.math.sqrt
  * 3. Flood-Fill Background Removal (Dekupe) & Alpha Bounding Box Auto-Trim (64x64 Badge)
  * 4. 60 FPS In-Memory Bitmap LruCache + Real Question Structure Verification (0 Cover/Blank Crops)
  */
+internal data class NormalizedCropBounds(
+    val top: Int,
+    val left: Int,
+    val bottom: Int,
+    val right: Int
+)
+
+internal fun normalizeCropBounds(
+    ymin: Int,
+    xmin: Int,
+    ymax: Int,
+    xmax: Int
+): NormalizedCropBounds {
+    val left = xmin.coerceIn(70, 900)
+    val top = ymin.coerceIn(100, 860)
+    val right = xmax.coerceIn(left + 60, 930)
+    val bottom = ymax.coerceIn(top + 60, 900)
+    return NormalizedCropBounds(top = top, left = left, bottom = bottom, right = right)
+}
+
 object StudioImageAndPdfEngine {
 
     private val maxCacheBytes: Int = ((Runtime.getRuntime().maxMemory() / 1024L) / 6L)
@@ -270,7 +290,7 @@ object StudioImageAndPdfEngine {
                 }
             }
         } catch (_: Exception) {
-            1
+            0
         }
     }
 
@@ -356,11 +376,16 @@ object StudioImageAndPdfEngine {
             val dir = File(context.filesDir, "question_pool_crops")
             if (!dir.exists()) dir.mkdirs()
 
-            // Strict margin filter: exclude top 10%, bottom 10%, left 7%, and right 7%
-            val leftNorm = (xminNorm1000.coerceIn(70, 900)) / 1000f
-            val topNorm = (yminNorm1000.coerceIn(100, 860)) / 1000f
-            val rightNorm = (xmaxNorm1000.coerceIn((xminNorm1000.coerceAtLeast(70)) + 60, 930)) / 1000f
-            val bottomNorm = (ymaxNorm1000.coerceIn((yminNorm1000.coerceAtLeast(100)) + 60, 900)) / 1000f
+            val bounds = normalizeCropBounds(
+                ymin = yminNorm1000,
+                xmin = xminNorm1000,
+                ymax = ymaxNorm1000,
+                xmax = xmaxNorm1000
+            )
+            val leftNorm = bounds.left / 1000f
+            val topNorm = bounds.top / 1000f
+            val rightNorm = bounds.right / 1000f
+            val bottomNorm = bounds.bottom / 1000f
 
             val x = (leftNorm * sourcePageBitmap.width).roundToInt().coerceIn(0, sourcePageBitmap.width - 16)
             val y = (topNorm * sourcePageBitmap.height).roundToInt().coerceIn(0, sourcePageBitmap.height - 16)

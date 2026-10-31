@@ -25,13 +25,8 @@ jobs:
 
       - name: Accept Android SDK licenses & install build tools
         run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "cmdline-tools;latest" || true
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "9.3.1"
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager "platforms;android-36" "platforms;android-36.1" "build-tools;36.0.0"
 
       - name: Restore or Generate Signing Keystore
         env:
@@ -59,7 +54,7 @@ jobs:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'android' }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'android' }}
-        run: gradle :app:assembleRelease --no-daemon
+        run: bash ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
       - name: Read app version
         id: app_version

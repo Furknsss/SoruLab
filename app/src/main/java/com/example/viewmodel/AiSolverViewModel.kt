@@ -601,6 +601,7 @@ class AiSolverViewModel : ViewModel() {
                         examTypeHint = examTypeHint,
                         subjectNameHint = obj.optString("subjectName", subjectNameHint).trim(),
                         suggestedTopicName = obj.optString("topicName", "").trim().ifBlank { pageTopicHint },
+                        trustSuggestedTopic = obj.optString("topicName", "").isNotBlank(),
                         hasQuestionStemOrFigure = obj.optBoolean("hasQuestionStemOrFigure"),
                         hasAllFiveOptions = obj.optBoolean("hasAllFiveOptions"),
                         hasDiagramOrGraph = hasDiagramOrGraph,
@@ -632,6 +633,7 @@ class AiSolverViewModel : ViewModel() {
                 examTypeHint = examTypeHint,
                 subjectNameHint = subjectNameHint,
                 suggestedTopicName = pageTopicHint,
+                trustSuggestedTopic = false,
                 hasQuestionStemOrFigure = false,
                 hasAllFiveOptions = false,
                 hasDiagramOrGraph = hasDiagramOrGraph,
@@ -718,6 +720,7 @@ class AiSolverViewModel : ViewModel() {
         examTypeHint: String,
         subjectNameHint: String,
         suggestedTopicName: String,
+        trustSuggestedTopic: Boolean,
         hasQuestionStemOrFigure: Boolean,
         hasAllFiveOptions: Boolean,
         hasDiagramOrGraph: Boolean,
@@ -746,7 +749,8 @@ class AiSolverViewModel : ViewModel() {
             examTypeHint = examTypeHint,
             subjectNameHint = subjectNameHint,
             questionText = questionText,
-            suggestedTopicName = suggestedTopicName
+            suggestedTopicName = suggestedTopicName,
+            trustSuggestedTopic = trustSuggestedTopic
         ) ?: return null
 
         val difficultySignal = buildString {

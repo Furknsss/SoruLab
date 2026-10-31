@@ -658,8 +658,13 @@ object SoruLabCatalog {
         examTypeHint: String,
         subjectNameHint: String,
         questionText: String,
-        suggestedTopicName: String = ""
+        suggestedTopicName: String = "",
+        trustSuggestedTopic: Boolean = false
     ): Pair<YksSubject, YksTopic>? {
+        if (trustSuggestedTopic) {
+            findCatalogTopicByExactName(examTypeHint, subjectNameHint, suggestedTopicName)?.let { return it }
+        }
+
         val normalizedText = questionText.lowercase()
         val normalizedSubjectHint = subjectNameHint
             .replace("TYT ", "", ignoreCase = true)
@@ -798,6 +803,24 @@ object SoruLabCatalog {
         } else {
             resultPair
         }
+    }
+
+    private fun findCatalogTopicByExactName(
+        examTypeHint: String,
+        subjectNameHint: String,
+        topicName: String
+    ): Pair<YksSubject, YksTopic>? {
+        val trimmedTopic = topicName.trim()
+        if (trimmedTopic.isBlank()) return null
+        val examType = if (examTypeHint.contains("AYT", ignoreCase = true)) ExamType.AYT else ExamType.TYT
+        val subjectName = subjectNameHint
+            .replace("TYT ", "", ignoreCase = true)
+            .replace("AYT ", "", ignoreCase = true)
+            .trim()
+        return allSubjects
+            .filter { it.examType == examType && (subjectName.isBlank() || it.name.equals(subjectName, ignoreCase = true)) }
+            .flatMap { subject -> subject.topics.map { subject to it } }
+            .firstOrNull { (_, topic) -> topic.name.equals(trimmedTopic, ignoreCase = true) }
     }
 
     fun getReviewTopicForSubject(subject: YksSubject): YksTopic = YksTopic(

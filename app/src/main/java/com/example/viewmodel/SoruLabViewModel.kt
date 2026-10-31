@@ -1902,7 +1902,8 @@ class SoruLabViewModel(
             examTypeHint = examType,
             subjectNameHint = subjectName,
             questionText = questionText,
-            suggestedTopicName = topicName
+            suggestedTopicName = topicName,
+            trustSuggestedTopic = true
         )
         val matchedSubject = classifiedTopic?.first ?: SoruLabCatalog.allSubjects.firstOrNull {
             it.examType.name.equals(examType, ignoreCase = true) &&
@@ -2036,7 +2037,8 @@ class SoruLabViewModel(
                     examTypeHint = item.examType,
                     subjectNameHint = item.subjectName,
                     questionText = item.questionText,
-                    suggestedTopicName = item.topicName
+                    suggestedTopicName = item.topicName,
+                    trustSuggestedTopic = true
                 )
                 val subKey = "${item.examType}|${item.subjectName}"
                 val matchedSubject = classifiedTopic?.first ?: subjectMemo[subKey] ?:

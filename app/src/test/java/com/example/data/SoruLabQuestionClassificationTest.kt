@@ -204,6 +204,40 @@ class SoruLabQuestionClassificationTest {
     }
 
     @Test
+    fun trustedCatalogTopicBeatsKeywordRules() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Matematik",
+            questionText = "P(x) polinomunun derecesi 4 olduğuna göre kalan kaçtır?",
+            suggestedTopicName = "Limit ve Süreklilik",
+            trustSuggestedTopic = true
+        )
+
+        assertNotNull(result)
+        assertEquals("Limit ve Süreklilik", result?.second?.name)
+    }
+
+    @Test
+    fun unknownTopicOrUntrustedHintStillUsesKeywordRules() {
+        val unknownTopic = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Matematik",
+            questionText = "P(x) polinomunun derecesi 4 olduğuna göre kalan kaçtır?",
+            suggestedTopicName = "Bilinmeyen Başlık",
+            trustSuggestedTopic = true
+        )
+        val untrusted = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Matematik",
+            questionText = "P(x) polinomunun derecesi 4 olduğuna göre kalan kaçtır?",
+            suggestedTopicName = "Limit ve Süreklilik"
+        )
+
+        assertEquals("Polinomlar", unknownTopic?.second?.name)
+        assertEquals("Polinomlar", untrusted?.second?.name)
+    }
+
+    @Test
     fun questionMetadataAndLogoPersistenceArePreserved() {
         val originalSolution = "Açıklamalı Çözüm Adımları"
         val originalCrop = "/data/crops/crop_101.png"

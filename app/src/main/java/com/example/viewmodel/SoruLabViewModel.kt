@@ -53,6 +53,19 @@ enum class BoardViewMode {
     SINGLE_QUESTION
 }
 
+internal fun <T> interleaveByGroup(items: List<T>, groupKey: (T) -> String): List<T> {
+    val groups = items
+        .groupBy { groupKey(it).trim().lowercase() }
+        .values
+        .sortedBy { group -> group.firstOrNull()?.let(groupKey).orEmpty().lowercase() }
+    return buildList {
+        val maxGroupSize = groups.maxOfOrNull { it.size } ?: 0
+        for (round in 0 until maxGroupSize) {
+            groups.forEach { group -> group.getOrNull(round)?.let(::add) }
+        }
+    }
+}
+
 enum class DrawingTool {
     PEN,
     HIGHLIGHTER,
@@ -921,7 +934,10 @@ class SoruLabViewModel(
             cq.difficultyLevel5 in activeDiffs
         }
 
-        return difficultyFilteredPool.mapIndexed { index, custom ->
+        // Aynı konu testinde kaynak çeşitliliğini korumak için yayınevlerini tur tur karıştırır.
+        val mixedPool = interleaveByGroup(difficultyFilteredPool) { it.publisherTag }
+
+        return mixedPool.mapIndexed { index, custom ->
             val diff = custom.difficultyLevel5
             val resolvedPub = SoruLabPublisherPresets.resolvePublisher(
                 custom.publisherTag,

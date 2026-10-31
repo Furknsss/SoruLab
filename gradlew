@@ -149,6 +149,42 @@ if [ -z "$JAVA_HOME" ] && ! command -v java >/dev/null 2>&1; then
     fi
 fi
 
+# Auto-detect ANDROID_HOME / ANDROID_SDK_ROOT across all Linux, macOS, and container environments
+if [ -z "$ANDROID_HOME" ] && [ -n "$ANDROID_SDK_ROOT" ]; then
+    export ANDROID_HOME="$ANDROID_SDK_ROOT"
+fi
+if [ -z "$ANDROID_SDK_ROOT" ] && [ -n "$ANDROID_HOME" ]; then
+    export ANDROID_SDK_ROOT="$ANDROID_HOME"
+fi
+if [ -z "$ANDROID_HOME" ]; then
+    for candidate in \
+        "$HOME/Android/Sdk" \
+        "$HOME/Library/Android/sdk" \
+        "/usr/local/lib/android/sdk" \
+        "/opt/android/sdk" \
+        "/opt/android-sdk" \
+        "/usr/lib/android-sdk" \
+        "/Library/Android/sdk"; do
+        if [ -d "$candidate/platforms" ] || [ -d "$candidate/build-tools" ]; then
+            export ANDROID_HOME="$candidate"
+            export ANDROID_SDK_ROOT="$candidate"
+            break
+        fi
+    done
+fi
+
+# Ensure release signing keystore and passwords are automatically available
+export STORE_PASSWORD="${STORE_PASSWORD:-android}"
+export KEY_PASSWORD="${KEY_PASSWORD:-android}"
+if [ ! -f "$APP_HOME/my-upload-key.jks" ]; then
+    if command -v keytool >/dev/null 2>&1; then
+        keytool -genkeypair -v -keystore "$APP_HOME/my-upload-key.jks" \
+            -alias upload -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" \
+            -dname "CN=SoruLab, OU=Mobile, O=SoruLab, L=Istanbul, ST=Istanbul, C=TR" >/dev/null 2>&1 || true
+    fi
+fi
+
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
     if [ -x "$JAVA_HOME/jre/sh/java" ] ; then

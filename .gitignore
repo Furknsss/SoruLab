@@ -18,6 +18,6 @@ local.properties
 debug.keystore
 *.jks
 *.keystore
-*-debug.log
-
+*.apk
+/public/downloads/
 *-debug.log

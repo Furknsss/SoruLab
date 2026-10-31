@@ -7,6 +7,24 @@ if (!fs.existsSync(publicDir)) {
   fs.mkdirSync(publicDir, { recursive: true });
 }
 
+const apkSource = path.join(__dirname, '..', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
+const downloadsDir = path.join(publicDir, 'downloads');
+let apkDownloadHref = 'https://github.com/Furknsss/SoruLab/releases/latest';
+
+if (fs.existsSync(apkSource)) {
+  if (!fs.existsSync(downloadsDir)) {
+    fs.mkdirSync(downloadsDir, { recursive: true });
+  }
+  const apkTarget = path.join(downloadsDir, 'SoruLab-Release.apk');
+  try {
+    fs.copyFileSync(apkSource, apkTarget);
+    apkDownloadHref = '/downloads/SoruLab-Release.apk';
+    console.log('SoruLab: Release APK public/downloads/SoruLab-Release.apk konumuna kopyalandı.');
+  } catch (err) {
+    console.warn('SoruLab: APK kopyalanamadı, GitHub Releases linki kullanılacak:', err.message);
+  }
+}
+
 const htmlContent = `<!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -213,7 +231,7 @@ const htmlContent = `<!DOCTYPE html>
     <p class="lead">3D, Bilgi Sarmal, Apotemi, Karekök soru bankalarınızı tek tıkla aktarın. Ultra-HD 300 DPI otomatik soru dekupeleme, S-Pen canlı yazı tahtası ve akıllı konu sınıflandırması.</p>
 
     <div class="action-group">
-      <a href="https://github.com/Furknsss/SoruLab/releases/latest" class="btn btn-primary">
+      <a href="${apkDownloadHref}" class="btn btn-primary">
         📲 Android APK'yı İndir (.apk)
       </a>
       <a href="https://github.com/Furknsss/SoruLab" class="btn btn-secondary">

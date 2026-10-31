@@ -33,7 +33,7 @@ data class TestResultRecord(
 
     @get:Exclude
     val totalQuestions: Int
-        get() = (correctCount + wrongCount + emptyCount + ungradedCount).coerceAtLeast(1)
+        get() = (correctCount + wrongCount + emptyCount + ungradedCount).coerceAtLeast(0)
 
     @get:Exclude
     val netScore: Double
@@ -276,10 +276,10 @@ data class CustomQuestionRecord(
                 solutionText.trim()
             }
             val metaParts = buildList {
-                if (targetLevel.isNotBlank()) add("level=${targetLevel.replace("|", "")}")
+                if (targetLevel.isNotBlank()) add("level=${targetLevel.replace("|", "").replace("]", "")}")
                 if (fiveTierDifficulty.isNotBlank()) add("diff5=${fiveTierDifficulty.replace("|", "").replace("]", "")}")
-                if (croppedImagePath.isNotBlank()) add("img=${croppedImagePath.replace("|", "")}")
-                if (publisherLogoUri.isNotBlank()) add("logo=${publisherLogoUri.replace("|", "")}")
+                if (croppedImagePath.isNotBlank()) add("img=${croppedImagePath.replace("|", "").replace("]", "")}")
+                if (publisherLogoUri.isNotBlank()) add("logo=${publisherLogoUri.replace("|", "").replace("]", "")}")
                 if (bookOrTestName.isNotBlank()) add("book=${bookOrTestName.replace("|", "").replace("]", "")}")
                 if (bookCoverPath.isNotBlank()) add("cover=${bookCoverPath.replace("|", "").replace("]", "")}")
                 if (isInKumbara) add("kumbara=1")

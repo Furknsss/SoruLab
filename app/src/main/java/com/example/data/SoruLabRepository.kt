@@ -660,6 +660,7 @@ class SoruLabRepository(
                 batch.commit().await()
             } catch (e: Exception) {
                 handleFirestoreError(e, OperationType.DELETE, "custom_questions/batch")
+                throw e
             }
         }
     }

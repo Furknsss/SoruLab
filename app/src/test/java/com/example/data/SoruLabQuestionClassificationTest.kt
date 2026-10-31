@@ -7,6 +7,26 @@ import org.junit.Test
 
 class SoruLabQuestionClassificationTest {
     @Test
+    fun packedQuestionMetadataSanitizesDelimitersInCropAndLogoPaths() {
+        val packed = CustomQuestionRecord.packSolutionWithMeta(
+            solutionText = "Çözüm",
+            croppedImagePath = "/cache/page]|crop.png",
+            publisherLogoUri = "/cache/logo]|mark.png",
+            targetLevel = "ÖSYM]"
+        )
+        val record = CustomQuestionRecord(aiSolutionSummary = packed)
+
+        assertEquals("/cache/pagecrop.png", record.croppedImagePath)
+        assertEquals("/cache/logomark.png", record.publisherLogoUri)
+        assertEquals("ÖSYM", record.targetLevelName)
+    }
+
+    @Test
+    fun emptyTestResultHasZeroQuestions() {
+        assertEquals(0, TestResultRecord().totalQuestions)
+    }
+
+    @Test
     fun automaticBookTestsUseWheelDifficultyAndAtMostTwelveQuestions() {
         val questions = buildList {
             repeat(13) { index ->

@@ -274,4 +274,18 @@ class SoruLabQuestionClassificationTest {
         assertEquals(true, record.answerKeyVerified)
         assertEquals("Zor", record.difficultyLevel5.label)
     }
+
+    @Test
+    fun answerKeyRequiresAnExplicitMatchingQuestionNumber() {
+        val answerKey = mapOf(1 to "B", 2 to "D")
+
+        assertEquals("D", resolveAnswerKeyOption(2, answerKey))
+        assertEquals(null, resolveAnswerKeyOption(null, answerKey))
+        assertEquals(null, resolveAnswerKeyOption(3, answerKey))
+    }
+
+    @Test
+    fun answerKeyRejectsInvalidOptions() {
+        assertEquals(null, resolveAnswerKeyOption(1, mapOf(1 to "F")))
+    }
 }

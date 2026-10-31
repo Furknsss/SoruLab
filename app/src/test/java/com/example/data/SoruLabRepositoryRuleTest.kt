@@ -16,6 +16,15 @@ class SoruLabRepositoryRuleTest : FirestoreEmulatorTestBase() {
 
     private lateinit var repository: SoruLabRepository
 
+    private fun findFirestoreException(error: Throwable): FirebaseFirestoreException? {
+        var current: Throwable? = error
+        while (current != null) {
+            if (current is FirebaseFirestoreException) return current
+            current = current.cause
+        }
+        return null
+    }
+
     @Before
     override fun setUp() {
         super.setUp()
@@ -108,7 +117,7 @@ class SoruLabRepositoryRuleTest : FirestoreEmulatorTestBase() {
             runRepoCall { repository.getCustomQuestion("q_alice_1") }
             fail("Expected PERMISSION_DENIED when Bob reads Alice's custom question")
         } catch (e: Exception) {
-            val cause = (e.cause ?: e) as? FirebaseFirestoreException
+            val cause = findFirestoreException(e)
             assertNotNull(cause)
             assertEquals(FirebaseFirestoreException.Code.PERMISSION_DENIED, cause?.code)
         }
@@ -117,7 +126,7 @@ class SoruLabRepositoryRuleTest : FirestoreEmulatorTestBase() {
             runRepoCall { repository.deleteCustomQuestion("q_alice_1") }
             fail("Expected PERMISSION_DENIED when Bob deletes Alice's custom question")
         } catch (e: Exception) {
-            val cause = (e.cause ?: e) as? FirebaseFirestoreException
+            val cause = findFirestoreException(e)
             assertNotNull(cause)
             assertEquals(FirebaseFirestoreException.Code.PERMISSION_DENIED, cause?.code)
         }
@@ -128,8 +137,12 @@ class SoruLabRepositoryRuleTest : FirestoreEmulatorTestBase() {
             runRepoCall { repository.saveCustomQuestion(question.copy(id = "q_unauth")) }
             fail("Expected PERMISSION_DENIED for unauthenticated write")
         } catch (e: Exception) {
-            val cause = (e.cause ?: e) as? FirebaseFirestoreException
-            assertNotNull(cause)
+            val cause = findFirestoreException(e)
+            assertNotNull(
+                "Expected Firestore to reject the unauthenticated write, got ${e.javaClass.name}: ${e.message}; " +
+                    "cause=${e.cause?.javaClass?.name}: ${e.cause?.message}",
+                cause
+            )
             assertTrue(cause?.code == FirebaseFirestoreException.Code.PERMISSION_DENIED)
         }
     }
@@ -165,7 +178,7 @@ class SoruLabRepositoryRuleTest : FirestoreEmulatorTestBase() {
                 awaitTask(publisherRef.get())
                 fail("Expected PERMISSION_DENIED when another user reads a publisher logo")
             } catch (e: Exception) {
-                val cause = (e.cause ?: e) as? FirebaseFirestoreException
+                val cause = findFirestoreException(e)
                 assertNotNull(cause)
                 assertEquals(FirebaseFirestoreException.Code.PERMISSION_DENIED, cause?.code)
             }

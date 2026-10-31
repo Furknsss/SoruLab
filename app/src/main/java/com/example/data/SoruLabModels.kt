@@ -6,6 +6,13 @@ import com.google.firebase.firestore.DocumentId
 import com.google.firebase.firestore.Exclude
 import com.google.firebase.firestore.ServerTimestamp
 
+fun resolveAnswerKeyOption(questionNumber: Int?, answerKey: Map<Int, String>): String? {
+    if (questionNumber == null || questionNumber <= 0) return null
+    return answerKey[questionNumber]
+        ?.uppercase()
+        ?.takeIf { it in listOf("A", "B", "C", "D", "E") }
+}
+
 @Immutable
 data class TestResultRecord(
     @DocumentId val id: String = "",

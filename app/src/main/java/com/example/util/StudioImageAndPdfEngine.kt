@@ -1100,48 +1100,118 @@ object StudioImageAndPdfEngine {
         reusablePixelsRef: Array<IntArray?>
     ): List<LocalCroppedBoxResult> {
         if (pageIndex !in 0 until totalPages) return emptyList()
-        return try {
-            renderer.openPage(pageIndex).use { page ->
-                val scale = 2.0f
-                val targetW = (page.width * scale).roundToInt().coerceIn(960, 1680)
-                val targetH = (page.height * scale).roundToInt().coerceIn(1320, 2360)
+        return renderer.openPage(pageIndex).use { page ->
+            val scale = 2.0f
+            val targetW = (page.width * scale).roundToInt().coerceIn(960, 1680)
+            val targetH = (page.height * scale).roundToInt().coerceIn(1320, 2360)
 
-                var pageBitmap = reusableBitmapRef[0]
-                if (pageBitmap == null || pageBitmap.isRecycled || pageBitmap.width != targetW || pageBitmap.height != targetH) {
-                    pageBitmap?.recycle()
-                    pageBitmap = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
-                    reusableBitmapRef[0] = pageBitmap
-                }
-                pageBitmap.eraseColor(Color.WHITE)
-
-                page.render(
-                    pageBitmap,
-                    null,
-                    null,
-                    PdfRenderer.Page.RENDER_MODE_FOR_PRINT
-                )
-
-                val neededPixels = targetW * targetH
-                var pixels = reusablePixelsRef[0]
-                if (pixels == null || pixels.size < neededPixels) {
-                    pixels = IntArray(neededPixels)
-                    reusablePixelsRef[0] = pixels
-                }
-                pageBitmap.getPixels(pixels, 0, targetW, 0, 0, targetW, targetH)
-
-                cropQuestionsFromPagePixelsDualColumn(
-                    context = context,
-                    pageBitmap = pageBitmap,
-                    pixels = pixels,
-                    width = targetW,
-                    height = targetH,
-                    pageIndex = pageIndex,
-                    totalPages = totalPages
-                )
+            var pageBitmap = reusableBitmapRef[0]
+            if (pageBitmap == null || pageBitmap.isRecycled || pageBitmap.width != targetW || pageBitmap.height != targetH) {
+                pageBitmap?.recycle()
+                pageBitmap = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+                reusableBitmapRef[0] = pageBitmap
             }
-        } catch (_: Exception) {
-            emptyList()
+            pageBitmap.eraseColor(Color.WHITE)
+
+            page.render(
+                pageBitmap,
+                null,
+                null,
+                PdfRenderer.Page.RENDER_MODE_FOR_PRINT
+            )
+
+            val neededPixels = targetW * targetH
+            var pixels = reusablePixelsRef[0]
+            if (pixels == null || pixels.size < neededPixels) {
+                pixels = IntArray(neededPixels)
+                reusablePixelsRef[0] = pixels
+            }
+            pageBitmap.getPixels(pixels, 0, targetW, 0, 0, targetW, targetH)
+
+            cropQuestionsFromPagePixelsDualColumn(
+                context = context,
+                pageBitmap = pageBitmap,
+                pixels = pixels,
+                width = targetW,
+                height = targetH,
+                pageIndex = pageIndex,
+                totalPages = totalPages
+            )
         }
+    }
+
+    fun cropQuestionFromNormalizedBox(
+        context: Context,
+        pageBitmap: Bitmap,
+        box2d: List<Int>,
+        pageIndex: Int,
+        questionOrder: Int,
+        difficulty: String
+    ): LocalCroppedBoxResult? {
+        if (box2d.size != 4) return null
+        val height = pageBitmap.height
+        val width = pageBitmap.width
+        val top = box2d[0].coerceIn(0, 1000) * height / 1000
+        val left = box2d[1].coerceIn(0, 1000) * width / 1000
+        val bottom = box2d[2].coerceIn(0, 1000) * height / 1000
+        val right = box2d[3].coerceIn(0, 1000) * width / 1000
+        val padX = (width * 0.008f).roundToInt()
+        val padY = (height * 0.008f).roundToInt()
+        val cropLeft = (left - padX).coerceAtLeast(0)
+        val cropTop = (top - padY).coerceAtLeast(0)
+        val cropRight = (right + padX).coerceAtMost(width)
+        val cropBottom = (bottom + padY).coerceAtMost(height)
+        val cropWidth = cropRight - cropLeft
+        val cropHeight = cropBottom - cropTop
+        if (cropWidth < 32 || cropHeight < 32) return null
+
+        val rawCrop = Bitmap.createBitmap(pageBitmap, cropLeft, cropTop, cropWidth, cropHeight)
+        val cleanedCrop = whitenOldQuestionNumberAndEnhance(rawCrop)
+        if (cleanedCrop !== rawCrop) rawCrop.recycle()
+        val aspectRatio = (cleanedCrop.width.toDouble() / cleanedCrop.height.toDouble().coerceAtLeast(1.0))
+            .coerceIn(0.32, 3.8)
+
+        val outDir = File(context.filesDir, "question_pool_crops")
+        if (!outDir.exists() && !outDir.mkdirs()) {
+            cleanedCrop.recycle()
+            throw IllegalStateException("Soru görseli için geçici klasör oluşturulamadı.")
+        }
+        val outFile = File(
+            outDir,
+            "q_p${pageIndex + 1}_ai_${questionOrder}_${System.currentTimeMillis()}_${(100..999).random()}.webp"
+        )
+        var saved = false
+        try {
+            FileOutputStream(outFile).use { fos ->
+                @Suppress("DEPRECATION")
+                val format = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    Bitmap.CompressFormat.WEBP_LOSSY
+                } else {
+                    Bitmap.CompressFormat.WEBP
+                }
+                if (!cleanedCrop.compress(format, 92, fos)) {
+                    throw IllegalStateException("Soru görseli WebP olarak kaydedilemedi.")
+                }
+            }
+            saved = true
+        } finally {
+            if (!saved || pageIndex >= 6) cleanedCrop.recycle()
+        }
+        if (pageIndex < 6) bitmapCache.put(outFile.absolutePath, cleanedCrop)
+
+        return LocalCroppedBoxResult(
+            croppedImagePath = outFile.absolutePath,
+            aspectRatio = aspectRatio,
+            boxNormalized = listOf(
+                cropTop.toFloat() / height,
+                cropLeft.toFloat() / width,
+                cropBottom.toFloat() / height,
+                cropRight.toFloat() / width
+            ),
+            columnIndex = 0,
+            estimatedDifficulty5 = difficulty,
+            questionOrderInPage = questionOrder
+        )
     }
 
     private fun cropQuestionsFromPagePixelsDualColumn(
@@ -1720,9 +1790,9 @@ object StudioImageAndPdfEngine {
         // KURAL 3: Yarım Kırpma Önleyici — Sadece şıkları veya sadece 'olduğuna göre...' alt satırını tek başına soru diye kırpma!
         // Bir soru kutusunun üstteki tanım metni, ortadaki şekli/tablosu ve alttaki A-E şıklarıyla tek parça halinde bütün olması şarttır.
         val hasStemOrFigure = stemInkRows >= 4 || (hasDiagramOrGraph && stemInkRows >= 2)
-        val hasCompleteOptionBlock = activeOptionBuckets >= 4 ||
-            bottomLineTransitions >= 4 ||
-            (hasDiagramOrGraph && activeOptionBuckets >= 3)
+        val hasCompleteOptionBlock = activeOptionBuckets >= 2 ||
+            bottomLineTransitions >= 3 ||
+            (hasDiagramOrGraph && activeOptionBuckets >= 1)
         val notIsolatedOptionRow = bandH >= 115 && lineTransitions >= 3 && activeRows >= 15
         val isValid = hasStemOrFigure && hasCompleteOptionBlock && notIsolatedOptionRow
 

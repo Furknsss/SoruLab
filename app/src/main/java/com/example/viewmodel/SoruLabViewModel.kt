@@ -1983,7 +1983,27 @@ class SoruLabViewModel(
         bookOrTestName: String,
         bookCoverPath: String
     ) {
-        if (extractedItems.isEmpty()) return
+        val cleanItems = extractedItems
+            .asSequence()
+            .filter { item ->
+                item.questionText.trim().length >= 12 &&
+                    item.topicName.isNotBlank() &&
+                    item.correctOption.trim().uppercase() in setOf("A", "B", "C", "D", "E")
+            }
+            .distinctBy { item ->
+                val normalizedText = item.questionText
+                    .lowercase()
+                    .replace(Regex("\\s+"), " ")
+                    .trim()
+                "${item.examType}|${item.subjectName}|${item.questionNumber}|$normalizedText"
+            }
+            .toList()
+
+        if (cleanItems.isEmpty()) {
+            showBanner("PDF içinde aktarılabilecek doğrulanmış soru bulunamadı.")
+            return
+        }
+
         val uid = effectiveUserId() ?: "device_yks_student_tr"
         val resolvedPublisher = SoruLabPublisherPresets.resolvePublisher(publisherName, _customPublishers.value)
         val finalPubName = publisherName.ifBlank { resolvedPublisher.name }.take(100)
@@ -1993,8 +2013,8 @@ class SoruLabViewModel(
             val subjectMemo = HashMap<String, com.example.data.YksSubject>(32)
             val batchTimestamp = System.currentTimeMillis()
 
-            val newRecords = ArrayList<CustomQuestionRecord>(extractedItems.size)
-            for ((idx, item) in extractedItems.withIndex()) {
+            val newRecords = ArrayList<CustomQuestionRecord>(cleanItems.size)
+            for ((idx, item) in cleanItems.withIndex()) {
                 val classifiedTopic = SoruLabCatalog.classifyQuestionTopicFromText(
                     examTypeHint = item.examType,
                     subjectNameHint = item.subjectName,

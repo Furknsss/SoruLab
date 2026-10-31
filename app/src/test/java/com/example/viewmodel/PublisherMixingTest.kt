@@ -15,4 +15,32 @@ class PublisherMixingTest {
             mixed
         )
     }
+
+    @Test
+    fun interleaveByGroup_handlesUnequalPublisherCountsSmoothly() {
+        val questions = listOf(
+            "3D-1", "3D-2", "3D-3",
+            "Apotemi-1",
+            "Orijinal-1", "Orijinal-2"
+        )
+        val mixed = interleaveByGroup(questions) { it.substringBefore('-') }
+
+        assertEquals(
+            listOf("3D-1", "Apotemi-1", "Orijinal-1", "3D-2", "Orijinal-2", "3D-3"),
+            mixed
+        )
+    }
+
+    @Test
+    fun interleaveByGroup_singlePublisherPreservesOrder() {
+        val questions = listOf("3D-1", "3D-2", "3D-3")
+        val mixed = interleaveByGroup(questions) { it.substringBefore('-') }
+        assertEquals(questions, mixed)
+    }
+
+    @Test
+    fun interleaveByGroup_emptyListReturnsEmpty() {
+        val mixed = interleaveByGroup(emptyList<String>()) { it }
+        assertEquals(emptyList<String>(), mixed)
+    }
 }

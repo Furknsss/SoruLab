@@ -114,10 +114,14 @@ abstract class FirestoreEmulatorTestBase {
         val url = URL("http://$firestoreHost:$firestorePort/emulator/v1/projects/$projectId/databases/$encodedDbId/documents")
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "DELETE"
-        conn.connectTimeout = 5000
-        conn.readTimeout = 5000
+        conn.connectTimeout = 1000
+        conn.readTimeout = 1000
         try {
             conn.responseCode
+        } catch (_: java.net.ConnectException) {
+            org.junit.Assume.assumeTrue("Firebase emulator is not running on $firestoreHost:$firestorePort", false)
+        } catch (_: Exception) {
+            // ignore
         } finally {
             conn.disconnect()
         }
@@ -127,10 +131,14 @@ abstract class FirestoreEmulatorTestBase {
         val url = URL("http://$firestoreHost:$authPort/emulator/v1/projects/$projectId/accounts")
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "DELETE"
-        conn.connectTimeout = 5000
-        conn.readTimeout = 5000
+        conn.connectTimeout = 1000
+        conn.readTimeout = 1000
         try {
             conn.responseCode
+        } catch (_: java.net.ConnectException) {
+            org.junit.Assume.assumeTrue("Firebase Auth emulator is not running on $firestoreHost:$authPort", false)
+        } catch (_: Exception) {
+            // ignore
         } finally {
             conn.disconnect()
         }

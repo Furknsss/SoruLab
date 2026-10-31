@@ -833,7 +833,8 @@ class SoruLabViewModel(
             (exactLevelMatches + difficultyMatches).distinctBy { it.id }.ifEmpty { topicPool }
         }
 
-        val customMatches = filteredCustom.mapIndexed { index, custom ->
+        val mixedCustom = interleaveByGroup(filteredCustom) { it.publisherTag }
+        val customMatches = mixedCustom.mapIndexed { index, custom ->
             val diff = custom.difficultyLevel5
             val resolvedPub = SoruLabPublisherPresets.resolvePublisher(
                 custom.publisherTag,
@@ -2002,7 +2003,7 @@ class SoruLabViewModel(
         val cleanItems = extractedItems
             .asSequence()
             .filter { item ->
-                item.questionText.trim().length >= 12 &&
+                (item.questionText.trim().length >= 12 || item.croppedImagePath.isNotBlank()) &&
                     item.topicName.isNotBlank() &&
                     item.correctOption.trim().uppercase() in setOf("A", "B", "C", "D", "E")
             }
@@ -2042,13 +2043,9 @@ class SoruLabViewModel(
                     SoruLabCatalog.allSubjects.firstOrNull {
                         it.examType.name.equals(item.examType, ignoreCase = true) &&
                             it.name.equals(item.subjectName, ignoreCase = true)
-                    }
-                if (matchedSubject == null) {
-                    withContext(Dispatchers.Main) {
-                        showBanner("“${item.subjectName}” dersi ${item.examType} müfredatında bulunamadı; PDF aktarımı durduruldu.")
-                    }
-                    return@launch
-                }
+                    } ?: SoruLabCatalog.allSubjects.firstOrNull {
+                        it.examType.name.equals(item.examType, ignoreCase = true)
+                    } ?: SoruLabCatalog.allSubjects.first()
                 subjectMemo[subKey] = matchedSubject
 
                 val matchedTopic = classifiedTopic?.second
@@ -2056,13 +2053,7 @@ class SoruLabViewModel(
                         it.name.equals(item.topicName, ignoreCase = true) ||
                             item.topicName.contains(it.name, ignoreCase = true) ||
                             it.name.contains(item.topicName, ignoreCase = true)
-                    }
-                if (matchedTopic == null) {
-                    withContext(Dispatchers.Main) {
-                        showBanner("“${item.topicName}” konusu müfredatla eşleştirilemedi; PDF aktarımı durduruldu.")
-                    }
-                    return@launch
-                }
+                    } ?: SoruLabCatalog.getReviewTopicForSubject(matchedSubject)
 
                 val resolvedExamType = matchedSubject.examType.name
                 val subjectId = matchedSubject.id
@@ -2168,6 +2159,35 @@ class SoruLabViewModel(
                 }
             }
         }
+    }
+
+    /**
+     * Kullanıcının emin olunamayan veya 'İnceleme Bekliyor' durumundaki soruyu
+     * doğru ders ve konuya taşımasına / düzenlemesine imkan verir.
+     */
+    fun updateQuestionTopic(
+        questionId: String,
+        newSubjectId: String,
+        newSubjectName: String,
+        newTopicId: String,
+        newTopicName: String
+    ) {
+        val current = _userCustomQuestions.value
+        val updated = current.map { q ->
+            if (q.id == questionId) {
+                q.copy(
+                    subjectId = newSubjectId,
+                    subjectName = newSubjectName,
+                    topicId = newTopicId,
+                    topicName = newTopicName
+                )
+            } else q
+        }
+        _userCustomQuestions.value = updated
+        val uid = effectiveUserId() ?: "device_yks_student_tr"
+        saveCustomQuestionsCacheAsync(uid, updated)
+        syncPdfPoolToPracticeTests(updated)
+        showBanner("Soru konusu “$newTopicName” olarak güncellendi.")
     }
 
     fun addQuestionToKumbara(question: YksQuestion) {

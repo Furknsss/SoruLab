@@ -63,6 +63,19 @@ data class AutoTagSuggestion(
     val solutionHint: String = ""
 )
 
+internal fun shouldRetainQuestionCrop(
+    questionText: String,
+    hasQuestionStemOrFigure: Boolean,
+    usedLocalOcr: Boolean
+): Boolean {
+    if (usedLocalOcr || hasQuestionStemOrFigure) return true
+    if (questionText.trim().length < 25) return false
+
+    val optionAStart = Regex("""(?im)(?:^|[\s(])A\s*[).:]""")
+        .find(questionText)?.range?.first ?: questionText.length
+    return questionText.substring(0, optionAStart).trim().length >= 12
+}
+
 @Immutable
 data class TwinQuestionModalData(
     val topicTitle: String = "",
@@ -212,7 +225,6 @@ class AiSolverViewModel : ViewModel() {
                         ),
                         "soruMetni" to Schema.string("Görselden okunabilen soru kökü ve şıklar; okunmayan yerleri uydurma"),
                         "hasQuestionStemOrFigure" to Schema.boolean("Soru kökü veya soruya ait şekil/grafik bulunuyor mu?"),
-                        "hasAllFiveOptions" to Schema.boolean("A, B, C, D ve E şıklarının tamamı bu soru bloğunda bulunuyor mu?"),
                         "zorluk" to Schema.string("Kolay, Orta, ÖSYM, Zor veya Çok Zor"),
                         "ders" to Schema.string("Bu sorunun dersi: Matematik, Geometri, Fizik, Kimya, Biyoloji veya Türkçe"),
                         "konu" to Schema.string("Bu sorunun konusu (Örn: Temel Kavramlar, Türev, Bağıl Hareket)"),
@@ -265,7 +277,6 @@ class AiSolverViewModel : ViewModel() {
             "subjectName" to Schema.string("Soruya ait YKS dersi"),
             "topicName" to Schema.string("Soruya ait müfredat konusu"),
             "hasQuestionStemOrFigure" to Schema.boolean("Soru kökü veya soruya ait şekil/grafik bulunuyor mu?"),
-            "hasAllFiveOptions" to Schema.boolean("A, B, C, D ve E şıklarının tamamı bu soru bloğunda bulunuyor mu?"),
             "originalQuestionNumber" to Schema.integer("Görselde açıkça görünen basılı soru numarası; görünmüyorsa alanı üretme"),
             "difficulty" to Schema.string("Soru zorluğu: Kolay, Orta, ÖSYM, Zor veya Çok Zor")
         ),
@@ -609,7 +620,7 @@ class AiSolverViewModel : ViewModel() {
                     val prompt = buildString {
                         appendLine("Ekli kırpılmış görseldeki tek YKS sorusunu OCR ile eksiksiz oku.")
                         appendLine("Matematiksel sembolleri, üsleri, kesirleri, şekil/tablo açıklamalarını ve A), B), C), D), E) şıklarını koru.")
-                        appendLine("Soru kökü veya soruya ait şekil/grafik ile A-E şıklarının tamamı aynı blokta yoksa ilgili boolean alanını false yap.")
+                        appendLine("Görünmeyen metni veya şıkları uydurma; kısmi OCR olsa da doğrulanmış kırpılmış soruyu aktar.")
                         appendLine("Görselde basılı soru numarası açıkça görünüyorsa originalQuestionNumber alanına yaz; yoksa tahmin etme.")
                         appendLine("Ders ve konu adını aşağıdaki müfredattan seç; konu adını aynen yaz.")
                         appendLine(catalogTopics)
@@ -632,7 +643,6 @@ class AiSolverViewModel : ViewModel() {
                         suggestedTopicName = obj.optString("topicName", "").trim().ifBlank { pageTopicHint },
                         trustSuggestedTopic = obj.optString("topicName", "").isNotBlank(),
                         hasQuestionStemOrFigure = obj.optBoolean("hasQuestionStemOrFigure"),
-                        hasAllFiveOptions = obj.optBoolean("hasAllFiveOptions"),
                         explicitDifficultyHint = obj.optString("difficulty", "").trim(),
                         hasDiagramOrGraph = hasDiagramOrGraph,
                         lineCountEstimate = lineCountEstimate,
@@ -672,7 +682,6 @@ class AiSolverViewModel : ViewModel() {
                 suggestedTopicName = pageTopicHint,
                 trustSuggestedTopic = false,
                 hasQuestionStemOrFigure = false,
-                hasAllFiveOptions = false,
                 explicitDifficultyHint = "",
                 hasDiagramOrGraph = hasDiagramOrGraph,
                 lineCountEstimate = lineCountEstimate,
@@ -766,29 +775,17 @@ class AiSolverViewModel : ViewModel() {
         suggestedTopicName: String,
         trustSuggestedTopic: Boolean,
         hasQuestionStemOrFigure: Boolean,
-        hasAllFiveOptions: Boolean,
         explicitDifficultyHint: String,
         hasDiagramOrGraph: Boolean,
         lineCountEstimate: Int,
         visualDifficultyHint: String,
         usedLocalOcr: Boolean
     ): QuestionOcrClassification? {
-        val hasAllOptionLabels = listOf("A", "B", "C", "D", "E").all { option ->
-            Regex("""(?im)(?:^|[\s(])$option\s*[).:]""").containsMatchIn(questionText)
-        }
-        val optionAStart = Regex("""(?im)(?:^|[\s(])A\s*[).:]""")
-            .find(questionText)?.range?.first ?: questionText.length
-        val hasReadableStem = questionText.substring(0, optionAStart).trim().length >= 12
-        val hasStemOrFigure = hasQuestionStemOrFigure ||
-            hasReadableStem ||
-            (hasDiagramOrGraph && questionText.length >= 25)
-        if (questionText.length < 25 ||
-            !hasStemOrFigure ||
-            !hasAllOptionLabels ||
-            (!usedLocalOcr && !hasAllFiveOptions)
-        ) {
-            return null
-        }
+        if (!shouldRetainQuestionCrop(questionText, hasQuestionStemOrFigure, usedLocalOcr)) return null
+        val retainedQuestionText = questionText
+            .trim()
+            .takeIf { it.length >= 25 }
+            .orEmpty()
 
         val topicClassification = SoruLabCatalog.classifyQuestionTopicFromText(
             examTypeHint = examTypeHint,
@@ -833,7 +830,7 @@ class AiSolverViewModel : ViewModel() {
             com.example.data.DifficultyLevel.COK_ZOR -> "DERECE"
         }
         return QuestionOcrClassification(
-            questionText = questionText,
+            questionText = retainedQuestionText,
             examType = topicClassification.first.examType.name,
             subjectName = topicClassification.first.name,
             topicName = topicClassification.second.name,
@@ -951,7 +948,6 @@ class AiSolverViewModel : ViewModel() {
                     suggestedTopicName = topic,
                     trustSuggestedTopic = question.optString("konu", "").isNotBlank(),
                     hasQuestionStemOrFigure = question.optBoolean("hasQuestionStemOrFigure"),
-                    hasAllFiveOptions = question.optBoolean("hasAllFiveOptions"),
                     explicitDifficultyHint = difficulty,
                     hasDiagramOrGraph = false,
                     lineCountEstimate = 6,

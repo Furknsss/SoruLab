@@ -1,62 +1,43 @@
 package com.example.viewmodel
 
+import com.example.util.shouldPersistQuestionCrop
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AiSolverPdfImportTest {
     @Test
-    fun incompleteOptionsDoNotRejectAReadableQuestionCrop() {
+    fun incompleteOptionsDoNotRejectAVisibleQuestionCrop() {
         assertTrue(
-            shouldRetainQuestionCrop(
-                questionText = "f(x) = 2x + 3 olduğuna göre f(4) kaçtır? A) 7 B) 9",
-                hasQuestionStemOrFigure = false,
-                usedLocalOcr = false
-            )
+            shouldPersistQuestionCrop(width = 240, height = 120, hasVisiblePixels = true)
         )
     }
 
     @Test
-    fun localCropSurvivesWhenOcrCannotReadItsText() {
+    fun visibleCropSurvivesWhenOcrCannotReadItsText() {
         assertTrue(
-            shouldRetainQuestionCrop(
-                questionText = "",
-                hasQuestionStemOrFigure = false,
-                usedLocalOcr = true
-            )
+            shouldPersistQuestionCrop(width = 240, height = 120, hasVisiblePixels = true)
         )
     }
 
     @Test
-    fun visuallyConfirmedQuestionCropSurvivesWhenTextIsUnreadable() {
-        assertTrue(
-            shouldRetainQuestionCrop(
-                questionText = "",
-                hasQuestionStemOrFigure = true,
-                usedLocalOcr = false
-            )
-        )
-    }
-
-    @Test
-    fun unconfirmedShortOcrFragmentIsRejected() {
+    fun cropBelowMinimumWidthIsRejected() {
         assertFalse(
-            shouldRetainQuestionCrop(
-                questionText = "A) 2 B) 4",
-                hasQuestionStemOrFigure = false,
-                usedLocalOcr = false
-            )
+            shouldPersistQuestionCrop(width = 119, height = 120, hasVisiblePixels = true)
         )
     }
 
     @Test
-    fun unconfirmedShortQuestionStemIsRejected() {
+    fun cropBelowMinimumHeightIsRejected() {
         assertFalse(
-            shouldRetainQuestionCrop(
-                questionText = "Soru kökü burada",
-                hasQuestionStemOrFigure = false,
-                usedLocalOcr = false
-            )
+            shouldPersistQuestionCrop(width = 120, height = 79, hasVisiblePixels = true)
+        )
+    }
+
+    @Test
+    fun blankCropIsRejected() {
+        assertFalse(
+            shouldPersistQuestionCrop(width = 120, height = 80, hasVisiblePixels = false)
         )
     }
 }

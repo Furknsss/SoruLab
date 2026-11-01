@@ -51,6 +51,9 @@ data class QuestionNumberAnchor(
     val bottom: Int
 )
 
+internal fun shouldPersistQuestionCrop(width: Int, height: Int, hasVisiblePixels: Boolean): Boolean =
+    width >= 120 && height >= 80 && hasVisiblePixels
+
 internal fun normalizeCropBounds(
     ymin: Int,
     xmin: Int,
@@ -106,7 +109,7 @@ object StudioImageAndPdfEngine {
     }
 
     private fun isNonBlankQuestionBitmap(bitmap: Bitmap): Boolean {
-        if (bitmap.width < 120 || bitmap.height < 80 || bitmap.isRecycled) return false
+        if (bitmap.isRecycled || bitmap.width < 120 || bitmap.height < 80) return false
         val row = IntArray(bitmap.width)
         for (y in 0 until bitmap.height) {
             bitmap.getPixels(row, 0, bitmap.width, 0, y, bitmap.width, 1)
@@ -115,10 +118,12 @@ object StudioImageAndPdfEngine {
                 val g = (pixel shr 8) and 0xFF
                 val b = pixel and 0xFF
                 val luminance = (r * 77 + g * 150 + b * 29) shr 8
-                if (luminance < 247 || max(r, max(g, b)) - min(r, min(g, b)) > 12) return true
+                if (luminance < 247 || max(r, max(g, b)) - min(r, min(g, b)) > 12) {
+                    return shouldPersistQuestionCrop(bitmap.width, bitmap.height, hasVisiblePixels = true)
+                }
             }
         }
-        return false
+        return shouldPersistQuestionCrop(bitmap.width, bitmap.height, hasVisiblePixels = false)
     }
 
     fun detectSubjectNameFromText(text: String): String? {

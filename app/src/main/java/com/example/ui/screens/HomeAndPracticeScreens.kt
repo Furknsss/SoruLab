@@ -3215,7 +3215,7 @@ private fun RadialLevelWheelOverlay(
                                 val idx = ((angleDeg - startAngleDeg) / sliceSweepDeg)
                                     .toInt()
                                     .coerceIn(0, levels.lastIndex)
-                                onSelectLevel(levels[idx])
+                                levels.getOrNull(idx)?.let(onSelectLevel)
                             } else {
                                 onDismiss()
                             }

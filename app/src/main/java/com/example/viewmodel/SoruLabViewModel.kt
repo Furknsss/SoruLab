@@ -757,14 +757,10 @@ class SoruLabViewModel(
         recordTopicName: String,
         topic: YksTopic
     ): Boolean {
-        val sameSubject = recordSubjectId.isBlank() ||
-            recordSubjectId.equals(topic.subjectId, ignoreCase = true)
-        return sameSubject && (
-            recordTopicId.equals(topic.id, ignoreCase = true) ||
-                (recordTopicId.isBlank() &&
-                    recordSubjectId.equals(topic.subjectId, ignoreCase = true) &&
-                    recordTopicName.equals(topic.name, ignoreCase = true))
-            )
+        val sameSubject = recordSubjectId.equals(topic.subjectId, ignoreCase = true)
+        val sameTopic = recordTopicId.equals(topic.id, ignoreCase = true) ||
+            (recordTopicId.isBlank() && recordTopicName.equals(topic.name, ignoreCase = true))
+        return sameSubject && sameTopic
     }
 
     private fun collectRealPoolQuestionsForTopicAndLevel(
@@ -784,10 +780,13 @@ class SoruLabViewModel(
 
             for (record in solvedInTopic) {
                 val answersMap = parseAnswersJson(record.answersMapJson).orEmpty()
-                val sourceQuestions = allKnownTests.firstOrNull { it.id == record.testId }?.questions
+                val sourceQuestions = allKnownTests.firstOrNull {
+                    it.id == record.testId && it.topicId.equals(topic.id, ignoreCase = true)
+                }?.questions
                     ?: baseTopicQuestions
 
                 for (q in sourceQuestions) {
+                    if (!q.topicHeader.equals(topic.name, ignoreCase = true)) continue
                     val chosen = answersMap[q.number]
                     val isWrongOrBlank = chosen.isNullOrBlank() || chosen != q.correctOption
                     if (isWrongOrBlank) {
@@ -912,7 +911,11 @@ class SoruLabViewModel(
 
         for (rec in solvedRecordsForTopic) {
             val answersMap = parseAnswersJson(rec.answersMapJson).orEmpty()
-            val testQuestions = allKnownTests.firstOrNull { it.id == rec.testId }?.questions.orEmpty()
+            val testQuestions = allKnownTests.firstOrNull {
+                it.id == rec.testId && it.topicId.equals(topic.id, ignoreCase = true)
+            }?.questions.orEmpty().filter {
+                it.topicHeader.equals(topic.name, ignoreCase = true)
+            }
             for (q in testQuestions) {
                 val chosen = answersMap[q.number]
                 val idKey = q.croppedImagePath.ifBlank { q.id }
@@ -1941,7 +1944,16 @@ class SoruLabViewModel(
             showBanner("Sorunun dersi müfredatla eşleştirilemedi; soru yanlış derse kaydedilmesin diye işlem durduruldu.")
             return
         }
-        val classifiedTopic = SoruLabCatalog.classifyQuestionTopicFromText(
+        val explicitTopicName = StudioImageAndPdfEngine.detectTopicNameFromText(
+            examType = examType,
+            subjectName = requestedSubject.name,
+            text = "$topicName\n$questionText"
+        )
+        val explicitTopic = explicitTopicName?.let { name ->
+            requestedSubject.topics.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                ?.let { topic -> requestedSubject to topic }
+        }
+        val classifiedTopic = explicitTopic ?: SoruLabCatalog.classifyQuestionTopicFromText(
             examTypeHint = examType,
             subjectNameHint = requestedSubject.name,
             questionText = questionText,
@@ -1952,9 +1964,11 @@ class SoruLabViewModel(
         val matchedTopic = classifiedTopic?.second?.takeUnless {
             it.name.equals("İnceleme Bekliyor", ignoreCase = true)
         } ?: matchedSubject?.topics?.firstOrNull {
-            it.name.equals(topicName, ignoreCase = true) ||
+            topicName.isNotBlank() && (
+                it.name.equals(topicName, ignoreCase = true) ||
                 topicName.contains(it.name, ignoreCase = true) ||
                 it.name.contains(topicName, ignoreCase = true)
+            )
         }
         if (matchedSubject == null || matchedTopic == null) {
             showBanner("Soru konusu müfredatla eşleştirilemedi; soru kaydedilmedi.")
@@ -2046,17 +2060,18 @@ class SoruLabViewModel(
         val cleanItems = extractedItems
             .asSequence()
             .filter { item ->
-                (item.questionText.trim().length >= 12 || item.croppedImagePath.isNotBlank()) &&
-                    item.topicName.isNotBlank() &&
-                    !item.topicName.equals("İnceleme Bekliyor", ignoreCase = true) &&
-                StudioImageAndPdfEngine.hasCompleteAnswerChoiceSet(item.questionText)
+                item.croppedImagePath.isNotBlank() || item.questionText.trim().length >= 12
             }
             .distinctBy { item ->
                 val normalizedText = item.questionText
                     .lowercase()
                     .replace(Regex("\\s+"), " ")
                     .trim()
-                "${item.examType}|${item.subjectName}|${item.questionNumber}|$normalizedText"
+                if (normalizedText.isBlank()) {
+                    item.id
+                } else {
+                    "${item.examType}|${item.subjectName}|${item.questionNumber}|$normalizedText"
+                }
             }
             .toList()
 
@@ -2085,42 +2100,56 @@ class SoruLabViewModel(
                                 .trim(),
                             ignoreCase = true
                         )
-                } ?: continue
-                val classifiedTopic = SoruLabCatalog.classifyQuestionTopicFromText(
-                    examTypeHint = item.examType,
-                    subjectNameHint = requestedSubject.name,
-                    questionText = item.questionText,
-                    suggestedTopicName = item.topicName,
-                    trustSuggestedTopic = true
-                )?.takeUnless {
-                    it.second.name.equals("İnceleme Bekliyor", ignoreCase = true)
-                } ?: SoruLabCatalog.classifyQuestionTopicFromText(
-                    examTypeHint = item.examType,
-                    subjectNameHint = requestedSubject.name,
-                    questionText = item.questionText
-                )?.takeUnless {
-                    it.second.name.equals("İnceleme Bekliyor", ignoreCase = true)
+                }
+                val explicitTopicName = StudioImageAndPdfEngine.detectTopicNameFromText(
+                    examType = item.examType,
+                    subjectName = requestedSubject?.name ?: item.subjectName,
+                    text = "${item.topicName}\n${item.questionText}"
+                )
+                val explicitTopic = explicitTopicName?.let { name ->
+                    requestedSubject?.let { subject ->
+                        subject.topics.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                            ?.let { topic -> subject to topic }
+                    }
+                }
+                val classifiedTopic = explicitTopic ?: requestedSubject?.let { subject ->
+                    SoruLabCatalog.classifyQuestionTopicFromText(
+                        examTypeHint = item.examType,
+                        subjectNameHint = subject.name,
+                        questionText = item.questionText,
+                        suggestedTopicName = item.topicName,
+                        trustSuggestedTopic = true
+                    )?.takeUnless {
+                        it.second.name.equals("İnceleme Bekliyor", ignoreCase = true)
+                    } ?: SoruLabCatalog.classifyQuestionTopicFromText(
+                        examTypeHint = item.examType,
+                        subjectNameHint = subject.name,
+                        questionText = item.questionText
+                    )?.takeUnless {
+                        it.second.name.equals("İnceleme Bekliyor", ignoreCase = true)
+                    }
                 }
                 val subKey = "${item.examType}|${item.subjectName}"
-                val matchedSubject = classifiedTopic?.first ?: subjectMemo[subKey] ?:
-                    requestedSubject
-                subjectMemo[subKey] = matchedSubject
+                val matchedSubject = classifiedTopic?.first ?: subjectMemo[subKey] ?: requestedSubject
+                if (matchedSubject != null) {
+                    subjectMemo[subKey] = matchedSubject
+                }
 
                 val matchedTopic = classifiedTopic?.second?.takeUnless {
                     it.name.equals("İnceleme Bekliyor", ignoreCase = true)
-                }
-                    ?: matchedSubject.topics.firstOrNull {
-                        it.name.equals(item.topicName, ignoreCase = true) ||
+                } ?: matchedSubject?.topics?.firstOrNull {
+                        item.topicName.isNotBlank() && (
+                            it.name.equals(item.topicName, ignoreCase = true) ||
                             item.topicName.contains(it.name, ignoreCase = true) ||
                             it.name.contains(item.topicName, ignoreCase = true)
+                        )
                     }
-                    ?: continue
 
-                val resolvedExamType = matchedSubject.examType.name
-                val subjectId = matchedSubject.id
-                val resolvedSubjectName = matchedSubject.name
-                val topicId = matchedTopic.id
-                val resolvedTopicName = matchedTopic.name
+                val resolvedExamType = matchedSubject?.examType?.name ?: item.examType
+                val subjectId = matchedSubject?.id.orEmpty()
+                val resolvedSubjectName = matchedSubject?.name.orEmpty()
+                val topicId = matchedTopic?.id.orEmpty()
+                val resolvedTopicName = matchedTopic?.name.orEmpty()
 
                 val effectiveCover = bookCoverPath.ifBlank { item.bookCoverPath }
                 val packedSolution = CustomQuestionRecord.packSolutionWithMeta(
@@ -2152,7 +2181,7 @@ class SoruLabViewModel(
                         topicName = resolvedTopicName,
                         difficulty = firestoreCompatDiff,
                         correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty(),
-                        questionText = item.questionText.ifBlank { "$resolvedSubjectName • $resolvedTopicName" }.take(1800),
+                        questionText = item.questionText.take(1800),
                         publisherTag = finalPubName,
                         aiSolutionSummary = packedSolution,
                         cropAspectRatio = item.cropAspectRatio.coerceIn(0.3, 4.5)

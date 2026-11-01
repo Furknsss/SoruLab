@@ -546,9 +546,9 @@ fun LiveSolvingBoardScreen(
                     }
                 }
 
-                // 2. SIFIR GECİKMELİ (ZERO-LATENCY) S-PEN & FARE HAM ÇİZİM KATMANI + BLENDMODE.CLEAR (DESTINATION-OUT) SİLGİ
+                // 2. SIFIR GECİKMELİ S-PEN ÇİZİMİ VE BLENDMODE.CLEAR SİLGİ
                 // KATI KURAL:
-                // - PointerType.Stylus / PointerType.Eraser -> Doğrudan çizer veya siler.
+                // - PointerType.Stylus -> Doğrudan çizer veya siler.
                 // - PointerType.Touch (Parmak) -> Kesinlikle çizim yapmaz (`return`), parmakla yatay sayfa çevirme (swipe) ve dikey scroll çalışır!
                 // - PointerType.Mouse (Emülatör) -> Sayfa kenarlarından/alt şeridinden yapılan yatay sayfa çevirme hareketlerini engellemez,
                 //   soru üzerinde yapılan çizimleri sıfır gecikmeyle çizer.
@@ -576,41 +576,13 @@ fun LiveSolvingBoardScreen(
                                         if (down.type == PointerType.Touch) {
                                             return@awaitEachGesture
                                         }
-                                        val isStylus = down.type == PointerType.Stylus || down.type == PointerType.Eraser
-                                        val isMouse = down.type == PointerType.Mouse
-                                        if (!isStylus && !isMouse) {
+                                        val isStylus = down.type == PointerType.Stylus
+                                        if (!isStylus) {
                                             return@awaitEachGesture
                                         }
 
-                                        // If Mouse starts in the outer page-turn margins or bottom book page bar, let HorizontalPager/buttons handle it!
-                                        val edgeMarginPx = 54.dp.toPx()
-                                        val bottomBarPx = 58.dp.toPx()
-                                        if (isMouse && (
-                                                down.position.x < edgeMarginPx ||
-                                                    down.position.x > size.width - edgeMarginPx ||
-                                                    down.position.y > size.height - bottomBarPx
-                                                )
-                                        ) {
-                                            return@awaitEachGesture
-                                        }
-
-                                        var overSlopOffset = Offset.Zero
-                                        val dragStartChange = awaitTouchSlopOrCancellation(down.id) { change, overSlop ->
-                                            overSlopOffset = overSlop
-                                            // If using Mouse in emulator and the user performs a strong horizontal page-swipe gesture,
-                                            // do NOT consume it so HorizontalPager turns the book page!
-                                            val isHorizontalPageSwipe = isMouse &&
-                                                abs(overSlop.x) > abs(overSlop.y) * 2.4f &&
-                                                abs(overSlop.x) > 14f
-                                            if (!isHorizontalPageSwipe) {
-                                                change.consume()
-                                            }
-                                        }
-                                        val isMousePageSwipe = isMouse &&
-                                            abs(overSlopOffset.x) > abs(overSlopOffset.y) * 2.4f &&
-                                            abs(overSlopOffset.x) > 14f
-                                        if (isMousePageSwipe) {
-                                            return@awaitEachGesture
+                                        val dragStartChange = awaitTouchSlopOrCancellation(down.id) { change, _ ->
+                                            change.consume()
                                         }
                                         if (dragStartChange != null) {
                                             liveRawPoints.clear()
@@ -1477,7 +1449,7 @@ private fun BookPageQuestionItem345(
                     val aspect = croppedBitmap.width.toFloat() / croppedBitmap.height.toFloat().coerceAtLeast(1f)
                     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                         val nativeWidth = with(LocalDensity.current) { croppedBitmap.width.toDp() }
-                        val imageWidth = minOf(maxWidth, 300.dp * aspect, nativeWidth)
+                        val imageWidth = minOf(maxWidth, 300.dp, nativeWidth)
                         Image(
                             bitmap = croppedBitmap.asImageBitmap(),
                             contentDescription = "${question.number}. Soru",
@@ -3106,14 +3078,14 @@ private fun FullScreenTwinQuestionComparisonView(
                                     .weight(1f)
                                     .fillMaxWidth()
                                     .verticalScroll(rememberScrollState()),
-                                contentAlignment = Alignment.TopCenter
+                                contentAlignment = Alignment.TopStart
                             ) {
                                 if (originalBitmap != null) {
                                     val aspect = originalBitmap.width.toFloat() /
                                         originalBitmap.height.toFloat().coerceAtLeast(1f)
                                     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                                         val nativeWidth = with(LocalDensity.current) { originalBitmap.width.toDp() }
-                                        val imageWidth = minOf(maxWidth, 300.dp * aspect, nativeWidth)
+                                        val imageWidth = minOf(maxWidth, 300.dp, nativeWidth)
                                         Image(
                                             bitmap = originalBitmap.asImageBitmap(),
                                             contentDescription = "Orijinal Test Sorusu",
@@ -3773,10 +3745,8 @@ private fun TwinQuestionInkCanvas(
                     Modifier.pointerInput(activeTool, selectedStrokeSizeIndex, selectedPenColorHex) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
-                            val isStylusOrMouse = down.type == PointerType.Stylus ||
-                                down.type == PointerType.Eraser ||
-                                down.type == PointerType.Mouse
-                            if (!isStylusOrMouse) return@awaitEachGesture
+                            val isStylus = down.type == PointerType.Stylus
+                            if (!isStylus) return@awaitEachGesture
 
                             val dragStart = awaitTouchSlopOrCancellation(down.id) { change, _ ->
                                 change.consume()

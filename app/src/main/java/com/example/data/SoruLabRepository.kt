@@ -6,6 +6,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.Offset
 import com.example.R
 import com.example.util.ensureFirebaseInitialized
+import com.example.util.StudioImageAndPdfEngine
 import com.example.viewmodel.DrawStroke
 import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.FieldValue
@@ -204,10 +205,10 @@ class SoruLabRepository(
                         id = obj.optString("id"),
                         userId = obj.optString("userId", userId),
                         examType = obj.optString("examType", "TYT"),
-                        subjectId = obj.optString("subjectId", "tyt_mat"),
-                        subjectName = obj.optString("subjectName", "Matematik"),
-                        topicId = obj.optString("topicId", "temel_kavramlar"),
-                        topicName = obj.optString("topicName", "Temel Kavramlar"),
+                        subjectId = obj.optString("subjectId", ""),
+                        subjectName = obj.optString("subjectName", ""),
+                        topicId = obj.optString("topicId", ""),
+                        topicName = obj.optString("topicName", ""),
                         testId = obj.optString("testId"),
                         testTitle = obj.optString("testTitle"),
                         correctCount = obj.optInt("correctCount", 0),
@@ -428,6 +429,7 @@ class SoruLabRepository(
                 }
                 if (snapshot != null) {
                     val items = snapshot.toObjects(CustomQuestionRecord::class.java)
+                        .map(::normalizeLegacyBiologyQuestion)
                         .sortedByDescending { it.createdAt?.seconds ?: 0L }
                     trySend(items)
                 }
@@ -445,10 +447,10 @@ class SoruLabRepository(
             val payload = mapOf(
                 "userId" to record.userId,
                 "examType" to if (record.examType.equals("AYT", ignoreCase = true)) "AYT" else "TYT",
-                "subjectId" to record.subjectId.ifBlank { "tyt_mat" }.take(64),
-                "subjectName" to record.subjectName.ifBlank { "Matematik" }.take(100),
-                "topicId" to record.topicId.ifBlank { "temel_kavramlar" }.take(64),
-                "topicName" to record.topicName.ifBlank { "Temel Kavramlar" }.take(120),
+                "subjectId" to record.subjectId.take(64),
+                "subjectName" to record.subjectName.take(100),
+                "topicId" to record.topicId.take(64),
+                "topicName" to record.topicName.take(120),
                 "testId" to record.testId.ifBlank { "test_1" }.take(64),
                 "testTitle" to record.testTitle.ifBlank { "Test 1" }.take(150),
                 "correctCount" to record.correctCount.coerceIn(0, 200),
@@ -541,10 +543,10 @@ class SoruLabRepository(
             val payload = mapOf(
                 "userId" to record.userId,
                 "examType" to if (record.examType.equals("AYT", ignoreCase = true)) "AYT" else "TYT",
-                "subjectId" to record.subjectId.ifBlank { "tyt_mat" }.take(64),
-                "subjectName" to record.subjectName.ifBlank { "Matematik" }.take(100),
-                "topicId" to record.topicId.ifBlank { "temel_kavramlar" }.take(64),
-                "topicName" to record.topicName.ifBlank { "Temel Kavramlar" }.take(120),
+                "subjectId" to record.subjectId.take(64),
+                "subjectName" to record.subjectName.take(100),
+                "topicId" to record.topicId.take(64),
+                "topicName" to record.topicName.take(120),
                 "difficulty" to (record.difficulty.takeIf { it in listOf("Kolay", "Orta", "Zor") } ?: "Orta"),
                 "correctOption" to (record.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty()),
                 "questionText" to record.questionText.ifBlank { "YKS Sorusu" }.take(1950),
@@ -634,10 +636,10 @@ class SoruLabRepository(
         return mapOf(
             "userId" to record.userId,
             "examType" to if (record.examType.equals("AYT", ignoreCase = true)) "AYT" else "TYT",
-            "subjectId" to record.subjectId.ifBlank { "tyt_mat" }.take(64),
-            "subjectName" to record.subjectName.ifBlank { "Matematik" }.take(100),
-            "topicId" to record.topicId.ifBlank { "temel_kavramlar" }.take(64),
-            "topicName" to record.topicName.ifBlank { "Temel Kavramlar" }.take(120),
+            "subjectId" to record.subjectId.take(64),
+            "subjectName" to record.subjectName.take(100),
+            "topicId" to record.topicId.take(64),
+            "topicName" to record.topicName.take(120),
             "difficulty" to (record.difficulty.takeIf { it in listOf("Kolay", "Orta", "Zor") } ?: "Orta"),
             "correctOption" to (record.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty()),
             "questionText" to record.questionText.ifBlank { "YKS Sorusu" }.take(1950),
@@ -701,10 +703,10 @@ class SoruLabRepository(
                         id = obj.optString("id"),
                         userId = obj.optString("userId", userId),
                         examType = obj.optString("examType", "TYT"),
-                        subjectId = obj.optString("subjectId", "tyt_mat"),
-                        subjectName = obj.optString("subjectName", "Matematik"),
-                        topicId = obj.optString("topicId", "temel_kavramlar"),
-                        topicName = obj.optString("topicName", "Temel Kavramlar"),
+                        subjectId = obj.optString("subjectId", ""),
+                        subjectName = obj.optString("subjectName", ""),
+                        topicId = obj.optString("topicId", ""),
+                        topicName = obj.optString("topicName", ""),
                         difficulty = obj.optString("difficulty", "Orta"),
                         correctOption = obj.optString("correctOption", "C"),
                         questionText = obj.optString("questionText", ""),
@@ -714,10 +716,51 @@ class SoruLabRepository(
                     )
                 )
             }
-            list
+            list.map(::normalizeLegacyBiologyQuestion)
         } catch (_: Exception) {
             emptyList()
         }
+    }
+
+    fun deleteLocalQuestionImages(paths: Collection<String>): Int {
+        val context = appContext ?: return paths.count(String::isNotBlank)
+        return paths.filter(String::isNotBlank).count { path ->
+            !StudioImageAndPdfEngine.deleteQuestionImage(context, path)
+        }
+    }
+
+    fun deleteAllLocalQuestionImages(): Int {
+        val context = appContext ?: return 0
+        return StudioImageAndPdfEngine.deleteAllQuestionImages(context)
+    }
+
+    private fun normalizeLegacyBiologyQuestion(record: CustomQuestionRecord): CustomQuestionRecord {
+        val sourceSignal = "${record.subjectName} ${record.bookOrTestName} ${record.publisherTag}"
+        if (!StudioImageAndPdfEngine.detectSubjectNameFromText(sourceSignal)
+                .equals("Biyoloji", ignoreCase = true)
+        ) {
+            return record
+        }
+
+        val biology = SoruLabCatalog.allSubjects.firstOrNull { it.id == "ayt_biyoloji" }
+            ?: return record
+        val detectedTopicName = StudioImageAndPdfEngine.detectTopicNameFromText(
+            examType = "AYT",
+            subjectName = biology.name,
+            text = "${record.topicName}\n${record.questionText}"
+        )
+        val topic = biology.topics.firstOrNull { it.name.equals(detectedTopicName, ignoreCase = true) }
+            ?: biology.topics.firstOrNull { it.id == record.topicId }
+            ?: biology.topics.firstOrNull { it.name.equals(record.topicName, ignoreCase = true) }
+            ?: biology.topics.firstOrNull { it.id == "sinir_sistemi" }
+            ?: return record
+        return record.copy(
+            examType = "AYT",
+            subjectId = biology.id,
+            subjectName = biology.name,
+            topicId = topic.id,
+            topicName = topic.name
+        )
     }
 
     fun saveCachedCustomQuestions(userId: String, records: List<CustomQuestionRecord>) {

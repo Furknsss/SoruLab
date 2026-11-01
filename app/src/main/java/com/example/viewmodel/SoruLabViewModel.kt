@@ -2008,9 +2008,7 @@ class SoruLabViewModel(
             trustSuggestedTopic = true
         )
         val matchedSubject = classifiedTopic?.first ?: requestedSubject
-        val matchedTopic = classifiedTopic?.second?.takeUnless {
-            it.name.equals("İnceleme Bekliyor", ignoreCase = true)
-        } ?: matchedSubject?.topics?.firstOrNull {
+        val matchedTopic = classifiedTopic?.second ?: matchedSubject?.topics?.firstOrNull {
             topicName.isNotBlank() && (
                 it.name.equals(topicName, ignoreCase = true) ||
                 topicName.contains(it.name, ignoreCase = true) ||
@@ -2166,15 +2164,11 @@ class SoruLabViewModel(
                         questionText = item.questionText,
                         suggestedTopicName = item.topicName,
                         trustSuggestedTopic = true
-                    )?.takeUnless {
-                        it.second.name.equals("İnceleme Bekliyor", ignoreCase = true)
-                    } ?: SoruLabCatalog.classifyQuestionTopicFromText(
+                    ) ?: SoruLabCatalog.classifyQuestionTopicFromText(
                         examTypeHint = item.examType,
                         subjectNameHint = subject.name,
                         questionText = item.questionText
-                    )?.takeUnless {
-                        it.second.name.equals("İnceleme Bekliyor", ignoreCase = true)
-                    }
+                    )
                 }
                 val subKey = "${item.examType}|${item.subjectName}"
                 val matchedSubject = classifiedTopic?.first ?: subjectMemo[subKey] ?: requestedSubject
@@ -2182,9 +2176,7 @@ class SoruLabViewModel(
                     subjectMemo[subKey] = matchedSubject
                 }
 
-                val matchedTopic = classifiedTopic?.second?.takeUnless {
-                    it.name.equals("İnceleme Bekliyor", ignoreCase = true)
-                } ?: matchedSubject?.topics?.firstOrNull {
+                val matchedTopic = classifiedTopic?.second ?: matchedSubject?.topics?.firstOrNull {
                         item.topicName.isNotBlank() && (
                             it.name.equals(item.topicName, ignoreCase = true) ||
                             item.topicName.contains(it.name, ignoreCase = true) ||
@@ -2298,10 +2290,7 @@ class SoruLabViewModel(
         }
     }
 
-    /**
-     * Kullanıcının emin olunamayan veya 'İnceleme Bekliyor' durumundaki soruyu
-     * doğru ders ve konuya taşımasına / düzenlemesine imkan verir.
-     */
+    /** Kullanıcının kaydedilmiş bir sorunun dersini veya konusunu düzeltmesini sağlar. */
     fun updateQuestionTopic(
         questionId: String,
         newSubjectId: String,
@@ -2367,29 +2356,80 @@ class SoruLabViewModel(
         if (questionIds.isEmpty()) return
         val idSet = questionIds.toHashSet()
         val uid = effectiveUserId() ?: "device_yks_student_tr"
+        val imagePaths = _userCustomQuestions.value
+            .filter { it.id in idSet }
+            .mapNotNull { it.croppedImagePath.takeIf(String::isNotBlank) }
         val updated = _userCustomQuestions.value.filterNot { it.id in idSet }
         _userCustomQuestions.value = updated
         saveCustomQuestionsCacheAsync(uid, updated)
         syncPdfPoolToPracticeTests(updated)
         viewModelScope.launch(Dispatchers.IO) {
-            runCatching { repository.deleteCustomQuestionsBatch(questionIds) }
+            var failedImageDeletes = 0
+            try {
+                failedImageDeletes = repository.deleteLocalQuestionImages(imagePaths)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                failedImageDeletes = imagePaths.size
+            }
+            val cloudDeleteSucceeded = try {
+                repository.deleteCustomQuestionsBatch(questionIds)
+                true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
+            withContext(Dispatchers.Main) {
+                when {
+                    !cloudDeleteSucceeded ->
+                        showBanner("Cihazdaki soru kayıtları kaldırıldı ancak bulut listesinden silinemedi.")
+                    failedImageDeletes > 0 ->
+                        showBanner("$failedImageDeletes soru görseli cihazdan silinemedi.")
+                    else ->
+                        showBanner("Kaynak kitap ve soruları Kitaplığınızdan kaldırıldı.")
+                }
+            }
         }
-        showBanner("Kaynak kitap ve soruları Kitaplığınızdan kaldırıldı.")
     }
 
     fun deleteCustomQuestion(questionId: String) {
         val uid = effectiveUserId() ?: "device_yks_student_tr"
+        val imagePath = _userCustomQuestions.value
+            .firstOrNull { it.id == questionId }
+            ?.croppedImagePath
         val updated = _userCustomQuestions.value.filterNot { it.id == questionId }
         _userCustomQuestions.value = updated
         saveCustomQuestionsCacheAsync(uid, updated)
         syncPdfPoolToPracticeTests(updated)
         viewModelScope.launch(Dispatchers.IO) {
+            var imageDeleteFailed = false
+            try {
+                if (!imagePath.isNullOrBlank()) {
+                    imageDeleteFailed = repository.deleteLocalQuestionImages(listOf(imagePath)) > 0
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                imageDeleteFailed = true
+            }
             try {
                 repository.deleteCustomQuestion(questionId)
                 withContext(Dispatchers.Main) {
-                    showBanner("Soru havuzdan silindi.")
+                    showBanner(
+                        if (imageDeleteFailed) {
+                            "Soru havuzdan silindi ancak görsel dosyası cihazdan silinemedi."
+                        } else {
+                            "Soru havuzdan silindi."
+                        }
+                    )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    showBanner("Soru silinirken bir hata oluştu; tekrar deneyin.")
+                }
             }
         }
     }
@@ -2397,7 +2437,8 @@ class SoruLabViewModel(
     fun clearAllUserData() {
         val uid = effectiveUserId() ?: "device_yks_student_tr"
         val oldResults = allCloudTestRecords.toList()
-        val oldCustomQuestionIds = _userCustomQuestions.value.mapNotNull { it.id.takeIf { id -> id.isNotBlank() } }
+        val oldCustomQuestions = _userCustomQuestions.value
+        val oldCustomQuestionIds = oldCustomQuestions.mapNotNull { it.id.takeIf { id -> id.isNotBlank() } }
 
         allCloudTestRecords = emptyList()
         _generatedTopicTests.value = emptyMap()
@@ -2408,6 +2449,12 @@ class SoruLabViewModel(
         _boardStrokes.value = emptyMap()
 
         viewModelScope.launch(Dispatchers.IO) {
+            val failedImageDeletes = repository.deleteAllLocalQuestionImages()
+            if (failedImageDeletes > 0) {
+                withContext(Dispatchers.Main) {
+                    showBanner("$failedImageDeletes soru görseli cihazdan silinemedi.")
+                }
+            }
             repository.clearAllLocalUserData(uid)
             if (_currentUser.value != null) {
                 try {

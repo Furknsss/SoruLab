@@ -1450,6 +1450,7 @@ private fun BookPageQuestionItem345(
                     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                         val nativeWidth = with(LocalDensity.current) { croppedBitmap.width.toDp() }
                         val imageWidth = minOf(maxWidth, 300.dp, nativeWidth)
+                        val imageHeight = (imageWidth / aspect).coerceIn(120.dp, 420.dp)
                         Image(
                             bitmap = croppedBitmap.asImageBitmap(),
                             contentDescription = "${question.number}. Soru",
@@ -1457,7 +1458,7 @@ private fun BookPageQuestionItem345(
                             alignment = Alignment.TopStart,
                             modifier = Modifier
                                 .width(imageWidth)
-                                .aspectRatio(aspect)
+                                .height(imageHeight)
                                 .background(Color.White)
                         )
                     }
@@ -1512,6 +1513,36 @@ private fun BookPageQuestionItem345(
                     }
                 } else {
                     // Fallback vector/text rendering if a catalog question has no bitmap
+                    if (question.stemTop.isBlank() &&
+                        question.bulletsOrSteps.isEmpty() &&
+                        question.stemBottom.isBlank() &&
+                        question.visualType == QuestionVisualType.NONE
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 120.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (question.imagePath.isNotBlank()) {
+                                        "Soru görseli bu cihazda yüklenemedi."
+                                    } else {
+                                        "Bu soru için görsel veya metin içeriği bulunamadı."
+                                    },
+                                    color = Color(0xFF64748B),
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
                     if (question.stemTop.isNotBlank()) {
                         Text(
                             text = question.stemTop,

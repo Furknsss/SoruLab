@@ -189,7 +189,7 @@ class SoruLabQuestionClassificationTest {
     }
 
     @Test
-    fun uncertainQuestionWithoutSignalRoutesToIncelemeBekliyor() {
+    fun uncertainQuestionWithoutSignalDoesNotReceiveAFabricatedTopic() {
         val result = SoruLabCatalog.classifyQuestionTopicFromText(
             examTypeHint = "AYT",
             subjectNameHint = "Matematik",
@@ -197,10 +197,35 @@ class SoruLabQuestionClassificationTest {
             suggestedTopicName = "Bilinmeyen Başlık"
         )
 
+        assertEquals(null, result)
+    }
+
+    @Test
+    fun biologyNeverGetsAnUnrelatedMathTopicAndDefaultsToNervousSystem() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Biyoloji",
+            questionText = "Yukarıda verilen bilgilere göre hangisi doğrudur?",
+            suggestedTopicName = "Türev Alma Kuralları"
+        )
+
         assertNotNull(result)
-        assertEquals("Matematik", result?.first?.name)
-        assertEquals("İnceleme Bekliyor", result?.second?.name)
-        assertEquals("inceleme_bekliyor", result?.second?.id)
+        assertEquals("Biyoloji", result?.first?.name)
+        assertEquals("Sinir Sistemi", result?.second?.name)
+    }
+
+    @Test
+    fun biologyKeywordsStayWithinBiologyCurriculum() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Biyoloji",
+            questionText = "Nöronlarda impuls iletimi ve sinaps olayları",
+            suggestedTopicName = ""
+        )
+
+        assertNotNull(result)
+        assertEquals("Biyoloji", result?.first?.name)
+        assertEquals("Sinir Sistemi", result?.second?.name)
     }
 
     @Test

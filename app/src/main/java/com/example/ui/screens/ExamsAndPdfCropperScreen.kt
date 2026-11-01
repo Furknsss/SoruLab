@@ -1390,7 +1390,7 @@ fun SoruHavuzuAndPdfStudioView(
         }
         val topicsInBook = remember(sortedBookQuestions) {
             sortedBookQuestions
-                .groupBy { it.topicName.ifBlank { "Genel Tekrar" } }
+                .groupBy { it.topicName.ifBlank { "Konu belirlenmedi" } }
                 .map { (tName, list) -> tName to list.size }
                 .sortedByDescending { it.second }
         }
@@ -1399,8 +1399,12 @@ fun SoruHavuzuAndPdfStudioView(
                 sortedBookQuestions
             } else {
                 sortedBookQuestions.filter {
-                    it.topicName.ifBlank { "Genel Tekrar" } == selectedTopicInBookModal
-                }.ifEmpty { sortedBookQuestions }
+                    if (selectedTopicInBookModal == "Konu belirlenmedi") {
+                        it.topicName.isBlank()
+                    } else {
+                        it.topicName == selectedTopicInBookModal
+                    }
+                }
             }
         }
         val testChunks = remember(filteredQuestionsForChunks, selectedTestLevel) {
@@ -1576,7 +1580,7 @@ fun SoruHavuzuAndPdfStudioView(
                             val firstInChunk = chunkQuestions.first()
                             val verifiedAnswerCount = chunkQuestions.count { it.answerKeyVerified }
                             val previewBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(firstInChunk.croppedImagePath)
-                            val topicTitle = firstInChunk.topicName.ifBlank { "Genel Tekrar" }
+                            val topicTitle = firstInChunk.topicName.ifBlank { "Konu belirlenmedi" }
                             val cleanTestName = "$topicTitle - Test ${chunkIdx + 1}"
 
                             Surface(

@@ -677,12 +677,21 @@ object SoruLabCatalog {
         }
 
         val normalizedText = questionText.lowercase()
-        val normalizedSubjectHint = subjectNameHint
+        val rawSubjectHint = subjectNameHint
             .replace("TYT ", "", ignoreCase = true)
             .replace("AYT ", "", ignoreCase = true)
             .trim()
-        val isMathContext = normalizedSubjectHint.isBlank() ||
-            normalizedSubjectHint.contains("matematik", ignoreCase = true) ||
+        val normalizedSubjectHint = if (
+            rawSubjectHint.equals("bio", ignoreCase = true) ||
+            rawSubjectHint.equals("biology", ignoreCase = true) ||
+            rawSubjectHint.contains("biyoloji", ignoreCase = true)
+        ) {
+            "Biyoloji"
+        } else {
+            rawSubjectHint
+        }
+        val isBiologyContext = normalizedSubjectHint.equals("Biyoloji", ignoreCase = true)
+        val isMathContext = normalizedSubjectHint.contains("matematik", ignoreCase = true) ||
             normalizedSubjectHint.contains("geometri", ignoreCase = true)
         val hasDerivativeSymbol = normalizedText.contains("'") ||
             normalizedText.contains("′") ||
@@ -725,16 +734,14 @@ object SoruLabCatalog {
 
         val preferredName = forcedTopicName.ifBlank { suggestedTopicName.trim() }
         val preferredExam = if (forcedTopicName.isNotBlank() || examTypeHint.contains("AYT", ignoreCase = true)) ExamType.AYT else ExamType.TYT
-        val preferredSubject = if (forcedTopicName.isNotBlank()) "Matematik" else subjectNameHint
-            .replace("TYT ", "", ignoreCase = true)
-            .replace("AYT ", "", ignoreCase = true)
-            .trim()
+        val preferredSubject = if (forcedTopicName.isNotBlank()) "Matematik" else normalizedSubjectHint
 
         val targetSubject = allSubjects.firstOrNull {
             it.examType == preferredExam && it.name.equals(preferredSubject, ignoreCase = true)
         } ?: allSubjects.firstOrNull {
-            it.examType == preferredExam && (it.name.contains("matematik", ignoreCase = true))
-        } ?: allSubjects.first { it.examType == preferredExam }
+            it.examType == preferredExam && it.name.equals(normalizedSubjectHint, ignoreCase = true)
+        } ?: allSubjects.firstOrNull { it.examType == preferredExam }
+            ?: return null
 
         // Ders İzolasyonu: Matematik soruları asla Fizik havuzunda aranamaz;
         // Fizik soruları da Matematik havuzuna karışamaz.
@@ -743,10 +750,6 @@ object SoruLabCatalog {
                 it.examType == preferredExam && it.name.equals(preferredSubject, ignoreCase = true)
             }
             if (matched.isNotEmpty()) matched else listOf(targetSubject)
-        } else if (isMathContext) {
-            allSubjects.filter {
-                it.examType == preferredExam && (it.name.contains("matematik", ignoreCase = true) || it.name.contains("geometri", ignoreCase = true))
-            }
         } else {
             allSubjects.filter { it.examType == preferredExam }
         }
@@ -778,8 +781,12 @@ object SoruLabCatalog {
 
             if (bestMatch != null) {
                 bestMatch.first to bestMatch.second
+            } else if (isBiologyContext) {
+                targetSubject to (targetSubject.topics.firstOrNull { it.id == "sinir_sistemi" }
+                    ?: targetSubject.topics.firstOrNull()
+                    ?: return null)
             } else {
-                targetSubject to getReviewTopicForSubject(targetSubject)
+                return null
             }
         } else {
             val exactMatches = subjectSearchPool.flatMap { subject ->
@@ -801,19 +808,16 @@ object SoruLabCatalog {
 
             if (matched != null) {
                 matched
+            } else if (isBiologyContext) {
+                targetSubject to (targetSubject.topics.firstOrNull { it.id == "sinir_sistemi" }
+                    ?: targetSubject.topics.firstOrNull()
+                    ?: return null)
             } else {
-                // Konu adı tam eşleşmediğinde sessizce alakasız bir konuya atama; İnceleme Bekliyor'a al
-                targetSubject to getReviewTopicForSubject(targetSubject)
+                return null
             }
         }
 
-        // KESİN GÜVENLİK KURALI: AYT Matematik soruları hiçbir durumda Fizik olarak etiketlenemez!
-        return if (isMathContext && resultPair.first.name.equals("Fizik", ignoreCase = true)) {
-            val mathSubject = allSubjects.first { it.examType == preferredExam && it.name == "Matematik" }
-            mathSubject to getReviewTopicForSubject(mathSubject)
-        } else {
-            resultPair
-        }
+        return resultPair.takeIf { !isMathContext || it.first.name.equals(preferredSubject, ignoreCase = true) }
     }
 
     private fun findCatalogTopicByExactName(
@@ -834,19 +838,22 @@ object SoruLabCatalog {
             .firstOrNull { (_, topic) -> topic.name.equals(trimmedTopic, ignoreCase = true) }
     }
 
-    fun getReviewTopicForSubject(subject: YksSubject): YksTopic = YksTopic(
-        id = "inceleme_bekliyor",
-        subjectId = subject.id,
-        name = "İnceleme Bekliyor",
-        questionCount = 0,
-        completedTests = 0,
-        totalTests = 0,
-        badgeColorHex = 0xFFF59E0B,
-        iconType = "help",
-        tests = emptyList()
-    )
-
     private val topicKeywordAliases: Map<String, List<String>> = mapOf(
+        // AYT Biyoloji
+        "sinir_sistemi" to listOf("nöron", "noron", "impuls", "sinaps", "beyin"),
+        "endokrin_sistem" to listOf("hormon", "hipofiz", "tiroit", "insülin", "insulin"),
+        "duyu_organlari" to listOf("göz", "goz", "kulak", "reseptör", "reseptor"),
+        "destek_ve_hareket" to listOf("kemik", "kas", "aktin", "miyozin"),
+        "sindirim_sistemi" to listOf("enzim", "mide", "pankreas", "villus"),
+        "dolasim_ve_bagisiklik" to listOf("kalp", "damar", "kan", "antikor"),
+        "solunum_sistemi" to listOf("alveol", "hemoglobin", "akciğer", "akciger"),
+        "uriner_sistem" to listOf("nefron", "böbrek", "bobrek", "üre", "idrar"),
+        "ureme_sistemi_embriyonik" to listOf("folikül", "folikul", "zigot", "embriyo"),
+        "komunite_ve_populasyon" to listOf("ekosistem", "rekabet", "süksesyon", "popülasyon"),
+        "genden_proteine" to listOf("dna", "rna", "kodon", "ribozom", "replikasyon"),
+        "canlilarda_enerji_donusumleri" to listOf("atp", "fotosentez", "kloroplast", "kemosentez", "mitokondri"),
+        "bitki_biyolojisi" to listOf("ksilem", "floem", "oksin", "stoma", "tohum"),
+        "canlilar_ve_cevre" to listOf("adaptasyon", "çevre", "çevresel", "doğal seçilim"),
         // AYT Matematik
         "fonksiyonlar" to listOf("fonksiyonlarda uygulama", "fonksiyon", "f(x)", "g(x)", "fog", "gof", "ters fonksiyon", "bire bir", "örten", "grafik dönüşüm", "simetri", "öteleme"),
         "polinomlar" to listOf("polinom", "p(x)", "q(x)", "derece", "başkatsayı", "kalan", "bölümünden"),
@@ -951,14 +958,13 @@ object SoruLabCatalog {
         rawTopicText: String,
         subject: YksSubject?,
         fallbackExamType: ExamType = ExamType.AYT
-    ): YksTopic {
-        val pair = matchBestTopic(
+    ): YksTopic? {
+        return matchBestTopic(
             examTypeHint = subject?.examType?.name ?: fallbackExamType.name,
-            subjectNameHint = subject?.name ?: "Matematik",
+            subjectNameHint = subject?.name.orEmpty(),
             topicOrQuestionText = rawTopicText,
-            fallbackTopicName = subject?.topics?.firstOrNull()?.name ?: ""
-        )
-        return pair.second
+            fallbackTopicName = ""
+        )?.second
     }
 
     /**
@@ -970,7 +976,7 @@ object SoruLabCatalog {
         subjectNameHint: String,
         topicOrQuestionText: String,
         fallbackTopicName: String = ""
-    ): Pair<YksSubject, YksTopic> {
+    ): Pair<YksSubject, YksTopic>? {
         val cleanExam = if (examTypeHint.contains("AYT", ignoreCase = true)) ExamType.AYT else ExamType.TYT
         val cleanSubj = subjectNameHint
             .replace("TYT ", "", ignoreCase = true)
@@ -983,7 +989,7 @@ object SoruLabCatalog {
             it.name.equals(cleanSubj, ignoreCase = true)
         } ?: allSubjects.find {
             it.examType == cleanExam
-        } ?: allSubjects.first()
+        } ?: return null
 
         val combinedSearch = "$topicOrQuestionText $fallbackTopicName".trim()
         val lowerSearch = combinedSearch.lowercase()
@@ -996,7 +1002,11 @@ object SoruLabCatalog {
         }?.let { return matchedSubject to it }
 
         // 2. Check across all subjects of the same ExamType if a specific topic name is explicitly mentioned (e.g. Olasılık in AYT book)
-        val sameExamTopics = allSubjects.filter { it.examType == matchedSubject.examType }
+        val sameExamTopics = if (cleanSubj.isBlank()) {
+            allSubjects.filter { it.examType == matchedSubject.examType }
+        } else {
+            emptyList()
+        }
         for (subj in sameExamTopics) {
             for (t in subj.topics) {
                 if (t.name.equals(topicOrQuestionText.trim(), ignoreCase = true) ||
@@ -1027,7 +1037,7 @@ object SoruLabCatalog {
             return matchedSubject to bestTopic
         }
 
-        // 4. Fallback to fallbackTopicName match or first topic of matchedSubject (deterministic, NEVER modulo!)
+        // 4. Use only a catalog-valid fallback; unresolved topics stay unclassified.
         val fallbackMatched = if (fallbackTopicName.isNotBlank()) {
             matchedSubject.topics.firstOrNull { t ->
                 t.name.equals(fallbackTopicName.trim(), ignoreCase = true) ||
@@ -1036,7 +1046,14 @@ object SoruLabCatalog {
             }
         } else null
 
-        return matchedSubject to (fallbackMatched ?: matchedSubject.topics.first())
+        fallbackMatched?.let { return matchedSubject to it }
+        if (matchedSubject.name.equals("Biyoloji", ignoreCase = true)) {
+            (matchedSubject.topics.firstOrNull { it.id == "sinir_sistemi" }
+                ?: matchedSubject.topics.firstOrNull())?.let {
+                return matchedSubject to it
+            }
+        }
+        return null
     }
 
     private fun topicEntry(

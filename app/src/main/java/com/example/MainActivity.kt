@@ -276,8 +276,12 @@ private fun ActiveSolvingSessionHost(
             onFinishTest = { mainViewModel.finishActiveTestAndReview() },
             onGoToStatsTab = { mainViewModel.navigateFromReviewToStats() },
             onAskAiForQuestion = { q -> mainViewModel.openAiAssistant(q) },
-            onGenerateTwinQuestion = { q, cb -> aiViewModel.generateTwinQuestionOnDemand(q, cb) },
-            onGenerateSolutionForQuestion = { q, cb -> aiViewModel.generateQuestionSolutionOnDemand(q, cb) },
+            onGenerateTwinQuestion = { q, cb ->
+                aiViewModel.generateTwinQuestionOnDemand(q, applicationContext, cb)
+            },
+            onGenerateSolutionForQuestion = { q, cb ->
+                aiViewModel.generateQuestionSolutionOnDemand(q, applicationContext, cb)
+            },
             onAddQuestionToKumbara = { q -> mainViewModel.addQuestionToKumbara(q) },
             customPublishers = customPublishers
         )
@@ -530,7 +534,9 @@ private fun AiAssistantAndBannerHost(
         messages = aiMessages,
         isLoading = aiLoading,
         onDismiss = { mainViewModel.closeAiAssistant() },
-        onAskQuestionSolution = { q, prompt -> aiViewModel.askAboutQuestion(q, prompt) },
+        onAskQuestionSolution = { q, prompt ->
+            aiViewModel.askAboutQuestion(q, applicationContext, prompt)
+        },
         onSendFreeMessage = { text -> aiViewModel.sendFreeMessage(text) },
         onClearHistory = { aiViewModel.clearChatHistory() }
     )

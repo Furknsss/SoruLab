@@ -18,10 +18,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -93,19 +95,65 @@ object StudioImageAndPdfEngine {
         if (path.isNotBlank()) bitmapCache.remove(path)
     }
 
+    fun deleteQuestionImage(context: Context, path: String): Boolean {
+        val file = resolveQuestionImageFile(context, path) ?: return true
+        val questionsDir = File(context.filesDir, "questions").canonicalFile
+        if (file.canonicalFile.parentFile != questionsDir) return false
+        invalidateCachedBitmap(path)
+        invalidateCachedBitmap(file.absolutePath)
+        return file.delete() || !file.exists()
+    }
+
+    fun deleteAllQuestionImages(context: Context): Int {
+        val questionsDir = File(context.filesDir, "questions")
+        val files = questionsDir.listFiles()
+            ?.filter { it.isFile && it.name.matches(Regex("""q_[A-Za-z0-9_-]+\.jpg""")) }
+            .orEmpty()
+        return files.count { file ->
+            invalidateCachedBitmap(file.absolutePath)
+            !file.delete() && file.exists()
+        }
+    }
+
+    private fun resolveQuestionImageFile(context: Context, path: String): File? {
+        if (path.isBlank()) return null
+        val parsed = Uri.parse(path)
+        val normalizedPath = if (parsed.scheme.equals("file", ignoreCase = true)) {
+            parsed.path.orEmpty()
+        } else {
+            path
+        }
+        val questionsDir = File(context.filesDir, "questions")
+        val candidates = buildList {
+            add(File(normalizedPath))
+            if (!File(normalizedPath).isAbsolute) add(File(context.filesDir, normalizedPath))
+            add(File(questionsDir, File(normalizedPath).name))
+        }
+        return candidates
+            .distinctBy { it.absolutePath }
+            .firstOrNull { it.isFile && it.length() > 0L }
+    }
+
     fun containsNonQuestionPageMarker(text: String): Boolean {
-        val normalized = text.lowercase()
+        val normalized = text.lowercase(Locale.forLanguageTag("tr-TR")).replace('ı', 'i')
         return listOf(
             "içindekiler", "icindekiler", "önsöz", "onsoz", "istiklal marşı",
-            "istiklal marsi", "künye", "kunye"
+            "istiklal marsi", "künye", "kunye", "cevap anahtarı", "cevap anahtari",
+            "ünite", "unite"
         ).any(normalized::contains)
     }
 
     fun shouldSkipQuestionPage(text: String, topHeaderText: String = text): Boolean {
         if (text.isBlank()) return false
-        val hasQuestionStructure = Regex("""(?im)(?:^|[\s(])[A-E]\s*[).:]\s*\S""")
+        return containsNonQuestionPageMarker(topHeaderText) && !hasQuestionNumberOrOptions(text)
+    }
+
+    fun hasQuestionNumberOrOptions(text: String): Boolean {
+        val hasQuestionNumber = Regex("""(?im)^\s*(?:[1-9]|[1-3][0-9])[\.\-)]\s*\S""")
             .containsMatchIn(text)
-        return containsNonQuestionPageMarker(topHeaderText) && !hasQuestionStructure
+        val hasOptions = Regex("""(?im)(?:^|[\s(])[A-E]\s*[).:]\s*\S""")
+            .containsMatchIn(text)
+        return hasQuestionNumber || hasOptions
     }
 
     private fun isNonBlankQuestionBitmap(bitmap: Bitmap): Boolean {
@@ -154,11 +202,11 @@ object StudioImageAndPdfEngine {
                 "Sindirim Sistemi" to listOf("enzim", "mide", "pankreas", "villus"),
                 "Dolaşım ve Bağışıklık Sistemi" to listOf("kalp", "damar", "kan", "antikor"),
                 "Solunum Sistemi" to listOf("alveol", "hemoglobin", "akciğer", "akciger"),
-                "Üriner Sistem (Boşaltım)" to listOf("nefron", "böbrek", "bobrek", "üre", "idrar"),
+                "Üriner (Boşaltım) Sistem" to listOf("nefron", "böbrek", "bobrek", "üre", "idrar"),
                 "Üreme Sistemi ve Embriyonik Gelişim" to listOf("folikül", "folikul", "zigot", "embriyo"),
                 "Komünite ve Popülasyon Ekolojisi" to listOf("ekosistem", "rekabet", "süksesyon", "popülasyon"),
-                "Nükleik Asitler ve Protein Sentezi" to listOf("dna", "rna", "kodon", "ribozom", "replikasyon"),
-                "Canlılık ve Enerji" to listOf("atp", "fotosentez", "kloroplast", "kemosentez", "mitokondri"),
+                "Genden Proteine (Nükleik Asitler)" to listOf("dna", "rna", "kodon", "ribozom", "replikasyon", "protein sentezi"),
+                "Fotosentez ve Hücresel Solunum" to listOf("atp", "fotosentez", "kloroplast", "kemosentez", "mitokondri"),
                 "Bitki Biyolojisi" to listOf("ksilem", "floem", "oksin", "stoma", "tohum")
             )
             "matematik" -> listOf(
@@ -174,18 +222,23 @@ object StudioImageAndPdfEngine {
                 "Karmaşık Sayılar" to listOf("i^2", "re(z)", "im(z)", "eşlenik")
             )
             "fizik" -> listOf(
-                "Vektörler" to listOf("vektör", "bileşke kuvvet"),
+                "Vektörler" to listOf("vektör", "vektor", "bileşke kuvvet"),
                 "Bağıl Hareket" to listOf("bağıl hareket", "bağıl hız"),
                 "Newton'un Hareket Yasaları" to listOf("newton", "eylemsizlik", "net kuvvet"),
-                "İş, Güç ve Enerji" to listOf("iş", "güç", "kinetik enerji", "potansiyel enerji"),
+                "Bir Boyutta Sabit İvmeli Hareket" to listOf("sabit ivmeli", "hız-zaman", "konum-zaman", "duruştan harekete"),
+                "Atışlar" to listOf("serbest düşme", "yatay atış", "eğik atış", "atış hareketi"),
+                "İş, Enerji ve Güç" to listOf("iş", "güç", "kinetik enerji", "potansiyel enerji"),
                 "İtme ve Çizgisel Momentum" to listOf("itme", "momentum", "çarpışma"),
                 "Tork ve Denge" to listOf("tork", "denge"),
-                "Basit Makineler" to listOf("basit makine", "makara", "kaldıraç"),
-                "Elektrik ve Manyetizma" to listOf("elektrik alan", "manyetik", "indüksiyon"),
-                "Çembersel Hareket" to listOf("çembersel hareket", "merkezcil"),
+                "Kütle Merkezi ve Basit Makineler" to listOf("kütle merkezi", "basit makine", "makara", "kaldıraç"),
+                "Elektrik Alan ve Potansiyel" to listOf("elektrik alan", "elektriksel potansiyel", "potansiyel fark"),
+                "Manyetizma ve Elektromanyetik İndüksiyon" to listOf("manyetik alan", "manyetizma", "indüksiyon"),
+                "Alternatif Akım ve Transformatörler" to listOf("alternatif akım", "transformatör", "etkin değer"),
+                "Düzgün Çembersel Hareket" to listOf("çembersel hareket", "merkezcil"),
                 "Basit Harmonik Hareket" to listOf("basit harmonik", "yay sarkacı"),
                 "Dalga Mekaniği" to listOf("dalga", "girişim", "kırınım"),
-                "Modern Fizik" to listOf("fotoelektrik", "modern fizik", "radyoaktivite", "atom fiziği")
+                "Atom Fiziğine Giriş ve Radyoaktivite" to listOf("fotoelektrik", "radyoaktivite", "atom fiziği"),
+                "Modern Fizik" to listOf("modern fizik", "özel görelilik", "foton", "de broglie")
             )
             "kimya" -> listOf(
                 "Modern Atom Teorisi" to listOf("atom teorisi", "orbital", "kuantum"),
@@ -194,7 +247,7 @@ object StudioImageAndPdfEngine {
                 "Kimyasal Tepkimelerde Enerji" to listOf("entalpi", "tepkime ısısı"),
                 "Kimyasal Tepkimelerde Hız" to listOf("tepkime hızı", "aktivasyon enerjisi"),
                 "Kimyasal Tepkimelerde Denge" to listOf("kimyasal denge", "denge sabiti"),
-                "Asit-Baz Dengesi" to listOf("asit", "baz", "ph", "poh"),
+                "Sulu Çözeltilerde Asit-Baz Dengesi" to listOf("asit", "baz", "ph", "poh"),
                 "Çözünürlük Dengesi (KÇÇ)" to listOf("çözünürlük çarpımı", "kçç", "çökelme"),
                 "Kimya ve Elektrik" to listOf("elektrokimya", "pil", "elektroliz"),
                 "Karbon Kimyasına Giriş" to listOf("karbon kimyası", "hibritleşme"),
@@ -302,7 +355,7 @@ object StudioImageAndPdfEngine {
             if (!cached.isRecycled) return cached
         }
         val file = File(path)
-        if (!file.exists() || file.length() == 0L) return null
+        if (!file.isFile || file.length() == 0L) return null
         val decoded = runCatching {
             val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(path, boundsOpts)
@@ -323,19 +376,25 @@ object StudioImageAndPdfEngine {
         return decoded
     }
 
+    fun getCachedBitmap(context: Context, path: String, maxDimension: Int = 1440): Bitmap? {
+        val file = resolveQuestionImageFile(context, path) ?: return null
+        return getCachedBitmap(file.absolutePath, maxDimension)
+    }
+
     /**
      * Non-blocking Composable helper: returns cached bitmap immediately in 0ms if in RAM,
      * otherwise decodes on Dispatchers.IO without blocking the UI thread / SurfaceSyncGroup.
      */
     @Composable
     fun rememberCachedBitmap(path: String): Bitmap? {
+        val context = LocalContext.current
         var bitmap by remember(path) { mutableStateOf(peekCachedBitmap(path)) }
         LaunchedEffect(path) {
             if (path.isBlank()) {
                 bitmap = null
             } else if (bitmap == null || bitmap?.isRecycled == true) {
                 bitmap = withContext(Dispatchers.IO) {
-                    getCachedBitmap(path)
+                    getCachedBitmap(context, path)
                 }
             }
         }
@@ -607,7 +666,11 @@ object StudioImageAndPdfEngine {
         val h = ((bottomNorm - topNorm) * sourcePageBitmap.height).roundToInt()
             .coerceIn(1, sourcePageBitmap.height - y)
 
-        val rawCrop = Bitmap.createBitmap(sourcePageBitmap, x, y, w, h)
+        val safeX = x.coerceIn(0, (sourcePageBitmap.width - 1).coerceAtLeast(0))
+        val safeY = y.coerceIn(0, (sourcePageBitmap.height - 1).coerceAtLeast(0))
+        val safeW = w.coerceIn(1, sourcePageBitmap.width - safeX)
+        val safeH = h.coerceIn(1, sourcePageBitmap.height - safeY)
+        val rawCrop = Bitmap.createBitmap(sourcePageBitmap, safeX, safeY, safeW, safeH)
         val whitened = whitenOldQuestionNumberAndEnhance(rawCrop)
         if (whitened !== rawCrop) rawCrop.recycle()
         val aspect = (whitened.width.toDouble() / whitened.height.toDouble().coerceAtLeast(1.0))
@@ -1055,7 +1118,9 @@ object StudioImageAndPdfEngine {
         val combinedSignal = "$bookSignal\n$rawTextBuilder"
         val answerKeyMap = parseAnswerKeyRegex(combinedSignal)
 
-        // Match ExamType (TYT / AYT) - Strict AYT Detection Rule:
+        val bookSubjectHint = explicitSubjectName(bookSignal)
+        val explicitlyTyt = Regex("""(?i)(?:^|[^A-Z])TYT(?:$|[^A-Z])""")
+            .containsMatchIn(bookSignal)
         val aytTokens = listOf(
             "AYT", "Alan Yeterlilik", "İleri Matematik", "Ileri Matematik",
             "Fonksiyonlarda Uygulama", "Türev", "Turev", "İntegral", "Integral", "Limit",
@@ -1069,10 +1134,10 @@ object StudioImageAndPdfEngine {
         )
         val examType = when {
             aytTokens.any { combinedSignal.contains(it, ignoreCase = true) } -> "AYT"
+            bookSubjectHint.equals("Biyoloji", ignoreCase = true) && !explicitlyTyt -> "AYT"
             else -> "TYT"
         }
 
-        val bookSubjectHint = explicitSubjectName(bookSignal)
         val detectedSubject = bookSubjectHint
             ?: detectSubjectFromContent(rawTextBuilder.toString())
             ?: ""
@@ -1082,7 +1147,7 @@ object StudioImageAndPdfEngine {
                     examTypeHint = examType,
                     subjectNameHint = detectedSubject,
                     topicOrQuestionText = rawTextBuilder.toString().take(3600)
-                ).second.name.takeUnless { it.equals("İnceleme Bekliyor", ignoreCase = true) }.orEmpty()
+                )?.second?.name.orEmpty()
         } else {
             ""
         }
@@ -1123,9 +1188,7 @@ object StudioImageAndPdfEngine {
                         examTypeHint = examType,
                         subjectNameHint = resolvedSubjForPage,
                         topicOrQuestionText = streamSnippet
-                    ).second.name.takeUnless {
-                        it.equals("İnceleme Bekliyor", ignoreCase = true)
-                    }.orEmpty()
+                    )?.second?.name.orEmpty()
             } else {
                 ""
             }
@@ -1290,9 +1353,10 @@ object StudioImageAndPdfEngine {
     ): Bitmap? {
         if (pageIndex !in 0 until totalPages) return null
         return renderer.openPage(pageIndex).use { page ->
-            val scale = 2.0f
-            val targetW = (page.width * scale).roundToInt().coerceIn(960, 1680)
-            val targetH = (page.height * scale).roundToInt().coerceIn(1320, 2360)
+            val targetW = (page.width * 2f).roundToInt().coerceIn(1200, 1800)
+            val targetH = (page.height.toFloat() * targetW / page.width)
+                .roundToInt()
+                .coerceIn(1200, 2600)
 
             val currentBitmap = reusableBitmapRef[0]
             val pageBitmap = if (
@@ -1372,7 +1436,11 @@ object StudioImageAndPdfEngine {
         val cropHeight = cropBottom - cropTop
         if (cropWidth < 120 || cropHeight < 80) return null
 
-        val rawCrop = Bitmap.createBitmap(pageBitmap, cropLeft, cropTop, cropWidth, cropHeight)
+        val safeLeft = cropLeft.coerceIn(0, (width - 1).coerceAtLeast(0))
+        val safeTop = cropTop.coerceIn(0, (height - 1).coerceAtLeast(0))
+        val safeWidth = cropWidth.coerceIn(1, width - safeLeft)
+        val safeHeight = cropHeight.coerceIn(1, height - safeTop)
+        val rawCrop = Bitmap.createBitmap(pageBitmap, safeLeft, safeTop, safeWidth, safeHeight)
         val cleanedCrop = whitenOldQuestionNumberAndEnhance(rawCrop)
         if (cleanedCrop !== rawCrop) rawCrop.recycle()
         if (!isNonBlankQuestionBitmap(cleanedCrop)) {

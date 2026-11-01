@@ -235,6 +235,7 @@ private fun ActiveSolvingSessionHost(
     mainViewModel: SoruLabViewModel,
     aiViewModel: AiSolverViewModel
 ) {
+    val context = LocalContext.current
     val session by mainViewModel.activeSession.collectAsStateWithLifecycle()
     val elapsedSeconds by mainViewModel.elapsedSeconds.collectAsStateWithLifecycle()
     val boardStrokes by mainViewModel.boardStrokes.collectAsStateWithLifecycle()
@@ -277,10 +278,10 @@ private fun ActiveSolvingSessionHost(
             onGoToStatsTab = { mainViewModel.navigateFromReviewToStats() },
             onAskAiForQuestion = { q -> mainViewModel.openAiAssistant(q) },
             onGenerateTwinQuestion = { q, cb ->
-                aiViewModel.generateTwinQuestionOnDemand(q, applicationContext, cb)
+                aiViewModel.generateTwinQuestionOnDemand(q, context.applicationContext, cb)
             },
             onGenerateSolutionForQuestion = { q, cb ->
-                aiViewModel.generateQuestionSolutionOnDemand(q, applicationContext, cb)
+                aiViewModel.generateQuestionSolutionOnDemand(q, context.applicationContext, cb)
             },
             onAddQuestionToKumbara = { q -> mainViewModel.addQuestionToKumbara(q) },
             customPublishers = customPublishers
@@ -522,6 +523,7 @@ private fun AiAssistantAndBannerHost(
     mainViewModel: SoruLabViewModel,
     aiViewModel: AiSolverViewModel
 ) {
+    val context = LocalContext.current
     val showAiAssistantModal by mainViewModel.showAiAssistantModal.collectAsStateWithLifecycle()
     val aiFocusedQuestion by mainViewModel.aiFocusedQuestion.collectAsStateWithLifecycle()
     val statusBannerMessage by mainViewModel.statusBannerMessage.collectAsStateWithLifecycle()
@@ -535,7 +537,7 @@ private fun AiAssistantAndBannerHost(
         isLoading = aiLoading,
         onDismiss = { mainViewModel.closeAiAssistant() },
         onAskQuestionSolution = { q, prompt ->
-            aiViewModel.askAboutQuestion(q, applicationContext, prompt)
+            aiViewModel.askAboutQuestion(q, context.applicationContext, prompt)
         },
         onSendFreeMessage = { text -> aiViewModel.sendFreeMessage(text) },
         onClearHistory = { aiViewModel.clearChatHistory() }

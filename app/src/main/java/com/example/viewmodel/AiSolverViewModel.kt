@@ -13,6 +13,7 @@ import com.example.data.SoruLabPublisherPresets
 import com.example.data.YksPublisherInfo
 import com.example.data.YksQuestion
 import com.example.data.resolveAnswerKeyOption
+import com.example.util.QuestionNumberAnchor
 import com.example.util.StudioImageAndPdfEngine
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
@@ -120,7 +121,7 @@ private data class PageQuestionCandidate(
 private data class PdfPageOcrLayout(
     val text: String = "",
     val headerText: String = "",
-    val questionNumberAnchors: List<StudioImageAndPdfEngine.QuestionNumberAnchor> = emptyList()
+    val questionNumberAnchors: List<QuestionNumberAnchor> = emptyList()
 )
 
 @Immutable
@@ -727,7 +728,7 @@ class AiSolverViewModel : ViewModel() {
                 ?: line.elements.firstOrNull()?.boundingBox
                 ?: line.boundingBox
                 ?: return@mapNotNull null
-            StudioImageAndPdfEngine.QuestionNumberAnchor(
+            QuestionNumberAnchor(
                 number = number,
                 left = bounds.left,
                 top = bounds.top,

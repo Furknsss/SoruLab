@@ -25,6 +25,7 @@ import com.example.data.YksQuestion
 import com.example.data.YksTestItem
 import com.example.data.YksTopic
 import com.example.data.recommendedDifficultyLevels
+import com.example.util.StudioImageAndPdfEngine
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.auth
@@ -842,6 +843,9 @@ class SoruLabViewModel(
             )
             val logoUri = custom.publisherLogoUri.ifBlank { resolvedPub.customLogoPath }
             val hasCroppedStemImage = custom.croppedImagePath.isNotBlank()
+            val verifiedCorrectOption =
+                custom.correctOption.takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty()
+            val answerKeyVerified = custom.answerKeyVerified && verifiedCorrectOption.isNotBlank()
 
             YksQuestion(
                 id = "custom_${custom.id.ifBlank { index.toString() }}",
@@ -852,7 +856,7 @@ class SoruLabViewModel(
                 publisherName = custom.publisherTag.ifBlank { resolvedPub.name },
                 publisherLogoUri = logoUri,
                 croppedImagePath = custom.croppedImagePath,
-                answerKeyVerified = custom.answerKeyVerified,
+                answerKeyVerified = answerKeyVerified,
                 stemTop = if (hasCroppedStemImage) "" else custom.questionText,
                 bulletsOrSteps = emptyList(),
                 stemBottom = if (hasCroppedStemImage) "" else "Buna göre doğru seçenek aşağıdakilerden hangisidir?",
@@ -863,11 +867,15 @@ class SoruLabViewModel(
                     "D" to "D",
                     "E" to "E"
                 ),
-                correctOption = custom.correctOption.takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "D",
+                correctOption = verifiedCorrectOption,
                 difficulty = diff,
                 visualType = QuestionVisualType.NONE,
                 stepByStepSolution = custom.cleanSolutionSummary.ifBlank {
-                    "Kitap cevap anahtarına göre doğru yanıt ${custom.correctOption} seçeneğidir."
+                    if (answerKeyVerified) {
+                        "Kitap cevap anahtarına göre doğru yanıt $verifiedCorrectOption seçeneğidir."
+                    } else {
+                        "Bu sorunun cevap anahtarı doğrulanamadı."
+                    }
                 }
             )
         }
@@ -946,6 +954,9 @@ class SoruLabViewModel(
             )
             val logoUri = custom.publisherLogoUri.ifBlank { resolvedPub.customLogoPath }
             val hasCroppedStemImage = custom.croppedImagePath.isNotBlank()
+            val verifiedCorrectOption =
+                custom.correctOption.takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty()
+            val answerKeyVerified = custom.answerKeyVerified && verifiedCorrectOption.isNotBlank()
 
             YksQuestion(
                 id = "custom_${custom.id.ifBlank { index.toString() }}",
@@ -956,7 +967,7 @@ class SoruLabViewModel(
                 publisherName = custom.publisherTag.ifBlank { resolvedPub.name },
                 publisherLogoUri = logoUri,
                 croppedImagePath = custom.croppedImagePath,
-                answerKeyVerified = custom.answerKeyVerified,
+                answerKeyVerified = answerKeyVerified,
                 stemTop = if (hasCroppedStemImage) "" else custom.questionText,
                 bulletsOrSteps = emptyList(),
                 stemBottom = if (hasCroppedStemImage) "" else "Buna göre doğru seçenek aşağıdakilerden hangisidir?",
@@ -967,11 +978,15 @@ class SoruLabViewModel(
                     "D" to "D",
                     "E" to "E"
                 ),
-                correctOption = custom.correctOption.takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "C",
+                correctOption = verifiedCorrectOption,
                 difficulty = diff,
                 visualType = QuestionVisualType.NONE,
                 stepByStepSolution = custom.cleanSolutionSummary.ifBlank {
-                    "Kitap cevap anahtarına göre doğru yanıt ${custom.correctOption} seçeneğidir."
+                    if (answerKeyVerified) {
+                        "Kitap cevap anahtarına göre doğru yanıt $verifiedCorrectOption seçeneğidir."
+                    } else {
+                        "Bu sorunun cevap anahtarı doğrulanamadı."
+                    }
                 }
             )
         }
@@ -1380,6 +1395,9 @@ class SoruLabViewModel(
             val resolvedPub = SoruLabPublisherPresets.resolvePublisher(record.publisherTag, _customPublishers.value)
             val diffLevel = record.difficultyLevel5
             val hasCroppedImg = record.croppedImagePath.isNotBlank()
+            val verifiedCorrectOption =
+                record.correctOption.takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty()
+            val answerKeyVerified = record.answerKeyVerified && verifiedCorrectOption.isNotBlank()
             val fallbackQuestion = YksQuestion(
                 id = "single_${record.id}",
                 number = 1,
@@ -1389,7 +1407,7 @@ class SoruLabViewModel(
                 publisherName = resolvedPub.name,
                 publisherLogoUri = record.publisherLogoUri.ifBlank { resolvedPub.customLogoPath },
                 croppedImagePath = record.croppedImagePath,
-                answerKeyVerified = record.answerKeyVerified,
+                answerKeyVerified = answerKeyVerified,
                 stemTop = if (hasCroppedImg) "" else record.questionText,
                 bulletsOrSteps = emptyList(),
                 stemBottom = if (hasCroppedImg) "" else "Doğru seçeneği işaretleyiniz.",
@@ -1400,11 +1418,15 @@ class SoruLabViewModel(
                     "D" to "D",
                     "E" to "E"
                 ),
-                correctOption = record.correctOption,
+                correctOption = verifiedCorrectOption,
                 difficulty = diffLevel,
                 visualType = QuestionVisualType.NONE,
                 stepByStepSolution = record.cleanSolutionSummary.ifBlank {
-                    "Doğru cevap ${record.correctOption} seçeneğidir."
+                    if (answerKeyVerified) {
+                        "Doğru cevap $verifiedCorrectOption seçeneğidir."
+                    } else {
+                        "Bu sorunun cevap anahtarı doğrulanamadı."
+                    }
                 }
             )
             YksTestItem(
@@ -1475,6 +1497,9 @@ class SoruLabViewModel(
             val resolvedPub = SoruLabPublisherPresets.resolvePublisher(record.publisherTag, _customPublishers.value)
             val diffLevel = record.difficultyLevel5
             val hasCroppedImg = record.croppedImagePath.isNotBlank()
+            val verifiedCorrectOption =
+                record.correctOption.takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty()
+            val answerKeyVerified = record.answerKeyVerified && verifiedCorrectOption.isNotBlank()
             YksQuestion(
                 id = "book_${record.id}",
                 number = idx + 1,
@@ -1484,7 +1509,7 @@ class SoruLabViewModel(
                 publisherName = resolvedPub.name,
                 publisherLogoUri = record.publisherLogoUri.ifBlank { resolvedPub.customLogoPath },
                 croppedImagePath = record.croppedImagePath,
-                answerKeyVerified = record.answerKeyVerified,
+                answerKeyVerified = answerKeyVerified,
                 stemTop = if (hasCroppedImg) "" else record.questionText,
                 bulletsOrSteps = emptyList(),
                 stemBottom = if (hasCroppedImg) "" else "Doğru seçeneği işaretleyiniz.",
@@ -1495,11 +1520,15 @@ class SoruLabViewModel(
                     "D" to "D",
                     "E" to "E"
                 ),
-                correctOption = record.correctOption,
+                correctOption = verifiedCorrectOption,
                 difficulty = diffLevel,
                 visualType = QuestionVisualType.NONE,
                 stepByStepSolution = record.cleanSolutionSummary.ifBlank {
-                    "Doğru cevap ${record.correctOption} seçeneğidir."
+                    if (answerKeyVerified) {
+                        "Doğru cevap $verifiedCorrectOption seçeneğidir."
+                    } else {
+                        "Bu sorunun cevap anahtarı doğrulanamadı."
+                    }
                 }
             )
         }
@@ -1898,18 +1927,31 @@ class SoruLabViewModel(
         bookCoverPath: String = ""
     ) {
         val uid = effectiveUserId() ?: "device_yks_student_tr"
+        val requestedSubject = SoruLabCatalog.allSubjects.firstOrNull {
+            it.examType.name.equals(examType, ignoreCase = true) &&
+                it.name.equals(
+                    subjectName
+                        .replace("TYT ", "", ignoreCase = true)
+                        .replace("AYT ", "", ignoreCase = true)
+                        .trim(),
+                    ignoreCase = true
+                )
+        }
+        if (requestedSubject == null) {
+            showBanner("Sorunun dersi müfredatla eşleştirilemedi; soru yanlış derse kaydedilmesin diye işlem durduruldu.")
+            return
+        }
         val classifiedTopic = SoruLabCatalog.classifyQuestionTopicFromText(
             examTypeHint = examType,
-            subjectNameHint = subjectName,
+            subjectNameHint = requestedSubject.name,
             questionText = questionText,
             suggestedTopicName = topicName,
             trustSuggestedTopic = true
         )
-        val matchedSubject = classifiedTopic?.first ?: SoruLabCatalog.allSubjects.firstOrNull {
-            it.examType.name.equals(examType, ignoreCase = true) &&
-                it.name.equals(subjectName, ignoreCase = true)
-        }
-        val matchedTopic = classifiedTopic?.second ?: matchedSubject?.topics?.firstOrNull {
+        val matchedSubject = classifiedTopic?.first ?: requestedSubject
+        val matchedTopic = classifiedTopic?.second?.takeUnless {
+            it.name.equals("İnceleme Bekliyor", ignoreCase = true)
+        } ?: matchedSubject?.topics?.firstOrNull {
             it.name.equals(topicName, ignoreCase = true) ||
                 topicName.contains(it.name, ignoreCase = true) ||
                 it.name.contains(topicName, ignoreCase = true)
@@ -1919,10 +1961,10 @@ class SoruLabViewModel(
             return
         }
 
-        val resolvedExamType = matchedSubject?.examType?.name ?: if (examType.equals("AYT", true)) "AYT" else "TYT"
-        val subjectId = matchedSubject?.id ?: if (resolvedExamType == "AYT") "ayt_mat" else "tyt_mat"
-        val resolvedSubjectName = matchedSubject?.name ?: subjectName.ifBlank { "Matematik" }
-        val topicId = matchedTopic?.id ?: topicName.lowercase().replace(" ", "_").take(32).ifBlank { "temel_kavramlar" }
+        val resolvedExamType = matchedSubject.examType.name
+        val subjectId = matchedSubject.id
+        val resolvedSubjectName = matchedSubject.name
+        val topicId = matchedTopic.id
         val resolvedTopicName = matchedTopic.name
         val resolvedDifficulty = if (questionText.length >= 25) {
             SoruLabCatalog.classifyDifficulty5FromText(
@@ -1963,7 +2005,7 @@ class SoruLabViewModel(
             topicId = topicId,
             topicName = resolvedTopicName,
             difficulty = firestoreCompatDiff,
-            correctOption = correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "D",
+            correctOption = correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty(),
             questionText = questionText.ifBlank { "PDF'ten kırpılan YKS sorusu" }.take(1800),
             publisherTag = publisherTag.ifBlank { resolvedPublisher.name }.take(100),
             aiSolutionSummary = packedSolution,
@@ -2006,7 +2048,8 @@ class SoruLabViewModel(
             .filter { item ->
                 (item.questionText.trim().length >= 12 || item.croppedImagePath.isNotBlank()) &&
                     item.topicName.isNotBlank() &&
-                    item.correctOption.trim().uppercase() in setOf("A", "B", "C", "D", "E")
+                    !item.topicName.equals("İnceleme Bekliyor", ignoreCase = true) &&
+                StudioImageAndPdfEngine.hasCompleteAnswerChoiceSet(item.questionText)
             }
             .distinctBy { item ->
                 val normalizedText = item.questionText
@@ -2033,29 +2076,45 @@ class SoruLabViewModel(
 
             val newRecords = ArrayList<CustomQuestionRecord>(cleanItems.size)
             for ((idx, item) in cleanItems.withIndex()) {
+                val requestedSubject = SoruLabCatalog.allSubjects.firstOrNull {
+                    it.examType.name.equals(item.examType, ignoreCase = true) &&
+                        it.name.equals(
+                            item.subjectName
+                                .replace("TYT ", "", ignoreCase = true)
+                                .replace("AYT ", "", ignoreCase = true)
+                                .trim(),
+                            ignoreCase = true
+                        )
+                } ?: continue
                 val classifiedTopic = SoruLabCatalog.classifyQuestionTopicFromText(
                     examTypeHint = item.examType,
-                    subjectNameHint = item.subjectName,
+                    subjectNameHint = requestedSubject.name,
                     questionText = item.questionText,
                     suggestedTopicName = item.topicName,
                     trustSuggestedTopic = true
-                )
+                )?.takeUnless {
+                    it.second.name.equals("İnceleme Bekliyor", ignoreCase = true)
+                } ?: SoruLabCatalog.classifyQuestionTopicFromText(
+                    examTypeHint = item.examType,
+                    subjectNameHint = requestedSubject.name,
+                    questionText = item.questionText
+                )?.takeUnless {
+                    it.second.name.equals("İnceleme Bekliyor", ignoreCase = true)
+                }
                 val subKey = "${item.examType}|${item.subjectName}"
                 val matchedSubject = classifiedTopic?.first ?: subjectMemo[subKey] ?:
-                    SoruLabCatalog.allSubjects.firstOrNull {
-                        it.examType.name.equals(item.examType, ignoreCase = true) &&
-                            it.name.equals(item.subjectName, ignoreCase = true)
-                    } ?: SoruLabCatalog.allSubjects.firstOrNull {
-                        it.examType.name.equals(item.examType, ignoreCase = true)
-                    } ?: SoruLabCatalog.allSubjects.first()
+                    requestedSubject
                 subjectMemo[subKey] = matchedSubject
 
-                val matchedTopic = classifiedTopic?.second
+                val matchedTopic = classifiedTopic?.second?.takeUnless {
+                    it.name.equals("İnceleme Bekliyor", ignoreCase = true)
+                }
                     ?: matchedSubject.topics.firstOrNull {
                         it.name.equals(item.topicName, ignoreCase = true) ||
                             item.topicName.contains(it.name, ignoreCase = true) ||
                             it.name.contains(item.topicName, ignoreCase = true)
-                    } ?: SoruLabCatalog.getReviewTopicForSubject(matchedSubject)
+                    }
+                    ?: continue
 
                 val resolvedExamType = matchedSubject.examType.name
                 val subjectId = matchedSubject.id
@@ -2092,7 +2151,7 @@ class SoruLabViewModel(
                         topicId = topicId,
                         topicName = resolvedTopicName,
                         difficulty = firestoreCompatDiff,
-                        correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "D",
+                        correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty(),
                         questionText = item.questionText.ifBlank { "$resolvedSubjectName • $resolvedTopicName" }.take(1800),
                         publisherTag = finalPubName,
                         aiSolutionSummary = packedSolution,

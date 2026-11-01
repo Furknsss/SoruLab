@@ -22,6 +22,7 @@ import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -52,8 +53,8 @@ data class AiChatMessage(
 
 data class AutoTagSuggestion(
     val examType: String = "TYT",
-    val subjectName: String = "Matematik",
-    val topicName: String = "Temel Kavramlar",
+    val subjectName: String = "",
+    val topicName: String = "",
     val difficulty: String = "Orta",
     val targetLevel: String = "OSYM",
     val correctOption: String = "D",
@@ -147,11 +148,9 @@ private data class PdfAiStatus(
     @Volatile var pageFallbackFailureCount: Int = 0,
     @Volatile var pageFallbackRejectedQuestionCount: Int = 0,
     @Volatile var localOcrFailureCount: Int = 0,
-    @Volatile var pageFallbackDisabled: Boolean = false,
-    @Volatile var pageFallbackLimitReached: Boolean = false
+    @Volatile var pageFallbackDisabled: Boolean = false
 ) {
     private var transientFailureCount = 0
-    var pageFallbackAttemptCount = 0
 
     @Synchronized
     fun shouldDisableAfterRepeatedFailure(): Boolean {
@@ -159,6 +158,9 @@ private data class PdfAiStatus(
         return transientFailureCount >= 3
     }
 }
+
+private suspend fun recognizePdfPageText(bitmap: Bitmap, recognizer: TextRecognizer): String =
+    recognizer.process(InputImage.fromBitmap(bitmap, 0)).await().text
 
 class AiSolverViewModel : ViewModel() {
 
@@ -493,8 +495,8 @@ class AiSolverViewModel : ViewModel() {
     ) {
         viewModelScope.launch {
             val questionBmp = withContext(Dispatchers.IO) {
-                if (question.croppedImagePath.isNotBlank() && File(question.croppedImagePath).exists()) {
-                    runCatching { BitmapFactory.decodeFile(question.croppedImagePath) }.getOrNull()
+                if (question.imagePath.isNotBlank() && File(question.imagePath).exists()) {
+                    runCatching { BitmapFactory.decodeFile(question.imagePath) }.getOrNull()
                 } else {
                     null
                 }
@@ -511,6 +513,21 @@ class AiSolverViewModel : ViewModel() {
             }
 
             try {
+                val matchedTopic = SoruLabCatalog.allSubjects
+                    .asSequence()
+                    .flatMap { subject -> subject.topics.asSequence().map { subject to it } }
+                    .firstOrNull { (_, topic) ->
+                        topic.name.equals(question.topicHeader, ignoreCase = true)
+                    }
+                val subjectName = matchedTopic?.first?.name
+                    ?: StudioImageAndPdfEngine.detectSubjectNameFromText(
+                        "${question.topicHeader}\n${question.stemTop}\n${question.bulletsOrSteps.joinToString(" ")}"
+                    ).orEmpty()
+                val subjectTopics = SoruLabCatalog.allSubjects
+                    .firstOrNull { it.name.equals(subjectName, ignoreCase = true) }
+                    ?.topics
+                    ?.joinToString(", ") { it.name }
+                    .orEmpty()
                 val prompt = buildString {
                     appendLine("Sen uzman bir ÖSYM YKS soru yazarısın.")
                     appendLine("Görev: Görseldeki soruyu önce tamamen çözümle; sonra aynı kazanımı ölçen, aynı zorlukta ve aynı temel çözüm yöntemini gerektiren yeni bir ikiz soru yaz.")
@@ -520,7 +537,12 @@ class AiSolverViewModel : ViewModel() {
                     appendLine("A-E şıklarının beşi de dolu ve birbirinden farklı olmalı. Çeldiriciler yaygın işlem/kavram hatalarına dayansın; doğru cevap ve çözüm adımları birbiriyle uyuşsun.")
                     appendLine("Orijinal soru şekil, grafik veya tablo gerektiriyorsa yeni soru için gereken tüm bilgileri soru metninde açıkça tarif et; var olmayan bir görsele atıf yapma.")
                     appendLine("Matematiksel gösterimi ve Türkçe karakterleri koru. Yeni soru bağımsız, anlaşılır ve YKS sınav dilinde olsun.")
+                    appendLine("Ders: ${subjectName.ifBlank { "Kaynak sorunun dersini görsel ve kazanımından belirle" }}")
                     appendLine("Konu bağlamı: ${question.topicHeader}")
+                    if (subjectTopics.isNotBlank()) {
+                        appendLine("Bu dersin gerçek kazanım başlıkları: $subjectTopics")
+                        appendLine("Yalnızca bu dersin konu alanında kal; başka dersten, özellikle Matematikten konu ekleme.")
+                    }
                     appendLine("Zorluk seviyesi: ${question.difficulty.label}")
                     appendLine("Orijinal soru kökü: ${question.stemTop}")
                     if (question.bulletsOrSteps.isNotEmpty()) {
@@ -612,17 +634,24 @@ class AiSolverViewModel : ViewModel() {
         try {
             if (aiStatus.unavailableReason == null) {
                 try {
+                    val normalizedSubject = subjectNameHint
+                        .replace("TYT ", "", ignoreCase = true)
+                        .replace("AYT ", "", ignoreCase = true)
+                        .trim()
                     val catalogTopics = SoruLabCatalog.allSubjects
-                        .filter { it.examType.name.equals(examTypeHint, ignoreCase = true) }
+                        .filter {
+                            it.examType.name.equals(examTypeHint, ignoreCase = true) &&
+                                (normalizedSubject.isBlank() || it.name.equals(normalizedSubject, ignoreCase = true))
+                        }
                         .joinToString("\n") { subject ->
                             "${subject.name}: ${subject.topics.joinToString(", ") { it.name }}"
                         }
                     val prompt = buildString {
                         appendLine("Ekli kırpılmış görseldeki tek YKS sorusunu OCR ile eksiksiz oku.")
-                        appendLine("Matematiksel sembolleri, üsleri, kesirleri, şekil/tablo açıklamalarını ve A), B), C), D), E) şıklarını koru.")
+                        appendLine("Matematiksel sembolleri, üsleri, kesirleri, şekil/tablo açıklamalarını ve A), B), C), D), E) şıklarının tamamını koru.")
                         appendLine("Görünmeyen metni veya şıkları uydurma; kısmi OCR olsa da doğrulanmış kırpılmış soruyu aktar.")
                         appendLine("Görselde basılı soru numarası açıkça görünüyorsa originalQuestionNumber alanına yaz; yoksa tahmin etme.")
-                        appendLine("Ders ve konu adını aşağıdaki müfredattan seç; konu adını aynen yaz.")
+                        appendLine("Ders ipucu verilmişse onu kesinlikle koru. Ders ve konu adını yalnızca aşağıdaki ders müfredatından seç; konu adını aynen yaz.")
                         appendLine(catalogTopics)
                         appendLine("Kitap bağlamı (yalnızca ipucu): $examTypeHint $subjectNameHint")
                         appendLine("Yalnızca istenen JSON alanlarını doldur.")
@@ -639,7 +668,9 @@ class AiSolverViewModel : ViewModel() {
                     val classification = buildQuestionOcrClassification(
                         questionText = obj.optString("questionText", "").trim(),
                         examTypeHint = examTypeHint,
-                        subjectNameHint = obj.optString("subjectName", subjectNameHint).trim(),
+                        subjectNameHint = subjectNameHint.ifBlank {
+                            obj.optString("subjectName", "").trim()
+                        },
                         suggestedTopicName = obj.optString("topicName", "").trim().ifBlank { pageTopicHint },
                         trustSuggestedTopic = obj.optString("topicName", "").isNotBlank(),
                         hasQuestionStemOrFigure = obj.optBoolean("hasQuestionStemOrFigure"),
@@ -717,10 +748,17 @@ class AiSolverViewModel : ViewModel() {
                             @Suppress("DEPRECATION")
                             Bitmap.CompressFormat.WEBP
                         }
+                    } else if (imagePath.endsWith(".jpg", ignoreCase = true) ||
+                        imagePath.endsWith(".jpeg", ignoreCase = true)
+                    ) {
+                        Bitmap.CompressFormat.JPEG
                     } else {
                         Bitmap.CompressFormat.PNG
                     }
-                    bitmap.compress(format, 92, output)
+                    val quality = if (format == Bitmap.CompressFormat.JPEG) 85 else 92
+                    if (!bitmap.compress(format, quality, output)) {
+                        throw IllegalStateException("Soru görseli OCR sonrasında kaydedilemedi.")
+                    }
                 }
                 StudioImageAndPdfEngine.invalidateCachedBitmap(imagePath)
             }
@@ -781,19 +819,32 @@ class AiSolverViewModel : ViewModel() {
         visualDifficultyHint: String,
         usedLocalOcr: Boolean
     ): QuestionOcrClassification? {
+        if (StudioImageAndPdfEngine.shouldSkipQuestionPage(questionText)) return null
         if (!shouldRetainQuestionCrop(questionText, hasQuestionStemOrFigure, usedLocalOcr)) return null
         val retainedQuestionText = questionText
             .trim()
             .takeIf { it.length >= 25 }
             .orEmpty()
 
+        val resolvedSubjectHint = subjectNameHint.ifBlank {
+            StudioImageAndPdfEngine.detectSubjectNameFromText(questionText).orEmpty()
+        }
+        if (resolvedSubjectHint.isBlank()) return null
         val topicClassification = SoruLabCatalog.classifyQuestionTopicFromText(
             examTypeHint = examTypeHint,
-            subjectNameHint = subjectNameHint,
+            subjectNameHint = resolvedSubjectHint,
             questionText = questionText,
             suggestedTopicName = suggestedTopicName,
             trustSuggestedTopic = trustSuggestedTopic
-        ) ?: return null
+        )?.takeUnless {
+            it.second.name.equals("İnceleme Bekliyor", ignoreCase = true)
+        } ?: SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = examTypeHint,
+            subjectNameHint = resolvedSubjectHint,
+            questionText = questionText
+        )?.takeUnless {
+            it.second.name.equals("İnceleme Bekliyor", ignoreCase = true)
+        } ?: return null
 
         val difficultySignal = buildString {
             append(questionText)
@@ -867,15 +918,13 @@ class AiSolverViewModel : ViewModel() {
         aiStatus: PdfAiStatus
     ): List<PageQuestionCandidate> {
         if (aiStatus.unavailableReason != null || aiStatus.pageFallbackDisabled) return emptyList()
-        if (aiStatus.pageFallbackAttemptCount >= 32) {
-            aiStatus.pageFallbackDisabled = true
-            aiStatus.pageFallbackLimitReached = true
-            return emptyList()
-        }
-        aiStatus.pageFallbackAttemptCount++
         try {
             val catalogTopics = SoruLabCatalog.allSubjects
-                .filter { it.examType.name.equals(pageInfo.examType, ignoreCase = true) }
+                .filter {
+                    it.examType.name.equals(pageInfo.examType, ignoreCase = true) &&
+                        (pageInfo.subjectName.isBlank() ||
+                            it.name.equals(pageInfo.subjectName, ignoreCase = true))
+                }
                 .joinToString("\n") { subject ->
                     "${subject.name}: ${subject.topics.joinToString(", ") { it.name }}"
                 }
@@ -883,6 +932,9 @@ class AiSolverViewModel : ViewModel() {
                 appendLine("Bu PDF sayfasındaki tüm soru bloklarını tek tek bul ve JSON şemasına göre çıkar.")
                 appendLine("Her soru için koordinatları [ymin, xmin, ymax, xmax] olarak 0-1000 aralığında ver; soru kökü, varsa şekil ve görünen şıkları tamamen kapsa.")
                 appendLine("Soru numarasını PDF'te basılı olan numaradan al. Okunmayan soru metnini veya cevabı uydurma.")
+                appendLine("Her kırpma için soru köküyle birlikte A), B), C), D) ve E) şıklarının tamamı görünür olmalı; eksik şıklı kutu üretme.")
+                appendLine("Sayfa içindekiler, önsöz, İstiklal Marşı, künye, cevap anahtarı veya ünite sayfasıysa sorular listesi boş olsun.")
+                appendLine("Sayfa bağlamında ders verilmişse tüm sorularda bu dersi koru; başka ders etiketi kullanma.")
                 appendLine("Ders ve konu için aşağıdaki müfredatı kullan; emin değilsen sayfa bağlamını izle.")
                 appendLine(catalogTopics)
                 appendLine("Sayfa bağlamı: ${pageInfo.examType} ${pageInfo.subjectName} ${pageInfo.topicName}")
@@ -900,10 +952,12 @@ class AiSolverViewModel : ViewModel() {
             val questions = root.optJSONArray("sorular")
                 ?: throw IllegalStateException("Gemini sayfa yanıtında soru listesi bulunamadı.")
             val pageExamType = root.optString("sinavTuru", pageInfo.examType).ifBlank { pageInfo.examType }
-            val pageSubject = root.optString("ders", pageInfo.subjectName).ifBlank { pageInfo.subjectName }
+            val pageSubject = pageInfo.subjectName.ifBlank {
+                root.optString("ders", "").trim()
+            }
             val pageTopic = root.optString("konu", pageInfo.topicName).ifBlank { pageInfo.topicName }
             val candidates = mutableListOf<PageQuestionCandidate>()
-            for (index in 0 until questions.length().coerceAtMost(30)) {
+            for (index in 0 until questions.length()) {
                 val question = questions.optJSONObject(index)
                 if (question == null) {
                     aiStatus.pageFallbackRejectedQuestionCount++
@@ -925,7 +979,7 @@ class AiSolverViewModel : ViewModel() {
                     continue
                 }
 
-                val subject = question.optString("ders", pageSubject).ifBlank { pageSubject }
+                val subject = pageSubject.ifBlank { question.optString("ders", "").trim() }
                 val topic = question.optString("konu", pageTopic).ifBlank { pageTopic }
                 val examType = question.optString("sinavTuru", pageExamType).ifBlank { pageExamType }
                 val difficulty = question.optString("zorluk", pageInfo.difficulty).ifBlank { pageInfo.difficulty }
@@ -1201,6 +1255,7 @@ class AiSolverViewModel : ViewModel() {
         viewModelScope.launch {
             val reusableBitmapRef = arrayOfNulls<Bitmap>(1)
             val reusablePixelsRef = arrayOfNulls<IntArray>(1)
+            var pageTextRecognizer: TextRecognizer? = null
             val aiStatus = PdfAiStatus()
             var completionSent = false
             fun completeOnce(items: List<ExtractedPdfQuestionItem>, coverPath: String, title: String) {
@@ -1249,7 +1304,8 @@ class AiSolverViewModel : ViewModel() {
                 val mergedPageMap = localBlueprint.pageMap.toMutableMap()
                 var finalBookTitle = localBlueprint.detectedBookTitle
                 var defaultExamType = localBlueprint.defaultExamType
-                var defaultSubject = localBlueprint.defaultSubjectName
+                var lockedBookSubject = localBlueprint.defaultSubjectName
+                var defaultSubject = lockedBookSubject
 
                 // STEP 2: Single-Shot (1 Request) AI Book & Answer Key Analysis (Quota-Safe: never fails on Quota Exceeded!)
                 _batchProgressPercent.value = 14
@@ -1268,7 +1324,8 @@ class AiSolverViewModel : ViewModel() {
                         }
                         appendLine("YKS Müfredat Sözlüğü:")
                         appendLine(catalogSummary)
-                        appendLine("KESİN KURAL 1: Dosya adında veya metinde 'AYT', 'İleri Matematik', 'Fonksiyonlarda Uygulama', 'Türev', 'İntegral', 'Limit', 'Trigonometri', 'Logaritma', 'Diziler', 'Parabol', 'Polinom', 'Bağıl Hareket', 'Atışlar', 'Momentum', 'Tork' geçiyorsa sinavTuru KESİNLİKLE 'AYT' olmalıdır (Asla TYT yazma!).")
+                        appendLine("Ders tespitinde önce dosya adı ve yayınevi, sonra kapak ve soru içeriği esas alınır; kitap biyoloji ise matematik terimleriyle dersini değiştirme.")
+                        appendLine("KESİN KURAL 1: Dosya adında veya metinde AYT ya da TYT açıkça geçiyorsa onu kullan. İleri düzey müfredat kazanımları AYT olabilir; biyoloji ve diğer dersleri matematik olarak etiketleme.")
                         appendLine("KESİN KURAL 2: Zorluk seviyelerini 5'li yapıda sınıflandır: 'Kolay', 'Orta', 'ÖSYM' (ÖSYM Tadında/Tarzı/Birebir ÖSYM), 'Zor', 'Çok Zor' (Tümevarım/Barışça/Orijinal/Derece).")
                         appendLine("Bu kaynağın kitap adını (`kitapAdi`), sınav türünü (`sinavTuru`), dersini (`ders`), sayfa haritasını (`sayfaHaritasi`) ve cevap anahtarını (`cevapAnahtari`) JSON olarak çıkar.")
                     }
@@ -1308,6 +1365,14 @@ class AiSolverViewModel : ViewModel() {
                         if (aiTitle.length >= 4) {
                             finalBookTitle = aiTitle
                         }
+                        if (lockedBookSubject.isBlank()) {
+                            lockedBookSubject = StudioImageAndPdfEngine
+                                .detectSubjectNameFromText("$finalBookTitle\n$publisherName")
+                                .orEmpty()
+                        }
+                        if (lockedBookSubject.isNotBlank()) {
+                            defaultSubject = lockedBookSubject
+                        }
                         val aiExam = obj.optString("sinavTuru", "").uppercase()
                         // Never downgrade a locally verified AYT book to TYT!
                         if (localBlueprint.defaultExamType == "AYT" || aiExam.contains("AYT") || finalBookTitle.contains("AYT", ignoreCase = true)) {
@@ -1320,7 +1385,13 @@ class AiSolverViewModel : ViewModel() {
                             .replace("TYT ", "", ignoreCase = true)
                             .replace("AYT ", "", ignoreCase = true)
                             .trim()
-                        if (aiDers.isNotBlank()) defaultSubject = aiDers
+                        val catalogSubject = SoruLabCatalog.allSubjects.firstOrNull {
+                            it.examType.name.equals(defaultExamType, ignoreCase = true) &&
+                                it.name.equals(aiDers, ignoreCase = true)
+                        }
+                        if (lockedBookSubject.isBlank() && catalogSubject != null) {
+                            defaultSubject = catalogSubject.name
+                        }
 
                         val keyArr = obj.optJSONArray("cevapAnahtari")
                         if (keyArr != null) {
@@ -1342,11 +1413,18 @@ class AiSolverViewModel : ViewModel() {
                                 val endP = (mObj.optInt("bitisSayfa", startP + 1) - 1).coerceIn(startP, totalPdfPages - 1)
                                 if (totalPdfPages > 24 && (endP - startP) > (totalPdfPages / 2)) continue
                                 val skip = mObj.optBoolean("atla", false)
-                                val mDers = mObj.optString("ders", defaultSubject)
+                                val requestedMapSubject = (lockedBookSubject.ifBlank {
+                                    mObj.optString("ders", defaultSubject)
+                                })
                                     .replace("TYT ", "", ignoreCase = true)
                                     .replace("AYT ", "", ignoreCase = true)
                                     .trim()
                                     .ifBlank { defaultSubject }
+                                val resolvedMapSubject = SoruLabCatalog.allSubjects.firstOrNull {
+                                    it.examType.name.equals(defaultExamType, ignoreCase = true) &&
+                                        it.name.equals(requestedMapSubject, ignoreCase = true)
+                                } ?: continue
+                                val mDers = resolvedMapSubject.name
                                 val mKonuRaw = mObj.optString("konu", localBlueprint.defaultTopicName)
                                     .trim()
                                     .ifBlank { localBlueprint.defaultTopicName }
@@ -1368,8 +1446,10 @@ class AiSolverViewModel : ViewModel() {
                                         pageIndex = p,
                                         isSkipPage = (skip && totalPdfPages > 3 && p <= 1) || forceCoverSkip,
                                         examType = defaultExamType,
-                                        subjectName = mDers,
-                                        topicName = matchedTopicForRange.name,
+                                        subjectName = lockedBookSubject.ifBlank { resolvedMapSubject.name },
+                                        topicName = matchedTopicForRange.name.takeUnless {
+                                            it.equals("İnceleme Bekliyor", ignoreCase = true)
+                                        }.orEmpty(),
                                         difficulty = mZorluk
                                     )
                                 }
@@ -1398,19 +1478,11 @@ class AiSolverViewModel : ViewModel() {
                 var localOcrCount = 0
                 var rejectedCropCount = 0
                 var pageRenderFailureCount = 0
+                var pageTextOcrFailureCount = 0
 
                 // Scan every content page in the book (only skip outer cover page 0 on multi-page books >= 6 pages)
                 val firstContentPage = if (totalPdfPages >= 6) 1 else 0
-                val candidatePages = (firstContentPage until totalPdfPages).toList().ifEmpty { listOf(0) }
-                val maxPagesToScan = 1200
-                val pageIndicesToScan: List<Int> = if (candidatePages.size <= maxPagesToScan) {
-                    candidatePages
-                } else {
-                    val stride = (candidatePages.size.toFloat() / maxPagesToScan.toFloat()).coerceAtLeast(1f)
-                    (0 until maxPagesToScan).map { idx ->
-                        candidatePages[(idx * stride).toInt().coerceIn(0, candidatePages.lastIndex)]
-                    }.distinct()
-                }
+                val pageCountToScan = (totalPdfPages - firstContentPage).coerceAtLeast(1)
 
                 withContext(Dispatchers.IO) {
                     android.os.ParcelFileDescriptor.open(
@@ -1418,10 +1490,17 @@ class AiSolverViewModel : ViewModel() {
                         android.os.ParcelFileDescriptor.MODE_READ_ONLY
                     ).use { pfd ->
                         android.graphics.pdf.PdfRenderer(pfd).use { renderer ->
+                            val pageRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                            pageTextRecognizer = pageRecognizer
                             val rendererTotal = renderer.pageCount.coerceAtLeast(1)
                             var lastProgressUpdateMs = 0L
 
-                            for ((scanPos, pageIdx) in pageIndicesToScan.withIndex()) {
+                            for (scanPos in 0 until pageCountToScan) {
+                                val pageIdx = if (totalPdfPages > firstContentPage) {
+                                    firstContentPage + scanPos
+                                } else {
+                                    0
+                                }
                                 if (pageIdx >= rendererTotal) continue
                                 val pageInfo = mergedPageMap[pageIdx] ?: StudioImageAndPdfEngine.LocalPageMapEntry(
                                     pageIndex = pageIdx,
@@ -1432,9 +1511,9 @@ class AiSolverViewModel : ViewModel() {
                                 )
 
                                 val nowMs = System.currentTimeMillis()
-                                if (nowMs - lastProgressUpdateMs >= 110L || scanPos == 0 || scanPos == pageIndicesToScan.lastIndex) {
+                                if (nowMs - lastProgressUpdateMs >= 110L || scanPos == 0 || scanPos == pageCountToScan - 1) {
                                     lastProgressUpdateMs = nowMs
-                                    val progressPct = 16 + (((scanPos + 1).toFloat() / pageIndicesToScan.size.toFloat()) * 82f).toInt()
+                                    val progressPct = 16 + (((scanPos + 1).toFloat() / pageCountToScan.toFloat()) * 82f).toInt()
                                     _batchProgressPercent.value = progressPct.coerceIn(16, 98)
                                     val ocrLabel = if (aiStatus.unavailableReason == null) {
                                         "Gemini OCR"
@@ -1448,16 +1527,40 @@ class AiSolverViewModel : ViewModel() {
                                     continue
                                 }
 
-                                var pageRendered = false
-                                val croppedBoxes = try {
-                                    StudioImageAndPdfEngine.renderAndCropPageLocalDualColumn(
-                                        context = context,
+                                val pageBitmap = try {
+                                    StudioImageAndPdfEngine.renderPageForLocalAnalysis(
                                         renderer = renderer,
                                         pageIndex = pageIdx,
                                         totalPages = rendererTotal,
-                                        reusableBitmapRef = reusableBitmapRef,
+                                        reusableBitmapRef = reusableBitmapRef
+                                    ) ?: continue
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: Exception) {
+                                    pageRenderFailureCount++
+                                    continue
+                                }
+
+                                val pageText = try {
+                                    recognizePdfPageText(pageBitmap, pageRecognizer)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: Exception) {
+                                    pageTextOcrFailureCount++
+                                    continue
+                                }
+                                if (StudioImageAndPdfEngine.shouldSkipQuestionPage(pageText)) {
+                                    continue
+                                }
+
+                                val croppedBoxes = try {
+                                    StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
+                                        context = context,
+                                        pageBitmap = pageBitmap,
+                                        pageIndex = pageIdx,
+                                        totalPages = rendererTotal,
                                         reusablePixelsRef = reusablePixelsRef
-                                    ).also { pageRendered = true }
+                                    )
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (_: Exception) {
@@ -1465,17 +1568,14 @@ class AiSolverViewModel : ViewModel() {
                                     emptyList()
                                 }
 
-                                val pageCandidates = if (croppedBoxes.isEmpty() && pageRendered) {
+                                val pageCandidates = if (croppedBoxes.isEmpty()) {
                                     extractQuestionsFromPageWithGemini(
                                         context = context,
-                                        pageBitmap = reusableBitmapRef[0]
-                                            ?: throw IllegalStateException("PDF sayfa görseli oluşturulamadı."),
+                                        pageBitmap = pageBitmap,
                                         pageIndex = pageIdx,
                                         pageInfo = pageInfo,
                                         aiStatus = aiStatus
                                     )
-                                } else if (croppedBoxes.isEmpty()) {
-                                    emptyList()
                                 } else {
                                     val classifications = coroutineScope {
                                         val semaphore = Semaphore(3)
@@ -1499,6 +1599,7 @@ class AiSolverViewModel : ViewModel() {
                                     croppedBoxes.mapIndexedNotNull { index, cropBox ->
                                         val classification = classifications[index]
                                         if (classification == null) {
+                                            File(cropBox.croppedImagePath).delete()
                                             rejectedCropCount++
                                             null
                                         } else {
@@ -1561,6 +1662,9 @@ class AiSolverViewModel : ViewModel() {
                         if (pageRenderFailureCount > 0) {
                             append(" $pageRenderFailureCount sayfa işlenirken hata oluştu.")
                         }
+                        if (pageTextOcrFailureCount > 0) {
+                            append(" $pageTextOcrFailureCount sayfanın metin doğrulaması başarısız olduğu için bu sayfalar aktarılmadı.")
+                        }
                         if (aiStatus.pageFallbackFailureCount > 0) {
                             append(" Gemini sayfa taraması yanıt vermedi.")
                         }
@@ -1569,9 +1673,6 @@ class AiSolverViewModel : ViewModel() {
                         }
                         if (aiStatus.localOcrFailureCount > 0) {
                             append(" Cihaz içi OCR ${aiStatus.localOcrFailureCount} soruda tamamlanamadı.")
-                        }
-                        if (aiStatus.pageFallbackLimitReached) {
-                            append(" Hız ve kota için en fazla 32 sayfada yedek tarama yapıldı.")
                         }
                     }
                     _batchErrorText.value = "PDF'te aktarılabilir soru bloğu bulunamadı.$pageHint$aiHint Kırpma alanını ve PDF kalitesini kontrol edip yeniden deneyin."
@@ -1601,8 +1702,8 @@ class AiSolverViewModel : ViewModel() {
                     if (aiStatus.pageFallbackRejectedQuestionCount > 0) {
                         add("${aiStatus.pageFallbackRejectedQuestionCount} Gemini kırpma kutusu güvenli sınırları geçemedi.")
                     }
-                    if (aiStatus.pageFallbackLimitReached) {
-                        add("Hız ve kota için en fazla 32 sayfada Gemini yedek taraması yapıldı.")
+                    if (pageTextOcrFailureCount > 0) {
+                        add("$pageTextOcrFailureCount sayfada metin/şık doğrulaması yapılamadı ve bu sayfalar güvenli biçimde atlandı.")
                     }
                 }
                 _batchWarningText.value = warnings.takeIf { it.isNotEmpty() }?.joinToString(" ")
@@ -1614,6 +1715,7 @@ class AiSolverViewModel : ViewModel() {
                 _batchErrorText.value = describePdfFailure(e)
                 completeOnce(emptyList(), "", "")
             } finally {
+                pageTextRecognizer?.close()
                 reusableBitmapRef[0]?.recycle()
                 reusableBitmapRef[0] = null
                 reusablePixelsRef[0] = null

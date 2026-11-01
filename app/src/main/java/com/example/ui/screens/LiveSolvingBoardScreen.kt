@@ -833,6 +833,7 @@ fun LiveSolvingBoardScreen(
                                         bitmap = solutionQuestionBitmap.asImageBitmap(),
                                         contentDescription = "Temizlenmiş Soru Görseli",
                                         contentScale = ContentScale.Fit,
+                                        alignment = Alignment.TopStart,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .heightIn(max = 175.dp)
@@ -1437,7 +1438,7 @@ private fun BookPageQuestionItem345(
     onOpenTwinScreen: () -> Unit,
     onAddToKumbara: () -> Unit
 ) {
-    val croppedBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(question.croppedImagePath)
+    val croppedBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(question.imagePath)
     val isEmpty = selectedOption.isNullOrBlank()
     val isUngraded = !question.answerKeyVerified
     val isCorrect = !isEmpty && question.answerKeyVerified && selectedOption == question.correctOption
@@ -3117,6 +3118,7 @@ private fun FullScreenTwinQuestionComparisonView(
                                             bitmap = originalBitmap.asImageBitmap(),
                                             contentDescription = "Orijinal Test Sorusu",
                                             contentScale = ContentScale.Fit,
+                                            alignment = Alignment.TopStart,
                                             modifier = Modifier
                                                 .width(imageWidth)
                                                 .aspectRatio(aspect)

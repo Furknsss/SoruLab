@@ -511,7 +511,11 @@ data class YksQuestion(
     val difficulty: DifficultyLevel = DifficultyLevel.ORTA,
     val visualType: QuestionVisualType = QuestionVisualType.NONE,
     val stepByStepSolution: String
-)
+) {
+    @get:Exclude
+    val imagePath: String
+        get() = croppedImagePath
+}
 
 @Immutable
 data class YksTestItem(

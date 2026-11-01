@@ -63,6 +63,9 @@ internal fun normalizeCropBounds(
 
 object StudioImageAndPdfEngine {
 
+    private val answerOptionPattern =
+        Regex("""(?im)(?:^|[\s(])([A-E])\s*[).:]\s*\S""")
+
     private val maxCacheBytes: Int = ((Runtime.getRuntime().maxMemory() / 1024L) / 6L)
         .toInt()
         .coerceIn(24 * 1024, 96 * 1024) // 24 MB .. 96 MB in KB
@@ -80,6 +83,97 @@ object StudioImageAndPdfEngine {
 
     fun invalidateCachedBitmap(path: String) {
         if (path.isNotBlank()) bitmapCache.remove(path)
+    }
+
+    fun hasCompleteAnswerChoiceSet(text: String): Boolean {
+        val detectedOptions = answerOptionPattern.findAll(text)
+            .mapNotNull { it.groupValues.getOrNull(1)?.firstOrNull()?.uppercaseChar() }
+            .toSet()
+        return ('A'..'E').all(detectedOptions::contains)
+    }
+
+    fun containsNonQuestionPageMarker(text: String): Boolean {
+        val normalized = text.lowercase()
+        return listOf(
+            "içindekiler", "icindekiler", "önsöz", "onsoz", "istiklal marşı",
+            "istiklal marsi", "künye", "kunye", "cevap anahtarı", "cevap anahtari",
+            "ünite", "unite"
+        ).any(normalized::contains) || Regex("""\.{5,}|…{3,}""").containsMatchIn(text)
+    }
+
+    fun shouldSkipQuestionPage(text: String): Boolean =
+        text.isBlank() || containsNonQuestionPageMarker(text) || !hasCompleteAnswerChoiceSet(text)
+
+    fun detectSubjectNameFromText(text: String): String? {
+        explicitSubjectName(text)?.let { return it }
+        return detectSubjectFromContent(text)
+    }
+
+    private fun explicitSubjectName(text: String): String? {
+        val normalized = text.lowercase()
+        return when {
+            listOf("biyoloji", "bioloji", "biology").any(normalized::contains) ||
+                Regex("""(?<![\p{L}])bio(?![\p{L}])""").containsMatchIn(normalized) -> "Biyoloji"
+            normalized.contains("fizik") || normalized.contains("physics") -> "Fizik"
+            normalized.contains("kimya") || normalized.contains("chemistry") -> "Kimya"
+            normalized.contains("geometri") || normalized.contains("geometry") -> "Geometri"
+            normalized.contains("matematik") || normalized.contains("mathematics") -> "Matematik"
+            normalized.contains("türkçe") || normalized.contains("turkce") -> "Türkçe"
+            else -> null
+        }
+    }
+
+    private fun detectSubjectFromContent(text: String): String? {
+        val normalized = text.lowercase()
+        val subjectSignals = linkedMapOf(
+            "Biyoloji" to listOf(
+                "sinir sistemi", "endokrin", "duyu organ", "sindirim", "dolaşım", "bagisiklik",
+                "solunum sistemi", "üriner", "uriner", "üreme sistemi", "embriyonik", "ekoloji",
+                "nükleik", "nukleik", "dna", "rna", "protein sentezi", "fotosentez", "bitki biyolojisi"
+            ),
+            "Fizik" to listOf(
+                "vektör", "vektor", "bağıl hareket", "bagil hareket", "newton", "ivmeli hareket",
+                "momentum", "tork", "basit makin", "manyetizma", "alternatif akım", "çembersel hareket",
+                "harmonik hareket", "dalga mekaniği", "atom fiziği", "radyoaktivite", "modern fizik"
+            ),
+            "Kimya" to listOf(
+                "atom teorisi", "gazlar", "çözelti", "cozelti", "çözünürlük", "cozunurluk",
+                "tepkimelerde enerji", "tepkimelerde hız", "kimyasal denge", "asit-baz",
+                "elektrokimya", "karbon kimyası", "organik bileşik"
+            ),
+            "Geometri" to listOf(
+                "üçgen", "ucgen", "çember", "cember", "dörtgen", "dortgen", "katı cisim",
+                "analitik geometri", "açıortay", "kenarortay"
+            ),
+            "Matematik" to listOf(
+                "polinom", "türev", "turev", "integral", "limit", "trigonometri", "logaritma",
+                "parabol", "eşitsizlik", "esitsizlik", "karmaşık sayı", "karmasik sayi", "fonksiyon"
+            ),
+            "Türkçe" to listOf(
+                "paragraf", "cümlede anlam", "cumlede anlam", "sözcükte anlam", "sozcukte anlam",
+                "yazım kuralları", "yazim kurallari", "noktalama", "dil bilgisi"
+            )
+        )
+        val ranked = subjectSignals.map { (subject, signals) ->
+            subject to signals.count(normalized::contains)
+        }.sortedByDescending { it.second }
+        val winner = ranked.firstOrNull() ?: return null
+        return winner.first.takeIf { winner.second >= 2 }
+    }
+
+    private fun persistQuestionBitmap(context: Context, bitmap: Bitmap, id: String): String {
+        val questionsDir = File(context.filesDir, "questions")
+        if (!questionsDir.exists() && !questionsDir.mkdirs()) {
+            throw IllegalStateException("Soru görselleri klasörü oluşturulamadı.")
+        }
+        val safeId = id.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        val outFile = File(questionsDir, "q_$safeId.jpg")
+        FileOutputStream(outFile).use { output ->
+            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 85, output)) {
+                throw IllegalStateException("Soru görseli JPEG olarak kaydedilemedi.")
+            }
+        }
+        return outFile.absolutePath
     }
 
     /**
@@ -377,48 +471,41 @@ object StudioImageAndPdfEngine {
         xmaxNorm1000: Int,
         questionNumberForFile: Int
     ): Pair<String, Double> {
-        return try {
-            val dir = File(context.filesDir, "question_pool_crops")
-            if (!dir.exists()) dir.mkdirs()
+        val bounds = normalizeCropBounds(
+            ymin = yminNorm1000,
+            xmin = xminNorm1000,
+            ymax = ymaxNorm1000,
+            xmax = xmaxNorm1000
+        )
+        val leftNorm = bounds.left / 1000f
+        val topNorm = bounds.top / 1000f
+        val rightNorm = bounds.right / 1000f
+        val bottomNorm = bounds.bottom / 1000f
 
-            val bounds = normalizeCropBounds(
-                ymin = yminNorm1000,
-                xmin = xminNorm1000,
-                ymax = ymaxNorm1000,
-                xmax = xmaxNorm1000
+        val x = (leftNorm * sourcePageBitmap.width).roundToInt()
+            .coerceIn(0, (sourcePageBitmap.width - 1).coerceAtLeast(0))
+        val y = (topNorm * sourcePageBitmap.height).roundToInt()
+            .coerceIn(0, (sourcePageBitmap.height - 1).coerceAtLeast(0))
+        val w = ((rightNorm - leftNorm) * sourcePageBitmap.width).roundToInt()
+            .coerceIn(1, sourcePageBitmap.width - x)
+        val h = ((bottomNorm - topNorm) * sourcePageBitmap.height).roundToInt()
+            .coerceIn(1, sourcePageBitmap.height - y)
+
+        val rawCrop = Bitmap.createBitmap(sourcePageBitmap, x, y, w, h)
+        val whitened = whitenOldQuestionNumberAndEnhance(rawCrop)
+        if (whitened !== rawCrop) rawCrop.recycle()
+        val aspect = (whitened.width.toDouble() / whitened.height.toDouble().coerceAtLeast(1.0))
+            .coerceIn(0.35, 3.8)
+        val imagePath = try {
+            persistQuestionBitmap(
+                context = context,
+                bitmap = whitened,
+                id = "stem_${questionNumberForFile}_${System.currentTimeMillis()}_${java.util.UUID.randomUUID()}"
             )
-            val leftNorm = bounds.left / 1000f
-            val topNorm = bounds.top / 1000f
-            val rightNorm = bounds.right / 1000f
-            val bottomNorm = bounds.bottom / 1000f
-
-            val x = (leftNorm * sourcePageBitmap.width).roundToInt().coerceIn(0, sourcePageBitmap.width - 16)
-            val y = (topNorm * sourcePageBitmap.height).roundToInt().coerceIn(0, sourcePageBitmap.height - 16)
-            val w = ((rightNorm - leftNorm) * sourcePageBitmap.width).roundToInt()
-                .coerceIn(16, sourcePageBitmap.width - x)
-            val h = ((bottomNorm - topNorm) * sourcePageBitmap.height).roundToInt()
-                .coerceIn(16, sourcePageBitmap.height - y)
-
-            val rawCrop = Bitmap.createBitmap(sourcePageBitmap, x, y, w, h)
-            val whitened = whitenOldQuestionNumberAndEnhance(rawCrop)
-            if (whitened !== rawCrop) {
-                rawCrop.recycle()
-            }
-
-            val aspect = (whitened.width.toDouble() / whitened.height.toDouble().coerceAtLeast(1.0))
-                .coerceIn(0.35, 3.8)
-
-            val outFile = File(
-                dir,
-                "uhd_stem_${System.currentTimeMillis()}_q${questionNumberForFile}_${(100..999).random()}.png"
-            )
-            FileOutputStream(outFile).use { fos ->
-                whitened.compress(Bitmap.CompressFormat.PNG, 100, fos)
-            }
-            outFile.absolutePath to aspect
-        } catch (_: Exception) {
-            "" to 1.25
+        } finally {
+            if (!whitened.isRecycled) whitened.recycle()
         }
+        return imagePath to aspect
     }
 
     /**
@@ -549,11 +636,13 @@ object StudioImageAndPdfEngine {
         val cropRight = (maxX + pad).coerceAtMost(width - 1)
         val cropBottom = (maxY + pad).coerceAtMost(height - 1)
 
-        val finalW = (cropRight - cropLeft + 1).coerceAtLeast(16)
-        val finalH = (cropBottom - cropTop + 1).coerceAtLeast(16)
+        val safeCropLeft = cropLeft.coerceIn(0, width - 1)
+        val safeCropTop = cropTop.coerceIn(0, height - 1)
+        val finalW = (cropRight - safeCropLeft + 1).coerceIn(1, width - safeCropLeft)
+        val finalH = (cropBottom - safeCropTop + 1).coerceIn(1, height - safeCropTop)
 
         return if (finalW < width * 0.96f || finalH < height * 0.96f) {
-            val trimmed = Bitmap.createBitmap(processedFull, cropLeft, cropTop, finalW, finalH)
+            val trimmed = Bitmap.createBitmap(processedFull, safeCropLeft, safeCropTop, finalW, finalH)
             processedFull.recycle()
             trimmed
         } else {
@@ -725,9 +814,13 @@ object StudioImageAndPdfEngine {
             dekupeBmp.setPixels(pixels, 0, workW, 0, 0, workW, workH)
 
             val trimmedBmp = if (maxX >= minX && maxY >= minY) {
-                val trimW = (maxX - minX + 1).coerceAtLeast(1)
-                val trimH = (maxY - minY + 1).coerceAtLeast(1)
-                Bitmap.createBitmap(dekupeBmp, minX, minY, trimW, trimH)
+                val safeMinX = minX.coerceIn(0, workW - 1)
+                val safeMinY = minY.coerceIn(0, workH - 1)
+                val trimW = (maxX.coerceIn(safeMinX, workW - 1) - safeMinX + 1)
+                    .coerceIn(1, workW - safeMinX)
+                val trimH = (maxY.coerceIn(safeMinY, workH - 1) - safeMinY + 1)
+                    .coerceIn(1, workH - safeMinY)
+                Bitmap.createBitmap(dekupeBmp, safeMinX, safeMinY, trimW, trimH)
             } else {
                 dekupeBmp
             }
@@ -777,8 +870,8 @@ object StudioImageAndPdfEngine {
         val pageIndex: Int,
         val isSkipPage: Boolean = false,
         val examType: String = "TYT",
-        val subjectName: String = "Matematik",
-        val topicName: String = "Temel Kavramlar",
+        val subjectName: String = "",
+        val topicName: String = "",
         val difficulty: String = "Orta"
     )
 
@@ -842,7 +935,8 @@ object StudioImageAndPdfEngine {
             .replace("-", " ")
             .trim()
 
-        val combinedSignal = "$cleanFileHint\n$publisherName\n$rawTextBuilder"
+        val bookSignal = "$cleanFileHint\n$publisherName"
+        val combinedSignal = "$bookSignal\n$rawTextBuilder"
         val answerKeyMap = parseAnswerKeyRegex(combinedSignal)
 
         // Match ExamType (TYT / AYT) - Strict AYT Detection Rule:
@@ -862,50 +956,20 @@ object StudioImageAndPdfEngine {
             else -> "TYT"
         }
 
-        // Match Subject via YKS Curriculum Dictionary
-        val subjectKeywords = listOf(
-            "Matematik" to listOf("matematik", "fonksiyon", "polinom", "türev", "integral", "limit", "trigonometri", "logaritma", "parabol", "denklem", "eşitsizlik", "dizi", "karmaşık sayı", "oran", "orantı", "sayı basamak", "çarpanlara ayırma", "olasılık", "permütasyon", "kombinasyon", "binom"),
-            "Geometri" to listOf("geometri", "üçgen", "çember", "daire", "analitik", "katı cisim", "dörtgen", "yamuk", "paralelkenar", "prizma", "piramit"),
-            "Fizik" to listOf("fizik", "kuvvet", "newton", "ivme", "optik", "dalga", "elektrik alanı", "manyetizma", "atışlar", "tork", "denge", "bağıl hareket", "harmonik"),
-            "Kimya" to listOf("kimya", "periyodik sistem", "mol kavramı", "tepkime", "asit baz", "çözelti", "gaz yasaları", "entalpi", "elektrokimya", "organik kimya"),
-            "Biyoloji" to listOf("biyoloji", "hücre", "kalıtım", "fotosentez", "kemosentez", "solunum", "sinir sistemi", "endokrin", "dolaşım", "boşaltım", "ekoloji"),
-            "Türkçe" to listOf("türkçe", "edebiyat", "paragraf", "cümlede anlam", "sözcükte anlam", "yazım kuralları", "noktalama", "dil bilgisi", "ses bilgisi")
-        )
-
-        val lowerFile = cleanFileHint.lowercase()
-        val lowerAll = combinedSignal.lowercase()
-
-        var detectedSubject = "Matematik"
-        for ((subj, keys) in subjectKeywords) {
-            if (keys.any { lowerFile.contains(it) }) {
-                detectedSubject = subj
-                break
-            }
-        }
-        val mathIndicators = listOf("matematik", "fonksiyon", "polinom", "türev", "integral", "limit", "trigonometri", "logaritma", "parabol", "karmaşık sayı", "dizi")
-        val hasStrongMathSignal = mathIndicators.any { lowerFile.contains(it) || lowerAll.contains(it) }
-
-        if (detectedSubject == "Matematik" || hasStrongMathSignal) {
-            detectedSubject = "Matematik"
+        val bookSubjectHint = explicitSubjectName(bookSignal)
+        val detectedSubject = bookSubjectHint
+            ?: detectSubjectFromContent(rawTextBuilder.toString())
+            ?: ""
+        val primaryTopicName = if (detectedSubject.isNotBlank()) {
+            val (_, topic) = com.example.data.SoruLabCatalog.matchBestTopic(
+                examTypeHint = examType,
+                subjectNameHint = detectedSubject,
+                topicOrQuestionText = rawTextBuilder.toString().take(3600)
+            )
+            topic.name.takeUnless { it.equals("İnceleme Bekliyor", ignoreCase = true) }.orEmpty()
         } else {
-            var bestHits = 0
-            for ((subj, keys) in subjectKeywords) {
-                val hits = keys.count { lowerAll.contains(it) }
-                if (hits > bestHits && hits >= 2) {
-                    bestHits = hits
-                    detectedSubject = subj
-                }
-            }
+            ""
         }
-
-        val (primarySubjectObj, primaryTopicObj) = com.example.data.SoruLabCatalog.matchBestTopic(
-            examTypeHint = examType,
-            subjectNameHint = detectedSubject,
-            topicOrQuestionText = rawTextBuilder.toString().take(3600)
-        )
-
-        val primaryTopicName = primaryTopicObj.name
-        detectedSubject = primarySubjectObj.name
 
         val autoBookTitle = when {
             cleanFileHint.length >= 3 &&
@@ -920,7 +984,9 @@ object StudioImageAndPdfEngine {
                 }
             }
             totalPages <= 35 -> "$publisherName $examType $detectedSubject • $primaryTopicName"
-            else -> "$publisherName $examType $detectedSubject Soru Bankası"
+            else -> listOf(publisherName, examType, detectedSubject, "Soru Bankası")
+                .filter(String::isNotBlank)
+                .joinToString(" ")
         }
 
         val pageMap = mutableMapOf<Int, LocalPageMapEntry>()
@@ -928,7 +994,7 @@ object StudioImageAndPdfEngine {
             "içindekiler", "icindekiler", "önsöz", "onsoz", "istiklal marşı",
             "gençliğe hitabe", "künye", "kunye", "basım yeri", "isbn",
             "tüm hakları saklıdır", "reklam", "tanıtım", "diğer yayınlarımız",
-            "kampanya", "notlarım"
+            "kampanya", "notlarım", "cevap anahtarı", "cevap anahtari", "ünite", "unite"
         )
 
         for (pageIdx in 0 until totalPages) {
@@ -940,26 +1006,26 @@ object StudioImageAndPdfEngine {
             } else -1
             val streamSnippet = if (mappedStreamIdx >= 0) decodedStreamChunks[mappedStreamIdx] else ""
             val lowerSnippet = streamSnippet.lowercase()
-            val hasQuestionOptionPattern = lowerSnippet.contains("a)") ||
-                lowerSnippet.contains("b)") ||
-                lowerSnippet.contains("c)") ||
-                lowerSnippet.contains("d)") ||
-                lowerSnippet.contains("e)") ||
-                lowerSnippet.contains("hangisidir") ||
-                lowerSnippet.contains("kaçtır")
-            val isNonQuestionMetaPage = !hasQuestionOptionPattern &&
-                skipPageKeywords.any { kw -> lowerSnippet.contains(kw) }
-            val isOuterCoverOnly = (totalPages >= 4 && pageIdx == 0 && !hasQuestionOptionPattern) || isNonQuestionMetaPage
+            val isNonQuestionMetaPage = skipPageKeywords.any { kw -> lowerSnippet.contains(kw) } ||
+                Regex("""\.{5,}|…{3,}""").containsMatchIn(streamSnippet)
+            val isOuterCoverOnly = (totalPages >= 4 && pageIdx == 0) || isNonQuestionMetaPage
 
-            val (resolvedSubjForPage, resolvedTopicForPage) = if (streamSnippet.length >= 16) {
-                val (matchedPageSubj, matchedPageTopic) = com.example.data.SoruLabCatalog.matchBestTopic(
+            val resolvedSubjForPage = bookSubjectHint
+                ?: detectSubjectFromContent(streamSnippet)
+                ?: detectedSubject
+            val resolvedTopicForPage = if (streamSnippet.length >= 16 && resolvedSubjForPage.isNotBlank()) {
+                val (_, matchedPageTopic) = com.example.data.SoruLabCatalog.matchBestTopic(
                     examTypeHint = examType,
-                    subjectNameHint = detectedSubject,
+                    subjectNameHint = resolvedSubjForPage,
                     topicOrQuestionText = streamSnippet
                 )
-                matchedPageSubj.name to matchedPageTopic.name
+                if (matchedPageTopic.name.equals("İnceleme Bekliyor", ignoreCase = true)) {
+                    ""
+                } else {
+                    matchedPageTopic.name
+                }
             } else {
-                detectedSubject to ""
+                ""
             }
 
             val classifiedDiff = com.example.data.SoruLabCatalog.classifyDifficulty5FromText(
@@ -1070,11 +1136,11 @@ object StudioImageAndPdfEngine {
         val result = mutableMapOf<Int, String>()
         if (text.isBlank()) return result
         // Standard delimited format: 1-A, 1. B, 1) C, 1:D, 1 E
-        val regex = Regex("(?:^|\\s|\\b)(\\d{1,3})\\s*[-.:)]?\\s*([ABCDE])(?=\\s|$|[,;|.]|\\d)")
+        val regex = Regex("(?:^|\\s|\\b)(\\d+)\\s*[-.:)]?\\s*([ABCDE])(?=\\s|$|[,;|.]|\\d)")
         for (match in regex.findAll(text)) {
             val qNum = match.groupValues[1].toIntOrNull() ?: continue
             val opt = match.groupValues[2].uppercase()
-            if (qNum in 1..240) {
+            if (qNum > 0) {
                 result[qNum] = opt
             }
         }
@@ -1083,7 +1149,7 @@ object StudioImageAndPdfEngine {
 
     // =========================================================================
     // %100 ÜCRETSİZ VE SINIRSIZ YEREL SORU KIRPMA MOTORU
-    // (DUAL-COLUMN VECTOR & PIXEL PROJECTION + RECYCLED BITMAP + HIGH-QUALITY WEBP)
+    // (DUAL-COLUMN VECTOR & PIXEL PROJECTION + DISK-BACKED JPEG QUESTION CROPS)
     // =========================================================================
 
     /**
@@ -1099,45 +1165,82 @@ object StudioImageAndPdfEngine {
         reusableBitmapRef: Array<Bitmap?>,
         reusablePixelsRef: Array<IntArray?>
     ): List<LocalCroppedBoxResult> {
-        if (pageIndex !in 0 until totalPages) return emptyList()
+        val pageBitmap = renderPageForLocalAnalysis(
+            renderer = renderer,
+            pageIndex = pageIndex,
+            totalPages = totalPages,
+            reusableBitmapRef = reusableBitmapRef
+        ) ?: return emptyList()
+        return cropRenderedPageLocalDualColumn(
+            context = context,
+            pageBitmap = pageBitmap,
+            pageIndex = pageIndex,
+            totalPages = totalPages,
+            reusablePixelsRef = reusablePixelsRef
+        )
+    }
+
+    fun renderPageForLocalAnalysis(
+        renderer: PdfRenderer,
+        pageIndex: Int,
+        totalPages: Int,
+        reusableBitmapRef: Array<Bitmap?>
+    ): Bitmap? {
+        if (pageIndex !in 0 until totalPages) return null
         return renderer.openPage(pageIndex).use { page ->
             val scale = 2.0f
             val targetW = (page.width * scale).roundToInt().coerceIn(960, 1680)
             val targetH = (page.height * scale).roundToInt().coerceIn(1320, 2360)
 
-            var pageBitmap = reusableBitmapRef[0]
-            if (pageBitmap == null || pageBitmap.isRecycled || pageBitmap.width != targetW || pageBitmap.height != targetH) {
-                pageBitmap?.recycle()
-                pageBitmap = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
-                reusableBitmapRef[0] = pageBitmap
+            val currentBitmap = reusableBitmapRef[0]
+            val pageBitmap = if (
+                currentBitmap == null || currentBitmap.isRecycled ||
+                currentBitmap.width != targetW || currentBitmap.height != targetH
+            ) {
+                currentBitmap?.recycle()
+                Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+                    .also { reusableBitmapRef[0] = it }
+            } else {
+                currentBitmap
             }
             pageBitmap.eraseColor(Color.WHITE)
-
             page.render(
                 pageBitmap,
                 null,
                 null,
                 PdfRenderer.Page.RENDER_MODE_FOR_PRINT
             )
-
-            val neededPixels = targetW * targetH
-            var pixels = reusablePixelsRef[0]
-            if (pixels == null || pixels.size < neededPixels) {
-                pixels = IntArray(neededPixels)
-                reusablePixelsRef[0] = pixels
-            }
-            pageBitmap.getPixels(pixels, 0, targetW, 0, 0, targetW, targetH)
-
-            cropQuestionsFromPagePixelsDualColumn(
-                context = context,
-                pageBitmap = pageBitmap,
-                pixels = pixels,
-                width = targetW,
-                height = targetH,
-                pageIndex = pageIndex,
-                totalPages = totalPages
-            )
+            pageBitmap
         }
+    }
+
+    fun cropRenderedPageLocalDualColumn(
+        context: Context,
+        pageBitmap: Bitmap,
+        pageIndex: Int,
+        totalPages: Int,
+        reusablePixelsRef: Array<IntArray?>
+    ): List<LocalCroppedBoxResult> {
+        if (pageBitmap.isRecycled) return emptyList()
+        val width = pageBitmap.width
+        val height = pageBitmap.height
+        val neededPixels = width * height
+        var pixels = reusablePixelsRef[0]
+        if (pixels == null || pixels.size < neededPixels) {
+            pixels = IntArray(neededPixels)
+            reusablePixelsRef[0] = pixels
+        }
+        pageBitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        return cropQuestionsFromPagePixelsDualColumn(
+            context = context,
+            pageBitmap = pageBitmap,
+            pixels = pixels,
+            width = width,
+            height = height,
+            pageIndex = pageIndex,
+            totalPages = totalPages
+        )
     }
 
     fun cropQuestionFromNormalizedBox(
@@ -1157,10 +1260,10 @@ object StudioImageAndPdfEngine {
         val right = box2d[3].coerceIn(0, 1000) * width / 1000
         val padX = (width * 0.008f).roundToInt()
         val padY = (height * 0.008f).roundToInt()
-        val cropLeft = (left - padX).coerceAtLeast(0)
-        val cropTop = (top - padY).coerceAtLeast(0)
-        val cropRight = (right + padX).coerceAtMost(width)
-        val cropBottom = (bottom + padY).coerceAtMost(height)
+        val cropLeft = (left - padX).coerceIn(0, (width - 1).coerceAtLeast(0))
+        val cropTop = (top - padY).coerceIn(0, (height - 1).coerceAtLeast(0))
+        val cropRight = (right + padX).coerceIn(cropLeft + 1, width)
+        val cropBottom = (bottom + padY).coerceIn(cropTop + 1, height)
         val cropWidth = cropRight - cropLeft
         val cropHeight = cropBottom - cropTop
         if (cropWidth < 32 || cropHeight < 32) return null
@@ -1171,36 +1274,18 @@ object StudioImageAndPdfEngine {
         val aspectRatio = (cleanedCrop.width.toDouble() / cleanedCrop.height.toDouble().coerceAtLeast(1.0))
             .coerceIn(0.32, 3.8)
 
-        val outDir = File(context.filesDir, "question_pool_crops")
-        if (!outDir.exists() && !outDir.mkdirs()) {
-            cleanedCrop.recycle()
-            throw IllegalStateException("Soru görseli için geçici klasör oluşturulamadı.")
-        }
-        val outFile = File(
-            outDir,
-            "q_p${pageIndex + 1}_ai_${questionOrder}_${System.currentTimeMillis()}_${(100..999).random()}.webp"
-        )
-        var saved = false
-        try {
-            FileOutputStream(outFile).use { fos ->
-                @Suppress("DEPRECATION")
-                val format = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                    Bitmap.CompressFormat.WEBP_LOSSY
-                } else {
-                    Bitmap.CompressFormat.WEBP
-                }
-                if (!cleanedCrop.compress(format, 92, fos)) {
-                    throw IllegalStateException("Soru görseli WebP olarak kaydedilemedi.")
-                }
-            }
-            saved = true
+        val imagePath = try {
+            persistQuestionBitmap(
+                context = context,
+                bitmap = cleanedCrop,
+                id = "p${pageIndex + 1}_ai${questionOrder}_${java.util.UUID.randomUUID()}"
+            )
         } finally {
-            if (!saved || pageIndex >= 6) cleanedCrop.recycle()
+            if (!cleanedCrop.isRecycled) cleanedCrop.recycle()
         }
-        if (pageIndex < 6) bitmapCache.put(outFile.absolutePath, cleanedCrop)
 
         return LocalCroppedBoxResult(
-            croppedImagePath = outFile.absolutePath,
+            croppedImagePath = imagePath,
             aspectRatio = aspectRatio,
             boxNormalized = listOf(
                 cropTop.toFloat() / height,
@@ -1531,8 +1616,6 @@ object StudioImageAndPdfEngine {
         }
 
         val results = mutableListOf<LocalCroppedBoxResult>()
-        val outDir = File(context.filesDir, "question_pool_crops")
-        if (!outDir.exists()) outDir.mkdirs()
 
         var questionOrderOnPage = 0
 
@@ -1602,10 +1685,13 @@ object StudioImageAndPdfEngine {
                 val finalTop = (rawTop - padY).coerceAtLeast(bodyTop)
                 val finalBottom = (rawBottom + padY).coerceAtMost(bodyBottom)
 
-                val cropW = (finalRight - finalLeft + 1).coerceAtLeast(32)
-                val cropH = (finalBottom - finalTop + 1).coerceAtLeast(32)
-
-                val rawCrop = Bitmap.createBitmap(pageBitmap, finalLeft, finalTop, cropW, cropH)
+                val safeLeft = finalLeft.coerceIn(0, width - 1)
+                val safeTop = finalTop.coerceIn(0, height - 1)
+                val safeRight = finalRight.coerceIn(safeLeft, width - 1)
+                val safeBottom = finalBottom.coerceIn(safeTop, height - 1)
+                val cropW = (safeRight - safeLeft + 1).coerceIn(1, width - safeLeft)
+                val cropH = (safeBottom - safeTop + 1).coerceIn(1, height - safeTop)
+                val rawCrop = Bitmap.createBitmap(pageBitmap, safeLeft, safeTop, cropW, cropH)
                 val cleanedCrop = whitenOldQuestionNumberAndEnhance(rawCrop)
                 if (cleanedCrop !== rawCrop) {
                     rawCrop.recycle()
@@ -1614,23 +1700,14 @@ object StudioImageAndPdfEngine {
                 val aspect = (cleanedCrop.width.toDouble() / cleanedCrop.height.toDouble().coerceAtLeast(1.0))
                     .coerceIn(0.32, 3.8)
 
-                val outFile = File(
-                    outDir,
-                    "q_p${pageIndex + 1}_c${colIdx + 1}_${qIdx + 1}_${System.currentTimeMillis()}_${(100..999).random()}.webp"
-                )
-                FileOutputStream(outFile).use { fos ->
-                    @Suppress("DEPRECATION")
-                    val format = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                        Bitmap.CompressFormat.WEBP_LOSSY
-                    } else {
-                        Bitmap.CompressFormat.WEBP
-                    }
-                    cleanedCrop.compress(format, 92, fos)
-                }
-                if (pageIndex < 6) {
-                    bitmapCache.put(outFile.absolutePath, cleanedCrop)
-                } else {
-                    cleanedCrop.recycle()
+                val imagePath = try {
+                    persistQuestionBitmap(
+                        context = context,
+                        bitmap = cleanedCrop,
+                        id = "p${pageIndex + 1}_c${colIdx + 1}_q${qIdx + 1}_${java.util.UUID.randomUUID()}"
+                    )
+                } finally {
+                    if (!cleanedCrop.isRecycled) cleanedCrop.recycle()
                 }
 
                 questionOrderOnPage++
@@ -1642,13 +1719,13 @@ object StudioImageAndPdfEngine {
 
                 results.add(
                     LocalCroppedBoxResult(
-                        croppedImagePath = outFile.absolutePath,
+                        croppedImagePath = imagePath,
                         aspectRatio = aspect,
                         boxNormalized = listOf(
-                            finalTop.toFloat() / height.toFloat(),
-                            finalLeft.toFloat() / width.toFloat(),
-                            finalBottom.toFloat() / height.toFloat(),
-                            finalRight.toFloat() / width.toFloat()
+                            safeTop.toFloat() / height.toFloat(),
+                            safeLeft.toFloat() / width.toFloat(),
+                            (safeBottom + 1).toFloat() / height.toFloat(),
+                            (safeRight + 1).toFloat() / width.toFloat()
                         ),
                         columnIndex = colIdx,
                         estimatedDifficulty5 = estimatedDiff5,

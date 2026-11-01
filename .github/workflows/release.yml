@@ -3,6 +3,8 @@ name: Build & Release APK
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       publish_release:
@@ -116,6 +118,25 @@ jobs:
           fi
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
 
+      - name: Check release tag
+        id: release_tag
+        if: github.event_name == 'push' || inputs.publish_release
+        env:
+          VERSION_NAME: ${{ steps.app_version.outputs.version_name }}
+        run: |
+          TAG="v${VERSION_NAME}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" > /dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release tag ${TAG} already exists; the existing release will not be overwritten."
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then
+              echo "Could not check whether release tag ${TAG} exists." >&2
+              exit "$status"
+            fi
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Collect Release Artifacts
         env:
           VERSION_NAME: ${{ steps.app_version.outputs.version_name }}
@@ -134,7 +155,7 @@ jobs:
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
-        if: success() && (github.event_name == 'push' || inputs.publish_release)
+        if: success() && (github.event_name == 'push' || inputs.publish_release) && steps.release_tag.outputs.exists == 'false'
         with:
           tag_name: v${{ steps.app_version.outputs.version_name }}
           name: SoruLab v${{ steps.app_version.outputs.version_name }}

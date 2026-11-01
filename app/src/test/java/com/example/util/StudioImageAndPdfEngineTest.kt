@@ -70,7 +70,7 @@ class StudioImageAndPdfEngineTest {
     }
 
     @Test
-    fun `front matter is skipped only when question structure is absent`() {
+    fun `front matter markers are skipped and valid test pages are kept`() {
         assertTrue(
             StudioImageAndPdfEngine.shouldSkipQuestionPage(
                 text = "İÇİNDEKİLER\nBölüm 1 ........ 12",
@@ -86,6 +86,34 @@ class StudioImageAndPdfEngineTest {
                 pageIndex = 0,
                 totalPages = 120
             )
+        )
+    }
+
+    @Test
+    fun `first five pages without question and option structure are skipped`() {
+        assertTrue(
+            StudioImageAndPdfEngine.shouldSkipQuestionPage(
+                text = "Bölüm 1\nİçindekiler",
+                topHeaderText = "Bölüm 1",
+                pageIndex = 4,
+                totalPages = 120
+            )
+        )
+        assertFalse(
+            StudioImageAndPdfEngine.shouldSkipQuestionPage(
+                text = "1. Soru kökü\nA) Bir\nB) İki",
+                topHeaderText = "Ünite 1",
+                pageIndex = 4,
+                totalPages = 120
+            )
+        )
+    }
+
+    @Test
+    fun `answer key parser supports compact and separated formats`() {
+        assertEquals(
+            mapOf(1 to "A", 2 to "B", 3 to "C", 4 to "D"),
+            StudioImageAndPdfEngine.parseAnswerKeyRegex("1A 2-B 3. C 4) D")
         )
     }
 

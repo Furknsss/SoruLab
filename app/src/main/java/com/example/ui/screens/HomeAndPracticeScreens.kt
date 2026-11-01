@@ -3386,17 +3386,15 @@ private fun SoruLabAiTestGeneratorDialog(
             ?: poolCheck.availableQuestionCount
     }
     val maxAvailableCount = matchingDiffCount.coerceAtLeast(0)
-    val safeMaxAvailableCount = maxAvailableCount.coerceAtLeast(1)
-    var selectedQuestionCount by remember(topic.id, level, safeMaxAvailableCount) {
-        mutableIntStateOf(AUTOMATIC_TEST_QUESTION_COUNT.coerceAtMost(safeMaxAvailableCount))
-    }
+    val selectedQuestionCount = AUTOMATIC_TEST_QUESTION_COUNT
+    val hasStandardTestPool = maxAvailableCount >= AUTOMATIC_TEST_QUESTION_COUNT
     var currentStep by remember { mutableIntStateOf(1) }
     var progressTarget by remember { mutableFloatStateOf(0.20f) }
     var createdTest by remember { mutableStateOf<YksTestItem?>(null) }
     var generationFailed by remember { mutableStateOf(false) }
 
     // Never show "Soru Bulunamadı" if a test was already created or if poolCheck.canGenerate is true!
-    if ((!poolCheck.canGenerate || maxAvailableCount == 0) && createdTest == null && currentStep <= 1) {
+    if ((!poolCheck.canGenerate || !hasStandardTestPool) && createdTest == null && currentStep <= 1) {
         Dialog(onDismissRequest = onDismiss) {
             Card(
                 shape = RoundedCornerShape(26.dp),
@@ -3458,8 +3456,8 @@ private fun SoruLabAiTestGeneratorDialog(
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
-                        text = if (poolCheck.canGenerate && maxAvailableCount == 0) {
-                            "Seçili ${level.displayTitle} seviyesinde bu konuda henüz uygun soru yok."
+                        text = if (poolCheck.canGenerate && !hasStandardTestPool) {
+                            "Bu filtrelerle 12 soruluk standart test oluşturmak için en az 12 görseli doğrulanmış soru gerekir. Şu an $maxAvailableCount soru bulundu."
                         } else {
                             poolCheck.reasonMessage
                         },
@@ -3517,7 +3515,6 @@ private fun SoruLabAiTestGeneratorDialog(
     // İNTERAKTİF TEST OLUŞTURMA PANELİ (5'li Zorluk Seçici + Akıllı Kaynak Filtresi + Esnek Soru Sayısı Slider/Seçici + Otomatik "[Konu Adı] - Test [X]" İsimlendirme)
     if (isSetupPhase) {
         val autoTestName = "${topic.name} - Test $nextTestNumber"
-        val presetCounts = listOf(5, 10, 12, 16, 20)
 
         Dialog(onDismissRequest = onDismiss) {
             Card(
@@ -3682,7 +3679,7 @@ private fun SoruLabAiTestGeneratorDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "3. Soru Sayısı Seçimi",
+                                text = "3. Standart Test Boyutu",
                                 style = MaterialTheme.typography.labelLarge.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 13.sp
@@ -3690,7 +3687,7 @@ private fun SoruLabAiTestGeneratorDialog(
                                 color = Color(0xFF1E293B)
                             )
                             Text(
-                                text = "${selectedQuestionCount.coerceAtMost(maxAvailableCount)} / $maxAvailableCount Soru",
+                                text = "$selectedQuestionCount Soru",
                                 style = MaterialTheme.typography.labelLarge.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 13.sp
@@ -3699,72 +3696,9 @@ private fun SoruLabAiTestGeneratorDialog(
                             )
                         }
 
-                        if (maxAvailableCount > 1) {
-                            Slider(
-                                value = selectedQuestionCount.coerceIn(1, maxAvailableCount).toFloat(),
-                                onValueChange = { v ->
-                                    selectedQuestionCount = v.toInt().coerceIn(1, maxAvailableCount)
-                                },
-                                valueRange = 1f..maxAvailableCount.toFloat(),
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color(0xFF1D63DC),
-                                    activeTrackColor = Color(0xFF1D63DC),
-                                    inactiveTrackColor = Color(0xFFE2E8F0)
-                                )
-                            )
-                        }
-
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(presetCounts) { preset ->
-                                val effectiveVal = preset.coerceAtMost(maxAvailableCount)
-                                val isCurrent = selectedQuestionCount == effectiveVal
-                                Surface(
-                                    onClick = { selectedQuestionCount = effectiveVal },
-                                    enabled = maxAvailableCount >= preset,
-                                    shape = RoundedCornerShape(50),
-                                    color = if (isCurrent) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
-                                    border = BorderStroke(
-                                        1.2.dp,
-                                        if (isCurrent) Color(0xFF1D63DC) else Color(0xFFCBD5E1)
-                                    )
-                                ) {
-                                    Text(
-                                        text = "$preset Soru",
-                                        style = MaterialTheme.typography.labelMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp
-                                        ),
-                                        color = if (isCurrent) Color(0xFF1D63DC) else Color(0xFF475569),
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                    )
-                                }
-                            }
-                            item {
-                                val isMax = selectedQuestionCount == maxAvailableCount
-                                Surface(
-                                    onClick = { selectedQuestionCount = maxAvailableCount },
-                                    shape = RoundedCornerShape(50),
-                                    color = if (isMax) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
-                                    border = BorderStroke(
-                                        1.2.dp,
-                                        if (isMax) Color(0xFF1D63DC) else Color(0xFFCBD5E1)
-                                    )
-                                ) {
-                                    Text(
-                                        text = "Maks ($maxAvailableCount)",
-                                        style = MaterialTheme.typography.labelMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp
-                                        ),
-                                        color = if (isMax) Color(0xFF1D63DC) else Color(0xFF475569),
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                    )
-                                }
-                            }
-                        }
-                        if (maxAvailableCount == 0) {
+                        if (!hasStandardTestPool) {
                             Text(
-                                text = "Bu kaynak ve zorluk kesişiminde soru yok. Filtreleri değiştirin.",
+                                text = "12 sorudan az bulunan havuzda test başlatılamaz. Kaynak veya zorluk filtresini değiştirin.",
                                 color = Color(0xFFB91C1C),
                                 style = MaterialTheme.typography.bodySmall
                             )
@@ -3789,7 +3723,7 @@ private fun SoruLabAiTestGeneratorDialog(
 
                         Button(
                             onClick = { isSetupPhase = false },
-                            enabled = maxAvailableCount > 0,
+                            enabled = hasStandardTestPool,
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF1D63DC),

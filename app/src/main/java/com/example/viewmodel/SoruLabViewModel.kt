@@ -178,6 +178,9 @@ class SoruLabViewModel(
     private val _activeSession = MutableStateFlow<ActiveSolvingSession?>(null)
     val activeSession: StateFlow<ActiveSolvingSession?> = _activeSession.asStateFlow()
 
+    private val _activeTestQuestions = MutableStateFlow<List<YksQuestion>>(emptyList())
+    val activeTestQuestions: StateFlow<List<YksQuestion>> = _activeTestQuestions.asStateFlow()
+
     private val _elapsedSeconds = MutableStateFlow(0)
     val elapsedSeconds: StateFlow<Int> = _elapsedSeconds.asStateFlow()
 
@@ -511,6 +514,7 @@ class SoruLabViewModel(
         _boardStrokes.value = emptyMap()
         _dialogTestItem.value = null
         _activeSession.value = null
+        _activeTestQuestions.value = emptyList()
     }
 
     /**
@@ -854,7 +858,8 @@ class SoruLabViewModel(
         levelFilter: TopicTestLevel?
     ): List<YksQuestion> {
         val topicPool = _userCustomQuestions.value.filter { question ->
-            matchesTopic(question.subjectId, question.topicId, question.topicName, topic)
+            matchesTopic(question.subjectId, question.topicId, question.topicName, topic) &&
+                repository.hasRecoverableQuestionImage(question)
         }
 
         val filteredCustom = if (levelFilter == null) {
@@ -951,7 +956,8 @@ class SoruLabViewModel(
         sourceFilter: QuestionSourceFilter
     ): List<YksQuestion> {
         val strictTopicPool = _userCustomQuestions.value.filter { cq ->
-            matchesTopic(cq.subjectId, cq.topicId, cq.topicName, topic)
+            matchesTopic(cq.subjectId, cq.topicId, cq.topicName, topic) &&
+                repository.hasRecoverableQuestionImage(cq)
         }
         if (strictTopicPool.isEmpty()) return emptyList()
 
@@ -1068,7 +1074,8 @@ class SoruLabViewModel(
      */
     fun checkPoolAvailability(topic: YksTopic, level: TopicTestLevel): PoolAvailabilityCheck {
         val strictTopicPool = _userCustomQuestions.value.filter { cq ->
-            matchesTopic(cq.subjectId, cq.topicId, cq.topicName, topic)
+            matchesTopic(cq.subjectId, cq.topicId, cq.topicName, topic) &&
+                repository.hasRecoverableQuestionImage(cq)
         }
         val countsByDiff = DifficultyLevel.entries.associateWith { diff ->
             strictTopicPool.count { it.difficultyLevel5 == diff }
@@ -1283,8 +1290,8 @@ class SoruLabViewModel(
             }
         }
 
-        if (orderedPool.isEmpty()) return null
-        val safeCount = requestedQuestionCount.coerceIn(1, orderedPool.size)
+        if (orderedPool.size < requestedQuestionCount.coerceAtLeast(1)) return null
+        val safeCount = requestedQuestionCount.coerceAtLeast(1)
         val questionsToUse = orderedPool.take(safeCount)
         if (questionsToUse.isEmpty()) return null
 
@@ -1473,6 +1480,7 @@ class SoruLabViewModel(
             selectedAnswers = parsedAnswers,
             elapsedSeconds = initialSeconds
         )
+        _activeTestQuestions.value = resolvedTestItem.questions
 
         timerJob?.cancel()
         if (!isReviewMode) {
@@ -1745,6 +1753,7 @@ class SoruLabViewModel(
     fun exitSolvingSession() {
         timerJob?.cancel()
         _activeSession.value = null
+        _activeTestQuestions.value = emptyList()
     }
 
     fun toggleBoardViewMode() {
@@ -1892,6 +1901,7 @@ class SoruLabViewModel(
     fun navigateFromReviewToStats() {
         timerJob?.cancel()
         _activeSession.value = null
+        _activeTestQuestions.value = emptyList()
         _selectedTopic.value = null
         _selectedTab.value = MainNavTab.ISTATISTIKLERIM
     }

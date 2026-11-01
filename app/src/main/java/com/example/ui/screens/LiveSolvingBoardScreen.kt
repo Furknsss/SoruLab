@@ -14,7 +14,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.drag
@@ -580,41 +579,33 @@ fun LiveSolvingBoardScreen(
                                         if (!isStylus) {
                                             return@awaitEachGesture
                                         }
+                                        down.consume()
 
-                                        val dragStartChange = awaitTouchSlopOrCancellation(down.id) { change, _ ->
+                                        liveRawPoints.clear()
+                                        liveRawPoints.add(down.position)
+                                        liveRawPath.reset()
+                                        liveRawPath.moveTo(down.position.x, down.position.y)
+                                        liveRawPath.lineTo(down.position.x + 0.1f, down.position.y + 0.1f)
+                                        liveDrawTick.intValue++
+
+                                        var prevPt = down.position
+                                        drag(down.id) { change ->
                                             change.consume()
-                                        }
-                                        if (dragStartChange != null) {
-                                            liveRawPoints.clear()
-                                            liveRawPoints.add(down.position)
-                                            liveRawPoints.add(dragStartChange.position)
-
-                                            liveRawPath.reset()
-                                            liveRawPath.moveTo(down.position.x, down.position.y)
-                                            liveRawPath.lineTo(dragStartChange.position.x, dragStartChange.position.y)
-                                            liveDrawTick.intValue++
-
-                                            var prevPt = dragStartChange.position
-                                            drag(dragStartChange.id) { change ->
-                                                change.consume()
-                                                val curPt = change.position
-                                                liveRawPoints.add(curPt)
-                                                val midX = (prevPt.x + curPt.x) * 0.5f
-                                                val midY = (prevPt.y + curPt.y) * 0.5f
-                                                liveRawPath.quadraticTo(prevPt.x, prevPt.y, midX, midY)
-                                                prevPt = curPt
-                                                // Draw-phase-only invalidation (zero Composable recomposition!)
-                                                liveDrawTick.intValue++
-                                            }
-
-                                            // Commit stroke to ViewModel state ONLY on pointerUp!
-                                            if (liveRawPoints.size >= 2) {
-                                                onAddStroke(liveRawPoints.toList())
-                                            }
-                                            liveRawPoints.clear()
-                                            liveRawPath.reset()
+                                            val curPt = change.position
+                                            liveRawPoints.add(curPt)
+                                            val midX = (prevPt.x + curPt.x) * 0.5f
+                                            val midY = (prevPt.y + curPt.y) * 0.5f
+                                            liveRawPath.quadraticTo(prevPt.x, prevPt.y, midX, midY)
+                                            prevPt = curPt
                                             liveDrawTick.intValue++
                                         }
+
+                                        if (liveRawPoints.size >= 2) {
+                                            onAddStroke(liveRawPoints.toList())
+                                        }
+                                        liveRawPoints.clear()
+                                        liveRawPath.reset()
+                                        liveDrawTick.intValue++
                                     }
                                 }
                             } else {
@@ -678,6 +669,8 @@ fun LiveSolvingBoardScreen(
                 RightSlidingStatsDrawer345(
                     isOpen = session.isStatsDrawerOpen,
                     testTitle = session.testItem.fullTitle.ifBlank { "${session.topicName} - Test 1" },
+                    questions = questions,
+                    selectedAnswers = session.selectedAnswers,
                     correctCount = correctCount,
                     wrongCount = wrongCount,
                     emptyCount = emptyCount,
@@ -1513,34 +1506,6 @@ private fun BookPageQuestionItem345(
                     }
                 } else {
                     // Fallback vector/text rendering if a catalog question has no bitmap
-                    if (question.stemTop.isBlank() &&
-                        question.bulletsOrSteps.isEmpty() &&
-                        question.stemBottom.isBlank() &&
-                        question.visualType == QuestionVisualType.NONE
-                    ) {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 120.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFFF8FAFC),
-                            border = BorderStroke(1.dp, Color(0xFFCBD5E1))
-                        ) {
-                            Box(
-                                modifier = Modifier.padding(12.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = question.stemTop.ifBlank {
-                                        "Soru görseli veya yedek kaynak bu soru kaydında bulunmuyor."
-                                    },
-                                    color = Color(0xFF64748B),
-                                    fontSize = 12.sp,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    }
                     if (question.stemTop.isNotBlank()) {
                         Text(
                             text = question.stemTop,
@@ -2224,6 +2189,8 @@ private fun RightSlidingOpticalFormDrawer345(
 private fun RightSlidingStatsDrawer345(
     isOpen: Boolean,
     testTitle: String,
+    questions: List<YksQuestion>,
+    selectedAnswers: Map<Int, String>,
     correctCount: Int,
     wrongCount: Int,
     emptyCount: Int,
@@ -2283,6 +2250,62 @@ private fun RightSlidingStatsDrawer345(
                             color = Color(0xFFB45309),
                             fontWeight = FontWeight.Bold
                         )
+                    }
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 320.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(questions, key = { it.number }) { question ->
+                            val answer = selectedAnswers[question.number]
+                            val isEmpty = answer.isNullOrBlank()
+                            val isCorrect = !isEmpty &&
+                                question.answerKeyVerified &&
+                                answer == question.correctOption
+                            val isWrong = !isEmpty &&
+                                question.answerKeyVerified &&
+                                answer != question.correctOption
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFF8FAFC), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                when {
+                                    isEmpty -> Box(
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .border(2.dp, Color(0xFF94A3B8), CircleShape)
+                                    )
+                                    isCorrect || isWrong -> Icon(
+                                        imageVector = if (isCorrect) Icons.Default.Check else Icons.Default.Close,
+                                        contentDescription = if (isCorrect) "Doğru" else "Yanlış",
+                                        tint = if (isCorrect) Color(0xFF15803D) else Color(0xFFDC2626),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    else -> Icon(
+                                        imageVector = Icons.Default.HelpOutline,
+                                        contentDescription = "Cevap anahtarı doğrulanmadı",
+                                        tint = Color(0xFFB45309),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "${question.number}. Soru",
+                                    modifier = Modifier.weight(1f),
+                                    color = Color(0xFF334155),
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = answer?.takeIf(String::isNotBlank)?.let { "İşaret: $it" } ?: "Boş",
+                                    color = Color(0xFF64748B),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -3776,54 +3799,49 @@ private fun TwinQuestionInkCanvas(
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val isStylus = down.type == PointerType.Stylus
                             if (!isStylus) return@awaitEachGesture
+                            down.consume()
 
-                            val dragStart = awaitTouchSlopOrCancellation(down.id) { change, _ ->
+                            livePoints.clear()
+                            livePoints.add(down.position)
+                            livePath.reset()
+                            livePath.moveTo(down.position.x, down.position.y)
+                            livePath.lineTo(down.position.x + 0.1f, down.position.y + 0.1f)
+                            drawTick.intValue++
+
+                            var previousPoint = down.position
+                            drag(down.id) { change ->
                                 change.consume()
-                            }
-                            if (dragStart != null) {
-                                livePoints.clear()
-                                livePoints.add(down.position)
-                                livePoints.add(dragStart.position)
-                                livePath.reset()
-                                livePath.moveTo(down.position.x, down.position.y)
-                                livePath.lineTo(dragStart.position.x, dragStart.position.y)
+                                val currentPoint = change.position
+                                livePoints.add(currentPoint)
+                                val midpointX = (previousPoint.x + currentPoint.x) * 0.5f
+                                val midpointY = (previousPoint.y + currentPoint.y) * 0.5f
+                                livePath.quadraticTo(previousPoint.x, previousPoint.y, midpointX, midpointY)
+                                previousPoint = currentPoint
                                 drawTick.intValue++
+                            }
 
-                                var previousPoint = dragStart.position
-                                drag(dragStart.id) { change ->
-                                    change.consume()
-                                    val currentPoint = change.position
-                                    livePoints.add(currentPoint)
-                                    val midpointX = (previousPoint.x + currentPoint.x) * 0.5f
-                                    val midpointY = (previousPoint.y + currentPoint.y) * 0.5f
-                                    livePath.quadraticTo(previousPoint.x, previousPoint.y, midpointX, midpointY)
-                                    previousPoint = currentPoint
-                                    drawTick.intValue++
-                                }
-
-                                if (livePoints.size >= 2) {
-                                    val isEraser = activeTool == DrawingTool.ERASER
-                                    val isHighlighter = activeTool == DrawingTool.HIGHLIGHTER
-                                    onStrokesChange(
-                                        latestStrokes + DrawStroke(
-                                            points = livePoints.toList(),
-                                            colorHex = if (isEraser) 0x00000000L else selectedPenColorHex,
-                                            strokeWidthPx = when {
-                                                isEraser -> 38f
-                                                isHighlighter -> strokeWidth * 2.6f
-                                                else -> strokeWidth
-                                            },
-                                            isSmartShape = activeTool == DrawingTool.SMART_SHAPE,
-                                            isEraser = isEraser,
-                                            isHighlighter = isHighlighter
-                                        )
+                            if (livePoints.size >= 2) {
+                                val isEraser = activeTool == DrawingTool.ERASER
+                                val isHighlighter = activeTool == DrawingTool.HIGHLIGHTER
+                                onStrokesChange(
+                                    latestStrokes + DrawStroke(
+                                        points = livePoints.toList(),
+                                        colorHex = if (isEraser) 0x00000000L else selectedPenColorHex,
+                                        strokeWidthPx = when {
+                                            isEraser -> 38f
+                                            isHighlighter -> strokeWidth * 2.6f
+                                            else -> strokeWidth
+                                        },
+                                        isSmartShape = activeTool == DrawingTool.SMART_SHAPE,
+                                        isEraser = isEraser,
+                                        isHighlighter = isHighlighter
                                     )
-                                }
-
-                                livePoints.clear()
-                                livePath.reset()
-                                drawTick.intValue++
+                                )
                             }
+
+                            livePoints.clear()
+                            livePath.reset()
+                            drawTick.intValue++
                         }
                     }
                 } else {

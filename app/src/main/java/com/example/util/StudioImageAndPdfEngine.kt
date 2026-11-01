@@ -56,6 +56,14 @@ data class QuestionNumberAnchor(
     val bottom: Int
 )
 
+data class QuestionOptionAnchor(
+    val option: String,
+    val left: Int,
+    val top: Int,
+    val right: Int,
+    val bottom: Int
+)
+
 internal fun shouldPersistQuestionCrop(width: Int, height: Int, hasVisiblePixels: Boolean): Boolean =
     width >= 120 && height >= 80 && hasVisiblePixels
 
@@ -186,10 +194,8 @@ object StudioImageAndPdfEngine {
     fun containsNonQuestionPageMarker(text: String): Boolean {
         val normalized = normalizeTurkishText(text)
         return listOf(
-            "istiklal marsi", "genclige hitabe", "mursit ilimdir", "hakiki mursit",
-            "mustafa kemal ataturk", "icindekiler", "onsoz", "kunye", "unite",
-            "cevap anahtari", "basim yeri", "matbaa", "isbn", "yayin haklari",
-            "baski yili", "ticaret sicil"
+            "istiklal marsi", "genclige hitabe", "mursit ilimdir",
+            "ataturk", "icindekiler", "onsoz", "kunye"
         ).any(normalized::contains)
     }
 
@@ -208,10 +214,10 @@ object StudioImageAndPdfEngine {
         pageIndex: Int = -1,
         totalPages: Int = -1
     ): Boolean {
-        if (text.isBlank()) return false
-        if (containsNonQuestionPageMarker(topHeaderText) && !hasQuestionNumberOrOptions(text)) {
-            return true
-        }
+        val hasStructure = hasQuestionAndOptionStructure(text)
+        if (containsNonQuestionPageMarker(text) || containsNonQuestionPageMarker(topHeaderText)) return true
+        if (pageIndex in 0..4 && !hasStructure) return true
+        if (text.isBlank()) return pageIndex in 0..4
 
         val normalizedText = normalizeTurkishText(text)
         val hasAnswerKeyRows = Regex("""(?i)\btest\s*\d+\s*[:\-]\s*\d{1,2}\s*[-.]?\s*[A-E]""")
@@ -219,8 +225,17 @@ object StudioImageAndPdfEngine {
         val isLastPages = totalPages > 0 && pageIndex >= totalPages - 3
         val answerKeyPage = normalizedText.contains("cevap anahtari") ||
             (isLastPages && hasAnswerKeyRows)
-        if (answerKeyPage && !hasQuestionNumberOrOptions(text)) return true
+        if (answerKeyPage && !hasStructure) return true
         return false
+    }
+
+    fun hasQuestionAndOptionStructure(text: String): Boolean {
+        val hasQuestionNumber = Regex("""(?im)^\s*(?:[1-9]|[1-3][0-9])[\.\-)]\s*\S""")
+            .containsMatchIn(text)
+        val optionCount = Regex("""(?im)(?:^|[\s(])[A-E]\s*[).:]\s*\S""")
+            .findAll(text)
+            .count()
+        return hasQuestionNumber && optionCount >= 2
     }
 
     fun hasQuestionNumberOrOptions(text: String): Boolean {
@@ -297,9 +312,15 @@ object StudioImageAndPdfEngine {
             }
             if (diskBitmap != null) return@withContext diskBitmap
 
-            val questionFile = File(File(context.filesDir, "questions"), "q_${questionId.replace(Regex("[^A-Za-z0-9_-]"), "_")}.jpg")
-            if (questionFile.isFile && questionFile.length() > 0L) {
-                getCachedBitmap(questionFile.absolutePath)?.let { return@withContext it }
+            val safeQuestionIds = setOf(
+                questionId,
+                questionId.removePrefix("custom_")
+            ).map { it.replace(Regex("[^A-Za-z0-9_-]"), "_") }
+            for (safeId in safeQuestionIds) {
+                val questionFile = File(File(context.filesDir, "questions"), "q_$safeId.jpg")
+                if (questionFile.isFile && questionFile.length() > 0L) {
+                    getCachedBitmap(questionFile.absolutePath)?.let { return@withContext it }
+                }
             }
 
             if (imageBase64.isNotBlank()) {
@@ -1610,7 +1631,8 @@ object StudioImageAndPdfEngine {
         pageIndex: Int,
         totalPages: Int,
         reusablePixelsRef: Array<IntArray?>,
-        questionNumberAnchors: List<QuestionNumberAnchor> = emptyList()
+        questionNumberAnchors: List<QuestionNumberAnchor> = emptyList(),
+        optionAnchors: List<QuestionOptionAnchor> = emptyList()
     ): List<LocalCroppedBoxResult> {
         if (pageBitmap.isRecycled) return emptyList()
         val width = pageBitmap.width
@@ -1631,7 +1653,8 @@ object StudioImageAndPdfEngine {
             height = height,
             pageIndex = pageIndex,
             totalPages = totalPages,
-            questionNumberAnchors = questionNumberAnchors
+            questionNumberAnchors = questionNumberAnchors,
+            optionAnchors = optionAnchors
         )
     }
 
@@ -1664,7 +1687,7 @@ object StudioImageAndPdfEngine {
         val safeTop = cropTop.coerceIn(0, (height - 1).coerceAtLeast(0))
         val safeWidth = cropWidth.coerceIn(1, width - safeLeft)
         val safeHeight = cropHeight.coerceIn(1, height - safeTop)
-        val rawCrop = Bitmap.createBitmap(pageBitmap, safeLeft, safeTop, safeWidth, safeHeight)
+        val rawCrop = safeCreateCropBitmap(pageBitmap, safeLeft, safeTop, safeWidth, safeHeight) ?: return null
         val cleanedCrop = whitenOldQuestionNumberAndEnhance(rawCrop)
         if (cleanedCrop !== rawCrop) rawCrop.recycle()
         if (!isNonBlankQuestionBitmap(cleanedCrop)) {
@@ -1711,7 +1734,8 @@ object StudioImageAndPdfEngine {
         height: Int,
         pageIndex: Int,
         totalPages: Int,
-        questionNumberAnchors: List<QuestionNumberAnchor>
+        questionNumberAnchors: List<QuestionNumberAnchor>,
+        optionAnchors: List<QuestionOptionAnchor>
     ): List<LocalCroppedBoxResult> {
         // 1. Estimate background paper luminance so off-white / gray / yellow backgrounds are ignored
         var highLumSum = 0L
@@ -1943,16 +1967,6 @@ object StudioImageAndPdfEngine {
         }
 
         val sampledRows = (bodyH / 2).coerceAtLeast(1)
-        // Check if there is a vertical separator line (high density spike in center)
-        var dividerX = -1
-        var maxDividerInk = (sampledRows * 0.36f).roundToInt()
-        for (i in colInkCounts.indices) {
-            if (colInkCounts[i] >= maxDividerInk) {
-                maxDividerInk = colInkCounts[i]
-                dividerX = centerStart + i
-            }
-        }
-
         // Or find the cleanest vertical whitespace corridor near center
         var minGutterInk = Int.MAX_VALUE
         var bestGutterX = width / 2
@@ -1996,14 +2010,13 @@ object StudioImageAndPdfEngine {
 
         val minHalfInkThreshold = ((bodyH / 4) * ((leftCheckEnd - leftCheckStart) / 4) * 0.008f).roundToInt().coerceAtLeast(24)
         val avgGutterRowInk = minGutterInk.toFloat() / ((windowRadius * 2 + 1) * sampledRows).coerceAtLeast(1).toFloat()
-        val isDualColumn = (dividerX != -1 || avgGutterRowInk < 0.048f) &&
+        val isDualColumn = avgGutterRowInk < 0.048f &&
             leftHalfInk >= minHalfInkThreshold &&
             rightHalfInk >= minHalfInkThreshold
 
-        val midX = if (dividerX != -1) dividerX else bestGutterX
+        val midX = bestGutterX
         val gutterMargin = (width * 0.012f).roundToInt().coerceAtLeast(10)
-        // Sol ve sağ %7'lik dış kenar boşluklarını (outerMargin = 0.07f) kırpma alanından kesin olarak hariç tut!
-        val outerMargin = (width * 0.07f).roundToInt().coerceAtLeast(36)
+        val outerMargin = (width * 0.02f).roundToInt().coerceAtLeast(8)
 
         val columns: List<Triple<Int, Int, Int>> = if (isDualColumn) {
             listOf(
@@ -2036,9 +2049,14 @@ object StudioImageAndPdfEngine {
                 .filter { anchor ->
                     anchor.top in bodyTop until bodyBottom &&
                         anchor.left >= colLeft &&
-                        anchor.left <= colLeft + (colWidth * 0.22f).roundToInt()
+                        anchor.left <= colLeft + (colWidth * 0.25f).roundToInt()
                 }
                 .sortedBy { it.top }
+            val columnOptions = optionAnchors.filter { option ->
+                option.top in bodyTop until bodyBottom &&
+                    option.left >= colLeft &&
+                    option.left < colRight
+            }
             val questionBands = if (anchors.isEmpty()) {
                 projectedBands.flatMap { band ->
                     splitOversizedProjectionBand(
@@ -2055,21 +2073,34 @@ object StudioImageAndPdfEngine {
                 anchors.mapIndexed { anchorIndex, anchor ->
                     val startY = (anchor.top - 12).coerceIn(bodyTop, bodyBottom - 1)
                     val nextAnchorTop = anchors.getOrNull(anchorIndex + 1)?.top
+                    val optionBottom = columnOptions
+                        .asSequence()
+                        .filter { it.top >= anchor.top && (nextAnchorTop == null || it.top < nextAnchorTop) }
+                        .maxOfOrNull { it.bottom }
                     val endY = if (nextAnchorTop != null) {
                         (nextAnchorTop - 16).coerceIn(startY + 1, bodyBottom - 1)
                     } else {
-                        projectedBands.lastOrNull { it.second >= anchor.bottom }
-                            ?.second
-                            ?.coerceIn(startY + 1, bodyBottom - 1)
-                            ?: (bodyBottom - 1)
+                        ((optionBottom?.plus(16))
+                            ?: projectedBands.lastOrNull { it.second >= anchor.bottom }?.second
+                            ?: (bodyBottom - 1))
+                            .coerceIn(startY + 1, bodyBottom - 1)
                     }
                     startY to endY
                 }
             }
 
             for ((qIdx, band) in questionBands.withIndex()) {
-                val rawTop = band.first
-                val rawBottom = band.second
+                val (rawTop, rawBottom) = expandBandToConnectedInkIslands(
+                    pixels = pixels,
+                    pageWidth = width,
+                    pageHeight = height,
+                    colLeft = colLeft,
+                    colRight = colRight,
+                    bandTop = band.first,
+                    bandBottom = band.second,
+                    maxExpansion = (bodyH * 0.025f).roundToInt().coerceAtLeast(12),
+                    isInkPixel = ::isInkPixel
+                )
                 val bandH = rawBottom - rawTop
                 if (bandH < 80) continue
 
@@ -2102,7 +2133,8 @@ object StudioImageAndPdfEngine {
                 val cropW = (safeRight - safeLeft + 1).coerceIn(1, width - safeLeft)
                 val cropH = (safeBottom - safeTop + 1).coerceIn(1, height - safeTop)
                 if (cropW < 120 || cropH < 80) continue
-                val rawCrop = Bitmap.createBitmap(pageBitmap, safeLeft, safeTop, cropW, cropH)
+                val rawCrop = safeCreateCropBitmap(pageBitmap, safeLeft, safeTop, cropW, cropH)
+                    ?: continue
                 val cleanedCrop = whitenOldQuestionNumberAndEnhance(rawCrop)
                 if (cleanedCrop !== rawCrop) {
                     rawCrop.recycle()
@@ -2330,10 +2362,118 @@ object StudioImageAndPdfEngine {
         }
     }
 
+    private fun safeCreateCropBitmap(
+        source: Bitmap,
+        x: Int,
+        y: Int,
+        width: Int,
+        height: Int
+    ): Bitmap? {
+        if (source.isRecycled || source.width <= 0 || source.height <= 0) return null
+        val safeX = x.coerceIn(0, source.width - 1)
+        val safeY = y.coerceIn(0, source.height - 1)
+        val safeWidth = width.coerceIn(1, source.width - safeX)
+        val safeHeight = height.coerceIn(1, source.height - safeY)
+        return try {
+            Bitmap.createBitmap(source, safeX, safeY, safeWidth, safeHeight)
+        } catch (_: IllegalArgumentException) {
+            null
+        } catch (_: OutOfMemoryError) {
+            null
+        }
+    }
+
+    private fun expandBandToConnectedInkIslands(
+        pixels: IntArray,
+        pageWidth: Int,
+        pageHeight: Int,
+        colLeft: Int,
+        colRight: Int,
+        bandTop: Int,
+        bandBottom: Int,
+        maxExpansion: Int,
+        isInkPixel: (Int) -> Boolean
+    ): Pair<Int, Int> {
+        val columnWidth = (colRight - colLeft).coerceAtLeast(1)
+        val top = bandTop.coerceIn(0, pageHeight - 1)
+        val bottom = bandBottom.coerceIn(top, pageHeight - 1)
+        val expansion = maxExpansion.coerceAtLeast(0)
+
+        fun connectedExtent(
+            regionTop: Int,
+            regionBottom: Int,
+            seedTop: Int,
+            seedBottom: Int,
+            findMinimum: Boolean
+        ): Int {
+            val safeTop = regionTop.coerceIn(0, pageHeight - 1)
+            val safeBottom = regionBottom.coerceIn(safeTop, pageHeight - 1)
+            val regionHeight = safeBottom - safeTop + 1
+            val area = columnWidth * regionHeight
+            if (area <= 0) return if (findMinimum) top else bottom
+            val visited = BooleanArray(area)
+            val queue = IntArray(area)
+            var readIndex = 0
+            var writeIndex = 0
+            var farthestY = if (findMinimum) top else bottom
+
+            val safeSeedTop = seedTop.coerceIn(safeTop, safeBottom)
+            val safeSeedBottom = seedBottom.coerceIn(safeSeedTop, safeBottom)
+            for (y in safeSeedTop..safeSeedBottom) {
+                val rowOffset = y * pageWidth
+                val localY = y - safeTop
+                for (x in colLeft until colRight) {
+                    if (!isInkPixel(pixels[rowOffset + x])) continue
+                    val index = localY * columnWidth + (x - colLeft)
+                    if (!visited[index]) {
+                        visited[index] = true
+                        queue[writeIndex++] = index
+                    }
+                }
+            }
+
+            while (readIndex < writeIndex) {
+                val index = queue[readIndex++]
+                val y = safeTop + index / columnWidth
+                val x = colLeft + index % columnWidth
+                farthestY = if (findMinimum) minOf(farthestY, y) else maxOf(farthestY, y)
+                for (dy in -1..1) {
+                    val nextY = y + dy
+                    if (nextY !in safeTop..safeBottom) continue
+                    val rowOffset = nextY * pageWidth
+                    for (dx in -1..1) {
+                        val nextX = x + dx
+                        if (nextX !in colLeft until colRight) continue
+                        val nextIndex = (nextY - safeTop) * columnWidth + (nextX - colLeft)
+                        if (!visited[nextIndex] && isInkPixel(pixels[rowOffset + nextX])) {
+                            visited[nextIndex] = true
+                            queue[writeIndex++] = nextIndex
+                        }
+                    }
+                }
+            }
+            return farthestY
+        }
+
+        val topExtent = connectedExtent(
+            regionTop = top - expansion,
+            regionBottom = minOf(bottom, top + 12),
+            seedTop = top,
+            seedBottom = minOf(bottom, top + 12),
+            findMinimum = true
+        )
+        val bottomExtent = connectedExtent(
+            regionTop = maxOf(top, bottom - 12),
+            regionBottom = bottom + expansion,
+            seedTop = maxOf(top, bottom - 12),
+            seedBottom = bottom,
+            findMinimum = false
+        )
+        return topExtent.coerceIn(0, top) to bottomExtent.coerceIn(bottom, pageHeight - 1)
+    }
+
     /**
-     * Uses Horizontal Projection Profile + Option-Row Valley Detection to segment a column
-     * into complete individual question vertical bands `[topY, bottomY]`, keeping figures, premises,
-     * stems, and A-E option rows together while cleanly separating stacked questions one by one.
+     * Keeps complete projected question bands together when OCR number anchors are unavailable.
      */
     private fun segmentColumnQuestionsByProjection(
         pixels: IntArray,

@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.Offset
@@ -21,6 +22,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.ConcurrentHashMap
 
 @Immutable
 data class RecognizedDeviceAccount(
@@ -34,6 +36,57 @@ class SoruLabRepository(
     private val db: FirebaseFirestore,
     private val appContext: Context? = null
 ) {
+    private val imageAvailabilityCache = ConcurrentHashMap<String, Boolean>()
+
+    fun hasRecoverableQuestionImage(question: CustomQuestionRecord): Boolean {
+        val cacheKey = "${question.id}|${question.croppedImagePath}|${question.pdfFilePath}|" +
+            "${question.imageBase64.hashCode()}|${question.pageIndex}"
+        imageAvailabilityCache[cacheKey]?.let { return it }
+        val context = appContext
+        val imagePaths = buildList {
+            question.croppedImagePath.takeIf(String::isNotBlank)?.let { add(it) }
+            if (context != null && question.id.isNotBlank()) {
+                add(File(context.filesDir, "questions/q_${question.id}.jpg").absolutePath)
+                add(File(context.filesDir, "questions/custom_${question.id}.jpg").absolutePath)
+            }
+        }
+        val found = imagePaths.any { path ->
+                val file = File(path)
+                file.isFile && file.length() > 0L && hasBitmapBounds(file.absolutePath, isFile = true)
+            } ||
+            (question.imageBase64.isNotBlank() && hasBitmapBounds(question.imageBase64))
+        val pdfFile = question.pdfFilePath.takeIf(String::isNotBlank)?.let(::File)
+        val recoverable = found || (pdfFile?.isFile == true &&
+            pdfFile.length() > 0L &&
+            question.pageIndex >= 0 &&
+            question.normRight > question.normLeft &&
+            question.normBottom > question.normTop)
+        if (recoverable) imageAvailabilityCache[cacheKey] = true
+        return recoverable
+    }
+
+    private fun hasBitmapBounds(source: String, isFile: Boolean = false): Boolean {
+        if (source.length > 12_000_000) return false
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        return try {
+            if (source.startsWith("data:", ignoreCase = true)) {
+                val encoded = source.substringAfter(',', "")
+                val bytes = Base64.decode(encoded, Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            } else if (isFile) {
+                BitmapFactory.decodeFile(source, options)
+            } else {
+                val encoded = source.substringAfter("base64,", source)
+                val bytes = Base64.decode(encoded, Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            }
+            options.outWidth >= 120 && options.outHeight >= 80
+        } catch (_: IllegalArgumentException) {
+            false
+        } catch (_: OutOfMemoryError) {
+            false
+        }
+    }
 
     constructor(context: Context) : this(
         db = kotlin.run {

@@ -14,6 +14,7 @@ import com.example.data.YksPublisherInfo
 import com.example.data.YksQuestion
 import com.example.data.resolveAnswerKeyOption
 import com.example.util.QuestionNumberAnchor
+import com.example.util.QuestionOptionAnchor
 import com.example.util.StudioImageAndPdfEngine
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
@@ -135,7 +136,9 @@ private data class PageQuestionCandidate(
 private data class PdfPageOcrLayout(
     val text: String = "",
     val headerText: String = "",
-    val questionNumberAnchors: List<QuestionNumberAnchor> = emptyList()
+    val footerText: String = "",
+    val questionNumberAnchors: List<QuestionNumberAnchor> = emptyList(),
+    val optionAnchors: List<QuestionOptionAnchor> = emptyList()
 )
 
 @Immutable
@@ -149,6 +152,7 @@ data class BatchPdfCropState(
 
 private data class PdfAiStatus(
     @Volatile var unavailableReason: String? = null,
+    @Volatile var bookBlueprintWarning: String? = null,
     @Volatile var pageFallbackFailureCount: Int = 0,
     @Volatile var pageFallbackRejectedQuestionCount: Int = 0,
     @Volatile var localOcrFailureCount: Int = 0,
@@ -736,8 +740,12 @@ class AiSolverViewModel : ViewModel() {
         val headerText = lines
             .filter { (it.boundingBox?.top ?: Int.MAX_VALUE) <= bitmap.height * 0.07f }
             .joinToString("\n") { it.text }
+        val footerText = lines
+            .filter { (it.boundingBox?.bottom ?: Int.MIN_VALUE) >= bitmap.height * 0.94f }
+            .joinToString("\n") { it.text }
         val anchorRegex = Regex("""^\s*([1-9]|[1-3][0-9])[\.\-\)]\s*""")
         val numberRegex = Regex("""^\s*(?:[1-9]|[1-3][0-9])[\.\-\)]?$""")
+        val optionRegex = Regex("""^\s*([A-E])\s*[).:]\s*""", RegexOption.IGNORE_CASE)
         val anchors = lines.mapNotNull { line ->
             val match = anchorRegex.find(line.text) ?: return@mapNotNull null
             val number = match.groupValues.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
@@ -756,10 +764,23 @@ class AiSolverViewModel : ViewModel() {
                 bottom = bounds.bottom
             )
         }.distinctBy { Triple(it.number, it.left, it.top) }
+        val options = lines.mapNotNull { line ->
+            val match = optionRegex.find(line.text) ?: return@mapNotNull null
+            val bounds = line.boundingBox ?: return@mapNotNull null
+            QuestionOptionAnchor(
+                option = match.groupValues.getOrNull(1)?.uppercase().orEmpty(),
+                left = bounds.left,
+                top = bounds.top,
+                right = bounds.right,
+                bottom = bounds.bottom
+            )
+        }
         return PdfPageOcrLayout(
             text = recognized.text,
             headerText = headerText,
-            questionNumberAnchors = anchors
+            footerText = footerText,
+            questionNumberAnchors = anchors,
+            optionAnchors = options
         )
     }
 
@@ -1400,17 +1421,24 @@ class AiSolverViewModel : ViewModel() {
                             }
                         }
                     } else {
-                        aiStatus.unavailableReason = "Gemini kitap haritası yanıtı boş döndü."
+                        aiStatus.bookBlueprintWarning =
+                            "Gemini kitap haritası yanıtı boş döndü; soru başına Gemini analizi sürdürülecek."
                     }
                 } catch (e: TimeoutCancellationException) {
-                    aiStatus.unavailableReason = "Gemini isteği zaman aşımına uğradı."
+                    aiStatus.bookBlueprintWarning =
+                        "Gemini kitap haritası zaman aşımına uğradı; soru başına Gemini analizi sürdürülecek."
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    aiStatus.unavailableReason = describeGeminiFailure(e)
+                    if (shouldDisableGeminiForPdf(e)) {
+                        aiStatus.unavailableReason = describeGeminiFailure(e)
+                    } else {
+                        aiStatus.bookBlueprintWarning =
+                            "${describeGeminiFailure(e)} Soru başına Gemini analizi yine denenecek."
+                    }
                 }
                 aiStatus.unavailableReason?.let {
-                    _batchStatusText.value = "$it Kitap cihaz içi OCR ile taranacak."
+                    _batchStatusText.value = "$it Gemini kullanılamadığı için yerel yedek analiz devrede."
                 }
 
                 // STEP 3: 100% Free & Unlimited Local Dual-Column Vector & Pixel Projection Cropping Loop
@@ -1449,12 +1477,12 @@ class AiSolverViewModel : ViewModel() {
                                     lastProgressUpdateMs = nowMs
                                     val progressPct = 16 + (((scanPos + 1).toFloat() / totalPdfPages.coerceAtLeast(1).toFloat()) * 82f).toInt()
                                     _batchProgressPercent.value = progressPct.coerceIn(16, 98)
-                                    val ocrLabel = if (aiStatus.unavailableReason == null) {
-                                        "Gemini OCR"
+                                    val analysisLabel = if (aiStatus.unavailableReason == null) {
+                                        "Gemini soru analizi • ML Kit konumlama"
                                     } else {
-                                        "Cihaz içi OCR"
+                                        "Yerel ML Kit yedek analizi • Gemini kullanılamıyor"
                                     }
-                                    _batchStatusText.value = "Sayfa ${pageIdx + 1} / $totalPdfPages taranıyor • ${allExtractedQuestions.size} soru • $ocrLabel"
+                                    _batchStatusText.value = "Sayfa ${pageIdx + 1} / $totalPdfPages işleniyor • ${allExtractedQuestions.size} soru • $analysisLabel"
                                 }
 
                                 val pageBitmap = try {
@@ -1490,6 +1518,10 @@ class AiSolverViewModel : ViewModel() {
                                     aiStatus.localOcrFailureCount++
                                     PdfPageOcrLayout()
                                 }
+                                StudioImageAndPdfEngine.parseAnswerKeyRegex(pageLayout.footerText)
+                                    .forEach { (number, option) ->
+                                        mergedAnswerKey.putIfAbsent(number, option)
+                                    }
                                 if (StudioImageAndPdfEngine.shouldSkipQuestionPage(
                                         text = pageLayout.text,
                                         topHeaderText = pageLayout.headerText,
@@ -1500,7 +1532,7 @@ class AiSolverViewModel : ViewModel() {
                                     continue
                                 }
 
-                                if (pageIdx == 0 && lockedBookSubject == null) {
+                                if (lockedBookSubject == null) {
                                     lockedBookSubject = StudioImageAndPdfEngine.detectSubjectNameFromText(
                                         pageLayout.headerText
                                     )
@@ -1561,7 +1593,8 @@ class AiSolverViewModel : ViewModel() {
                                         pageIndex = pageIdx,
                                         totalPages = rendererTotal,
                                         reusablePixelsRef = reusablePixelsRef,
-                                        questionNumberAnchors = pageLayout.questionNumberAnchors
+                                        questionNumberAnchors = pageLayout.questionNumberAnchors,
+                                        optionAnchors = pageLayout.optionAnchors
                                     )
                                 } catch (e: CancellationException) {
                                     throw e
@@ -1609,6 +1642,7 @@ class AiSolverViewModel : ViewModel() {
                                             cropBox = cropBox,
                                             classification = classification,
                                             answerKeyQuestionNumber = classification.answerKeyQuestionNumber
+                                                ?: cropBox.questionOrderInPage.takeIf { it > 0 }
                                         )
                                     }
                                 }
@@ -1683,11 +1717,12 @@ class AiSolverViewModel : ViewModel() {
                 }
 
                 val warnings = buildList {
+                    aiStatus.bookBlueprintWarning?.let { add(it) }
                     aiStatus.unavailableReason?.let {
-                        add("$it Kitap aktarımı cihaz içi OCR ile sürdürüldü.")
+                        add("$it Kitap aktarımı yerel ML Kit yedek analiziyle sürdürüldü.")
                     }
                     if (localOcrCount > 0 && aiStatus.unavailableReason == null) {
-                        add("$localOcrCount soru Gemini yerine cihaz içi OCR ile okundu.")
+                        add("$localOcrCount soruda Gemini soru analizi başarısız oldu; bu sorular yerel ML Kit OCR ile okundu.")
                     }
                     if (aiStatus.localOcrFailureCount > 0) {
                         add("Cihaz içi OCR ${aiStatus.localOcrFailureCount} soruda tamamlanamadı; kırpılmış görseller yine aktarıldı.")

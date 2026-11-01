@@ -2163,26 +2163,32 @@ object StudioImageAndPdfEngine {
     private fun splitOversizedProjectionBand(
         pixels: IntArray,
         pageWidth: Int,
+        pageHeight: Int,
         colLeft: Int,
         colRight: Int,
         band: Pair<Int, Int>,
         bodyHeight: Int,
         isInkPixel: (Int) -> Boolean
     ): List<Pair<Int, Int>> {
-        val bandHeight = band.second - band.first
+        if (pageHeight <= 0 || pageWidth <= 0) return emptyList()
+        val bandTop = band.first.coerceIn(0, pageHeight - 1)
+        val bandBottom = band.second.coerceIn(bandTop + 1, pageHeight)
+        val bandHeight = bandBottom - bandTop
         if (bandHeight <= bodyHeight * 0.62f) return listOf(band)
-        val searchStart = (band.first + bandHeight * 0.35f).roundToInt().coerceIn(band.first + 1, band.second - 1)
-        val searchEnd = (band.first + bandHeight * 0.65f).roundToInt().coerceIn(searchStart + 1, band.second - 1)
+        val searchStart = (bandTop + bandHeight * 0.35f).roundToInt().coerceIn(bandTop + 1, bandBottom - 1)
+        val searchEnd = (bandTop + bandHeight * 0.65f).roundToInt().coerceIn(searchStart + 1, bandBottom - 1)
         val blankThreshold = max(8, (bodyHeight * 0.004f).roundToInt())
-        val sampledColumns = ((colRight - colLeft) / 4).coerceAtLeast(1)
+        val safeLeft = colLeft.coerceIn(0, pageWidth - 1)
+        val safeRight = colRight.coerceIn(safeLeft, pageWidth - 1)
+        val sampledColumns = ((safeRight - safeLeft) / 4).coerceAtLeast(1)
         var bestStart = -1
         var bestEnd = -1
         var runStart = -1
 
         for (y in searchStart..searchEnd) {
             var rowInk = 0
-            var x = colLeft
-            while (x <= colRight) {
+            var x = safeLeft
+            while (x <= safeRight) {
                 if (pixels[y * pageWidth + x].let(isInkPixel)) rowInk++
                 x += 4
             }
@@ -2200,18 +2206,18 @@ object StudioImageAndPdfEngine {
             bestStart = runStart
             bestEnd = searchEnd + 1
         }
-        if (bestStart < 0 || bestEnd - bestStart < blankThreshold) return listOf(band)
+        if (bestStart < 0 || bestEnd - bestStart < blankThreshold) return listOf(bandTop to bandBottom)
 
         val cutY = (bestStart + bestEnd) / 2
-        if (cutY - band.first < 80 || band.second - cutY < 80) return listOf(band)
-        val beforeHasInk = (band.first until cutY).any { y ->
-            (colLeft..colRight step 8).any { x -> pixels[y * pageWidth + x].let(isInkPixel) }
+        if (cutY - bandTop < 80 || bandBottom - cutY < 80) return listOf(bandTop to bandBottom)
+        val beforeHasInk = (bandTop until cutY).any { y ->
+            (safeLeft..safeRight step 8).any { x -> pixels[y * pageWidth + x].let(isInkPixel) }
         }
-        val afterHasInk = ((cutY + 1)..band.second).any { y ->
-            (colLeft..colRight step 8).any { x -> pixels[y * pageWidth + x].let(isInkPixel) }
+        val afterHasInk = ((cutY + 1)..bandBottom).any { y ->
+            (safeLeft..safeRight step 8).any { x -> pixels[y * pageWidth + x].let(isInkPixel) }
         }
-        if (!beforeHasInk || !afterHasInk) return listOf(band)
-        return listOf(band.first to cutY, cutY to band.second)
+        if (!beforeHasInk || !afterHasInk) return listOf(bandTop to bandBottom)
+        return listOf(bandTop to cutY, cutY to bandBottom)
     }
 
     private data class QuestionBlockMetrics(

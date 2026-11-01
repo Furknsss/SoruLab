@@ -1,9 +1,13 @@
 package com.example.util
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class StudioImageAndPdfEngineTest {
 
     @Test
@@ -63,5 +67,37 @@ class StudioImageAndPdfEngineTest {
         assertTrue(bounds.bottom <= 900)
         assertTrue(bounds.left in 70..900)
         assertTrue(bounds.top in 100..860)
+    }
+
+    @Test
+    fun `front matter is skipped only when question structure is absent`() {
+        assertTrue(
+            StudioImageAndPdfEngine.shouldSkipQuestionPage(
+                text = "İÇİNDEKİLER\nBölüm 1 ........ 12",
+                topHeaderText = "İÇİNDEKİLER",
+                pageIndex = 0,
+                totalPages = 120
+            )
+        )
+        assertFalse(
+            StudioImageAndPdfEngine.shouldSkipQuestionPage(
+                text = "1. Aşağıdakilerden hangisi doğrudur?\nA) Bir\nB) İki\nC) Üç\nD) Dört\nE) Beş",
+                topHeaderText = "ÜNİTE 1",
+                pageIndex = 0,
+                totalPages = 120
+            )
+        )
+    }
+
+    @Test
+    fun `ellipsis in question text does not skip question page`() {
+        assertFalse(
+            StudioImageAndPdfEngine.shouldSkipQuestionPage(
+                text = "1. Dizide ... ifadesinin değeri kaçtır?\nA) 1\nB) 2\nC) 3\nD) 4\nE) 5",
+                topHeaderText = "Diziler",
+                pageIndex = 2,
+                totalPages = 120
+            )
+        )
     }
 }

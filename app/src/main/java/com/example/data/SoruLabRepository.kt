@@ -186,6 +186,14 @@ class SoruLabRepository(
             if (cacheDir.exists()) {
                 cacheDir.listFiles()?.forEach { runCatching { it.delete() } }
             }
+            val snapshotDir = java.io.File(
+                java.io.File(ctx.filesDir, "sorulab_test_snapshots"),
+                userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+            )
+            if (snapshotDir.exists()) {
+                snapshotDir.listFiles()?.forEach { runCatching { it.delete() } }
+                runCatching { snapshotDir.delete() }
+            }
             publisherLogoPaths.forEach { File(it).delete() }
         } catch (_: Exception) {
         }
@@ -320,27 +328,44 @@ class SoruLabRepository(
         return try {
             val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
             val prefix = "gen_snapshot_${userId}_"
-            buildMap {
+            val snapshots = buildMap {
                 prefs.all.forEach { (key, value) ->
                     if (key.startsWith(prefix) && value is String && value.isNotBlank()) {
                         put(key.removePrefix(prefix), value)
                     }
                 }
             }
+            val safeUserId = userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+            val snapshotDir = java.io.File(java.io.File(ctx.filesDir, "sorulab_test_snapshots"), safeUserId)
+            val diskSnapshots = snapshotDir.listFiles()
+                ?.filter { it.isFile && it.name.endsWith(".json") }
+                .orEmpty()
+                .mapNotNull { file ->
+                    runCatching {
+                        val raw = file.readText(Charsets.UTF_8)
+                        val testId = JSONObject(raw).optString("id")
+                        testId.takeIf(String::isNotBlank)?.let { it to raw }
+                    }.getOrNull()
+                }
+                .toMap()
+            snapshots + diskSnapshots
         } catch (_: Exception) {
             emptyMap()
         }
     }
 
     fun saveCachedGeneratedTestSnapshot(userId: String, test: YksTestItem) {
-        val ctx = appContext ?: return
-        try {
-            ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
-                .edit()
-                .putString("gen_snapshot_${userId}_${test.id}", TestSnapshotCodec.encode(test))
-                .apply()
-        } catch (_: Exception) {
+        val ctx = appContext ?: throw IllegalStateException("Test yedek deposu kullanılamıyor.")
+        val safeUserId = userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+        val snapshotDir = java.io.File(java.io.File(ctx.filesDir, "sorulab_test_snapshots"), safeUserId)
+        if (!snapshotDir.exists() && !snapshotDir.mkdirs()) {
+            throw java.io.IOException("Test yedeği klasörü oluşturulamadı.")
         }
+        val safeTestId = test.id.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+        java.io.File(snapshotDir, "snapshot_$safeTestId.json")
+            .writeText(TestSnapshotCodec.encode(test), Charsets.UTF_8)
+        ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+            .edit().remove("gen_snapshot_${userId}_${test.id}").apply()
     }
 
     fun removeCachedGeneratedTestSnapshot(userId: String, testId: String) {
@@ -350,6 +375,12 @@ class SoruLabRepository(
                 .edit()
                 .remove("gen_snapshot_${userId}_$testId")
                 .apply()
+            val safeUserId = userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+            val safeTestId = testId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+            java.io.File(
+                java.io.File(java.io.File(ctx.filesDir, "sorulab_test_snapshots"), safeUserId),
+                "snapshot_$safeTestId.json"
+            ).delete()
         } catch (_: Exception) {
         }
     }
@@ -712,7 +743,16 @@ class SoruLabRepository(
                         questionText = obj.optString("questionText", ""),
                         publisherTag = obj.optString("publisherTag", "ÜçDörtBeş Yayınları"),
                         aiSolutionSummary = obj.optString("aiSolutionSummary", ""),
-                        cropAspectRatio = obj.optDouble("cropAspectRatio", 1.25)
+                        cropAspectRatio = obj.optDouble("cropAspectRatio", 1.25),
+                        bookId = obj.optString("bookId", ""),
+                        imageBase64 = obj.optString("imageBase64", ""),
+                        pdfFilePath = obj.optString("pdfFilePath", ""),
+                        pageIndex = obj.optInt("pageIndex", -1),
+                        questionNumberInTest = obj.optInt("questionNumberInTest", 0),
+                        normLeft = obj.optDouble("normLeft", 0.0).toFloat(),
+                        normTop = obj.optDouble("normTop", 0.0).toFloat(),
+                        normRight = obj.optDouble("normRight", 1.0).toFloat(),
+                        normBottom = obj.optDouble("normBottom", 1.0).toFloat()
                     )
                 )
             }
@@ -729,9 +769,26 @@ class SoruLabRepository(
         }
     }
 
+    fun rekeyLocalQuestionImage(path: String, questionId: String): String? {
+        val context = appContext ?: return null
+        return StudioImageAndPdfEngine.rekeyQuestionImage(context, path, questionId)
+    }
+
     fun deleteAllLocalQuestionImages(): Int {
         val context = appContext ?: return 0
         return StudioImageAndPdfEngine.deleteAllQuestionImages(context)
+    }
+
+    fun deleteLocalBookPdfs(paths: Collection<String>): Int {
+        val context = appContext ?: return paths.count(String::isNotBlank)
+        return paths.filter(String::isNotBlank).distinct().count { path ->
+            !StudioImageAndPdfEngine.deleteBookPdf(context, path)
+        }
+    }
+
+    fun deleteAllLocalBookPdfs(): Int {
+        val context = appContext ?: return 0
+        return StudioImageAndPdfEngine.deleteAllBookPdfs(context)
     }
 
     private fun normalizeLegacyBiologyQuestion(record: CustomQuestionRecord): CustomQuestionRecord {
@@ -742,24 +799,26 @@ class SoruLabRepository(
             return record
         }
 
-        val biology = SoruLabCatalog.allSubjects.firstOrNull { it.id == "ayt_biyoloji" }
+        val examType = record.examType.takeIf { it.equals("TYT", true) || it.equals("AYT", true) } ?: "AYT"
+        val biology = SoruLabCatalog.allSubjects.firstOrNull {
+            it.name.equals("Biyoloji", ignoreCase = true) &&
+                it.examType.name.equals(examType, ignoreCase = true)
+        } ?: SoruLabCatalog.allSubjects.firstOrNull { it.id == "ayt_biyoloji" }
             ?: return record
         val detectedTopicName = StudioImageAndPdfEngine.detectTopicNameFromText(
-            examType = "AYT",
+            examType = biology.examType.name,
             subjectName = biology.name,
             text = "${record.topicName}\n${record.questionText}"
         )
         val topic = biology.topics.firstOrNull { it.name.equals(detectedTopicName, ignoreCase = true) }
             ?: biology.topics.firstOrNull { it.id == record.topicId }
             ?: biology.topics.firstOrNull { it.name.equals(record.topicName, ignoreCase = true) }
-            ?: biology.topics.firstOrNull { it.id == "sinir_sistemi" }
-            ?: return record
         return record.copy(
-            examType = "AYT",
+            examType = biology.examType.name,
             subjectId = biology.id,
             subjectName = biology.name,
-            topicId = topic.id,
-            topicName = topic.name
+            topicId = topic?.id.orEmpty(),
+            topicName = topic?.name.orEmpty()
         )
     }
 
@@ -788,6 +847,15 @@ class SoruLabRepository(
                 obj.put("publisherTag", rec.publisherTag)
                 obj.put("aiSolutionSummary", rec.aiSolutionSummary)
                 obj.put("cropAspectRatio", rec.cropAspectRatio)
+                obj.put("bookId", rec.bookId)
+                obj.put("imageBase64", rec.imageBase64)
+                obj.put("pdfFilePath", rec.pdfFilePath)
+                obj.put("pageIndex", rec.pageIndex)
+                obj.put("questionNumberInTest", rec.questionNumberInTest)
+                obj.put("normLeft", rec.normLeft.toDouble())
+                obj.put("normTop", rec.normTop.toDouble())
+                obj.put("normRight", rec.normRight.toDouble())
+                obj.put("normBottom", rec.normBottom.toDouble())
                 arr.put(obj)
             }
             val jsonStr = arr.toString()

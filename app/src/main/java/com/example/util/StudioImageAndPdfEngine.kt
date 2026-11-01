@@ -12,6 +12,7 @@ import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.LruCache
+import android.util.Base64
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,9 +21,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.ByteArrayOutputStream
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
@@ -104,6 +107,24 @@ object StudioImageAndPdfEngine {
         return file.delete() || !file.exists()
     }
 
+    fun rekeyQuestionImage(context: Context, path: String, questionId: String): String? {
+        val source = resolveQuestionImageFile(context, path) ?: return null
+        val questionsDir = File(context.filesDir, "questions").canonicalFile
+        if (source.canonicalFile.parentFile != questionsDir) return null
+        val safeId = questionId.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        val destination = File(questionsDir, "q_$safeId.jpg")
+        if (source.canonicalFile == destination.canonicalFile) return destination.absolutePath
+        return try {
+            source.copyTo(destination, overwrite = true)
+            invalidateCachedBitmap(path)
+            invalidateCachedBitmap(source.absolutePath)
+            source.delete()
+            destination.absolutePath
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun deleteAllQuestionImages(context: Context): Int {
         val questionsDir = File(context.filesDir, "questions")
         val files = questionsDir.listFiles()
@@ -113,6 +134,34 @@ object StudioImageAndPdfEngine {
             invalidateCachedBitmap(file.absolutePath)
             !file.delete() && file.exists()
         }
+    }
+
+    fun deleteBookPdf(context: Context, path: String): Boolean {
+        if (path.isBlank()) return true
+        val booksDir = File(context.filesDir, "books").canonicalFile
+        val file = File(path).canonicalFile
+        if (file.parentFile != booksDir) return false
+        return file.delete() || !file.exists()
+    }
+
+    fun deleteAllBookPdfs(context: Context): Int {
+        val booksDir = File(context.filesDir, "books")
+        val files = booksDir.listFiles()
+            ?.filter { it.isFile && it.name.matches(Regex("""book_[A-Za-z0-9_-]+\.pdf""")) }
+            .orEmpty()
+        return files.count { !it.delete() && it.exists() }
+    }
+
+    fun persistBookPdf(context: Context, source: File, bookId: String): String {
+        require(source.isFile && source.length() > 0L) { "Kaynak PDF bulunamadı veya boş." }
+        val booksDir = File(context.filesDir, "books")
+        if (!booksDir.exists() && !booksDir.mkdirs()) {
+            throw IllegalStateException("Kitap PDF klasörü oluşturulamadı.")
+        }
+        val safeId = bookId.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        val destination = File(booksDir, "book_$safeId.pdf")
+        source.copyTo(destination, overwrite = true)
+        return destination.absolutePath
     }
 
     private fun resolveQuestionImageFile(context: Context, path: String): File? {
@@ -135,17 +184,43 @@ object StudioImageAndPdfEngine {
     }
 
     fun containsNonQuestionPageMarker(text: String): Boolean {
-        val normalized = text.lowercase(Locale.forLanguageTag("tr-TR")).replace('ı', 'i')
+        val normalized = normalizeTurkishText(text)
         return listOf(
-            "içindekiler", "icindekiler", "önsöz", "onsoz", "istiklal marşı",
-            "istiklal marsi", "künye", "kunye", "cevap anahtarı", "cevap anahtari",
-            "ünite", "unite"
+            "istiklal marsi", "genclige hitabe", "mursit ilimdir", "hakiki mursit",
+            "mustafa kemal ataturk", "icindekiler", "onsoz", "kunye", "unite",
+            "cevap anahtari", "basim yeri", "matbaa", "isbn", "yayin haklari",
+            "baski yili", "ticaret sicil"
         ).any(normalized::contains)
     }
 
-    fun shouldSkipQuestionPage(text: String, topHeaderText: String = text): Boolean {
+    private fun normalizeTurkishText(text: String): String =
+        text.lowercase(Locale.forLanguageTag("tr-TR"))
+            .replace('ı', 'i')
+            .replace('ş', 's')
+            .replace('ğ', 'g')
+            .replace('ü', 'u')
+            .replace('ö', 'o')
+            .replace('ç', 'c')
+
+    fun shouldSkipQuestionPage(
+        text: String,
+        topHeaderText: String = text,
+        pageIndex: Int = -1,
+        totalPages: Int = -1
+    ): Boolean {
         if (text.isBlank()) return false
-        return containsNonQuestionPageMarker(topHeaderText) && !hasQuestionNumberOrOptions(text)
+        if (containsNonQuestionPageMarker(topHeaderText) && !hasQuestionNumberOrOptions(text)) {
+            return true
+        }
+
+        val normalizedText = normalizeTurkishText(text)
+        val hasAnswerKeyRows = Regex("""(?i)\btest\s*\d+\s*[:\-]\s*\d{1,2}\s*[-.]?\s*[A-E]""")
+            .containsMatchIn(text)
+        val isLastPages = totalPages > 0 && pageIndex >= totalPages - 3
+        val answerKeyPage = normalizedText.contains("cevap anahtari") ||
+            (isLastPages && hasAnswerKeyRows)
+        if (answerKeyPage && !hasQuestionNumberOrOptions(text)) return true
+        return false
     }
 
     fun hasQuestionNumberOrOptions(text: String): Boolean {
@@ -155,6 +230,34 @@ object StudioImageAndPdfEngine {
             .containsMatchIn(text)
         return hasQuestionNumber || hasOptions
     }
+
+    fun encodeLightweightQuestionBitmap(bitmap: Bitmap, maxWidth: Int = 650): String {
+        if (bitmap.isRecycled || bitmap.width <= 0 || bitmap.height <= 0) return ""
+        var scaled: Bitmap? = null
+        val output = ByteArrayOutputStream()
+        return try {
+            val source = if (bitmap.width > maxWidth) {
+                val targetHeight = (bitmap.height * (maxWidth.toFloat() / bitmap.width))
+                    .roundToInt().coerceAtLeast(1)
+                Bitmap.createScaledBitmap(bitmap, maxWidth, targetHeight, true)
+                    .also { scaled = it }
+            } else {
+                bitmap
+            }
+            if (!source.compress(Bitmap.CompressFormat.JPEG, 72, output)) return ""
+            Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+        } catch (_: OutOfMemoryError) {
+            ""
+        } catch (_: Exception) {
+            ""
+        } finally {
+            runCatching { output.close() }
+            scaled?.takeIf { it !== bitmap }?.recycle()
+        }
+    }
+
+    fun persistQuestionBitmapForId(context: Context, bitmap: Bitmap, id: String): String =
+        persistQuestionBitmap(context, bitmap, id)
 
     private fun isNonBlankQuestionBitmap(bitmap: Bitmap): Boolean {
         if (bitmap.isRecycled || bitmap.width < 120 || bitmap.height < 80) return false
@@ -172,6 +275,126 @@ object StudioImageAndPdfEngine {
             }
         }
         return shouldPersistQuestionCrop(bitmap.width, bitmap.height, hasVisiblePixels = false)
+    }
+
+    suspend fun loadGuaranteedQuestionBitmap(
+        context: Context,
+        questionId: String,
+        imagePath: String,
+        imageBase64: String,
+        pdfFilePath: String,
+        pageIndex: Int,
+        normLeft: Float,
+        normTop: Float,
+        normRight: Float,
+        normBottom: Float
+    ): Bitmap? = withContext(Dispatchers.IO) {
+        try {
+            val diskBitmap = if (imagePath.isNotBlank()) {
+                getCachedBitmap(context, imagePath)
+            } else {
+                null
+            }
+            if (diskBitmap != null) return@withContext diskBitmap
+
+            val questionFile = File(File(context.filesDir, "questions"), "q_${questionId.replace(Regex("[^A-Za-z0-9_-]"), "_")}.jpg")
+            if (questionFile.isFile && questionFile.length() > 0L) {
+                getCachedBitmap(questionFile.absolutePath)?.let { return@withContext it }
+            }
+
+            if (imageBase64.isNotBlank()) {
+                val bytes = runCatching { Base64.decode(imageBase64, Base64.DEFAULT) }.getOrNull()
+                if (bytes != null) {
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { decoded ->
+                        bitmapCache.put("base64:$questionId", decoded)
+                        return@withContext decoded
+                    }
+                }
+            }
+
+            val pdfFile = File(pdfFilePath)
+            if (!pdfFile.isFile || pageIndex < 0 ||
+                normRight <= normLeft || normBottom <= normTop
+            ) return@withContext null
+
+            val renderedPage = android.os.ParcelFileDescriptor.open(
+                pdfFile,
+                android.os.ParcelFileDescriptor.MODE_READ_ONLY
+            ).use { descriptor ->
+                PdfRenderer(descriptor).use { renderer ->
+                    if (pageIndex !in 0 until renderer.pageCount) return@withContext null
+                    renderer.openPage(pageIndex).use { page ->
+                        val targetWidth = (page.width * 2f).roundToInt().coerceIn(900, 1800)
+                        val targetHeight = (page.height.toFloat() * targetWidth / page.width)
+                            .roundToInt().coerceIn(900, 2600)
+                        Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+                            .also { pageBitmap ->
+                                pageBitmap.eraseColor(Color.WHITE)
+                                page.render(
+                                    pageBitmap,
+                                    null,
+                                    null,
+                                    PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
+                                )
+                            }
+                    }
+                }
+            }
+
+            val left = (normLeft.coerceIn(0f, 1f) * renderedPage.width).roundToInt()
+                .coerceIn(0, renderedPage.width - 1)
+            val top = (normTop.coerceIn(0f, 1f) * renderedPage.height).roundToInt()
+                .coerceIn(0, renderedPage.height - 1)
+            val right = (normRight.coerceIn(0f, 1f) * renderedPage.width).roundToInt()
+                .coerceIn(left + 1, renderedPage.width)
+            val bottom = (normBottom.coerceIn(0f, 1f) * renderedPage.height).roundToInt()
+                .coerceIn(top + 1, renderedPage.height)
+            val crop = Bitmap.createBitmap(
+                renderedPage,
+                left.coerceIn(0, renderedPage.width - 1),
+                top.coerceIn(0, renderedPage.height - 1),
+                (right - left).coerceIn(1, renderedPage.width - left),
+                (bottom - top).coerceIn(1, renderedPage.height - top)
+            )
+            renderedPage.recycle()
+            val savedPath = runCatching {
+                persistQuestionBitmap(context, crop, questionId)
+            }.getOrNull()
+            if (!savedPath.isNullOrBlank()) bitmapCache.put(savedPath, crop)
+            crop
+        } catch (_: OutOfMemoryError) {
+            null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    @Composable
+    fun rememberGuaranteedQuestionBitmap(question: com.example.data.YksQuestion): Bitmap? {
+        val context = LocalContext.current
+        var bitmap by remember(question.id, question.imagePath, question.imageBase64) {
+            mutableStateOf(peekCachedBitmap(question.imagePath))
+        }
+        LaunchedEffect(
+            question.id, question.imagePath, question.imageBase64, question.pdfFilePath,
+            question.pageIndex, question.normLeft, question.normTop, question.normRight, question.normBottom
+        ) {
+            bitmap = loadGuaranteedQuestionBitmap(
+                context = context.applicationContext,
+                questionId = question.id,
+                imagePath = question.imagePath,
+                imageBase64 = question.imageBase64,
+                pdfFilePath = question.pdfFilePath,
+                pageIndex = question.pageIndex,
+                normLeft = question.normLeft,
+                normTop = question.normTop,
+                normRight = question.normRight,
+                normBottom = question.normBottom
+            )
+        }
+        return bitmap
     }
 
     fun detectSubjectNameFromText(text: String): String? {
@@ -1072,7 +1295,8 @@ object StudioImageAndPdfEngine {
         val estimatedDifficulty5: String = "Orta",
         val hasDiagramOrGraph: Boolean = false,
         val lineCountEstimate: Int = 6,
-        val questionOrderInPage: Int = 1
+        val questionOrderInPage: Int = 1,
+        val imageBase64: String = ""
     )
 
     /**
@@ -1374,7 +1598,7 @@ object StudioImageAndPdfEngine {
                 pageBitmap,
                 null,
                 null,
-                PdfRenderer.Page.RENDER_MODE_FOR_PRINT
+                PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
             )
             pageBitmap
         }
@@ -1450,12 +1674,15 @@ object StudioImageAndPdfEngine {
         val aspectRatio = (cleanedCrop.width.toDouble() / cleanedCrop.height.toDouble().coerceAtLeast(1.0))
             .coerceIn(0.32, 3.8)
 
-        val imagePath = try {
-            persistQuestionBitmap(
+        val imagePath: String
+        val imageBase64: String
+        try {
+            imagePath = persistQuestionBitmap(
                 context = context,
                 bitmap = cleanedCrop,
                 id = "p${pageIndex + 1}_ai${questionOrder}_${java.util.UUID.randomUUID()}"
             )
+            imageBase64 = encodeLightweightQuestionBitmap(cleanedCrop)
         } finally {
             if (!cleanedCrop.isRecycled) cleanedCrop.recycle()
         }
@@ -1471,7 +1698,8 @@ object StudioImageAndPdfEngine {
             ),
             columnIndex = 0,
             estimatedDifficulty5 = difficulty,
-            questionOrderInPage = questionOrder
+            questionOrderInPage = questionOrder,
+            imageBase64 = imageBase64
         )
     }
 
@@ -1693,13 +1921,15 @@ object StudioImageAndPdfEngine {
             bodyBottom = cleanGapY
         }
 
-        bodyTop = (height * 0.07f).roundToInt().coerceIn(0, (height - 1).coerceAtLeast(0))
-        bodyBottom = (height * 0.94f).roundToInt().coerceIn(bodyTop + 1, height)
+        bodyTop = max(bodyTop, (height * 0.065f).roundToInt())
+            .coerceIn(0, (height - 1).coerceAtLeast(0))
+        bodyBottom = min(bodyBottom, (height * 0.945f).roundToInt())
+            .coerceIn(bodyTop + 1, height)
         val bodyH = (bodyBottom - bodyTop).coerceAtLeast(1)
 
         // 2. Detect Center Vertical Gutter or Divider Line (`midX`)
-        val centerStart = (width * 0.42f).roundToInt()
-        val centerEnd = (width * 0.58f).roundToInt()
+        val centerStart = (width * 0.45f).roundToInt()
+        val centerEnd = (width * 0.55f).roundToInt()
         val colInkCounts = IntArray(centerEnd - centerStart + 1)
 
         for (x in centerStart..centerEnd) {
@@ -1795,7 +2025,6 @@ object StudioImageAndPdfEngine {
             val projectedBands = segmentColumnQuestionsByProjection(
                 pixels = pixels,
                 pageWidth = width,
-                pageHeight = height,
                 colLeft = colLeft,
                 colRight = colRight,
                 bodyTop = bodyTop,
@@ -1810,7 +2039,18 @@ object StudioImageAndPdfEngine {
                 }
                 .sortedBy { it.top }
             val questionBands = if (anchors.isEmpty()) {
-                projectedBands
+                projectedBands.flatMap { band ->
+                    splitOversizedProjectionBand(
+                        pixels = pixels,
+                        pageWidth = width,
+                        pageHeight = height,
+                        colLeft = colLeft,
+                        colRight = colRight,
+                        band = band,
+                        bodyHeight = bodyH,
+                        isInkPixel = ::isInkPixel
+                    )
+                }
             } else {
                 anchors.mapIndexed { anchorIndex, anchor ->
                     val startY = (anchor.top - 12).coerceIn(bodyTop, bodyBottom - 1)
@@ -1876,12 +2116,15 @@ object StudioImageAndPdfEngine {
                     .coerceIn(0.32, 3.8)
                 val inkDensity = 0.02f
 
-                val imagePath = try {
-                    persistQuestionBitmap(
+                val imagePath: String
+                val imageBase64: String
+                try {
+                    imagePath = persistQuestionBitmap(
                         context = context,
                         bitmap = cleanedCrop,
                         id = "p${pageIndex + 1}_c${colIdx + 1}_q${qIdx + 1}_${java.util.UUID.randomUUID()}"
                     )
+                    imageBase64 = encodeLightweightQuestionBitmap(cleanedCrop)
                 } finally {
                     if (!cleanedCrop.isRecycled) cleanedCrop.recycle()
                 }
@@ -1907,13 +2150,68 @@ object StudioImageAndPdfEngine {
                         estimatedDifficulty5 = estimatedDiff5,
                         hasDiagramOrGraph = structureMetrics.hasDiagramOrGraph,
                         lineCountEstimate = structureMetrics.lineTransitions,
-                        questionOrderInPage = anchor?.number ?: questionOrderOnPage
+                        questionOrderInPage = anchor?.number ?: questionOrderOnPage,
+                        imageBase64 = imageBase64
                     )
                 )
             }
         }
 
         return results
+    }
+
+    private fun splitOversizedProjectionBand(
+        pixels: IntArray,
+        pageWidth: Int,
+        colLeft: Int,
+        colRight: Int,
+        band: Pair<Int, Int>,
+        bodyHeight: Int,
+        isInkPixel: (Int) -> Boolean
+    ): List<Pair<Int, Int>> {
+        val bandHeight = band.second - band.first
+        if (bandHeight <= bodyHeight * 0.62f) return listOf(band)
+        val searchStart = (band.first + bandHeight * 0.35f).roundToInt().coerceIn(band.first + 1, band.second - 1)
+        val searchEnd = (band.first + bandHeight * 0.65f).roundToInt().coerceIn(searchStart + 1, band.second - 1)
+        val blankThreshold = max(8, (bodyHeight * 0.004f).roundToInt())
+        val sampledColumns = ((colRight - colLeft) / 4).coerceAtLeast(1)
+        var bestStart = -1
+        var bestEnd = -1
+        var runStart = -1
+
+        for (y in searchStart..searchEnd) {
+            var rowInk = 0
+            var x = colLeft
+            while (x <= colRight) {
+                if (pixels[y * pageWidth + x].let(isInkPixel)) rowInk++
+                x += 4
+            }
+            if (rowInk.toFloat() / sampledColumns <= 0.004f) {
+                if (runStart == -1) runStart = y
+            } else if (runStart != -1) {
+                if (y - runStart > bestEnd - bestStart) {
+                    bestStart = runStart
+                    bestEnd = y
+                }
+                runStart = -1
+            }
+        }
+        if (runStart != -1 && searchEnd + 1 - runStart > bestEnd - bestStart) {
+            bestStart = runStart
+            bestEnd = searchEnd + 1
+        }
+        if (bestStart < 0 || bestEnd - bestStart < blankThreshold) return listOf(band)
+
+        val cutY = (bestStart + bestEnd) / 2
+        if (cutY - band.first < 80 || band.second - cutY < 80) return listOf(band)
+        val beforeHasInk = (band.first until cutY).any { y ->
+            (colLeft..colRight step 8).any { x -> pixels[y * pageWidth + x].let(isInkPixel) }
+        }
+        val afterHasInk = ((cutY + 1)..band.second).any { y ->
+            (colLeft..colRight step 8).any { x -> pixels[y * pageWidth + x].let(isInkPixel) }
+        }
+        if (!beforeHasInk || !afterHasInk) return listOf(band)
+        return listOf(band.first to cutY, cutY to band.second)
     }
 
     private data class QuestionBlockMetrics(
@@ -2108,7 +2406,7 @@ object StudioImageAndPdfEngine {
 
         // KURAL 3: Parçalar arası dikey boşluk birleştirme eşiğini (vertical merge threshold) artır!
         // Bir soru kutusunun üstteki tanım metni, ortadaki şekli/tablosu ve alttaki A-E şıklarıyla tek parça halinde bütün kalması sağlanır.
-        val baseInternalGap = (pageHeight * 0.045f).roundToInt().coerceAtLeast(1)
+        val baseInternalGap = (pageHeight * 0.042f).roundToInt().coerceAtLeast(1)
         val extendedInternalGap = baseInternalGap
         val bucketWForGap = (colW / 5).coerceAtLeast(1)
 

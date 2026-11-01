@@ -711,6 +711,7 @@ class SoruLabViewModel(
                 val snapshot = TestSnapshotCodec.decode(
                     snapshotJsonByTestId[expectedTestId] ?: cachedSnapshots[expectedTestId].orEmpty()
                 )?.takeIf { it.id == expectedTestId }
+                    ?.let(::hydrateSnapshotQuestionImages)
                 val realQuestions = if (snapshot == null) {
                     collectRealPoolQuestionsForTopicAndLevel(topic, level)
                 } else {
@@ -779,6 +780,31 @@ class SoruLabViewModel(
         val sameTopic = recordTopicId.equals(topic.id, ignoreCase = true) ||
             (recordTopicId.isBlank() && recordTopicName.equals(topic.name, ignoreCase = true))
         return sameSubject && sameTopic
+    }
+
+    private fun hydrateSnapshotQuestionImages(test: YksTestItem): YksTestItem {
+        val sourceRecords = _userCustomQuestions.value.associateBy { it.id }
+        return test.copy(
+            questions = test.questions.map { question ->
+                val source = sourceRecords[question.sourceQuestionId]
+                    ?: return@map question
+                question.copy(
+                    croppedImagePath = source.croppedImagePath.ifBlank { question.croppedImagePath },
+                    bookId = source.bookId.ifBlank { question.bookId },
+                    sourceQuestionId = source.id,
+                    subject = source.subjectName.ifBlank { question.subject },
+                    imageBase64 = source.imageBase64.ifBlank { question.imageBase64 },
+                    pdfFilePath = source.pdfFilePath.ifBlank { question.pdfFilePath },
+                    pageIndex = source.pageIndex.takeIf { it >= 0 } ?: question.pageIndex,
+                    questionNumberInTest = source.questionNumberInTest.takeIf { it > 0 }
+                        ?: question.questionNumberInTest,
+                    normLeft = source.normLeft,
+                    normTop = source.normTop,
+                    normRight = source.normRight,
+                    normBottom = source.normBottom
+                )
+            }
+        )
     }
 
     private fun collectRealPoolQuestionsForTopicAndLevel(
@@ -893,7 +919,18 @@ class SoruLabViewModel(
                     } else {
                         "Bu sorunun cevap anahtarı doğrulanamadı."
                     }
-                }
+                },
+                bookId = custom.bookId,
+                sourceQuestionId = custom.id,
+                subject = custom.subjectName,
+                imageBase64 = custom.imageBase64,
+                pdfFilePath = custom.pdfFilePath,
+                pageIndex = custom.pageIndex,
+                questionNumberInTest = custom.questionNumberInTest,
+                normLeft = custom.normLeft,
+                normTop = custom.normTop,
+                normRight = custom.normRight,
+                normBottom = custom.normBottom
             )
         }
 
@@ -1008,7 +1045,18 @@ class SoruLabViewModel(
                     } else {
                         "Bu sorunun cevap anahtarı doğrulanamadı."
                     }
-                }
+                },
+                bookId = custom.bookId,
+                sourceQuestionId = custom.id,
+                subject = custom.subjectName,
+                imageBase64 = custom.imageBase64,
+                pdfFilePath = custom.pdfFilePath,
+                pageIndex = custom.pageIndex,
+                questionNumberInTest = custom.questionNumberInTest,
+                normLeft = custom.normLeft,
+                normTop = custom.normTop,
+                normRight = custom.normRight,
+                normBottom = custom.normBottom
             )
         }
     }
@@ -1279,7 +1327,17 @@ class SoruLabViewModel(
         refreshTopicProgressSummaries()
 
         val uid = effectiveUserId() ?: "device_yks_student_tr"
-        repository.saveCachedGeneratedTestSnapshot(uid, generatedTest)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                repository.saveCachedGeneratedTestSnapshot(uid, generatedTest)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    showBanner("Test oluşturuldu ancak cihazdaki yedeği kaydedilemedi.")
+                }
+            }
+        }
         val allEntries = updatedMap.flatMap { (mapKey, list) ->
             if (mapKey.endsWith("_AUTO_PDF")) {
                 emptyList()
@@ -1318,7 +1376,10 @@ class SoruLabViewModel(
                             emptyCount = generatedTest.questions.size,
                             durationSeconds = 0,
                             answersMapJson = """{"_status":"GENERATED","level":"${level.name}","testNumber":$nextTestNumber}""",
-                            testSnapshotJson = TestSnapshotCodec.encode(generatedTest)
+                            testSnapshotJson = TestSnapshotCodec.encode(
+                                generatedTest,
+                                includeImageFallback = false
+                            )
                         )
                         repository.saveTestResult(cloudRecord)
                     } catch (_: Exception) {
@@ -1368,7 +1429,8 @@ class SoruLabViewModel(
         initialQuestionIndex: Int = 0,
         preloadedDurationSeconds: Int? = null
     ) {
-        if (testItem.questions.isEmpty()) {
+        val resolvedTestItem = hydrateSnapshotQuestionImages(testItem)
+        if (resolvedTestItem.questions.isEmpty()) {
             showBanner("Bu testte çözülecek soru bulunamadı. Başka bir test seçin.")
             return
         }
@@ -1390,10 +1452,13 @@ class SoruLabViewModel(
         }
         _elapsedSeconds.value = initialSeconds
 
-        val safeQuestionIdx = initialQuestionIndex.coerceIn(0, (testItem.questions.size - 1).coerceAtLeast(0))
+        val safeQuestionIdx = initialQuestionIndex.coerceIn(
+            0,
+            (resolvedTestItem.questions.size - 1).coerceAtLeast(0)
+        )
 
         _activeSession.value = ActiveSolvingSession(
-            testItem = testItem,
+            testItem = resolvedTestItem,
             examType = examType,
             subjectId = topic.subjectId,
             subjectName = subjectName,
@@ -1477,7 +1542,18 @@ class SoruLabViewModel(
                     } else {
                         "Bu sorunun cevap anahtarı doğrulanamadı."
                     }
-                }
+                },
+                bookId = record.bookId,
+                sourceQuestionId = record.id,
+                subject = record.subjectName,
+                imageBase64 = record.imageBase64,
+                pdfFilePath = record.pdfFilePath,
+                pageIndex = record.pageIndex,
+                questionNumberInTest = record.questionNumberInTest,
+                normLeft = record.normLeft,
+                normTop = record.normTop,
+                normRight = record.normRight,
+                normBottom = record.normBottom
             )
             YksTestItem(
                 id = "single_test_${record.id}",
@@ -1579,7 +1655,18 @@ class SoruLabViewModel(
                     } else {
                         "Bu sorunun cevap anahtarı doğrulanamadı."
                     }
-                }
+                },
+                bookId = record.bookId,
+                sourceQuestionId = record.id,
+                subject = record.subjectName,
+                imageBase64 = record.imageBase64,
+                pdfFilePath = record.pdfFilePath,
+                pageIndex = record.pageIndex,
+                questionNumberInTest = record.questionNumberInTest,
+                normLeft = record.normLeft,
+                normTop = record.normTop,
+                normRight = record.normRight,
+                normBottom = record.normBottom
             )
         }
 
@@ -1628,7 +1715,9 @@ class SoruLabViewModel(
             ?: SoruLabCatalog.allSubjects.first { it.id == "tyt_mat" }
         val matchingTopic = matchingSubject.topics.find { it.id == record.topicId }
             ?: matchingSubject.topics.first()
-        val savedTest = TestSnapshotCodec.decode(record.testSnapshotJson)?.takeIf { it.id == record.testId }
+        val savedTest = TestSnapshotCodec.decode(record.testSnapshotJson)
+            ?.takeIf { it.id == record.testId }
+            ?.let(::hydrateSnapshotQuestionImages)
         val isGeneratedResult = runCatching { JSONObject(record.answersMapJson).has("level") }.getOrDefault(false)
         val matchingTest = savedTest ?: if (isGeneratedResult) {
             null
@@ -1773,7 +1862,10 @@ class SoruLabViewModel(
             ungradedCount = ungraded,
             durationSeconds = finalDuration,
             answersMapJson = jsonObj.toString(),
-            testSnapshotJson = TestSnapshotCodec.encode(cur.testItem),
+            testSnapshotJson = TestSnapshotCodec.encode(
+                cur.testItem,
+                includeImageFallback = false
+            ),
             createdAt = com.google.firebase.Timestamp.now()
         )
 
@@ -2068,7 +2160,8 @@ class SoruLabViewModel(
             questionText = questionText.ifBlank { "PDF'ten kırpılan YKS sorusu" }.take(1800),
             publisherTag = publisherTag.ifBlank { resolvedPublisher.name }.take(100),
             aiSolutionSummary = packedSolution,
-            cropAspectRatio = cropAspectRatio.coerceIn(0.3, 4.5)
+            cropAspectRatio = cropAspectRatio.coerceIn(0.3, 4.5),
+            questionNumberInTest = questionNumberInBook
         )
 
         val updatedList = listOf(record) + _userCustomQuestions.value
@@ -2103,25 +2196,14 @@ class SoruLabViewModel(
         bookCoverPath: String
     ) {
         val cleanItems = extractedItems
-            .asSequence()
             .filter { item ->
-                item.croppedImagePath.isNotBlank() || item.questionText.trim().length >= 12
+                item.croppedImagePath.isNotBlank() ||
+                    item.imageBase64.isNotBlank() ||
+                    item.questionText.trim().length >= 12
             }
-            .distinctBy { item ->
-                val normalizedText = item.questionText
-                    .lowercase()
-                    .replace(Regex("\\s+"), " ")
-                    .trim()
-                if (normalizedText.isBlank()) {
-                    item.id
-                } else {
-                    "${item.examType}|${item.subjectName}|${item.questionNumber}|$normalizedText"
-                }
-            }
-            .toList()
 
         if (cleanItems.isEmpty()) {
-            showBanner("PDF içinde aktarılabilecek doğrulanmış soru bulunamadı.")
+            showBanner("PDF içinde aktarılabilecek soru bulunamadı.")
             return
         }
 
@@ -2135,7 +2217,17 @@ class SoruLabViewModel(
             val batchTimestamp = System.currentTimeMillis()
 
             val newRecords = ArrayList<CustomQuestionRecord>(cleanItems.size)
+            var imageRekeyFailureCount = 0
             for ((idx, item) in cleanItems.withIndex()) {
+                val recordId = "cq_${batchTimestamp}_${idx}_${(100..999).random()}"
+                val canonicalImagePath = if (item.croppedImagePath.isNotBlank()) {
+                    withContext(Dispatchers.IO) {
+                        repository.rekeyLocalQuestionImage(item.croppedImagePath, "custom_$recordId")
+                    }.also { if (it == null) imageRekeyFailureCount++ }
+                        ?: item.croppedImagePath
+                } else {
+                    ""
+                }
                 val requestedSubject = SoruLabCatalog.allSubjects.firstOrNull {
                     it.examType.name.equals(item.examType, ignoreCase = true) &&
                         it.name.equals(
@@ -2194,7 +2286,7 @@ class SoruLabViewModel(
                 val packedSolution = CustomQuestionRecord.packSolutionWithMeta(
                     solutionText = item.solutionSummary,
                     targetLevel = item.targetLevel,
-                    croppedImagePath = item.croppedImagePath,
+                    croppedImagePath = canonicalImagePath,
                     publisherLogoUri = finalLogoUri,
                     answerKeyVerified = item.answerKeyMatched,
                     questionNumberInBook = item.questionNumber,
@@ -2211,7 +2303,7 @@ class SoruLabViewModel(
 
                 newRecords.add(
                     CustomQuestionRecord(
-                        id = "cq_${batchTimestamp}_${idx}_${(100..999).random()}",
+                        id = recordId,
                         userId = uid,
                         examType = resolvedExamType,
                         subjectId = subjectId,
@@ -2223,7 +2315,16 @@ class SoruLabViewModel(
                         questionText = item.questionText.take(1800),
                         publisherTag = finalPubName,
                         aiSolutionSummary = packedSolution,
-                        cropAspectRatio = item.cropAspectRatio.coerceIn(0.3, 4.5)
+                        cropAspectRatio = item.cropAspectRatio.coerceIn(0.3, 4.5),
+                        bookId = item.bookId,
+                        imageBase64 = item.imageBase64,
+                        pdfFilePath = item.pdfFilePath,
+                        pageIndex = item.pageIndex,
+                        questionNumberInTest = item.questionNumberInTest,
+                        normLeft = item.normLeft,
+                        normTop = item.normTop,
+                        normRight = item.normRight,
+                        normBottom = item.normBottom
                     )
                 )
             }
@@ -2247,7 +2348,11 @@ class SoruLabViewModel(
                 _userCustomQuestions.value = updatedList
                 showBanner(
                     if (localCacheSaved) {
-                        "'$bookOrTestName' kaynağından ${newRecords.size} soru cihazınıza eklendi."
+                        if (imageRekeyFailureCount == 0) {
+                            "'$bookOrTestName' kaynağından ${newRecords.size} soru cihazınıza eklendi."
+                        } else {
+                            "${newRecords.size} soru eklendi; $imageRekeyFailureCount görseli dosya adıyla eşleştirilemedi."
+                        }
                     } else {
                         "Sorular oturumda açıldı ancak cihaz depolamasına yazılamadı; uygulamayı kapatmayın ve depolama alanını kontrol edin."
                     }
@@ -2359,18 +2464,37 @@ class SoruLabViewModel(
         val imagePaths = _userCustomQuestions.value
             .filter { it.id in idSet }
             .mapNotNull { it.croppedImagePath.takeIf(String::isNotBlank) }
+        val removedBookIds = _userCustomQuestions.value
+            .filter { it.id in idSet }
+            .mapNotNull { it.bookId.takeIf(String::isNotBlank) }
+            .toSet()
+        val remainingBookIds = _userCustomQuestions.value
+            .filterNot { it.id in idSet }
+            .mapNotNull { it.bookId.takeIf(String::isNotBlank) }
+            .toSet()
+        val bookPdfPaths = _userCustomQuestions.value
+            .filter { it.id in idSet && it.bookId in removedBookIds && it.bookId !in remainingBookIds }
+            .mapNotNull { it.pdfFilePath.takeIf(String::isNotBlank) }
         val updated = _userCustomQuestions.value.filterNot { it.id in idSet }
         _userCustomQuestions.value = updated
         saveCustomQuestionsCacheAsync(uid, updated)
         syncPdfPoolToPracticeTests(updated)
         viewModelScope.launch(Dispatchers.IO) {
             var failedImageDeletes = 0
+            var failedBookDeletes = 0
             try {
                 failedImageDeletes = repository.deleteLocalQuestionImages(imagePaths)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
                 failedImageDeletes = imagePaths.size
+            }
+            try {
+                failedBookDeletes = repository.deleteLocalBookPdfs(bookPdfPaths)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                failedBookDeletes = bookPdfPaths.size
             }
             val cloudDeleteSucceeded = try {
                 repository.deleteCustomQuestionsBatch(questionIds)
@@ -2384,6 +2508,8 @@ class SoruLabViewModel(
                 when {
                     !cloudDeleteSucceeded ->
                         showBanner("Cihazdaki soru kayıtları kaldırıldı ancak bulut listesinden silinemedi.")
+                    failedBookDeletes > 0 ->
+                        showBanner("Sorular kaldırıldı ancak $failedBookDeletes kaynak PDF dosyası silinemedi.")
                     failedImageDeletes > 0 ->
                         showBanner("$failedImageDeletes soru görseli cihazdan silinemedi.")
                     else ->
@@ -2450,9 +2576,12 @@ class SoruLabViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             val failedImageDeletes = repository.deleteAllLocalQuestionImages()
-            if (failedImageDeletes > 0) {
+            val failedBookDeletes = repository.deleteAllLocalBookPdfs()
+            if (failedImageDeletes > 0 || failedBookDeletes > 0) {
                 withContext(Dispatchers.Main) {
-                    showBanner("$failedImageDeletes soru görseli cihazdan silinemedi.")
+                    showBanner(
+                        "$failedImageDeletes soru görseli ve $failedBookDeletes PDF dosyası cihazdan silinemedi."
+                    )
                 }
             }
             repository.clearAllLocalUserData(uid)

@@ -782,7 +782,7 @@ fun LiveSolvingBoardScreen(
                         val structuredSol = remember(rawSol) {
                             com.example.data.AiStructuredSolution.fromFormattedText(rawSol)
                         }
-                        val solutionQuestionBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(solutionQ.croppedImagePath)
+                        val solutionQuestionBitmap = StudioImageAndPdfEngine.rememberGuaranteedQuestionBitmap(solutionQ)
 
                         Column(
                             modifier = Modifier
@@ -1410,7 +1410,7 @@ private fun BookPageQuestionItem345(
     onOpenTwinScreen: () -> Unit,
     onAddToKumbara: () -> Unit
 ) {
-    val croppedBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(question.imagePath)
+    val croppedBitmap = StudioImageAndPdfEngine.rememberGuaranteedQuestionBitmap(question)
     val isEmpty = selectedOption.isNullOrBlank()
     val isUngraded = !question.answerKeyVerified
     val isCorrect = !isEmpty && question.answerKeyVerified && selectedOption == question.correctOption
@@ -1450,7 +1450,7 @@ private fun BookPageQuestionItem345(
                     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                         val nativeWidth = with(LocalDensity.current) { croppedBitmap.width.toDp() }
                         val imageWidth = minOf(maxWidth, 300.dp, nativeWidth)
-                        val imageHeight = (imageWidth / aspect).coerceIn(120.dp, 420.dp)
+                        val imageHeight = (imageWidth / aspect).coerceIn(140.dp, 380.dp)
                         Image(
                             bitmap = croppedBitmap.asImageBitmap(),
                             contentDescription = "${question.number}. Soru",
@@ -1531,10 +1531,8 @@ private fun BookPageQuestionItem345(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = if (question.imagePath.isNotBlank()) {
-                                        "Soru görseli bu cihazda yüklenemedi."
-                                    } else {
-                                        "Bu soru için görsel veya metin içeriği bulunamadı."
+                                    text = question.stemTop.ifBlank {
+                                        "Soru görseli veya yedek kaynak bu soru kaydında bulunmuyor."
                                     },
                                     color = Color(0xFF64748B),
                                     fontSize = 12.sp,
@@ -2833,7 +2831,7 @@ private fun FullScreenTwinQuestionComparisonView(
     var originalTwinStrokes by remember(originalQuestion.id) { mutableStateOf<List<DrawStroke>>(emptyList()) }
     var twinStrokes by remember(originalQuestion.id) { mutableStateOf<List<DrawStroke>>(emptyList()) }
 
-    val originalBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(originalQuestion.croppedImagePath)
+    val originalBitmap = StudioImageAndPdfEngine.rememberGuaranteedQuestionBitmap(originalQuestion)
 
     Column(
         modifier = Modifier

@@ -4,7 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 object TestSnapshotCodec {
-    fun encode(test: YksTestItem): String {
+    fun encode(test: YksTestItem, includeImageFallback: Boolean = true): String {
         val questions = JSONArray()
         test.questions.forEach { question ->
             val options = JSONObject()
@@ -19,8 +19,8 @@ object TestSnapshotCodec {
                     .put("topicHeader", question.topicHeader)
                     .put("publisherStamp", question.publisherStamp)
                     .put("publisherName", question.publisherName)
-                    .put("publisherLogoUri", question.publisherLogoUri)
-                    .put("croppedImagePath", question.croppedImagePath)
+                    .put("publisherLogoUri", question.publisherLogoUri.takeIf { includeImageFallback }.orEmpty())
+                    .put("croppedImagePath", question.croppedImagePath.takeIf { includeImageFallback }.orEmpty())
                     .put("answerKeyVerified", question.answerKeyVerified)
                     .put("stemTop", question.stemTop)
                     .put("bulletsOrSteps", bullets)
@@ -30,6 +30,17 @@ object TestSnapshotCodec {
                     .put("difficulty", question.difficulty.name)
                     .put("visualType", question.visualType.name)
                     .put("stepByStepSolution", question.stepByStepSolution)
+                    .put("bookId", question.bookId)
+                    .put("sourceQuestionId", question.sourceQuestionId)
+                    .put("subject", question.subject)
+                    .put("imageBase64", question.imageBase64.takeIf { includeImageFallback }.orEmpty())
+                    .put("pdfFilePath", question.pdfFilePath.takeIf { includeImageFallback }.orEmpty())
+                    .put("pageIndex", question.pageIndex.takeIf { includeImageFallback } ?: -1)
+                    .put("questionNumberInTest", question.questionNumberInTest)
+                    .put("normLeft", if (includeImageFallback) question.normLeft.toDouble() else 0.0)
+                    .put("normTop", if (includeImageFallback) question.normTop.toDouble() else 0.0)
+                    .put("normRight", if (includeImageFallback) question.normRight.toDouble() else 1.0)
+                    .put("normBottom", if (includeImageFallback) question.normBottom.toDouble() else 1.0)
             )
         }
         return JSONObject()
@@ -82,7 +93,18 @@ object TestSnapshotCodec {
                 visualType = QuestionVisualType.entries.firstOrNull {
                     it.name == item.optString("visualType")
                 } ?: QuestionVisualType.NONE,
-                stepByStepSolution = item.optString("stepByStepSolution")
+                stepByStepSolution = item.optString("stepByStepSolution"),
+                bookId = item.optString("bookId"),
+                sourceQuestionId = item.optString("sourceQuestionId"),
+                subject = item.optString("subject"),
+                imageBase64 = item.optString("imageBase64"),
+                pdfFilePath = item.optString("pdfFilePath"),
+                pageIndex = item.optInt("pageIndex", -1),
+                questionNumberInTest = item.optInt("questionNumberInTest", 0),
+                normLeft = item.optDouble("normLeft", 0.0).toFloat(),
+                normTop = item.optDouble("normTop", 0.0).toFloat(),
+                normRight = item.optDouble("normRight", 1.0).toFloat(),
+                normBottom = item.optDouble("normBottom", 1.0).toFloat()
             )
         }
         YksTestItem(

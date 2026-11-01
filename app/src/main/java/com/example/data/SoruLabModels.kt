@@ -169,9 +169,23 @@ data class CustomQuestionRecord(
     val publisherTag: String = "3D Yayınları",
     val aiSolutionSummary: String = "",
     val cropAspectRatio: Double = 1.25,
+    val bookId: String = "",
+    val imageBase64: String = "",
+    @get:Exclude val pdfFilePath: String = "",
+    @get:Exclude val pageIndex: Int = -1,
+    val questionNumberInTest: Int = 0,
+    @get:Exclude val normLeft: Float = 0f,
+    @get:Exclude val normTop: Float = 0f,
+    @get:Exclude val normRight: Float = 1f,
+    @get:Exclude val normBottom: Float = 1f,
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 ) {
+    @get:Exclude val imagePath: String get() = croppedImagePath
+    @get:Exclude val subject: String get() = subjectName
+    @get:Exclude val topic: String get() = topicName
+    @get:Exclude val testName: String get() = bookOrTestName
+
     @delegate:Transient
     private val cachedMetaMap: Map<String, String> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         if (!aiSolutionSummary.startsWith("[META:")) emptyMap()
@@ -510,11 +524,24 @@ data class YksQuestion(
     val correctOption: String,
     val difficulty: DifficultyLevel = DifficultyLevel.ORTA,
     val visualType: QuestionVisualType = QuestionVisualType.NONE,
-    val stepByStepSolution: String
+    val stepByStepSolution: String,
+    val bookId: String = "",
+    val sourceQuestionId: String = "",
+    val subject: String = "",
+    val imageBase64: String = "",
+    val pdfFilePath: String = "",
+    val pageIndex: Int = -1,
+    val questionNumberInTest: Int = 0,
+    val normLeft: Float = 0f,
+    val normTop: Float = 0f,
+    val normRight: Float = 1f,
+    val normBottom: Float = 1f
 ) {
     @get:Exclude
     val imagePath: String
         get() = croppedImagePath
+    @get:Exclude val topic: String get() = topicHeader
+    @get:Exclude val testName: String get() = badgeTitle
 }
 
 @Immutable

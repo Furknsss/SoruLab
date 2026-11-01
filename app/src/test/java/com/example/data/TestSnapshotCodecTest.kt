@@ -2,6 +2,7 @@ package com.example.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -36,12 +37,33 @@ class TestSnapshotCodecTest {
                     correctOption = "B",
                     difficulty = DifficultyLevel.ORTA,
                     visualType = QuestionVisualType.NONE,
-                    stepByStepSolution = "Çözüm metni"
+                    stepByStepSolution = "Çözüm metni",
+                    bookId = "book_123",
+                    sourceQuestionId = "custom_123",
+                    subject = "Biyoloji",
+                    imageBase64 = "cXVlc3Rpb24=",
+                    pdfFilePath = "/data/books/book_123.pdf",
+                    pageIndex = 7,
+                    questionNumberInTest = 13,
+                    normLeft = 0.1f,
+                    normTop = 0.2f,
+                    normRight = 0.8f,
+                    normBottom = 0.9f
                 )
             )
         )
 
         assertEquals(test, TestSnapshotCodec.decode(TestSnapshotCodec.encode(test)))
+
+        val cloudSnapshot = TestSnapshotCodec.decode(
+            TestSnapshotCodec.encode(test, includeImageFallback = false)
+        )
+        val cloudQuestion = cloudSnapshot?.questions?.getOrNull(0)
+        assertTrue(cloudQuestion != null)
+        assertEquals("custom_123", cloudQuestion?.sourceQuestionId)
+        assertEquals("", cloudQuestion?.imagePath)
+        assertEquals("", cloudQuestion?.imageBase64)
+        assertEquals(-1, cloudQuestion?.pageIndex)
     }
 
     @Test

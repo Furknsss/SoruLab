@@ -98,8 +98,22 @@ data class ExtractedPdfQuestionItem(
     val croppedImagePath: String,
     val cropAspectRatio: Double,
     val bookCoverPath: String = "",
-    val boxNormalized: List<Float> = listOf(0.05f, 0.05f, 0.95f, 0.48f)
-)
+    val boxNormalized: List<Float> = listOf(0.05f, 0.05f, 0.95f, 0.48f),
+    val testName: String = "",
+    val bookId: String = "",
+    val imageBase64: String = "",
+    val pdfFilePath: String = "",
+    val pageIndex: Int = -1,
+    val questionNumberInTest: Int = 0
+) {
+    val imagePath: String get() = croppedImagePath
+    val subject: String get() = subjectName
+    val topic: String get() = topicName
+    val normTop: Float get() = boxNormalized.getOrNull(0)?.coerceIn(0f, 1f) ?: 0f
+    val normLeft: Float get() = boxNormalized.getOrNull(1)?.coerceIn(0f, 1f) ?: 0f
+    val normBottom: Float get() = boxNormalized.getOrNull(2)?.coerceIn(0f, 1f) ?: 1f
+    val normRight: Float get() = boxNormalized.getOrNull(3)?.coerceIn(0f, 1f) ?: 1f
+}
 
 private data class QuestionOcrClassification(
     val questionText: String,
@@ -490,10 +504,17 @@ class AiSolverViewModel : ViewModel() {
     ) {
         viewModelScope.launch {
             val questionBmp = withContext(Dispatchers.IO) {
-                StudioImageAndPdfEngine.getCachedBitmap(
+                StudioImageAndPdfEngine.loadGuaranteedQuestionBitmap(
                     context = context,
-                    path = question.imagePath,
-                    maxDimension = 1600
+                    questionId = question.id,
+                    imagePath = question.imagePath,
+                    imageBase64 = question.imageBase64,
+                    pdfFilePath = question.pdfFilePath,
+                    pageIndex = question.pageIndex,
+                    normLeft = question.normLeft,
+                    normTop = question.normTop,
+                    normRight = question.normRight,
+                    normBottom = question.normBottom
                 )?.copy(Bitmap.Config.ARGB_8888, false)
             }
             if (questionBmp == null) {
@@ -522,7 +543,7 @@ class AiSolverViewModel : ViewModel() {
                     appendLine("Konu bağlamı: ${question.topicHeader}")
                     appendLine("Zorluk seviyesi: ${question.difficulty.label}")
                     appendLine("Orijinal soru kökü: ${question.stemTop}")
-                    appendLine("Ders: $subjectName")
+                    appendLine("Ders: ${question.subject.ifBlank { subjectName }}")
                     appendLine("Konu: ${question.topicHeader}")
                     if (question.bulletsOrSteps.isNotEmpty()) {
                         appendLine("Orijinal veriler/öncüller: ${question.bulletsOrSteps.joinToString(" | ")}")
@@ -613,7 +634,6 @@ class AiSolverViewModel : ViewModel() {
                 subjectNameHint = subjectNameHint,
                 suggestedTopicName = pageTopicHint,
                 trustSuggestedTopic = false,
-                explicitDifficultyHint = "",
                 hasDiagramOrGraph = hasDiagramOrGraph,
                 lineCountEstimate = lineCountEstimate,
                 visualDifficultyHint = visualDifficultyHint,
@@ -652,7 +672,6 @@ class AiSolverViewModel : ViewModel() {
                         subjectNameHint = subjectNameHint,
                         suggestedTopicName = obj.optString("topicName", "").trim().ifBlank { pageTopicHint },
                         trustSuggestedTopic = obj.optString("topicName", "").isNotBlank(),
-                        explicitDifficultyHint = obj.optString("difficulty", "").trim(),
                         hasDiagramOrGraph = hasDiagramOrGraph,
                         lineCountEstimate = lineCountEstimate,
                         visualDifficultyHint = visualDifficultyHint,
@@ -693,7 +712,6 @@ class AiSolverViewModel : ViewModel() {
             subjectNameHint = subjectNameHint,
             suggestedTopicName = pageTopicHint,
             trustSuggestedTopic = false,
-            explicitDifficultyHint = "",
             hasDiagramOrGraph = hasDiagramOrGraph,
             lineCountEstimate = lineCountEstimate,
             visualDifficultyHint = visualDifficultyHint,
@@ -716,7 +734,7 @@ class AiSolverViewModel : ViewModel() {
         }
         val lines = recognized.textBlocks.flatMap { it.lines }
         val headerText = lines
-            .filter { (it.boundingBox?.top ?: Int.MAX_VALUE) <= bitmap.height * 0.15f }
+            .filter { (it.boundingBox?.top ?: Int.MAX_VALUE) <= bitmap.height * 0.07f }
             .joinToString("\n") { it.text }
         val anchorRegex = Regex("""^\s*([1-9]|[1-3][0-9])[\.\-\)]\s*""")
         val numberRegex = Regex("""^\s*(?:[1-9]|[1-3][0-9])[\.\-\)]?$""")
@@ -762,7 +780,6 @@ class AiSolverViewModel : ViewModel() {
         subjectNameHint: String,
         suggestedTopicName: String,
         trustSuggestedTopic: Boolean,
-        explicitDifficultyHint: String,
         hasDiagramOrGraph: Boolean,
         lineCountEstimate: Int,
         visualDifficultyHint: String,
@@ -784,29 +801,16 @@ class AiSolverViewModel : ViewModel() {
                 )
         }
 
-        val difficultySignal = buildString {
-            append(questionText)
-            if (hasDiagramOrGraph) appendLine("\nşekil grafik")
-            repeat(lineCountEstimate.coerceAtMost(30)) { appendLine("x") }
-        }
-        val textDifficulty = SoruLabCatalog.classifyDifficulty5FromText(
-            rawDifficultyHint = "",
-            headerOrQuestionText = difficultySignal
+        val textDifficulty = classifyExtractedQuestionDifficulty(
+            questionText = questionText,
+            hasDiagramOrGraph = hasDiagramOrGraph,
+            lineCountEstimate = lineCountEstimate
         )
         val visualDifficulty = DifficultyLevel.fromLabel(visualDifficultyHint)
-        val explicitDifficulty = explicitDifficultyHint
-            .takeIf { hint ->
-                val normalized = hint.lowercase()
-                listOf("kolay", "orta", "ösym", "osym", "zor", "başlangıç", "baslangic", "derece")
-                    .any(normalized::contains)
-            }
-            ?.let(DifficultyLevel::fromLabel)
-        val combinedDifficultyWeight = if (explicitDifficulty != null && !usedLocalOcr) {
-            (explicitDifficulty.weight * 0.75f) +
-                (textDifficulty.weight * 0.10f) +
-                (visualDifficulty.weight * 0.15f)
+        val combinedDifficultyWeight = if (questionText.isBlank()) {
+            visualDifficulty.weight
         } else {
-            (textDifficulty.weight + visualDifficulty.weight) / 2f
+            textDifficulty.weight
         }
         val difficulty = DifficultyLevel.entries.minByOrNull {
             kotlin.math.abs(it.weight - combinedDifficultyWeight)
@@ -830,6 +834,28 @@ class AiSolverViewModel : ViewModel() {
             targetLevel = targetLevel,
             usedLocalOcr = usedLocalOcr
         )
+    }
+
+    private fun classifyExtractedQuestionDifficulty(
+        questionText: String,
+        hasDiagramOrGraph: Boolean,
+        lineCountEstimate: Int
+    ): DifficultyLevel {
+        var score = 0
+        if (Regex("""(?i)(?:^|[\s(])(?:I{1,3}|IV|V)[).,:]""").containsMatchIn(questionText)) {
+            score += 2
+        }
+        if (hasDiagramOrGraph) score++
+        if (questionText.length >= 280 || lineCountEstimate >= 10 ||
+            Regex("""(?i)\b(kesinlikle|her zaman|olabilir)\b""").containsMatchIn(questionText)
+        ) score++
+        return when {
+            score <= 0 -> DifficultyLevel.KOLAY
+            score == 1 -> DifficultyLevel.ORTA
+            score == 2 -> DifficultyLevel.OSYM
+            score == 3 -> DifficultyLevel.ZOR
+            else -> DifficultyLevel.COK_ZOR
+        }
     }
 
     private fun shouldDisableGeminiForPdf(error: Exception): Boolean {
@@ -931,7 +957,6 @@ class AiSolverViewModel : ViewModel() {
                     subjectNameHint = subject,
                     suggestedTopicName = topic,
                     trustSuggestedTopic = question.optString("konu", "").isNotBlank(),
-                    explicitDifficultyHint = difficulty,
                     hasDiagramOrGraph = false,
                     lineCountEstimate = 6,
                     visualDifficultyHint = difficulty,
@@ -1213,6 +1238,10 @@ class AiSolverViewModel : ViewModel() {
                 val resolvedDisplayName = withContext(Dispatchers.IO) {
                     StudioImageAndPdfEngine.resolvePdfDisplayName(context, pdfUri, fileNameHint)
                 }
+                val bookId = "book_${Integer.toHexString("$resolvedDisplayName|$publisherName".hashCode())}"
+                val archivedPdfPath = withContext(Dispatchers.IO) {
+                    StudioImageAndPdfEngine.persistBookPdf(context, seekablePdfFile, bookId)
+                }
 
                 _batchProgressPercent.value = 8
                 _batchStatusText.value = "Sayfa 1 / $totalPdfPages işleniyor • Kitap haritası ve cevap anahtarı analiz ediliyor..."
@@ -1342,15 +1371,16 @@ class AiSolverViewModel : ViewModel() {
                                     .replace("AYT ", "", ignoreCase = true)
                                     .trim()
                                     .ifBlank { defaultSubject }
-                                val mKonuRaw = mObj.optString("konu", localBlueprint.defaultTopicName)
-                                    .trim()
-                                    .ifBlank { localBlueprint.defaultTopicName }
-                                val matchedTopicForRange = SoruLabCatalog.matchBestTopic(
-                                    examTypeHint = defaultExamType,
-                                    subjectNameHint = mDers,
-                                    topicOrQuestionText = mKonuRaw,
-                                    fallbackTopicName = localBlueprint.defaultTopicName
-                                )
+                                val mKonuRaw = mObj.optString("konu", "").trim()
+                                val matchedTopicForRange = if (mKonuRaw.isNotBlank()) {
+                                    SoruLabCatalog.matchBestTopic(
+                                        examTypeHint = defaultExamType,
+                                        subjectNameHint = mDers,
+                                        topicOrQuestionText = mKonuRaw
+                                    )
+                                } else {
+                                    null
+                                }
                                 val mZorluk = SoruLabCatalog.classifyDifficulty5FromText(
                                     rawDifficultyHint = mObj.optString("zorluk", ""),
                                     headerOrQuestionText = "$mKonuRaw $finalBookTitle",
@@ -1363,8 +1393,7 @@ class AiSolverViewModel : ViewModel() {
                                         isSkipPage = false,
                                         examType = defaultExamType,
                                         subjectName = mDers,
-                                        topicName = matchedTopicForRange?.second?.name
-                                            ?: localBlueprint.defaultTopicName,
+                                        topicName = matchedTopicForRange?.second?.name.orEmpty(),
                                         difficulty = mZorluk
                                     )
                                 }
@@ -1461,12 +1490,11 @@ class AiSolverViewModel : ViewModel() {
                                     aiStatus.localOcrFailureCount++
                                     PdfPageOcrLayout()
                                 }
-                                if ((pageIdx == 0 &&
-                                        !StudioImageAndPdfEngine.hasQuestionNumberOrOptions(pageLayout.text)
-                                    ) ||
-                                    StudioImageAndPdfEngine.shouldSkipQuestionPage(
+                                if (StudioImageAndPdfEngine.shouldSkipQuestionPage(
                                         text = pageLayout.text,
-                                        topHeaderText = pageLayout.headerText
+                                        topHeaderText = pageLayout.headerText,
+                                        pageIndex = pageIdx,
+                                        totalPages = totalPdfPages
                                     )
                                 ) {
                                     continue
@@ -1615,7 +1643,14 @@ class AiSolverViewModel : ViewModel() {
                                             croppedImagePath = cropBox.croppedImagePath,
                                             cropAspectRatio = cropBox.aspectRatio,
                                             bookCoverPath = coverPath,
-                                            boxNormalized = cropBox.boxNormalized
+                                            boxNormalized = cropBox.boxNormalized,
+                                            testName = finalBookTitle,
+                                            bookId = bookId,
+                                            imageBase64 = cropBox.imageBase64,
+                                            pdfFilePath = archivedPdfPath,
+                                            pageIndex = pageIdx,
+                                            questionNumberInTest = candidate.answerKeyQuestionNumber
+                                                ?: cropBox.questionOrderInPage
                                         )
                                     )
                                 }

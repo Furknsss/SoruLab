@@ -1,3 +1,4 @@
+import groovy.json.JsonSlurper
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -122,7 +123,91 @@ secrets {
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
 }
 
-googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
+googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.ERROR }
+
+val verifyFirebaseConfiguration by tasks.registering {
+  val googleServicesFile = layout.projectDirectory.file("google-services.json")
+  inputs.file(googleServicesFile)
+  inputs.file(rootProject.layout.projectDirectory.file(".firebaserc"))
+  inputs.file(rootProject.layout.projectDirectory.file("firebase.json"))
+  inputs.file(layout.projectDirectory.file("src/main/res/values/firebase_applet_config.xml"))
+
+  doLast {
+    val configFile = googleServicesFile.asFile
+    check(configFile.isFile) {
+      "app/google-services.json is missing. Download the Android config for ${android.defaultConfig.applicationId} from Firebase Console."
+    }
+
+    val config = JsonSlurper().parse(configFile) as? Map<*, *>
+      ?: error("app/google-services.json is not a valid JSON object.")
+    val projectInfo = config["project_info"] as? Map<*, *>
+      ?: error("Firebase config is missing project_info.")
+    check(projectInfo["project_id"] == "gen-lang-client-0143749618" &&
+      !projectInfo["project_number"].toString().isBlank()
+    ) { "Firebase config must belong to project gen-lang-client-0143749618 and include its project number." }
+    val firebaseCliConfig = JsonSlurper().parse(rootProject.file("firebase.json")) as? Map<*, *>
+      ?: error("firebase.json is not a valid JSON object.")
+    val androidDatabaseId = Regex("""<string name="firestore_database_id"[^>]*>([^<]+)</string>""")
+      .find(layout.projectDirectory.file("src/main/res/values/firebase_applet_config.xml").asFile.readText())
+      ?.groupValues
+      ?.get(1)
+      ?: error("Android Firestore database ID is missing.")
+    val configuredDatabaseIds = (firebaseCliConfig["firestore"] as? List<*>)
+      .orEmpty()
+      .mapNotNull { (it as? Map<*, *>)?.get("database")?.toString() }
+    check(configuredDatabaseIds.contains(androidDatabaseId)) {
+      "firebase.json must target the same Firestore database ID as the Android app."
+    }
+
+    val firebaseCliProject = JsonSlurper().parse(rootProject.file(".firebaserc")) as? Map<*, *>
+      ?: error(".firebaserc is not a valid JSON object.")
+    val defaultProject = (firebaseCliProject["projects"] as? Map<*, *>)?.get("default")
+    check(defaultProject == projectInfo["project_id"]) {
+      ".firebaserc default project must match the Firebase Android config project."
+    }
+
+    val clients = config["client"] as? List<*>
+      ?: error("Firebase config has no Android client.")
+    val appClient = clients.firstNotNullOfOrNull { entry ->
+      val client = entry as? Map<*, *> ?: return@firstNotNullOfOrNull null
+      val clientInfo = client["client_info"] as? Map<*, *> ?: return@firstNotNullOfOrNull null
+      val androidInfo = clientInfo["android_client_info"] as? Map<*, *> ?: return@firstNotNullOfOrNull null
+      client.takeIf { androidInfo["package_name"] == android.defaultConfig.applicationId }
+    } ?: error("Firebase config does not contain ${android.defaultConfig.applicationId}.")
+
+    val hasApiKey = (appClient["api_key"] as? List<*>)
+      .orEmpty()
+      .any { entry ->
+        (entry as? Map<*, *>)?.get("current_key")?.toString()?.isNotBlank() == true
+      }
+    check(hasApiKey) { "Firebase Android client is missing its API key." }
+
+    val oauthClients = (appClient["oauth_client"] as? List<*>).orEmpty()
+    val hasWebOAuthClient = oauthClients.any { entry ->
+      val client = entry as? Map<*, *> ?: return@any false
+      client["client_type"].toString() == "3" &&
+        client["client_id"].toString().endsWith(".apps.googleusercontent.com")
+    }
+    check(hasWebOAuthClient) {
+      "Google Sign-In is not configured: Firebase config must include a Web OAuth client (client_type 3)."
+    }
+
+    val hasAndroidOAuthClient = oauthClients.any { entry ->
+      val client = entry as? Map<*, *> ?: return@any false
+      val androidInfo = client["android_info"] as? Map<*, *> ?: return@any false
+      client["client_type"].toString() == "1" &&
+        androidInfo["package_name"] == android.defaultConfig.applicationId &&
+        androidInfo["certificate_hash"]?.toString()?.isNotBlank() == true
+    }
+    check(hasAndroidOAuthClient) {
+      "Google Sign-In is not configured: register this Android app and its signing certificate SHA-1 in Firebase Console."
+    }
+  }
+}
+
+tasks.named("preBuild").configure {
+  dependsOn(verifyFirebaseConfiguration)
+}
 
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.

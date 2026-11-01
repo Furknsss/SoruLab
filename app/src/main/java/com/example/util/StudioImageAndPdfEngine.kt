@@ -43,7 +43,7 @@ internal data class NormalizedCropBounds(
     val right: Int
 )
 
-internal data class QuestionNumberAnchor(
+data class QuestionNumberAnchor(
     val number: Int,
     val left: Int,
     val top: Int,

@@ -173,11 +173,29 @@ if [ -z "$ANDROID_HOME" ]; then
     done
 fi
 
-# Ensure release signing keystore and passwords are automatically available
+# Ensure debug.keystore, google-services.json, and release signing keystore are automatically available
 export STORE_PASSWORD="${STORE_PASSWORD:-android}"
 export KEY_PASSWORD="${KEY_PASSWORD:-android}"
+if [ ! -f "$APP_HOME/debug.keystore" ] && [ -f "$APP_HOME/debug.keystore.base64" ]; then
+    base64 -d "$APP_HOME/debug.keystore.base64" > "$APP_HOME/debug.keystore" 2>/dev/null || true
+fi
+if [ ! -s "$APP_HOME/app/google-services.json" ] && [ -f "$APP_HOME/google-services.json.base64" ]; then
+    base64 -d "$APP_HOME/google-services.json.base64" > "$APP_HOME/app/google-services.json" 2>/dev/null || true
+fi
 if [ ! -f "$APP_HOME/my-upload-key.jks" ]; then
-    if command -v keytool >/dev/null 2>&1; then
+    if command -v keytool >/dev/null 2>&1 && [ -f "$APP_HOME/debug.keystore" ]; then
+        keytool -importkeystore \
+            -srckeystore "$APP_HOME/debug.keystore" \
+            -destkeystore "$APP_HOME/my-upload-key.jks" \
+            -srcstorepass android \
+            -deststorepass "$STORE_PASSWORD" \
+            -srckeypass android \
+            -destkeypass "$KEY_PASSWORD" \
+            -srcalias androiddebugkey \
+            -destalias upload \
+            -noprompt >/dev/null 2>&1 || true
+    fi
+    if [ ! -f "$APP_HOME/my-upload-key.jks" ] && command -v keytool >/dev/null 2>&1; then
         keytool -genkeypair -v -keystore "$APP_HOME/my-upload-key.jks" \
             -alias upload -keyalg RSA -keysize 2048 -validity 10000 \
             -storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" \

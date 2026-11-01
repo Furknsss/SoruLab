@@ -1,6 +1,8 @@
 package com.example
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -97,6 +99,8 @@ import com.example.ui.theme.SoruLabSurface
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.SoruLabViolet
 import com.example.util.configureAppCheck
+import com.example.util.ensureFirebaseInitialized
+import com.example.util.getGoogleWebClientId
 import com.example.viewmodel.AiSolverViewModel
 import com.example.viewmodel.BatchPdfCropState
 import com.example.viewmodel.BoardViewMode
@@ -558,16 +562,59 @@ private fun AiAssistantAndBannerHost(
     }
 }
 
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 private fun getDefaultWebClientId(context: android.content.Context): String {
-    val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
-    return if (resId != 0) runCatching { context.getString(resId) }.getOrDefault("") else ""
+    return getGoogleWebClientId(context)
+}
+
+private suspend fun performInteractiveGoogleSignIn(
+    context: Context,
+    webClientId: String
+) {
+    ensureFirebaseInitialized(context)
+    val activityContext = context.findActivity() ?: context
+    val credentialManager = CredentialManager.create(activityContext)
+
+    // Attempt 1: Standard GetSignInWithGoogleOption button flow
+    try {
+        val signInOption = GetSignInWithGoogleOption.Builder(webClientId).build()
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(signInOption)
+            .build()
+        val result = credentialManager.getCredential(activityContext, request)
+        signInWithGoogleCredential(result.credential)
+        return
+    } catch (cancel: GetCredentialCancellationException) {
+        throw cancel
+    } catch (e: GetCredentialException) {
+        Log.w("SoruLabAuth", "GetSignInWithGoogleOption failed (${e.javaClass.simpleName}), trying GetGoogleIdOption fallback: ${e.message}")
+    }
+
+    // Attempt 2: GetGoogleIdOption fallback (supports broader Play Services / account states)
+    val googleIdOption = GetGoogleIdOption.Builder()
+        .setServerClientId(webClientId)
+        .setFilterByAuthorizedAccounts(false)
+        .setAutoSelectEnabled(false)
+        .build()
+    val fallbackRequest = GetCredentialRequest.Builder()
+        .addCredentialOption(googleIdOption)
+        .build()
+    val fallbackResult = credentialManager.getCredential(activityContext, fallbackRequest)
+    signInWithGoogleCredential(fallbackResult.credential)
 }
 
 private suspend fun trySilentGoogleAutoSignIn(context: android.content.Context): Boolean {
+    ensureFirebaseInitialized(context)
     if (runCatching { Firebase.auth.currentUser }.getOrNull() != null) return true
     val webClientId = getDefaultWebClientId(context)
     if (webClientId.isBlank()) return false
-    val credentialManager = CredentialManager.create(context)
+    val activityContext = context.findActivity() ?: context
+    val credentialManager = CredentialManager.create(activityContext)
 
     // Stage 1: Authorized accounts silent sign-in
     try {
@@ -579,7 +626,7 @@ private suspend fun trySilentGoogleAutoSignIn(context: android.content.Context):
         val req1 = GetCredentialRequest.Builder()
             .addCredentialOption(authorizedOption)
             .build()
-        val res1 = credentialManager.getCredential(context, req1)
+        val res1 = credentialManager.getCredential(activityContext, req1)
         signInWithGoogleCredential(res1.credential)
         return true
     } catch (_: NoCredentialException) {
@@ -600,7 +647,7 @@ private suspend fun trySilentGoogleAutoSignIn(context: android.content.Context):
         val req2 = GetCredentialRequest.Builder()
             .addCredentialOption(anyAccountOption)
             .build()
-        val res2 = credentialManager.getCredential(context, req2)
+        val res2 = credentialManager.getCredential(activityContext, req2)
         signInWithGoogleCredential(res2.credential)
         return true
     } catch (_: Exception) {
@@ -759,25 +806,19 @@ private fun SoruLabSignInGate(
                         onErrorMessage(null)
                         try {
                             val webClientId = getDefaultWebClientId(context)
-                            if (webClientId.isBlank()) {
-                                onErrorMessage(
-                                    "Google Bulut Girişi için Firebase yapılandırması (google-services.json) eksik. " +
-                                        "Geçici olarak alttaki 'Tanınan Cihaz Oturumu ile Devam Et' butonunu kullanabilir veya google-services.json dosyasını projeye ekleyebilirsiniz."
-                                )
-                                return@launch
-                            }
-                            val credentialManager = CredentialManager.create(context)
-                            val signInOption = GetSignInWithGoogleOption.Builder(webClientId).build()
-                            val request = GetCredentialRequest.Builder()
-                                .addCredentialOption(signInOption)
-                                .build()
-                            val result = credentialManager.getCredential(context, request)
-                            signInWithGoogleCredential(result.credential)
+                            performInteractiveGoogleSignIn(context, webClientId)
                         } catch (_: GetCredentialCancellationException) {
                             onErrorMessage(null)
+                        } catch (e: NoCredentialException) {
+                            Log.w("SoruLabAuth", "No Google account on device", e)
+                            onErrorMessage(
+                                "Bu cihazda oturum açılmış bir Google hesabı bulunamadı. Cihaz Ayarları > Hesaplar bölümünden Google hesabınızı ekleyebilir veya alttaki 'Tanınan Cihaz Oturumu ile Devam Et' butonuyla hemen başlayabilirsiniz."
+                            )
                         } catch (e: GetCredentialException) {
                             Log.e("SoruLabAuth", "Google sign-in failed", e)
-                            onErrorMessage("Google hesabı seçilemedi: ${e.localizedMessage ?: "SHA-1 veya OAuth istemci yapılandırmasını kontrol edin."}")
+                            onErrorMessage(
+                                "Google hesabı doğrulanamadı (${e.type.substringAfterLast('.')}). Lütfen cihazda Google Play Hizmetleri'nin güncel olduğundan emin olun veya 'Tanınan Cihaz Oturumu ile Devam Et' butonunu kullanın."
+                            )
                         } catch (e: Exception) {
                             Log.e("SoruLabAuth", "Sign-in exception", e)
                             onErrorMessage("Google ile giriş yapılamadı: ${e.localizedMessage ?: "Bağlantı hatası"}")

@@ -55,7 +55,7 @@ service cloud.firestore {
         && data.topicId is string && data.topicId.size() >= 1 && data.topicId.size() <= 64
         && data.topicName is string && data.topicName.size() >= 1 && data.topicName.size() <= 120
         && data.difficulty is string && (data.difficulty == 'Kolay' || data.difficulty == 'Orta' || data.difficulty == 'Zor')
-        && data.correctOption is string && (data.correctOption == 'A' || data.correctOption == 'B' || data.correctOption == 'C' || data.correctOption == 'D' || data.correctOption == 'E')
+        && data.correctOption is string && (data.correctOption == '' || data.correctOption == 'A' || data.correctOption == 'B' || data.correctOption == 'C' || data.correctOption == 'D' || data.correctOption == 'E')
         && data.questionText is string && data.questionText.size() >= 1 && data.questionText.size() <= 2000
         && data.publisherTag is string && data.publisherTag.size() >= 1 && data.publisherTag.size() <= 120
         && data.aiSolutionSummary is string && data.aiSolutionSummary.size() >= 0 && data.aiSolutionSummary.size() <= 4000

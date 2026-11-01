@@ -19,4 +19,10 @@
     <string name="ai_tutor_title">SoruLab AI Çözüm Asistanı</string>
     <string name="pdf_studio_title">PDF Soru Kırpma Stüdyosu</string>
     <string name="google_sign_in_cta">Google ile Giriş Yap</string>
+    <string name="sorulab_web_client_id" translatable="false">656943524635-kg7aottftmb82gj95fkde001dbptbh0b.apps.googleusercontent.com</string>
+    <string name="sorulab_firebase_project_id" translatable="false">gen-lang-client-0143749618</string>
+    <string name="sorulab_firebase_app_id" translatable="false">1:656943524635:android:8ff497c04d59f36e5e01be</string>
+    <string name="sorulab_firebase_sender_id" translatable="false">656943524635</string>
+    <string name="sorulab_firebase_storage_bucket" translatable="false">gen-lang-client-0143749618.firebasestorage.app</string>
+    <string name="sorulab_firebase_api_key_b64" translatable="false">QUl6YVN5RG95QjBHc3hQY1EtWENlaUFJYll0ZWJtVGhDeXhrNndr</string>
 </resources>

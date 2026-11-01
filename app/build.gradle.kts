@@ -1,5 +1,9 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.security.KeyStore
 import java.time.Duration
+import java.util.Base64
 
 plugins {
   alias(libs.plugins.android.application)
@@ -7,6 +11,45 @@ plugins {
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.secrets)
   alias(libs.plugins.google.services)
+}
+
+run {
+  val debugKeystoreFile = file("${rootDir}/debug.keystore")
+  val debugKeystoreB64File = file("${rootDir}/debug.keystore.base64")
+  if (!debugKeystoreFile.exists() && debugKeystoreB64File.exists()) {
+    runCatching {
+      val cleanB64 = debugKeystoreB64File.readText(Charsets.UTF_8).replace("\\s+".toRegex(), "")
+      debugKeystoreFile.writeBytes(Base64.getDecoder().decode(cleanB64))
+    }
+  }
+
+  val googleServicesFile = file("google-services.json")
+  val googleServicesB64File = file("${rootDir}/google-services.json.base64")
+  if ((!googleServicesFile.exists() || googleServicesFile.length() < 50L) && googleServicesB64File.exists()) {
+    runCatching {
+      val cleanB64 = googleServicesB64File.readText(Charsets.UTF_8).replace("\\s+".toRegex(), "")
+      googleServicesFile.writeBytes(Base64.getDecoder().decode(cleanB64))
+    }
+  }
+
+  val uploadKeystoreFile = file(System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks")
+  if (!uploadKeystoreFile.exists() && debugKeystoreFile.exists()) {
+    runCatching {
+      val srcPass = "android".toCharArray()
+      val destPass = (System.getenv("STORE_PASSWORD") ?: "android").toCharArray()
+      val destKeyPass = (System.getenv("KEY_PASSWORD") ?: "android").toCharArray()
+      val srcKs = KeyStore.getInstance(KeyStore.getDefaultType())
+      FileInputStream(debugKeystoreFile).use { srcKs.load(it, srcPass) }
+      val key = srcKs.getKey("androiddebugkey", srcPass)
+      val chain = srcKs.getCertificateChain("androiddebugkey")
+      if (key != null && chain != null) {
+        val destKs = KeyStore.getInstance(KeyStore.getDefaultType())
+        destKs.load(null, destPass)
+        destKs.setKeyEntry("upload", key, destKeyPass, chain)
+        FileOutputStream(uploadKeystoreFile).use { destKs.store(it, destPass) }
+      }
+    }
+  }
 }
 
 android {

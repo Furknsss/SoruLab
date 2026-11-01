@@ -67,6 +67,23 @@ internal fun <T> interleaveByGroup(items: List<T>, groupKey: (T) -> String): Lis
     }
 }
 
+internal fun difficultyFallbackOrder(
+    preferredDifficulties: Set<DifficultyLevel>
+): List<DifficultyLevel> {
+    val preferredOrder = DifficultyLevel.entries.filter { it in preferredDifficulties }
+        .ifEmpty { DifficultyLevel.entries }
+    val fallbackOrder = DifficultyLevel.entries
+        .filterNot { it in preferredOrder }
+        .sortedWith(
+            compareBy<DifficultyLevel> { difficulty ->
+                preferredOrder.minOf { preferred ->
+                    kotlin.math.abs(preferred.ordinal - difficulty.ordinal)
+                }
+            }.thenBy { it.ordinal }
+        )
+    return preferredOrder + fallbackOrder
+}
+
 enum class DrawingTool {
     PEN,
     HIGHLIGHTER,
@@ -85,7 +102,8 @@ data class PoolAvailabilityCheck(
     val countsBySource: Map<QuestionSourceFilter, Int> = emptyMap(),
     val matchingQuestions: List<YksQuestion> = emptyList(),
     val onGenerateCustomTest: ((Set<DifficultyLevel>, QuestionSourceFilter, Int) -> YksTestItem?)? = null,
-    val questionCountForSelection: ((Set<DifficultyLevel>, QuestionSourceFilter) -> Int)? = null
+    val questionCountForSelection: ((Set<DifficultyLevel>, QuestionSourceFilter) -> Int)? = null,
+    val questionCountForDifficulty: ((DifficultyLevel, QuestionSourceFilter) -> Int)? = null
 )
 
 @Immutable
@@ -997,8 +1015,8 @@ class SoruLabViewModel(
 
     /**
      * Strict 0-Hallucination check before generating a test.
-     * Computes exact per-difficulty (`Kolay`, `Orta`, `ÖSYM`, `Zor`, `Çok Zor`) and per-source counts
-     * for the Interactive Test Creation Panel.
+     * Computes exact per-difficulty counts and full source-filtered counts (for nearest-level
+     * completion) for the Interactive Test Creation Panel.
      */
     fun checkPoolAvailability(topic: YksTopic, level: TopicTestLevel): PoolAvailabilityCheck {
         val strictTopicPool = _userCustomQuestions.value.filter { cq ->
@@ -1025,11 +1043,22 @@ class SoruLabViewModel(
                 requestedQuestionCount = reqCount
             )
         }
-        val questionCountForSelection: (Set<DifficultyLevel>, QuestionSourceFilter) -> Int = { diffs, source ->
+        val questionCountForSelection: (Set<DifficultyLevel>, QuestionSourceFilter) -> Int = { _, source ->
             if (level == TopicTestLevel.IKIZ && source == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
-                collectRealPoolQuestionsForTopicAndLevel(topic, level).count { it.difficulty in diffs }
+                collectRealPoolQuestionsForTopicAndLevel(topic, level).size
             } else {
-                collectQuestionsByTopicSourceAndDifficulty(topic, diffs, source).size
+                collectQuestionsByTopicSourceAndDifficulty(
+                    topic,
+                    DifficultyLevel.entries.toSet(),
+                    source
+                ).size
+            }
+        }
+        val questionCountForDifficulty: (DifficultyLevel, QuestionSourceFilter) -> Int = { diff, source ->
+            if (level == TopicTestLevel.IKIZ && source == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
+                collectRealPoolQuestionsForTopicAndLevel(topic, level).count { it.difficulty == diff }
+            } else {
+                collectQuestionsByTopicSourceAndDifficulty(topic, setOf(diff), source).size
             }
         }
 
@@ -1045,7 +1074,8 @@ class SoruLabViewModel(
                     countsBySource = countsBySource,
                     matchingQuestions = emptyList(),
                     onGenerateCustomTest = customBuilder,
-                    questionCountForSelection = questionCountForSelection
+                    questionCountForSelection = questionCountForSelection,
+                    questionCountForDifficulty = questionCountForDifficulty
                 )
             }
             val effectiveList = realCandidates.ifEmpty { allTopicQuestions }
@@ -1058,7 +1088,8 @@ class SoruLabViewModel(
                 countsBySource = countsBySource,
                 matchingQuestions = effectiveList,
                 onGenerateCustomTest = customBuilder,
-                questionCountForSelection = questionCountForSelection
+                questionCountForSelection = questionCountForSelection,
+                questionCountForDifficulty = questionCountForDifficulty
             )
         }
 
@@ -1072,7 +1103,8 @@ class SoruLabViewModel(
                 countsBySource = countsBySource,
                 matchingQuestions = emptyList(),
                 onGenerateCustomTest = customBuilder,
-                questionCountForSelection = questionCountForSelection
+                questionCountForSelection = questionCountForSelection,
+                questionCountForDifficulty = questionCountForDifficulty
             )
         }
 
@@ -1085,7 +1117,8 @@ class SoruLabViewModel(
             countsBySource = countsBySource,
             matchingQuestions = allTopicQuestions,
             onGenerateCustomTest = customBuilder,
-            questionCountForSelection = questionCountForSelection
+            questionCountForSelection = questionCountForSelection,
+            questionCountForDifficulty = questionCountForDifficulty
         )
     }
 
@@ -1145,17 +1178,22 @@ class SoruLabViewModel(
         sourceFilter: QuestionSourceFilter,
         requestedQuestionCount: Int
     ): YksTestItem? {
-        val strictCandidates = if (level == TopicTestLevel.IKIZ && sourceFilter == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
+        val sourceCandidates = if (level == TopicTestLevel.IKIZ && sourceFilter == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
             collectRealPoolQuestionsForTopicAndLevel(topic, level)
-                .filter { it.difficulty in selectedDifficulties }
         } else {
             collectQuestionsByTopicSourceAndDifficulty(
                 topic = topic,
-                selectedDifficulties = selectedDifficulties,
+                selectedDifficulties = DifficultyLevel.entries.toSet(),
                 sourceFilter = sourceFilter
             )
         }
-        if (strictCandidates.isEmpty()) return null
+        if (sourceCandidates.isEmpty()) return null
+        val difficultyPriority = difficultyFallbackOrder(selectedDifficulties)
+            .withIndex()
+            .associate { it.value to it.index }
+        val strictCandidates = sourceCandidates
+            .distinctBy { it.croppedImagePath.ifBlank { it.id } }
+            .sortedBy { difficultyPriority.getValue(it.difficulty) }
 
         val key = "${topic.id}_${level.name}"
         val existingList = _generatedTopicTests.value[key].orEmpty()
@@ -1170,25 +1208,34 @@ class SoruLabViewModel(
                 deletedTestNumbers
             ).maxOrNull()?.plus(1) ?: 1
 
-        // Daha önceki testlerde kullanılmış soruları tespit et; yeni testlerde önce kullanılmamış soruları seç
+        // Her zorluk seviyesinde önce kullanılmamış soruları seç; sonra aynı seviyedeki eski sorularla tamamla.
         val usedSignatures = allTestsInTopic
             .flatMap { it.questions }
             .map { q -> q.croppedImagePath.ifBlank { q.stemTop.take(60) } }
             .toSet()
+        val candidatesByDifficulty = strictCandidates.groupBy { it.difficulty }
 
-        val unusedCandidates = strictCandidates.filter { q ->
-            val sig = q.croppedImagePath.ifBlank { q.stemTop.take(60) }
-            sig !in usedSignatures
+        val orderedPool = buildList {
+            difficultyFallbackOrder(selectedDifficulties).forEach { difficulty ->
+                val questionsAtDifficulty = candidatesByDifficulty[difficulty].orEmpty()
+                val unusedAtDifficulty = questionsAtDifficulty.filter { question ->
+                    val signature = question.croppedImagePath.ifBlank { question.stemTop.take(60) }
+                    signature !in usedSignatures
+                }
+                val usedAtDifficulty = questionsAtDifficulty.filter { question ->
+                    val signature = question.croppedImagePath.ifBlank { question.stemTop.take(60) }
+                    signature in usedSignatures
+                }
+                addAll(unusedAtDifficulty)
+                if (usedAtDifficulty.isNotEmpty()) {
+                    val offset = ((nextTestNumber - 1) * requestedQuestionCount.coerceAtLeast(1)) %
+                        usedAtDifficulty.size
+                    addAll(usedAtDifficulty.drop(offset) + usedAtDifficulty.take(offset))
+                }
+            }
         }
 
-        val orderedPool = if (unusedCandidates.size >= requestedQuestionCount) {
-            unusedCandidates
-        } else {
-            val offset = ((nextTestNumber - 1) * requestedQuestionCount) % strictCandidates.size.coerceAtLeast(1)
-            val rotated = strictCandidates.drop(offset) + strictCandidates.take(offset)
-            (unusedCandidates + rotated).distinctBy { it.croppedImagePath.ifBlank { it.id } }
-        }
-
+        if (orderedPool.isEmpty()) return null
         val safeCount = requestedQuestionCount.coerceIn(1, orderedPool.size)
         val questionsToUse = orderedPool.take(safeCount)
         if (questionsToUse.isEmpty()) return null
@@ -1249,7 +1296,7 @@ class SoruLabViewModel(
         if (firebaseUid != null) {
             val subject = SoruLabCatalog.allSubjects.find { it.id == topic.subjectId }
             val examTypeStr = subject?.examType?.name ?: _selectedExamType.value.name
-            val subjectName = subject?.name ?: "Matematik"
+            val subjectName = subject?.name ?: topic.subjectId.ifBlank { "Ders" }
             val docId = "${firebaseUid.take(8)}_${generatedTest.id}".take(78)
             val existingCloud = allCloudTestRecords.firstOrNull { it.id == docId || it.testId == generatedTest.id }
 
@@ -1328,7 +1375,7 @@ class SoruLabViewModel(
         _dialogTestItem.value = null
         val subject = SoruLabCatalog.allSubjects.find { it.id == topic.subjectId }
         val examType = subject?.examType ?: _selectedExamType.value
-        val subjectName = subject?.name ?: "Matematik"
+        val subjectName = subject?.name ?: topic.subjectId.ifBlank { "Ders" }
 
         val existingRecord = _userTestResults.value.firstOrNull { it.testId == testItem.id }
         val parsedAnswers = preloadedAnswers ?: if (isReviewMode) {

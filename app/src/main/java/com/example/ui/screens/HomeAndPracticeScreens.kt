@@ -3585,8 +3585,8 @@ private fun SoruLabAiTestGeneratorDialog(
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(DifficultyLevel.entries) { diff ->
                                 val isSelected = diff in selectedDifficulties
-                                val countForDiff = poolCheck.questionCountForSelection
-                                    ?.invoke(setOf(diff), selectedSourceFilter)
+                                val countForDiff = poolCheck.questionCountForDifficulty
+                                    ?.invoke(diff, selectedSourceFilter)
                                     ?: poolCheck.countsByDifficulty[diff]
                                     ?: 0
                                 val chipColor = Color(diff.colorHex)
@@ -3824,12 +3824,12 @@ private fun SoruLabAiTestGeneratorDialog(
         label = "ai_gen_progress"
     )
 
-    val realCount = matchingDiffCount.coerceAtMost(AUTOMATIC_TEST_QUESTION_COUNT)
+    val realCount = selectedQuestionCount.coerceIn(1, maxAvailableCount.coerceAtLeast(1))
     val step1Text = remember(topic, selectedSourceFilter, realCount) {
         "'${topic.name}' konusundan (${selectedSourceFilter.label}) $realCount gerçek soru seçiliyor..."
     }
     val step2Text = remember(topic, selectedDifficulties, realCount) {
-        "Seçilen zorluk seviyeleri (${selectedDifficulties.joinToString { it.label }}) ve cevap anahtarları eşleştiriliyor..."
+        "Seçilen zorluklar (${selectedDifficulties.joinToString { it.label }}) öncelikli; gerekirse en yakın seviyelerle $realCount soru tamamlanıyor..."
     }
     val step3Text = remember(topic, nextTestNumber) {
         "${topic.name} - Test $nextTestNumber optik formu ve canlı çözüm tahtası hazırlanıyor..."
@@ -3850,8 +3850,10 @@ private fun SoruLabAiTestGeneratorDialog(
                     selectedDifficulties,
                     selectedSourceFilter,
                     realCount
-                )
+                )?.takeIf { it.questions.isNotEmpty() }
                 generationFailed = createdTest == null
+            } else if (createdTest == null) {
+                generationFailed = true
             }
             currentStep = 4
         }
@@ -3911,7 +3913,7 @@ private fun SoruLabAiTestGeneratorDialog(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = if (generationFailed) "Seçilen filtrelerle soru bulunamadı. Ayarları değiştirip tekrar deneyin."
+                    text = if (generationFailed) "Bu kriterlere uygun soru bulunamadı. Konu, zorluk veya kaynak filtresini değiştirip tekrar deneyin."
                     else "${topic.name} • ${level.displayTitle} Test-$nextTestNumber ($realCount Soru)",
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = Color(0xFF1D63DC),
@@ -3978,7 +3980,11 @@ private fun SoruLabAiTestGeneratorDialog(
                         }
 
                         Button(
-                            onClick = { createdTest?.let(onStartGeneratedTest) },
+                            onClick = {
+                                createdTest
+                                    ?.takeIf { it.questions.isNotEmpty() }
+                                    ?.let(onStartGeneratedTest)
+                            },
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF1D63DC),

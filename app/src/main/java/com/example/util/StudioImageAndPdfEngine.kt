@@ -2025,6 +2025,7 @@ object StudioImageAndPdfEngine {
             val projectedBands = segmentColumnQuestionsByProjection(
                 pixels = pixels,
                 pageWidth = width,
+                pageHeight = height,
                 colLeft = colLeft,
                 colRight = colRight,
                 bodyTop = bodyTop,
@@ -2043,7 +2044,6 @@ object StudioImageAndPdfEngine {
                     splitOversizedProjectionBand(
                         pixels = pixels,
                         pageWidth = width,
-                        pageHeight = height,
                         colLeft = colLeft,
                         colRight = colRight,
                         band = band,
@@ -2163,16 +2163,15 @@ object StudioImageAndPdfEngine {
     private fun splitOversizedProjectionBand(
         pixels: IntArray,
         pageWidth: Int,
-        pageHeight: Int,
         colLeft: Int,
         colRight: Int,
         band: Pair<Int, Int>,
         bodyHeight: Int,
         isInkPixel: (Int) -> Boolean
     ): List<Pair<Int, Int>> {
-        if (pageHeight <= 0 || pageWidth <= 0) return emptyList()
-        val bandTop = band.first.coerceIn(0, pageHeight - 1)
-        val bandBottom = band.second.coerceIn(bandTop + 1, pageHeight)
+        if (pageWidth <= 0) return emptyList()
+        val bandTop = band.first
+        val bandBottom = band.second
         val bandHeight = bandBottom - bandTop
         if (bandHeight <= bodyHeight * 0.62f) return listOf(band)
         val searchStart = (bandTop + bandHeight * 0.35f).roundToInt().coerceIn(bandTop + 1, bandBottom - 1)

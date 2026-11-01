@@ -508,6 +508,8 @@ class AiSolverViewModel : ViewModel() {
             }
 
             try {
+                val subjectName = SoruLabCatalog.subjectNameForTopic(question.topicHeader)
+                    ?: "Konu başlığından belirlenemedi"
                 val prompt = buildString {
                     appendLine("Sen uzman bir ÖSYM YKS soru yazarısın.")
                     appendLine("Görev: Görseldeki soruyu önce tamamen çözümle; sonra aynı kazanımı ölçen, aynı zorlukta ve aynı temel çözüm yöntemini gerektiren yeni bir ikiz soru yaz.")
@@ -520,7 +522,7 @@ class AiSolverViewModel : ViewModel() {
                     appendLine("Konu bağlamı: ${question.topicHeader}")
                     appendLine("Zorluk seviyesi: ${question.difficulty.label}")
                     appendLine("Orijinal soru kökü: ${question.stemTop}")
-                    appendLine("Ders: ${question.subjectName}")
+                    appendLine("Ders: $subjectName")
                     appendLine("Konu: ${question.topicHeader}")
                     if (question.bulletsOrSteps.isNotEmpty()) {
                         appendLine("Orijinal veriler/öncüller: ${question.bulletsOrSteps.joinToString(" | ")}")

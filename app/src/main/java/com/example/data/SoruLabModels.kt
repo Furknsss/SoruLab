@@ -1454,4 +1454,16 @@ object SoruLabCatalog {
         }
         return null
     }
+
+    fun subjectNameForTopic(topicName: String): String? {
+        val normalizedName = topicName.trim().lowercase()
+        if (normalizedName.isBlank()) return null
+        return allSubjects
+            .filter { subject ->
+                subject.topics.any { it.name.trim().lowercase() == normalizedName }
+            }
+            .map { it.name }
+            .distinct()
+            .singleOrNull()
+    }
 }

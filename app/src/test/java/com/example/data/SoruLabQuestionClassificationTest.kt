@@ -313,4 +313,10 @@ class SoruLabQuestionClassificationTest {
     fun answerKeyRejectsInvalidOptions() {
         assertEquals(null, resolveAnswerKeyOption(1, mapOf(1 to "F")))
     }
+
+    @Test
+    fun subjectForTwinQuestionIsResolvedOnlyFromAnExactCatalogTopic() {
+        assertEquals("Biyoloji", SoruLabCatalog.subjectNameForTopic("Sinir Sistemi"))
+        assertEquals(null, SoruLabCatalog.subjectNameForTopic("Bilinmeyen Konu"))
+    }
 }

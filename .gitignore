@@ -15,6 +15,7 @@
 .cxx
 local.properties
 .env
+app/google-services.json
 debug.keystore
 *.jks
 *.keystore

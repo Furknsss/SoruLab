@@ -2,8 +2,16 @@ name: Build & Release APK
 
 on:
   push:
-    branches: [main, master, "v0/**"]
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish a GitHub Release after a successful build
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -22,84 +30,121 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Accept Android SDK licenses & install build tools
         run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "cmdline-tools;latest" || true
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager "platforms;android-36.1" "build-tools;36.0.0"
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          gradle-version: "9.3.1"
+          node-version: "20"
 
-      - name: Restore Firebase Config & Signing Keystore
+      - name: Run unit tests with Firebase emulators
+        run: >-
+          npx --yes firebase-tools@13.35.1 emulators:exec
+          --project demo-test
+          --only auth,firestore
+          --config firebase.json
+          "bash ./gradlew :app:testDebugUnitTest --no-daemon --no-configuration-cache --max-workers=2"
+
+      - name: Restore Firebase config and release keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
-          STORE_PASS: ${{ secrets.STORE_PASSWORD || 'android' }}
-          KEY_PASS: ${{ secrets.KEY_PASSWORD || 'android' }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
-          fi
-          if [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
-            echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > app/google-services.json
-          elif [ ! -s app/google-services.json ] && [ -f google-services.json.base64 ]; then
-            base64 -d google-services.json.base64 > app/google-services.json
-          fi
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > my-upload-key.jks
-          fi
-          if [ ! -s my-upload-key.jks ] && [ -f debug.keystore ]; then
-            echo "Importing Firebase-registered keystore into my-upload-key.jks..."
-            keytool -importkeystore \
-              -srckeystore debug.keystore \
-              -destkeystore my-upload-key.jks \
-              -srcstorepass android \
-              -deststorepass "$STORE_PASS" \
-              -srckeypass android \
-              -destkeypass "$KEY_PASS" \
-              -srcalias androiddebugkey \
-              -destalias upload \
-              -noprompt
-          fi
-          if [ ! -s my-upload-key.jks ]; then
-            echo "Generating release upload keystore fallback..."
-            keytool -genkeypair -v -keystore my-upload-key.jks \
-              -alias upload \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -storepass "$STORE_PASS" \
-              -keypass "$KEY_PASS" \
-              -dname "CN=SoruLab, OU=Mobile, O=SoruLab, L=Istanbul, ST=Istanbul, C=TR"
-          fi
+          test -n "$KEYSTORE_BASE64" || { echo "Missing required KEYSTORE_BASE64 secret."; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo "Missing required STORE_PASSWORD secret."; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "Missing required KEY_PASSWORD secret."; exit 1; }
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+          test -s my-upload-key.jks || { echo "Release keystore decode failed."; exit 1; }
+          keytool -list -keystore my-upload-key.jks -alias upload -storepass "$STORE_PASSWORD" > /dev/null
+          base64 --decode google-services.json.base64 > app/google-services.json
+          RELEASE_CERT_SHA1="$(keytool -list -v -keystore my-upload-key.jks -alias upload -storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" | awk -F': ' '/SHA1:/{print $2; exit}' | tr -d ':')"
+          test -n "$RELEASE_CERT_SHA1" || { echo "Could not read release certificate SHA-1."; exit 1; }
+          RELEASE_CERT_SHA1="$RELEASE_CERT_SHA1" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected_project = "gen-lang-client-0143749618"
+          expected_package = "com.aistudio.sorulab.ykslab"
+          config = json.loads(Path("app/google-services.json").read_text())
+          if config.get("project_info", {}).get("project_id") != expected_project:
+              raise SystemExit("Google services config targets an unexpected Firebase project.")
+          client = next(
+              (
+                  item for item in config.get("client", [])
+                  if item.get("client_info", {}).get("android_client_info", {}).get("package_name")
+                  == expected_package
+              ),
+              None,
+          )
+          if client is None:
+              raise SystemExit("Google services config does not include the SoruLab Android app.")
+          oauth_clients = client.get("oauth_client", [])
+          if not any(item.get("client_type") == 3 for item in oauth_clients):
+              raise SystemExit("Google services config is missing its Web OAuth client.")
+          release_sha1 = os.environ["RELEASE_CERT_SHA1"].lower()
+          if not any(
+              item.get("client_type") == 1
+              and item.get("android_info", {}).get("package_name") == expected_package
+              and item.get("android_info", {}).get("certificate_hash", "").replace(":", "").lower()
+              == release_sha1
+              for item in oauth_clients
+          ):
+              raise SystemExit("The release signing certificate SHA-1 is not registered for Google Sign-In.")
+          print("Firebase project, Google OAuth clients, and release certificate are consistent.")
+          PY
 
       - name: Build Release APK
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'android' }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'android' }}
-        run: gradle :app:assembleRelease --no-daemon
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: bash ./gradlew :app:assembleRelease --no-daemon --no-configuration-cache --stacktrace
 
       - name: Read app version
         id: app_version
         run: |
           VERSION_NAME=$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' app/build.gradle.kts | head -n 1)
           if [[ -z "$VERSION_NAME" ]]; then
-            VERSION_NAME="1.1.4"
+            echo "Could not read app versionName from app/build.gradle.kts." >&2
+            exit 1
           fi
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Check release tag
+        id: release_tag
+        if: github.event_name == 'push' || inputs.publish_release
+        env:
+          VERSION_NAME: ${{ steps.app_version.outputs.version_name }}
+        run: |
+          TAG="v${VERSION_NAME}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" > /dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release tag ${TAG} already exists; the existing release will not be overwritten."
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then
+              echo "Could not check whether release tag ${TAG} exists." >&2
+              exit "$status"
+            fi
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Collect Release Artifacts
         env:
           VERSION_NAME: ${{ steps.app_version.outputs.version_name }}
         run: |
           mkdir -p out
-          if compgen -G "app/build/outputs/apk/release/*.apk" > /dev/null; then
-            cp app/build/outputs/apk/release/*.apk "out/SoruLab-v${VERSION_NAME}.apk"
-          fi
+          APK_PATH=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)
+          test -n "$APK_PATH" || { echo "Release APK was not produced."; exit 1; }
+          cp "$APK_PATH" "out/SoruLab-v${VERSION_NAME}.apk"
 
       - name: Upload Release APK Artifact
         uses: actions/upload-artifact@v4
@@ -110,7 +155,7 @@ jobs:
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
-        if: success()
+        if: success() && (github.event_name == 'push' || inputs.publish_release) && steps.release_tag.outputs.exists == 'false'
         with:
           tag_name: v${{ steps.app_version.outputs.version_name }}
           name: SoruLab v${{ steps.app_version.outputs.version_name }}

@@ -806,6 +806,12 @@ private fun SoruLabSignInGate(
                         onErrorMessage(null)
                         try {
                             val webClientId = getDefaultWebClientId(context)
+                            if (webClientId.isBlank()) {
+                                onErrorMessage(
+                                    "Google girişi yapılandırması bulunamadı. Firebase yapılandırmasını güncelleyin."
+                                )
+                                return@launch
+                            }
                             performInteractiveGoogleSignIn(context, webClientId)
                         } catch (_: GetCredentialCancellationException) {
                             onErrorMessage(null)
@@ -875,12 +881,16 @@ private fun SoruLabSignInGate(
 }
 
 private suspend fun signInWithGoogleCredential(credential: androidx.credentials.Credential) {
-    if (credential is CustomCredential &&
-        credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-    ) {
-        val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
-        val firebaseCredential = GoogleAuthProvider.getCredential(googleIdTokenCredential.idToken, null)
-        Firebase.auth.signInWithCredential(firebaseCredential).await()
+    val googleCredential = credential as? CustomCredential
+        ?: error("Google Credential Manager beklenmeyen bir kimlik bilgisi döndürdü.")
+    check(googleCredential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+        "Google Credential Manager geçerli bir Google ID token döndürmedi."
+    }
+    val googleIdToken = GoogleIdTokenCredential.createFrom(googleCredential.data).idToken
+    check(googleIdToken.isNotBlank()) { "Google boş bir ID token döndürdü." }
+    val firebaseCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
+    checkNotNull(Firebase.auth.signInWithCredential(firebaseCredential).await().user) {
+        "Firebase Google girişi tamamlandı ancak kullanıcı oturumu oluşmadı."
     }
 }
 

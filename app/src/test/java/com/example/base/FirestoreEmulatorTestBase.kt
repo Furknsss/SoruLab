@@ -24,7 +24,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [34])
 abstract class FirestoreEmulatorTestBase {
 
     protected lateinit var db: FirebaseFirestore

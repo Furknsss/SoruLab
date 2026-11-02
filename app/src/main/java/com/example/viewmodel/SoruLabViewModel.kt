@@ -2343,7 +2343,8 @@ class SoruLabViewModel(
                     questionNumberInBook = item.questionNumber,
                     bookOrTestName = bookOrTestName,
                     bookCoverPath = effectiveCover,
-                    fiveTierDifficulty = item.difficulty
+                    fiveTierDifficulty = item.difficulty,
+                    sourceTestId = item.sourceTestId
                 )
 
                 val firestoreCompatDiff = when {
@@ -2491,7 +2492,8 @@ class SoruLabViewModel(
                 bookOrTestName = target.bookOrTestName,
                 bookCoverPath = target.bookCoverPath,
                 isInKumbara = true,
-                fiveTierDifficulty = target.effectiveDifficultyLabel
+                fiveTierDifficulty = target.effectiveDifficultyLabel,
+                sourceTestId = target.sourceTestId
             )
             val updatedRecord = target.copy(aiSolutionSummary = updatedPacked)
             val mutable = currentQuestions.toMutableList()

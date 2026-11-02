@@ -25,7 +25,7 @@ internal class PdfScopedAnswerKeys {
     fun addOcrRows(rows: List<String>) {
         // A table may continue onto the next answer-key page without a repeated heading.
         var currentSection: String? = lastRecognizedSection
-        for (row in rows) {
+        for ((rowIndex, row) in rows.withIndex()) {
             val clean = row.trim().replace(Regex("\\s+"), " ")
             if (clean.isEmpty()) continue
             val detectedSection = detectSectionHeading(clean)
@@ -39,7 +39,19 @@ internal class PdfScopedAnswerKeys {
             val testNum = test.groupValues[2].toIntOrNull() ?: continue
             val isOsym = normalize(test.groupValues[1]).contains("osym")
             val tail = clean.substring(test.range.last + 1)
-            val pairs = questionAnswer.findAll(tail).mapNotNull { match ->
+            // ML Kit often places the dark-purple 'Test 1' label and the
+            // adjacent pale answer cells on DIFFERENT text rows. Allow a
+            // strictly adjacent row of answer cells; never borrow answers
+            // from the next test or the next chapter.
+            val adjacent = rows.getOrNull(rowIndex + 1).orEmpty().trim()
+            val continuation = adjacent.takeIf { next ->
+                !testLabel.containsMatchIn(next) &&
+                    detectSectionHeading(next) == null &&
+                    questionAnswer.findAll(next).count() >= 2
+            }.orEmpty()
+            val answerCells = if (questionAnswer.findAll(tail).count() >= 2) tail
+                else "$tail $continuation"
+            val pairs = questionAnswer.findAll(answerCells).mapNotNull { match ->
                 val n = match.groupValues[1].toIntOrNull() ?: return@mapNotNull null
                 if (n !in 1..200) return@mapNotNull null
                 n to match.groupValues[2].uppercase(Locale.ROOT)
@@ -87,12 +99,14 @@ internal class PdfScopedAnswerKeys {
 
         fun looksLikeAnswerPage(rows: List<String>): Boolean {
             val normalized = normalize(rows.joinToString(" "))
-            val strongRows = rows.count {
-                testLabel.containsMatchIn(it) && questionAnswer.findAll(it).count() >= 3
+            val pairedTestRows = rows.mapIndexed { index, row ->
+                if (!testLabel.containsMatchIn(row)) return@mapIndexed 0
+                val next = rows.getOrNull(index + 1).orEmpty()
+                val text = if (testLabel.containsMatchIn(next)) row else "$row $next"
+                questionAnswer.findAll(text).count()
             }
-            val shortRows = rows.count {
-                testLabel.containsMatchIn(it) && questionAnswer.findAll(it).count() >= 2
-            }
+            val strongRows = pairedTestRows.count { it >= 3 }
+            val shortRows = pairedTestRows.count { it >= 2 }
             return "cevap anahtar" in normalized ||
                 strongRows >= 2 || shortRows >= 3 ||
                 (strongRows >= 1 && rows.any { detectSectionHeading(it) != null })

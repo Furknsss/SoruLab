@@ -1222,7 +1222,32 @@ class AiSolverViewModel : ViewModel() {
                     return@launch
                 }
 
+                val invalidScopes = com.example.util.PdfImportBatchQuality.invalidScopes(
+                    items = allExtractedQuestions.map { item ->
+                        com.example.util.PdfImportBatchQuality.Item(
+                            item.sourceTestId, item.questionNumberInTest
+                        )
+                    },
+                    expectedByScope = scopedAnswers.expectedNumbersBySourceTestId()
+                )
+                if (invalidScopes.isNotEmpty()) {
+                    for (index in allExtractedQuestions.indices) {
+                        val item = allExtractedQuestions[index]
+                        if (item.sourceTestId in invalidScopes) {
+                            allExtractedQuestions[index] = item.copy(
+                                qualityWarning = listOf(
+                                    item.qualityWarning,
+                                    "Kaynak testte eksik veya tekrarlı soru var; test bütünlüğü bozuk."
+                                ).filter(String::isNotBlank).joinToString(" ")
+                            )
+                        }
+                    }
+                }
+
                 val warnings = buildList {
+                    if (invalidScopes.isNotEmpty()) {
+                        add("${invalidScopes.size} kaynak testte eksik/çift soru bulundu; otomatik kayıt engellendi.")
+                    }
                     if (scopedAnswers.answerCount == 0) {
                         add("Test bazlı cevap anahtarı okunamadı. Hiçbir cevap tahmin edilmedi.")
                     }

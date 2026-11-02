@@ -58,4 +58,17 @@ class PdfSourceTestGroupingTest {
         assertEquals(initial.sourceTestId, repacked.sourceTestId)
         assertTrue(repacked.isInKumbara)
     }
+
+    @Test
+    fun `source test contains easy and hard questions without difficulty exclusions`() {
+        val source = (1..10).map { number ->
+            question(number, "sinir sistemi~normal~1").copy(
+                difficulty = if (number % 2 == 0) "Çok Zor" else "Kolay"
+            )
+        }
+        val chunk = automaticBookTestChunks(source, TopicTestLevel.BASLANGIC)
+        assertEquals(1, chunk.size)
+        assertEquals(10, chunk.single().size)
+    }
+
 }

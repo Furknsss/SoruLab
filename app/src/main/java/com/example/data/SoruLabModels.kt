@@ -505,7 +505,11 @@ fun automaticBookTestChunks(
     questions: List<CustomQuestionRecord>,
     level: TopicTestLevel
 ): List<List<CustomQuestionRecord>> {
-    val eligible = questions.filter {
+    val hasPrintedTestIds = questions.any { it.sourceTestId.isNotBlank() }
+    // The actual printed Test 1 must include *all* ten questions, regardless
+    // of the OCR difficulty tag. Difficulty filters are only for legacy
+    // artificial twelve-question practice chunks.
+    val eligible = if (hasPrintedTestIds) questions else questions.filter {
         it.difficultyLevel5 in level.recommendedDifficultyLevels()
     }
     if (eligible.isEmpty()) return emptyList()

@@ -107,7 +107,8 @@ data class ExtractedPdfQuestionItem(
     val pdfFilePath: String = "",
     val pageIndex: Int = -1,
     val questionNumberInTest: Int = 0,
-    val sourceTestId: String = ""
+    val sourceTestId: String = "",
+    val qualityWarning: String = ""
 ) {
     val imagePath: String get() = croppedImagePath
     val subject: String get() = subjectName
@@ -583,11 +584,26 @@ class AiSolverViewModel : ViewModel() {
                 grouped.add(mutableListOf(entry))
             }
         }
-        val answerRows = grouped.map { row ->
-            row.sortedBy { it.second.left }.joinToString(" ") { it.first }
+        val answerRows = grouped.flatMap { row ->
+            val horizontalRow = row.sortedBy { it.second.left }
+                .joinToString(" ") { it.first }
+            // An answer-table section heading may share a Y band with a
+            // decorative margin label. Preserve genuine OCR headings as
+            // separate rows as well as the complete horizontal answer row.
+            val headings = row.map { it.first.trim() }.filter { heading ->
+                val letters = heading.filter(Char::isLetter)
+                letters.length >= 5 &&
+                    letters.count(Char::isUpperCase) >= letters.length * 0.8 &&
+                    heading.none(Char::isDigit) &&
+                    !heading.contains("YILDIZ", ignoreCase = true) &&
+                    !heading.contains("KUASAR", ignoreCase = true) &&
+                    !heading.contains("Soru Banka", ignoreCase = true)
+            }
+            headings + horizontalRow
         }
-        val anchorRegex = Regex("""^\s*([1-9]|[1-3][0-9])[\.\-\)]\s*""")
-        val numberRegex = Regex("""^\s*(?:[1-9]|[1-3][0-9])[\.\-\)]?$""")
+        // Scanned typefaces may OCR a printed "8." as "8 " or an isolated "8".
+        val anchorRegex = Regex("""^\s*([1-9]|[1-3][0-9])(?:[.\-):]|\s+(?=\S)|\s*$)""")
+        val numberRegex = Regex("""^\s*(?:[1-9]|[1-3][0-9])[.\-):]?$""")
         val optionRegex = Regex("""^\s*([A-E])\s*[).:]\s*""", RegexOption.IGNORE_CASE)
         val anchors = lines.mapNotNull { line ->
             val match = anchorRegex.find(line.text) ?: return@mapNotNull null
@@ -599,6 +615,15 @@ class AiSolverViewModel : ViewModel() {
                 ?: line.elements.firstOrNull()?.boundingBox
                 ?: line.boundingBox
                 ?: return@mapNotNull null
+            // Only the column's left edge may contain a printed question
+            // number. This rejects numbered lists, graphs and answer choices
+            // found inside the question body.
+            val colOrigin = if (bounds.left > bitmap.width * 0.50f)
+                bitmap.width / 2 else 0
+            if (bounds.left - colOrigin > bitmap.width * 0.17f ||
+                bounds.top < bitmap.height * 0.055f ||
+                bounds.top > bitmap.height * 0.94f
+            ) return@mapNotNull null
             QuestionNumberAnchor(
                 number = number,
                 left = bounds.left,
@@ -922,7 +947,7 @@ class AiSolverViewModel : ViewModel() {
                             try {
                                 for (answerPage in (rendererTotal - 12).coerceAtLeast(0) until rendererTotal) {
                                     val bitmap = try {
-                                        StudioImageAndPdfEngine.renderPageForLocalAnalysis(
+                                        StudioImageAndPdfEngine.renderAnswerKeyPageForLocalAnalysis(
                                             renderer = renderer,
                                             pageIndex = answerPage,
                                             totalPages = rendererTotal,
@@ -1168,7 +1193,11 @@ class AiSolverViewModel : ViewModel() {
                                                 ?: cropBox.questionOrderInPage,
                                             sourceTestId = pageAnswerScope?.let { scope ->
                                                 "${scope.section}~${if (scope.isOsymTest) "osym" else "normal"}~${scope.testNumber}"
-                                            }.orEmpty()
+                                            }.orEmpty(),
+                                            qualityWarning = com.example.util.PdfCropQuality.warning(
+                                                classification.questionText,
+                                                candidate.answerKeyQuestionNumber
+                                            ).orEmpty()
                                         )
                                     )
                                 }
@@ -1193,7 +1222,32 @@ class AiSolverViewModel : ViewModel() {
                     return@launch
                 }
 
+                val invalidScopes = com.example.util.PdfImportBatchQuality.invalidScopes(
+                    items = allExtractedQuestions.map { item ->
+                        com.example.util.PdfImportBatchQuality.Item(
+                            item.sourceTestId, item.questionNumberInTest
+                        )
+                    },
+                    expectedByScope = scopedAnswers.expectedNumbersBySourceTestId()
+                )
+                if (invalidScopes.isNotEmpty()) {
+                    for (index in allExtractedQuestions.indices) {
+                        val item = allExtractedQuestions[index]
+                        if (item.sourceTestId in invalidScopes) {
+                            allExtractedQuestions[index] = item.copy(
+                                qualityWarning = listOf(
+                                    item.qualityWarning,
+                                    "Kaynak testte eksik veya tekrarlı soru var; test bütünlüğü bozuk."
+                                ).filter(String::isNotBlank).joinToString(" ")
+                            )
+                        }
+                    }
+                }
+
                 val warnings = buildList {
+                    if (invalidScopes.isNotEmpty()) {
+                        add("${invalidScopes.size} kaynak testte eksik/çift soru bulundu; otomatik kayıt engellendi.")
+                    }
                     if (scopedAnswers.answerCount == 0) {
                         add("Test bazlı cevap anahtarı okunamadı. Hiçbir cevap tahmin edilmedi.")
                     }

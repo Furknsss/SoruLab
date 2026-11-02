@@ -22,39 +22,72 @@ internal class PdfScopedAnswerKeys {
 
     val answerCount: Int get() = answers.size
 
+    fun expectedNumbersBySourceTestId(): Map<String, Set<Int>> =
+        answers.keys.groupBy(
+            keySelector = { id ->
+                "${id.scope.section}~${if (id.scope.isOsymTest) "osym" else "normal"}~${id.scope.testNumber}"
+            },
+            valueTransform = { it.questionNumber }
+        ).mapValues { (_, numbers) -> numbers.toSet() }
+
     fun addOcrRows(rows: List<String>) {
-        // A table may continue onto the next answer-key page without a repeated heading.
         var currentSection: String? = lastRecognizedSection
+        var activeScope: PdfAnswerScope? = null
+        val pendingPairs = mutableListOf<Pair<Int, String>>()
+
+        fun commitActive() {
+            val scope = activeScope
+            if (scope != null && pendingPairs.size >= 2) {
+                for ((number, option) in pendingPairs) {
+                    val id = PdfAnswerId(scope, number)
+                    if (id in ambiguous) continue
+                    val previous = answers.putIfAbsent(id, option)
+                    if (previous != null && previous != option) {
+                        answers.remove(id)
+                        ambiguous.add(id)
+                    }
+                }
+            }
+            pendingPairs.clear()
+        }
+
         for (row in rows) {
             val clean = row.trim().replace(Regex("\\s+"), " ")
             if (clean.isEmpty()) continue
             val detectedSection = detectSectionHeading(clean)
             if (detectedSection != null) {
+                commitActive()
+                activeScope = null
                 currentSection = detectedSection
                 lastRecognizedSection = detectedSection
                 continue
             }
-            val test = testLabel.find(clean) ?: continue
-            val section = currentSection ?: continue // Never guess the section.
-            val testNum = test.groupValues[2].toIntOrNull() ?: continue
-            val isOsym = normalize(test.groupValues[1]).contains("osym")
-            val tail = clean.substring(test.range.last + 1)
-            val pairs = questionAnswer.findAll(tail).mapNotNull { match ->
-                val n = match.groupValues[1].toIntOrNull() ?: return@mapNotNull null
-                if (n !in 1..200) return@mapNotNull null
-                n to match.groupValues[2].uppercase(Locale.ROOT)
-            }.toList()
-            if (pairs.size < 2) continue // Avoid hallucinated single-character OCR matches.
-            for ((number, option) in pairs) {
-                val id = PdfAnswerId(PdfAnswerScope(section, testNum, isOsym), number)
-                if (id in ambiguous) continue
-                val previous = answers.putIfAbsent(id, option)
-                if (previous != null && previous != option) {
-                    answers.remove(id)
-                    ambiguous.add(id)
+
+            val test = testLabel.find(clean)
+            val answerPart = if (test != null) {
+                commitActive()
+                val section = currentSection
+                val number = test.groupValues[2].toIntOrNull()
+                activeScope = if (section != null && number != null) {
+                    PdfAnswerScope(
+                        section, number,
+                        normalize(test.groupValues[1]).contains("osym")
+                    )
+                } else null
+                clean.substring(test.range.last + 1)
+            } else clean
+
+            if (activeScope == null) continue
+            // A small answer table may be OCR'd into individual cells or into
+            // one complete line. Accumulate both until the next Test/heading.
+            questionAnswer.findAll(answerPart).forEach { match ->
+                val n = match.groupValues[1].toIntOrNull()
+                if (n != null && n in 1..200) {
+                    pendingPairs += n to match.groupValues[2].uppercase(Locale.ROOT)
                 }
             }
         }
+        commitActive()
     }
 
     fun get(scope: PdfAnswerScope?, questionNumber: Int?): String? {
@@ -93,9 +126,13 @@ internal class PdfScopedAnswerKeys {
             val shortRows = rows.count {
                 testLabel.containsMatchIn(it) && questionAnswer.findAll(it).count() >= 2
             }
+            val totalPairs = rows.sumOf { questionAnswer.findAll(it).count() }
+            val testRows = rows.count { testLabel.containsMatchIn(it) }
+            val hasSection = rows.any { detectSectionHeading(it) != null }
             return "cevap anahtar" in normalized ||
                 strongRows >= 2 || shortRows >= 3 ||
-                (strongRows >= 1 && rows.any { detectSectionHeading(it) != null })
+                (strongRows >= 1 && hasSection) ||
+                (testRows >= 1 && totalPairs >= 8 && hasSection)
         }
 
         /** Missing test/section evidence is deliberately left unmatched. */

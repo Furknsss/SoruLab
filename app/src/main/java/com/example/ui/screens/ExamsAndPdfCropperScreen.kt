@@ -1045,7 +1045,10 @@ fun SoruHavuzuAndPdfStudioView(
                                                 bookTitle = autoDetectedBookTitle,
                                                 bookCoverPath = coverPath
                                             )
-                                            excludedPdfCropIds = emptySet()
+                                            excludedPdfCropIds = extractedItems.filter {
+                                                !it.answerKeyMatched || it.qualityWarning.isNotBlank() ||
+                                                    it.sourceTestId.isBlank()
+                                            }.map { it.id }.toSet()
                                         }
                                     }
                                 },
@@ -1403,9 +1406,22 @@ fun SoruHavuzuAndPdfStudioView(
     val activeBookPanel = selectedBookForTestPanel
     if (activeBookPanel != null) {
         val sortedBookQuestions = remember(activeBookPanel.questions) {
-            activeBookPanel.questions.sortedBy {
-                if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE
-            }
+            // Printed question numbers restart from 1 for every source test.
+            // Sorting the entire book by that number mixes unrelated tests.
+            // Preserve PDF reading order: page -> left column -> vertical position.
+            activeBookPanel.questions.sortedWith(
+                compareBy<com.example.data.CustomQuestionRecord>(
+                    { if (it.pageIndex >= 0) 0 else 1 },
+                    { if (it.pageIndex >= 0) it.pageIndex else Int.MAX_VALUE },
+                    // Firestore may lack local-only PDF coordinates. A saved
+                    // source test identity still provides safe stable ordering.
+                    { if (it.pageIndex < 0) it.sourceTestId.substringBeforeLast("~", "") else "" },
+                    { if (it.pageIndex < 0) it.sourceTestId.substringAfterLast("~").toIntOrNull() ?: Int.MAX_VALUE else 0 },
+                    { if (it.pageIndex >= 0 && it.normLeft >= 0.50f) 1 else 0 },
+                    { if (it.pageIndex >= 0) it.normTop else it.questionNumberInBook.toFloat() },
+                    { if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE }
+                )
+            )
         }
         val topicsInBook = remember(sortedBookQuestions) {
             sortedBookQuestions
@@ -1414,16 +1430,13 @@ fun SoruHavuzuAndPdfStudioView(
                 .sortedByDescending { it.second }
         }
         val filteredQuestionsForChunks = remember(sortedBookQuestions, selectedTopicInBookModal) {
-            if (selectedTopicInBookModal == null) {
-                sortedBookQuestions
-            } else {
-                sortedBookQuestions.filter {
-                    if (selectedTopicInBookModal == "Konu belirlenmedi") {
-                        it.topicName.isBlank()
-                    } else {
-                        it.topicName == selectedTopicInBookModal
-                    }
-                }
+            val scoreable = sortedBookQuestions.filter { record ->
+                record.answerKeyVerified && record.correctOption in listOf("A", "B", "C", "D", "E")
+            }
+            if (selectedTopicInBookModal == null) scoreable
+            else scoreable.filter {
+                if (selectedTopicInBookModal == "Konu belirlenmedi") it.topicName.isBlank()
+                else it.topicName == selectedTopicInBookModal
             }
         }
         val testChunks = remember(filteredQuestionsForChunks, selectedTestLevel) {
@@ -1470,7 +1483,7 @@ fun SoruHavuzuAndPdfStudioView(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "${activeBookPanel.subjectsSummary} • Toplam ${sortedBookQuestions.size} Soru",
+                                    text = "${activeBookPanel.subjectsSummary} • ${sortedBookQuestions.count { it.answerKeyVerified }} doğrulanmış / ${sortedBookQuestions.size} toplam",
                                     color = Color(0xFF2563EB),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.5.sp
@@ -1578,7 +1591,13 @@ fun SoruHavuzuAndPdfStudioView(
                     )
                     if (testChunks.isEmpty()) {
                         Text(
-                            text = "Bu kitapta seçili seviyeye uygun soru bulunamadı.",
+                            text = if (filteredQuestionsForChunks.isEmpty()) {
+                                "Bu kitabın soru cevap anahtarı doğrulanmamış olabilir. " +
+                                    "Hatalı içe aktarılan sorular testte kullanılmıyor; kitabı " +
+                                    "orijinal PDF'den yeniden işleyin."
+                            } else {
+                                "Bu kitapta seçili seviyeye uygun doğrulanmış soru bulunamadı."
+                            },
                             color = Color(0xFF64748B),
                             fontSize = 13.sp
                         )
@@ -1600,7 +1619,12 @@ fun SoruHavuzuAndPdfStudioView(
                             val verifiedAnswerCount = chunkQuestions.count { it.answerKeyVerified }
                             val previewBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(firstInChunk.croppedImagePath)
                             val topicTitle = firstInChunk.topicName.ifBlank { "Konu belirlenmedi" }
-                            val cleanTestName = "$topicTitle - Test ${chunkIdx + 1}"
+                            val printedTestNumber = firstInChunk.sourceTestId
+                                .substringAfterLast("~", "").toIntOrNull()
+                            val isOsymSource = "~osym~" in firstInChunk.sourceTestId
+                            val cleanTestName = if (printedTestNumber != null) {
+                                "$topicTitle - ${if (isOsymSource) "ÖSYM " else ""}Test $printedTestNumber"
+                            } else "$topicTitle - Test ${chunkIdx + 1}"
 
                             Surface(
                                 onClick = {
@@ -1829,8 +1853,16 @@ fun SoruHavuzuAndPdfStudioView(
                     else excludedPdfCropIds + id
             },
             onConfirm = {
-                val accepted = pendingImport.items.filterNot { it.id in excludedPdfCropIds }
-                val discarded = pendingImport.items.filter { it.id in excludedPdfCropIds }
+                // A verified answer and clean crop are mandatory for a scored
+                // YKS question. Never allow unchecked publisher questions into
+                // the active pool, even if the selection state becomes stale.
+                val accepted = pendingImport.items.filter {
+                    it.id !in excludedPdfCropIds &&
+                        it.answerKeyMatched && it.qualityWarning.isBlank() &&
+                        it.sourceTestId.isNotBlank()
+                }
+                val acceptedIds = accepted.map { it.id }.toSet()
+                val discarded = pendingImport.items.filter { it.id !in acceptedIds }
                 if (accepted.isNotEmpty()) {
                     onSaveExtractedPdfBatch(
                         accepted,
@@ -2119,8 +2151,17 @@ private fun PdfImportCropReviewDialog(
     var current by remember(items) { mutableIntStateOf(0) }
     val item = items[current.coerceIn(0, items.lastIndex)]
     val bitmap = StudioImageAndPdfEngine.rememberCachedBitmap(item.croppedImagePath)
-    val includedCount = items.size - excludedIds.size
+    val verifiedCount = items.count {
+        it.answerKeyMatched && it.qualityWarning.isBlank() &&
+            it.sourceTestId.isNotBlank()
+    }
+    val includedCount = items.count {
+        it.id !in excludedIds && it.answerKeyMatched &&
+            it.qualityWarning.isBlank() && it.sourceTestId.isNotBlank()
+    }
     val isExcluded = item.id in excludedIds
+    val itemCanBeSaved = item.answerKeyMatched &&
+        item.qualityWarning.isBlank() && item.sourceTestId.isNotBlank()
 
     Dialog(onDismissRequest = {}) {
         Surface(
@@ -2140,7 +2181,7 @@ private fun PdfImportCropReviewDialog(
                     color = Color(0xFF1E3A8A)
                 )
                 Text(
-                    "Soru ${current + 1} / ${items.size} • Kaydedilecek: $includedCount",
+                    "Soru ${current + 1} / ${items.size} • Doğrulanan: $verifiedCount • Kaydedilecek: $includedCount",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color(0xFF475569)
                 )
@@ -2177,7 +2218,25 @@ private fun PdfImportCropReviewDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = if (item.answerKeyMatched) Color(0xFF15803D) else Color(0xFFB45309)
                 )
+                if (item.qualityWarning.isNotBlank() || item.sourceTestId.isBlank()) {
+                    Text(
+                        item.qualityWarning.ifBlank {
+                            "Kitaptaki kaynak test doğrulanamadı; bu soru kaydedilemez."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFB91C1C)
+                    )
+                }
+                if (!itemCanBeSaved) {
+                    Text(
+                        "Bu soru güvenli kabul edilmedi. Cevap anahtarı, kaynak test " +
+                            "ve kırpma doğrulanmadan kaydedilemez.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFB91C1C)
+                    )
+                }
                 OutlinedButton(
+                    enabled = itemCanBeSaved,
                     onClick = { onToggleExclude(item.id) },
                     modifier = Modifier.fillMaxWidth()
                 ) {

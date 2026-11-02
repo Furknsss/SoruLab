@@ -1704,6 +1704,36 @@ object StudioImageAndPdfEngine {
         }
     }
 
+    /**
+     * Dense answer-key tables need larger OCR glyphs than regular question
+     * pages. Only used for the tail-page answer scan and reused per page.
+     */
+    fun renderAnswerKeyPageForLocalAnalysis(
+        renderer: PdfRenderer,
+        pageIndex: Int,
+        totalPages: Int,
+        reusableBitmapRef: Array<Bitmap?>
+    ): Bitmap? {
+        if (pageIndex !in 0 until totalPages) return null
+        return renderer.openPage(pageIndex).use { page ->
+            val targetW = (page.width * 2f).roundToInt().coerceIn(2000, 2600)
+            val targetH = (page.height.toFloat() * targetW / page.width)
+                .roundToInt().coerceIn(1600, 3800)
+            val old = reusableBitmapRef[0]
+            val bmp = if (old == null || old.isRecycled ||
+                old.width != targetW || old.height != targetH
+            ) {
+                old?.recycle()
+                Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888).also {
+                    reusableBitmapRef[0] = it
+                }
+            } else old
+            bmp.eraseColor(Color.WHITE)
+            page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+            bmp
+        }
+    }
+
     fun cropRenderedPageLocalDualColumn(
         context: Context,
         pageBitmap: Bitmap,
@@ -2158,64 +2188,34 @@ object StudioImageAndPdfEngine {
                     option.left >= colLeft &&
                     option.left < colRight
             }
-            val questionBands = if (anchors.isEmpty()) {
-                projectedBands.flatMap { band ->
-                    splitOversizedProjectionBand(
-                        pixels = pixels,
-                        pageWidth = width,
-                        colLeft = colLeft,
-                        colRight = colRight,
-                        band = band,
-                        bodyHeight = bodyH,
-                        isInkPixel = ::isInkPixel
-                    )
-                }
-            } else {
-                anchors.mapIndexed { anchorIndex, anchor ->
-                    val previousAnchorTop = anchors.getOrNull(anchorIndex - 1)?.top
-                    val nextAnchorTop = anchors.getOrNull(anchorIndex + 1)?.top
-                    val optionsForQuestion = columnOptions.filter {
-                        it.top >= anchor.top && (nextAnchorTop == null || it.top < nextAnchorTop)
+            // Never fabricate questions from broad ink projection bands.
+            // A projection band can span multiple printed questions and include
+            // enormous whitespace when the source layout is sparse. Only OCR
+            // anchored question numbers are safe to expose as individual crops.
+            val questionBands = anchors.mapIndexed { anchorIndex, anchor ->
+                val nextAnchorTop = anchors.getOrNull(anchorIndex + 1)?.top
+                val lastOptionBottom = columnOptions
+                    .filter { option ->
+                        option.top >= anchor.top &&
+                            (nextAnchorTop == null || option.top < nextAnchorTop)
                     }
-                    val optionBottom = optionsForQuestion.maxOfOrNull { it.bottom }
-                    val previousOptionsBottom = columnOptions
-                        .asSequence()
-                        .filter { it.top < anchor.top && (previousAnchorTop == null || it.top >= previousAnchorTop) }
-                        .maxOfOrNull { it.bottom }
-                    val precedingInkTop = projectedBands
-                        .lastOrNull { it.first <= anchor.top && it.second >= anchor.bottom }
-                        ?.first
-                        ?: (if (anchorIndex == 0) {
-                            projectedBands.firstOrNull { it.second < anchor.top }?.first
-                        } else {
-                            null
-                        })
-                        ?: projectedBands.lastOrNull {
-                            it.second < anchor.top && anchor.top - it.second <= (bodyH * 0.12f).roundToInt()
-                        }?.first
-                    val startY = (previousOptionsBottom?.plus(8) ?: (precedingInkTop ?: anchor.top) - 16)
-                        .coerceIn(bodyTop, bodyBottom - 1)
-                    val endY = (optionBottom?.plus(16)
-                        ?: nextAnchorTop?.minus(16)
-                        ?: projectedBands.lastOrNull { it.second >= anchor.bottom }?.second
-                        ?: (bodyBottom - 1))
-                        .coerceIn(startY + 1, bodyBottom - 1)
-                    startY to endY
-                }
+                    .maxOfOrNull { it.bottom }
+                PdfQuestionCropBounds.forAnchor(
+                    anchorTop = anchor.top,
+                    nextAnchorTop = nextAnchorTop,
+                    lastOptionBottom = lastOptionBottom,
+                    bodyTop = bodyTop,
+                    bodyBottom = bodyBottom,
+                    pageHeight = height
+                )?.let { it.top to it.bottom } ?: (anchor.top to anchor.bottom)
             }
 
             for ((qIdx, band) in questionBands.withIndex()) {
-                val (rawTop, rawBottom) = expandBandToConnectedInkIslands(
-                    pixels = pixels,
-                    pageWidth = width,
-                    pageHeight = height,
-                    colLeft = colLeft,
-                    colRight = colRight,
-                    bandTop = band.first,
-                    bandBottom = band.second,
-                    maxExpansion = (bodyH * 0.025f).roundToInt().coerceAtLeast(12),
-                    isInkPixel = ::isInkPixel
-                )
+                // Anchored bands must remain inside their own limits.
+                // Connected-island expansion previously pulled neighboring
+                // questions into the crop on closely spaced pages.
+                val rawTop = band.first
+                val rawBottom = band.second
                 val bandH = rawBottom - rawTop
                 if (bandH < 80) continue
 
@@ -2264,7 +2264,14 @@ object StudioImageAndPdfEngine {
                         }
                     }
                 }
-                val finalLeft = (minContentX - 16).coerceAtLeast(colLeft)
+                // Publisher side-watermarks often sit left of the printed
+                // question number. Start each crop just before that number,
+                // not at the side watermark or unrelated column decoration.
+                // This also guarantees the number stays inside the bitmap so
+                // safePrintedQuestionNumberMask can erase it reliably.
+                val finalLeft = (anchor?.let {
+                    it.left - (colWidth * 0.015f).roundToInt().coerceAtLeast(6)
+                } ?: (minContentX - 16))
                     .coerceIn(colLeft, colRight - 120)
                 val finalRight = (maxContentX + 16).coerceAtMost(colRight - padX)
                     .coerceAtLeast(finalLeft + 119)

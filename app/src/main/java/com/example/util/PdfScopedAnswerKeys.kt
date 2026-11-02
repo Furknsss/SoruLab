@@ -90,8 +90,11 @@ internal class PdfScopedAnswerKeys {
             val strongRows = rows.count {
                 testLabel.containsMatchIn(it) && questionAnswer.findAll(it).count() >= 3
             }
+            val shortRows = rows.count {
+                testLabel.containsMatchIn(it) && questionAnswer.findAll(it).count() >= 2
+            }
             return "cevap anahtar" in normalized ||
-                strongRows >= 2 ||
+                strongRows >= 2 || shortRows >= 3 ||
                 (strongRows >= 1 && rows.any { detectSectionHeading(it) != null })
         }
 

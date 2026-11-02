@@ -135,4 +135,24 @@ class PdfScopedAnswerKeysTest {
         )))
     }
 
+
+    @Test
+    fun `scanned answer key cells split into separate OCR rows are recovered`() {
+        val keys = PdfScopedAnswerKeys()
+        keys.addOcrRows(listOf(
+            "SİNİR SİSTEMİ",
+            "Test 1",
+            "1.E", "2.B", "3.A", "4.A", "5.E",
+            "6.D", "7.B", "8.A", "9.D", "10.C",
+            "ENDOKRİN SİSTEM - HOMEOSTAZİ",
+            "Test 1",
+            "1.C", "2.E", "3.D"
+        ))
+        val sinir = PdfScopedAnswerKeys.scopeFromQuestionHeader("TEST 1\nSinir Sistemi 1", "Sinir Sistemi")
+        val endokrin = PdfScopedAnswerKeys.scopeFromQuestionHeader("TEST 1\nEndokrin Sistem - Homeostazi", "Endokrin Sistem - Homeostazi")
+        assertEquals("E", keys.get(sinir, 1))
+        assertEquals("C", keys.get(sinir, 10))
+        assertEquals("C", keys.get(endokrin, 1))
+    }
+
 }

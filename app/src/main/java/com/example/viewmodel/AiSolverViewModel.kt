@@ -564,10 +564,21 @@ class AiSolverViewModel : ViewModel() {
         val headerText = lines
             .filter { (it.boundingBox?.top ?: Int.MAX_VALUE) <= bitmap.height * 0.07f }
             .joinToString("\n") { it.text }
-        // Read the full top header (not only the first 7%) for the printed TEST label.
+        // Publisher layouts vary: the title/test may start at 8%, 20% or
+        // much lower on an illustrated page. Read until the first actual
+        // numbered QUESTION instead of using a fixed 17%-of-page cutoff.
+        val printedQuestionLine = Regex("""^\s*(?:[1-9]|[1-3][0-9])[.)-](?:\s|$)""")
+        val firstQuestionTop = lines.filter {
+            printedQuestionLine.containsMatchIn(it.text)
+        }.mapNotNull { it.boundingBox?.top }.minOrNull()
+        val headerLimit = firstQuestionTop?.let { firstTop ->
+            (firstTop - bitmap.height * 0.006f).toInt()
+                .coerceAtLeast((bitmap.height * 0.05f).toInt())
+        } ?: (bitmap.height * 0.30f).toInt()
         val scopeHeaderText = lines.filter {
-            (it.boundingBox?.top ?: Int.MAX_VALUE) <= bitmap.height * 0.17f
-        }.sortedBy { it.boundingBox?.top ?: Int.MAX_VALUE }.joinToString("\n") { it.text }
+            (it.boundingBox?.top ?: Int.MAX_VALUE) < headerLimit
+        }.sortedBy { it.boundingBox?.top ?: Int.MAX_VALUE }
+            .joinToString("\n") { it.text }
 
         // Use this PDF's actual OCR geometry. Independent answer-key
         // columns must not share cells just because they have the same Y.

@@ -1859,7 +1859,9 @@ object StudioImageAndPdfEngine {
         }
         val pageInkRatio = totalInkSample.toFloat() / totalChecked.coerceAtLeast(1).toFloat()
         // Blank page (< 0.004) or full-bleed dark cover/poster (> 0.34) is NEVER a question page
-        if (pageInkRatio < 0.004f) {
+        // Sparse pages can still contain genuine questions. Trust numbered OCR
+        // anchors over the coarse whole-page ink-density blank-page heuristic.
+        if (pageInkRatio < 0.004f && questionNumberAnchors.isEmpty()) {
             return emptyList()
         }
         // AKILLI MARJ VE BAŞLIK/CEVAP ANAHTARI TEMİZLİĞİ:
@@ -2089,9 +2091,18 @@ object StudioImageAndPdfEngine {
 
         val minHalfInkThreshold = ((bodyH / 4) * ((leftCheckEnd - leftCheckStart) / 4) * 0.008f).roundToInt().coerceAtLeast(24)
         val avgGutterRowInk = minGutterInk.toFloat() / ((windowRadius * 2 + 1) * sampledRows).coerceAtLeast(1).toFloat()
-        val isDualColumn = avgGutterRowInk < 0.048f &&
-            leftHalfInk >= minHalfInkThreshold &&
-            rightHalfInk >= minHalfInkThreshold
+        // An OCR number near each outer quarter is strong evidence of a
+        // two-column page, even when the text is too sparse for pixel density.
+        val hasLeftNumberAnchor = questionNumberAnchors.any {
+            it.left in 0 until (width * 0.44f).roundToInt()
+        }
+        val hasRightNumberAnchor = questionNumberAnchors.any {
+            it.left in (width * 0.56f).roundToInt() until width
+        }
+        val isDualColumn = (hasLeftNumberAnchor && hasRightNumberAnchor) ||
+            (avgGutterRowInk < 0.048f &&
+                leftHalfInk >= minHalfInkThreshold &&
+                rightHalfInk >= minHalfInkThreshold)
 
         val midX = bestGutterX
         val gutterMargin = (width * 0.012f).roundToInt().coerceAtLeast(10)

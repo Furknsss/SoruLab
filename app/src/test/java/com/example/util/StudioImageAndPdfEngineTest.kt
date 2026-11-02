@@ -157,4 +157,29 @@ class StudioImageAndPdfEngineTest {
             )
         )
     }
+
+    @Test
+    fun `history question mentioning Ataturk must not be mistaken for front matter`() {
+        assertFalse(
+            StudioImageAndPdfEngine.shouldSkipQuestionPage(
+                text = "1. Atatürk ilkeleri hakkında hangisi doğrudur?\\nA) Bir\\nB) İki",
+                topHeaderText = "Tarih",
+                pageIndex = 8,
+                totalPages = 180
+            )
+        )
+    }
+
+    @Test
+    fun `first scanned question page is eligible even with partial OCR`() {
+        assertFalse(
+            StudioImageAndPdfEngine.shouldSkipQuestionPage(
+                text = "1. Aşağıdakilerden hangisi yanlıştır?",
+                topHeaderText = "Sinir Sistemi",
+                pageIndex = 3,
+                totalPages = 256
+            )
+        )
+    }
+
 }

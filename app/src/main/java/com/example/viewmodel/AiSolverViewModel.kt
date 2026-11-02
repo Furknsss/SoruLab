@@ -899,6 +899,7 @@ class AiSolverViewModel : ViewModel() {
 
                 val allExtractedQuestions = mutableListOf<ExtractedPdfQuestionItem>()
                 val expectedScopeByQuestionId = mutableMapOf<String, PdfAnswerScope>()
+                var detectedAnswerPages = 0
                 var pageRenderFailureCount = 0
 
                 val pageIndicesToScan = 0 until totalPdfPages
@@ -918,7 +919,6 @@ class AiSolverViewModel : ViewModel() {
                             // page offsets, no assumption about front/end placement.
                             // Answers are associated AFTER scanning all pages because
                             // the answer key may follow the question it belongs to.
-                            var detectedAnswerPages = 0
                             var pageQuestionScope: PdfAnswerScope? = null
 
                             for ((scanPos, pageIdx) in pageIndicesToScan.withIndex()) {
@@ -988,11 +988,15 @@ class AiSolverViewModel : ViewModel() {
                                 if (hasAnswerKeyMarker || isAnswerTablePage) {
                                     pendingAnswerRegions.addAll(pageLayout.answerRegions)
                                     detectedAnswerPages++
-                                    // A dedicated answer-key page has no new test
-                                    // questions; don't mistake answer cells for stems.
-                                    if (isAnswerTablePage || pageLayout.optionAnchors.size < 3) {
-                                        continue
-                                    }
+                                    // Mixed pages exist: an answer strip may be
+                                    // printed above or below actual questions.
+                                    // Skip only when there is NO valid A-E
+                                    // multiple-choice question evidence.
+                                    val hasQuestionEvidence =
+                                        pageLayout.questionNumberAnchors.isNotEmpty() &&
+                                            pageLayout.optionAnchors.map { it.option }
+                                                .distinct().size >= 3
+                                    if (!hasQuestionEvidence) continue
                                 }
                                 if (skipPage) continue
                                 // A scanned foreword, contents page or advertisement
@@ -1220,11 +1224,19 @@ class AiSolverViewModel : ViewModel() {
 
                 val warnings = buildList {
                     if (scopedAnswers.answerCount == 0) {
-                        add("Test bazlı cevap anahtarı okunamadı. Hiçbir cevap tahmin edilmedi.")
+                        add("$detectedAnswerPages olası cevap anahtarı sayfası tarandı ancak " +
+                            "geçerli test-cevap eşleşmesi bulunamadı. Hiçbir cevap tahmin edilmedi.")
+                    }
+                    val missingScope = allExtractedQuestions.count {
+                        it.sourceTestId.isBlank()
+                    }
+                    if (missingScope > 0) {
+                        add("$missingScope sorunun kaynak test başlığı okunamadı.")
                     }
                     val unresolved = allExtractedQuestions.count { !it.answerKeyMatched }
                     if (unresolved > 0) {
-                        add("$unresolved soru cevabı güvenle eşleştirilemedi; manuel doğrulama gerekli.")
+                        add("$unresolved soru cevabı güvenle eşleştirilemedi; " +
+                            "eşleşmeyen soru ve cevap anahtarlarını kontrol edin.")
                     }
                     if (processingStatus.ocrFailureCount > 0) {
                         add("Cihaz içi OCR ${processingStatus.ocrFailureCount} soruda tamamlanamadı; kırpılmış görseller yine aktarıldı.")

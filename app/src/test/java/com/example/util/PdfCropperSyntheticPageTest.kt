@@ -87,6 +87,14 @@ class PdfCropperSyntheticPageTest {
                 items.map { it.columnIndex }.toSet())
             assertTrue(items.all { it.croppedImagePath.isNotBlank() })
             assertTrue(items.all { File(it.croppedImagePath).isFile })
+            // The second printed question starts at pixel 855. The first
+            // crop must end BEFORE that number, even after ink expansion.
+            val first = items.first { it.columnIndex == 0 && it.questionOrderInPage == 1 }
+            val second = items.first { it.columnIndex == 0 && it.questionOrderInPage == 2 }
+            assertTrue("First crop swallowed the next printed question",
+                first.boxNormalized[2] < 855f / 1800f)
+            assertTrue("Adjacent question crops overlap",
+                first.boxNormalized[2] <= second.boxNormalized[0])
         } finally {
             items.forEach { File(it.croppedImagePath).delete() }
             bmp.recycle()

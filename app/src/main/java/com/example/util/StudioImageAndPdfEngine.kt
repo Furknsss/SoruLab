@@ -788,7 +788,7 @@ object StudioImageAndPdfEngine {
 
     /**
      * Scales a high-res page bitmap to an optimal inference size (max 1440px)
-     * so Gemini Vision API processes the page rapidly and reliably without payload limits.
+     * so cloud or on-device OCR processes the page rapidly and reliably within payload limits.
      */
     fun createInferenceBitmap(source: Bitmap, maxDimension: Int = 1440): Bitmap {
         val w = source.width
@@ -1310,6 +1310,7 @@ object StudioImageAndPdfEngine {
         val defaultTopicName: String,
         val extractedTextSampleForAi: String,
         val answerKeyMap: Map<Int, String>,
+        val ambiguousAnswerNumbers: Set<Int>,
         val pageMap: Map<Int, LocalPageMapEntry>
     )
 
@@ -1322,12 +1323,12 @@ object StudioImageAndPdfEngine {
         val hasDiagramOrGraph: Boolean = false,
         val lineCountEstimate: Int = 6,
         val questionOrderInPage: Int = 1,
+        val hasPrintedQuestionNumber: Boolean = false,
         val imageBase64: String = ""
     )
 
     /**
-     * Fast local PDF binary & FlateDecode text extractor + Regex Answer Key & YKS Curriculum Dictionary matcher.
-     * Completes in <150ms even on 300+ page PDFs and provides a 100% self-sufficient fallback if AI quota is exceeded.
+     * Extracts local PDF text, answer-key entries, and curriculum hints without cloud services.
      */
     fun extractLocalPdfBlueprint(
         context: Context,
@@ -1374,7 +1375,15 @@ object StudioImageAndPdfEngine {
 
         val bookSignal = "$cleanFileHint\n$publisherName"
         val combinedSignal = "$bookSignal\n$rawTextBuilder"
-        val answerKeyMap = parseAnswerKeyRegex(combinedSignal)
+        val answerKeyMap = mutableMapOf<Int, String>()
+        val ambiguousAnswerNumbers = mutableSetOf<Int>()
+        vectorPageText.filter(::hasAnswerKeyMarker).forEach { pageText ->
+            mergeAnswerKeyCandidates(
+                answerKeyMap,
+                ambiguousAnswerNumbers,
+                parseAnswerKeyCandidates(pageText)
+            )
+        }
 
         val bookSubjectHint = explicitSubjectName(bookSignal)
         val explicitlyTyt = Regex("""(?i)(?:^|[^A-Z])TYT(?:$|[^A-Z])""")
@@ -1480,6 +1489,7 @@ object StudioImageAndPdfEngine {
             defaultTopicName = primaryTopicName,
             extractedTextSampleForAi = rawTextBuilder.toString().take(5500),
             answerKeyMap = answerKeyMap,
+            ambiguousAnswerNumbers = ambiguousAnswerNumbers,
             pageMap = pageMap
         )
     }
@@ -1584,17 +1594,42 @@ object StudioImageAndPdfEngine {
      */
     fun parseAnswerKeyRegex(text: String): Map<Int, String> {
         val result = mutableMapOf<Int, String>()
-        if (text.isBlank()) return result
-        // Standard delimited format: 1-A, 1. B, 1) C, 1:D, 1 E
-        val regex = Regex("(?:^|\\s|\\b)(\\d+)\\s*[-.:)]?\\s*([ABCDE])(?=\\s|$|[,;|.]|\\d)")
-        for (match in regex.findAll(text)) {
-            val qNum = match.groupValues[1].toIntOrNull() ?: continue
-            val opt = match.groupValues[2].uppercase()
-            if (qNum > 0) {
-                result[qNum] = opt
+        val ambiguousNumbers = mutableSetOf<Int>()
+        mergeAnswerKeyCandidates(result, ambiguousNumbers, parseAnswerKeyCandidates(text))
+        return result
+    }
+
+    internal fun parseAnswerKeyCandidates(text: String): List<Pair<Int, String>> {
+        if (text.isBlank()) return emptyList()
+        // Supports compact, delimited, and table-separated formats: 1A, 1-A, 1. B, 1 | A.
+        val regex = Regex("(?:^|[\\s|,;]|\\b)(\\d+)\\s*[-.:)|,;]?\\s*([ABCDE])(?=\\s|$|[,;|.]|\\d)")
+        return regex.findAll(text).mapNotNull { match ->
+            val qNum = match.groupValues[1].toIntOrNull() ?: return@mapNotNull null
+            if (qNum <= 0) return@mapNotNull null
+            qNum to match.groupValues[2].uppercase()
+        }.toList()
+    }
+
+    internal fun mergeAnswerKeyCandidates(
+        answers: MutableMap<Int, String>,
+        ambiguousNumbers: MutableSet<Int>,
+        candidates: Iterable<Pair<Int, String>>
+    ) {
+        for ((number, option) in candidates) {
+            if (number in ambiguousNumbers) continue
+            val previous = answers.putIfAbsent(number, option)
+            if (previous != null && previous != option) {
+                answers.remove(number)
+                ambiguousNumbers.add(number)
             }
         }
-        return result
+    }
+
+    fun hasAnswerKeyMarker(text: String): Boolean {
+        val normalized = text.lowercase(Locale.ROOT)
+        return "cevap anahtarı" in normalized ||
+            "cevap anahtari" in normalized ||
+            "answer key" in normalized
     }
 
     // =========================================================================
@@ -2111,20 +2146,34 @@ object StudioImageAndPdfEngine {
                 }
             } else {
                 anchors.mapIndexed { anchorIndex, anchor ->
-                    val startY = (anchor.top - 12).coerceIn(bodyTop, bodyBottom - 1)
+                    val previousAnchorTop = anchors.getOrNull(anchorIndex - 1)?.top
                     val nextAnchorTop = anchors.getOrNull(anchorIndex + 1)?.top
-                    val optionBottom = columnOptions
-                        .asSequence()
-                        .filter { it.top >= anchor.top && (nextAnchorTop == null || it.top < nextAnchorTop) }
-                        .maxOfOrNull { it.bottom }
-                    val endY = if (nextAnchorTop != null) {
-                        (nextAnchorTop - 16).coerceIn(startY + 1, bodyBottom - 1)
-                    } else {
-                        ((optionBottom?.plus(16))
-                            ?: projectedBands.lastOrNull { it.second >= anchor.bottom }?.second
-                            ?: (bodyBottom - 1))
-                            .coerceIn(startY + 1, bodyBottom - 1)
+                    val optionsForQuestion = columnOptions.filter {
+                        it.top >= anchor.top && (nextAnchorTop == null || it.top < nextAnchorTop)
                     }
+                    val optionBottom = optionsForQuestion.maxOfOrNull { it.bottom }
+                    val previousOptionsBottom = columnOptions
+                        .asSequence()
+                        .filter { it.top < anchor.top && (previousAnchorTop == null || it.top >= previousAnchorTop) }
+                        .maxOfOrNull { it.bottom }
+                    val precedingInkTop = projectedBands
+                        .lastOrNull { it.first <= anchor.top && it.second >= anchor.bottom }
+                        ?.first
+                        ?: (if (anchorIndex == 0) {
+                            projectedBands.firstOrNull { it.second < anchor.top }?.first
+                        } else {
+                            null
+                        })
+                        ?: projectedBands.lastOrNull {
+                            it.second < anchor.top && anchor.top - it.second <= (bodyH * 0.12f).roundToInt()
+                        }?.first
+                    val startY = (previousOptionsBottom?.plus(8) ?: (precedingInkTop ?: anchor.top) - 16)
+                        .coerceIn(bodyTop, bodyBottom - 1)
+                    val endY = (optionBottom?.plus(16)
+                        ?: nextAnchorTop?.minus(16)
+                        ?: projectedBands.lastOrNull { it.second >= anchor.bottom }?.second
+                        ?: (bodyBottom - 1))
+                        .coerceIn(startY + 1, bodyBottom - 1)
                     startY to endY
                 }
             }
@@ -2157,12 +2206,42 @@ object StudioImageAndPdfEngine {
                 val anchor = anchors.getOrNull(qIdx)
                 val padX = (colWidth * 0.022f).roundToInt().coerceIn(8, 22)
                 val padY = (height * 0.008f).roundToInt().coerceIn(8, 20)
-                val finalLeft = if (anchor != null) {
-                    (anchor.right + 4).coerceIn(colLeft, colRight - 120)
-                } else {
-                    (colLeft + padX).coerceIn(0, width - 1)
+                val edgeArtifactColumns = BooleanArray(colWidth)
+                val edgeWidth = (colWidth * 0.07f).roundToInt().coerceAtLeast(1)
+                for (scanX in colLeft until colRight) {
+                    val nearColumnEdge = scanX < colLeft + edgeWidth || scanX >= colRight - edgeWidth
+                    val nearPageGutter = scanX in (width * 0.44f).roundToInt()..(width * 0.56f).roundToInt()
+                    if (!nearColumnEdge && !nearPageGutter) continue
+                    var longestRun = 0
+                    var currentRun = 0
+                    for (scanY in rawTop..rawBottom) {
+                        if (isInkPixel(pixels[scanY * width + scanX])) {
+                            currentRun++
+                            longestRun = max(longestRun, currentRun)
+                        } else {
+                            currentRun = 0
+                        }
+                    }
+                    if (longestRun > bandH * 0.18f) {
+                        edgeArtifactColumns[scanX - colLeft] = true
+                    }
                 }
-                val finalRight = (colRight - padX).coerceAtLeast(finalLeft + 119)
+
+                var minContentX = colRight
+                var maxContentX = colLeft
+                for (scanY in rawTop..rawBottom) {
+                    val rowOffset = scanY * width
+                    for (scanX in colLeft until colRight step 2) {
+                        if (!edgeArtifactColumns[scanX - colLeft] && isInkPixel(pixels[rowOffset + scanX])) {
+                            minContentX = min(minContentX, scanX)
+                            maxContentX = max(maxContentX, scanX)
+                        }
+                    }
+                }
+                val finalLeft = (minContentX - 16).coerceAtLeast(colLeft)
+                    .coerceIn(colLeft, colRight - 120)
+                val finalRight = (maxContentX + 16).coerceAtMost(colRight - padX)
+                    .coerceAtLeast(finalLeft + 119)
                 val finalTop = (rawTop - padY).coerceAtLeast(bodyTop)
                 val finalBottom = (rawBottom + padY).coerceAtMost(bodyBottom)
 
@@ -2173,9 +2252,43 @@ object StudioImageAndPdfEngine {
                 val cropW = (safeRight - safeLeft + 1).coerceIn(1, width - safeLeft)
                 val cropH = (safeBottom - safeTop + 1).coerceIn(1, height - safeTop)
                 if (cropW < 120 || cropH < 80) continue
-                val rawCrop = safeCreateCropBitmap(pageBitmap, safeLeft, safeTop, cropW, cropH)
+                val rawCropSource = safeCreateCropBitmap(pageBitmap, safeLeft, safeTop, cropW, cropH)
                     ?: continue
-                val cleanedCrop = whitenOldQuestionNumberAndEnhance(rawCrop)
+                val rawCrop = if (
+                    rawCropSource.isMutable && rawCropSource.config == Bitmap.Config.ARGB_8888
+                ) {
+                    rawCropSource
+                } else {
+                    val mutableCrop = rawCropSource.copy(Bitmap.Config.ARGB_8888, true)
+                    rawCropSource.recycle()
+                    mutableCrop ?: continue
+                }
+                val watermarkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    style = Paint.Style.FILL
+                }
+                val cropCanvas = Canvas(rawCrop)
+                for (columnOffset in edgeArtifactColumns.indices) {
+                    val pageX = colLeft + columnOffset
+                    if (edgeArtifactColumns[columnOffset] && pageX in safeLeft..safeRight) {
+                        cropCanvas.drawRect(
+                            (pageX - safeLeft).toFloat(),
+                            0f,
+                            (pageX - safeLeft + 1).toFloat(),
+                            cropH.toFloat(),
+                            watermarkPaint
+                        )
+                    }
+                }
+                val numberMask = anchor?.let {
+                    RectF(
+                        (it.left - safeLeft).toFloat(),
+                        (it.top - safeTop).toFloat(),
+                        (it.right - safeLeft + 6).toFloat(),
+                        (it.bottom - safeTop + 4).toFloat()
+                    )
+                }
+                val cleanedCrop = whitenOldQuestionNumberAndEnhance(rawCrop, numberMask)
                 if (cleanedCrop !== rawCrop) {
                     rawCrop.recycle()
                 }
@@ -2223,6 +2336,7 @@ object StudioImageAndPdfEngine {
                         hasDiagramOrGraph = structureMetrics.hasDiagramOrGraph,
                         lineCountEstimate = structureMetrics.lineTransitions,
                         questionOrderInPage = anchor?.number ?: questionOrderOnPage,
+                        hasPrintedQuestionNumber = anchor != null,
                         imageBase64 = imageBase64
                     )
                 )
@@ -2661,12 +2775,15 @@ object StudioImageAndPdfEngine {
      * (NEVER dark ink or diagram boxes!) and applies Adaptive Contrast & Background Whitening (#FFFFFF)
      * without cutting or erasing any part of the question text, formulas, or figures.
      */
-    private fun whitenOldQuestionNumberAndEnhance(sourceCrop: Bitmap): Bitmap {
+    private fun whitenOldQuestionNumberAndEnhance(
+        sourceCrop: Bitmap,
+        printedNumberBounds: RectF? = null
+    ): Bitmap {
         val w = sourceCrop.width
         val h = sourceCrop.height
         if (w < 60 || h < 60) return applyAdaptiveContrastAndBackgroundWhitening(sourceCrop)
 
-        val mutableCrop = if (sourceCrop.isMutable) {
+        val mutableCrop = if (sourceCrop.isMutable && sourceCrop.config == Bitmap.Config.ARGB_8888) {
             sourceCrop
         } else {
             sourceCrop.copy(Bitmap.Config.ARGB_8888, true)
@@ -2702,33 +2819,19 @@ object StudioImageAndPdfEngine {
             mutableCrop.setPixels(whiteBannerFill, 0, w, 0, 0, w, clearH)
         }
 
-        // KURAL 3: PDF'in kendi orijinal soru numaralarını (yeşil 10., 11., 3. vb.)
-        // sol üst köşe beyazlatmasıyla temizle ki uygulamanın kendi verdiği soru numarasıyla (1., 2.)
-        // yan yana çift numara oluşmasın!
-        val numBadgeW = (w * 0.10f).roundToInt().coerceIn(16, 52)
-        val numBadgeH = (h * 0.16f).roundToInt().coerceIn(18, 56)
-        var hasLeftNumberBadge = false
-        val badgePixels = IntArray(numBadgeW * numBadgeH)
-        mutableCrop.getPixels(badgePixels, 0, numBadgeW, 0, 0, numBadgeW, numBadgeH)
-        var coloredOrDarkCount = 0
-        for (c in badgePixels) {
-            val r = (c shr 16) and 0xFF
-            val g = (c shr 8) and 0xFF
-            val b = c and 0xFF
-            val maxCh = max(r, max(g, b))
-            val minCh = min(r, min(g, b))
-            val lum = (r * 77 + g * 150 + b * 29) shr 8
-            // Yeşil, kırmızı, mavi daire rozet veya koyu numara karakteri
-            if ((maxCh - minCh >= 26 && lum in 35..230) || lum < 80) {
-                coloredOrDarkCount++
+        printedNumberBounds?.let { bounds ->
+            val left = bounds.left.coerceIn(0f, w.toFloat())
+            val top = bounds.top.coerceIn(0f, h.toFloat())
+            val right = bounds.right.coerceIn(left, w.toFloat())
+            val bottom = bounds.bottom.coerceIn(top, h.toFloat())
+            if (right > left && bottom > top) {
+                val canvas = Canvas(mutableCrop)
+                val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    style = Paint.Style.FILL
+                }
+                canvas.drawRect(left, top, right, bottom, maskPaint)
             }
-        }
-        if (coloredOrDarkCount >= (numBadgeW * numBadgeH * 0.04f)) {
-            hasLeftNumberBadge = true
-        }
-        if (hasLeftNumberBadge) {
-            val whiteBadgeFill = IntArray(numBadgeW * numBadgeH) { -0x1 }
-            mutableCrop.setPixels(whiteBadgeFill, 0, numBadgeW, 0, 0, numBadgeW, numBadgeH)
         }
 
         val whitened = applyAdaptiveContrastAndBackgroundWhitening(mutableCrop)

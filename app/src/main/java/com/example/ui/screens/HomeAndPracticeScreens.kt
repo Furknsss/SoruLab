@@ -2078,7 +2078,7 @@ fun SoruPratigiScreen(
                                         .fillMaxHeight()
                                         .clip(RoundedCornerShape(50))
                                         .background(
-                                            if (active) Color(0xFF436EE6) else Color.Transparent
+                                        if (active) Color(0xFF2563EB) else Color.Transparent
                                         )
                                         .clickable { onSelectExamType(type) }
                                         .testTag("exam_toggle_${type.name.lowercase()}"),
@@ -2111,6 +2111,13 @@ fun SoruPratigiScreen(
                         key = { it.id },
                         contentType = { "subject_row" }
                     ) { subject ->
+                        val accentColor = when (subject.name) {
+                            "Matematik" -> Color(0xFFF97316)
+                            "Fizik" -> Color(0xFF16A34A)
+                            "Kimya" -> Color(0xFF7C3AED)
+                            "Biyoloji" -> Color(0xFF9333EA)
+                            else -> Color(subject.accentColorHex)
+                        }
                         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             Row(
                                 modifier = Modifier
@@ -2122,7 +2129,7 @@ fun SoruPratigiScreen(
                                     text = subject.name,
                                     style = MaterialTheme.typography.titleMedium.copy(
                                         fontSize = 18.sp,
-                                        fontWeight = FontWeight.Medium
+                                        fontWeight = FontWeight.Bold
                                     ),
                                     color = Color(0xFF475569)
                                 )
@@ -2132,7 +2139,7 @@ fun SoruPratigiScreen(
                                         .weight(1f)
                                         .height(2.2.dp)
                                         .clip(RoundedCornerShape(2.dp))
-                                        .background(Color(subject.accentColorHex))
+                                        .background(accentColor)
                                 )
                             }
 
@@ -2571,8 +2578,8 @@ private fun TopicLandscapeCard(
 ) {
     Surface(
         modifier = Modifier
-            .width(196.dp)
-            .height(148.dp)
+            .width(150.dp)
+            .height(115.dp)
             .clip(RoundedCornerShape(14.dp))
             .clickable { onClick() }
             .testTag("topic_card_${topic.id}"),
@@ -2584,7 +2591,7 @@ private fun TopicLandscapeCard(
             modifier = Modifier
                 .fillMaxSize()
                 .drawWithCache {
-                    val watermarkColor = Color(0xFFF1F5F9)
+                    val watermarkColor = Color(0xFF334155).copy(alpha = 0.06f)
                     onDrawBehind {
                         val gridSize = 68.dp.toPx()
                         val cx = size.width - 36.dp.toPx()
@@ -2955,7 +2962,7 @@ private fun TopicTestsDetailView(
                                     .fillMaxSize()
                                     .testTag("topic_tests_list"),
                                 contentPadding = PaddingValues(start = 6.dp, end = 20.dp, top = 18.dp, bottom = 24.dp),
-                                verticalArrangement = Arrangement.spacedBy(20.dp)
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 items(
                                     items = currentLevelTests,
@@ -2967,8 +2974,10 @@ private fun TopicTestsDetailView(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(12.dp))
+                                            .background(Color.White)
+                                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
                                             .clickable { onTestClicked(testItem) }
-                                            .padding(vertical = 8.dp, horizontal = 4.dp)
+                                            .padding(vertical = 12.dp, horizontal = 10.dp)
                                             .testTag("test_row_${testItem.id}"),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
@@ -3004,34 +3013,28 @@ private fun TopicTestsDetailView(
                                                         tint = Color(0xFF94A3B8),
                                                         modifier = Modifier.size(26.dp)
                                                     )
-                                                    Icon(
-                                                        imageVector = Icons.Filled.Edit,
-                                                        contentDescription = null,
-                                                        tint = Color(0xFF64748B),
-                                                        modifier = Modifier
-                                                            .size(12.dp)
-                                                            .align(Alignment.BottomEnd)
-                                                    )
                                                 }
                                             }
 
-                                            Text(
-                                                text = testItem.fullTitle,
-                                                style = MaterialTheme.typography.titleMedium.copy(
-                                                    fontSize = 15.2.sp,
-                                                    fontWeight = FontWeight.Medium
-                                                ),
-                                                color = Color(0xFF0F172A),
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = "${testItem.questions.size} soru • ${testItem.difficulty.label}${if (solved) " • Çözüldü" else ""}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Color(0xFF64748B),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = testItem.fullTitle,
+                                                    style = MaterialTheme.typography.titleMedium.copy(
+                                                        fontSize = 15.2.sp,
+                                                        fontWeight = FontWeight.Medium
+                                                    ),
+                                                    color = Color(0xFF0F172A),
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = "${testItem.questions.size} soru • ${testItem.difficulty.label}${if (solved) " • Çözüldü" else ""}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color(0xFF64748B),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
                                         }
 
                                         Spacer(modifier = Modifier.width(12.dp))
@@ -3167,6 +3170,7 @@ private fun RadialLevelWheelOverlay(
     onDismiss: () -> Unit
 ) {
     val levels = TopicTestLevel.entries
+    val wheelLabels = listOf("SIFIR", "İKİZ", "YAYGIN", "ÖDEV", "ÖSYM", "DERECE")
     val startAngleDeg = -90f
     val totalSweepDeg = 180f
     val sliceSweepDeg = totalSweepDeg / levels.size.toFloat()
@@ -3353,11 +3357,29 @@ private fun RadialLevelWheelOverlay(
                     nativeCanvas.save()
                     nativeCanvas.translate(tx, ty)
                     nativeCanvas.rotate(midAngleDeg)
-                    nativeCanvas.drawText(level.wheelLabel, 0f, -fontOffset, textPaint)
+                    nativeCanvas.drawText(wheelLabels[index], 0f, -fontOffset, textPaint)
                     nativeCanvas.restore()
                 }
             }
         }
+        Text(
+            text = "HATA",
+            color = Color(0xFFD98A16),
+            fontSize = 9.sp,
+            fontWeight = FontWeight.ExtraBold,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .offset(x = 84.dp, y = (-150).dp)
+        )
+        Text(
+            text = "TEST",
+            color = Color(0xFF0E8AC8),
+            fontSize = 9.sp,
+            fontWeight = FontWeight.ExtraBold,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .offset(x = 84.dp, y = 150.dp)
+        )
     }
 }
 
@@ -4044,7 +4066,7 @@ fun DifficultyMeterBar(position: Float) {
     val fillFraction = position.coerceIn(0.18f, 0.94f)
 
     Column(
-        modifier = Modifier.width(136.dp),
+        modifier = Modifier.width(110.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Canvas(

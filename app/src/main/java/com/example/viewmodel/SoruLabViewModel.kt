@@ -834,7 +834,7 @@ class SoruLabViewModel(
                     ?: baseTopicQuestions
 
                 for (q in sourceQuestions) {
-                    if (!q.topicHeader.equals(topic.name, ignoreCase = true)) continue
+                    if (!q.answerKeyVerified || !q.topicHeader.equals(topic.name, ignoreCase = true)) continue
                     val chosen = answersMap[q.number]
                     val isWrongOrBlank = chosen.isNullOrBlank() || chosen != q.correctOption
                     if (isWrongOrBlank) {
@@ -1416,6 +1416,42 @@ class SoruLabViewModel(
             selectedDifficulties = defaultDiffs,
             sourceFilter = defaultSource,
             requestedQuestionCount = 12
+        )
+    }
+
+    fun startTwinTestFromSession(session: ActiveSolvingSession) {
+        val subject = SoruLabCatalog.allSubjects.firstOrNull {
+            it.id.equals(session.subjectId, ignoreCase = true)
+        } ?: SoruLabCatalog.allSubjects.firstOrNull {
+            it.name.equals(session.subjectName, ignoreCase = true)
+        }
+        val topic = subject?.topics?.firstOrNull {
+            it.id.equals(session.topicId, ignoreCase = true)
+        } ?: subject?.topics?.firstOrNull {
+            it.name.equals(session.topicName, ignoreCase = true)
+        }
+        if (topic == null) {
+            showBanner("Bu testin konusuna uygun ikiz test bulunamadı.")
+            return
+        }
+
+        val twinTest = generateCustomFilteredTopicTest(
+            topic = topic,
+            level = TopicTestLevel.IKIZ,
+            selectedDifficulties = DifficultyLevel.entries.toSet(),
+            sourceFilter = QuestionSourceFilter.YANLIS_YAPTIKLARIM,
+            requestedQuestionCount = AUTOMATIC_TEST_QUESTION_COUNT
+        )
+        if (twinTest == null) {
+            showBanner("İkiz test oluşturmak için bu konuda 12 uygun yanlış veya boş soru bulunamadı.")
+            return
+        }
+
+        startSolvingSession(
+            topic = topic,
+            testItem = twinTest,
+            initialViewMode = BoardViewMode.FULL_PAGE,
+            isReviewMode = false
         )
     }
 

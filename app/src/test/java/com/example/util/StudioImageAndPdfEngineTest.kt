@@ -118,6 +118,35 @@ class StudioImageAndPdfEngineTest {
     }
 
     @Test
+    fun `answer key parser refuses conflicting repeated question numbers`() {
+        assertEquals(
+            mapOf(2 to "C"),
+            StudioImageAndPdfEngine.parseAnswerKeyRegex("1A 2C test 1: B 2C")
+        )
+    }
+
+    @Test
+    fun `answer key merge invalidates conflicts across separate pages`() {
+        val answers = mutableMapOf(1 to "A")
+        val ambiguous = mutableSetOf<Int>()
+
+        StudioImageAndPdfEngine.mergeAnswerKeyCandidates(
+            answers,
+            ambiguous,
+            listOf(1 to "B", 2 to "C", 1 to "A")
+        )
+
+        assertEquals(mapOf(2 to "C"), answers)
+        assertEquals(setOf(1), ambiguous)
+    }
+
+    @Test
+    fun `answer key marker is required for document-wide answer extraction`() {
+        assertTrue(StudioImageAndPdfEngine.hasAnswerKeyMarker("CEVAP ANAHTARI"))
+        assertFalse(StudioImageAndPdfEngine.hasAnswerKeyMarker("1-A 2-C"))
+    }
+
+    @Test
     fun `ellipsis in question text does not skip question page`() {
         assertFalse(
             StudioImageAndPdfEngine.shouldSkipQuestionPage(

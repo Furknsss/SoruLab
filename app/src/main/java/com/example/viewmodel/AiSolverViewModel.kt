@@ -122,9 +122,7 @@ private data class QuestionOcrClassification(
     val subjectName: String,
     val topicName: String,
     val difficulty: String,
-    val targetLevel: String,
-    val usedLocalOcr: Boolean = false,
-    val answerKeyQuestionNumber: Int? = null
+    val targetLevel: String
 )
 
 private data class PageQuestionCandidate(
@@ -136,7 +134,6 @@ private data class PageQuestionCandidate(
 private data class PdfPageOcrLayout(
     val text: String = "",
     val headerText: String = "",
-    val footerText: String = "",
     val questionNumberAnchors: List<QuestionNumberAnchor> = emptyList(),
     val optionAnchors: List<QuestionOptionAnchor> = emptyList()
 )
@@ -150,110 +147,14 @@ data class BatchPdfCropState(
     val warningMessage: String? = null
 )
 
-private data class PdfAiStatus(
-    @Volatile var unavailableReason: String? = null,
-    @Volatile var bookBlueprintWarning: String? = null,
-    @Volatile var pageFallbackFailureCount: Int = 0,
-    @Volatile var pageFallbackRejectedQuestionCount: Int = 0,
-    @Volatile var localOcrFailureCount: Int = 0,
-    @Volatile var pageFallbackDisabled: Boolean = false
-) {
-    private var transientFailureCount = 0
-
-    @Synchronized
-    fun shouldDisableAfterRepeatedFailure(): Boolean {
-        transientFailureCount++
-        return transientFailureCount >= 3
-    }
-}
+private data class PdfLocalProcessingStatus(
+    @Volatile var ocrFailureCount: Int = 0,
+)
 
 class AiSolverViewModel : ViewModel() {
 
     private val generativeModel by lazy {
         Firebase.ai.generativeModel("gemini-3.8-flash")
-    }
-
-    private val answerKeySchema = Schema.obj(
-        mapOf(
-            "testTitle" to Schema.string("Test veya bölüm başlığı"),
-            "answers" to Schema.array(
-                Schema.obj(
-                    mapOf(
-                        "orijinalSoruNo" to Schema.integer("Kitaptaki soru numarası (1, 2, 3...)"),
-                        "correctOption" to Schema.enumeration(
-                            listOf("A", "B", "C", "D", "E"),
-                            "Cevap anahtarındaki doğru şık"
-                        )
-                    )
-                ),
-                "Kitap sonundaki veya sayfa altındaki cevap anahtarı eşleşmeleri"
-            )
-        )
-    )
-
-    private val answerKeyExtractorModel by lazy {
-        Firebase.ai.generativeModel(
-            modelName = "gemini-3.8-flash",
-            generationConfig = generationConfig {
-                responseMimeType = "application/json"
-                responseSchema = answerKeySchema
-            }
-        )
-    }
-
-    /**
-     * High-Speed Schema for PDF Upload (Rule 2 & Rule 4):
-     * - Automatically detects `kitapAdi`, `ders`, `konu` from the PDF page
-     * - Detects questions (`sorular`) and crops excluding original question numbers (`box_2d`)
-     * - Matches `orijinalSoruNo` and `dogruSecenek` with the Answer Key
-     */
-    private val fastPageQuestionsSchema = Schema.obj(
-        properties = mapOf(
-            "kitapAdi" to Schema.string("Sayfadan veya üst başlıktan tespit edilen kaynak kitap/deneme adı (Örn: 3D AYT Matematik Soru Bankası)"),
-            "sinavTuru" to Schema.string("TYT veya AYT"),
-            "ders" to Schema.string("Ders adı: Matematik, Geometri, Fizik, Kimya, Biyoloji veya Türkçe"),
-            "konu" to Schema.string("Konu adı (Örn: Temel Kavramlar, Türev, Bağıl Hareket, Üçgende Alan, Paragrafta Anlam)"),
-            "pageAnswerKey" to Schema.array(
-                Schema.obj(
-                    mapOf(
-                        "orijinalSoruNo" to Schema.integer("Soru numarası (1, 2, 3...)"),
-                        "dogruSecenek" to Schema.string("Doğru şık: A, B, C, D veya E")
-                    )
-                ),
-                "Eğer bu sayfanın altında veya köşesinde cevap anahtarı şeridi varsa soru-şık listesi"
-            ),
-            "sorular" to Schema.array(
-                Schema.obj(
-                    properties = mapOf(
-                        "orijinalSoruNo" to Schema.integer("PDF'teki orijinal soru numarası (1, 2, 3...). Cevap anahtarı eşleştirmesi içindir."),
-                        "box_2d" to Schema.array(
-                            Schema.integer("0-1000 arası koordinat"),
-                            "Sırasıyla [ymin, xmin, ymax, xmax] (0-1000 ölçeğinde). PDF'teki eski soru numarasını (Örn: '1.', '7.') dışarıda bırakan, sadece soru gövdesi, şekiller ve A-E şıklarını kapsayan koordinatlar."
-                        ),
-                        "soruMetni" to Schema.string("Görselden okunabilen soru kökü ve şıklar; okunmayan yerleri uydurma"),
-                        "hasQuestionStemOrFigure" to Schema.boolean("Soru kökü veya soruya ait şekil/grafik bulunuyor mu?"),
-                        "hasAllFiveOptions" to Schema.boolean("A, B, C, D ve E şıklarının tamamı bu soru bloğunda bulunuyor mu?"),
-                        "zorluk" to Schema.string("Kolay, Orta, ÖSYM, Zor veya Çok Zor"),
-                        "ders" to Schema.string("Bu sorunun dersi: Matematik, Geometri, Fizik, Kimya, Biyoloji veya Türkçe"),
-                        "konu" to Schema.string("Bu sorunun konusu (Örn: Temel Kavramlar, Türev, Bağıl Hareket)"),
-                        "orijinalSoruNo" to Schema.integer("Görselde açıkça görünen basılı soru numarası; görünmüyorsa alanı üretme")
-                    ),
-                    optionalProperties = listOf("ders", "konu", "orijinalSoruNo")
-                ),
-                "Sayfada tespit edilen tüm sorular"
-            )
-        ),
-        optionalProperties = listOf("kitapAdi", "pageAnswerKey")
-    )
-
-    private val pageQuestionsExtractorModel by lazy {
-        Firebase.ai.generativeModel(
-            modelName = "gemini-3.8-flash",
-            generationConfig = generationConfig {
-                responseMimeType = "application/json"
-                responseSchema = fastPageQuestionsSchema
-            }
-        )
     }
 
     private val twinQuestionSchema = Schema.obj(
@@ -275,29 +176,6 @@ class AiSolverViewModel : ViewModel() {
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
                 responseSchema = twinQuestionSchema
-            }
-        )
-    }
-
-    private val questionOcrSchema = Schema.obj(
-        properties = mapOf(
-            "questionText" to Schema.string("Soru kökü ve A-E şıkları dahil, görseldeki sorunun OCR metni"),
-            "subjectName" to Schema.string("Soruya ait YKS dersi"),
-            "topicName" to Schema.string("Soruya ait müfredat konusu"),
-            "hasQuestionStemOrFigure" to Schema.boolean("Soru kökü veya soruya ait şekil/grafik bulunuyor mu?"),
-            "hasAllFiveOptions" to Schema.boolean("A, B, C, D ve E şıklarının tamamı bu soru bloğunda bulunuyor mu?"),
-            "originalQuestionNumber" to Schema.integer("Görselde açıkça görünen basılı soru numarası; görünmüyorsa alanı üretme"),
-            "difficulty" to Schema.string("Soru zorluğu: Kolay, Orta, ÖSYM, Zor veya Çok Zor")
-        ),
-        optionalProperties = listOf("difficulty", "originalQuestionNumber")
-    )
-
-    private val questionOcrModel by lazy {
-        Firebase.ai.generativeModel(
-            modelName = "gemini-3.8-flash",
-            generationConfig = generationConfig {
-                responseMimeType = "application/json"
-                responseSchema = questionOcrSchema
             }
         )
     }
@@ -625,13 +503,13 @@ class AiSolverViewModel : ViewModel() {
         visualDifficultyHint: String,
         hasDiagramOrGraph: Boolean,
         lineCountEstimate: Int,
-        aiStatus: PdfAiStatus
+        processingStatus: PdfLocalProcessingStatus
     ): QuestionOcrClassification {
         val questionBitmap = withContext(Dispatchers.IO) {
             StudioImageAndPdfEngine.getCachedBitmap(context, imagePath, maxDimension = 1440)
         }
         if (questionBitmap == null) {
-            aiStatus.localOcrFailureCount++
+            processingStatus.ocrFailureCount++
             return buildQuestionOcrClassification(
                 questionText = "",
                 examTypeHint = examTypeHint,
@@ -640,63 +518,8 @@ class AiSolverViewModel : ViewModel() {
                 trustSuggestedTopic = false,
                 hasDiagramOrGraph = hasDiagramOrGraph,
                 lineCountEstimate = lineCountEstimate,
-                visualDifficultyHint = visualDifficultyHint,
-                usedLocalOcr = true
+                visualDifficultyHint = visualDifficultyHint
             )
-        }
-
-        if (aiStatus.unavailableReason == null) {
-                try {
-                    val catalogTopics = SoruLabCatalog.allSubjects
-                        .filter { it.examType.name.equals(examTypeHint, ignoreCase = true) }
-                        .joinToString("\n") { subject ->
-                            "${subject.name}: ${subject.topics.joinToString(", ") { it.name }}"
-                        }
-                    val prompt = buildString {
-                        appendLine("Ekli kırpılmış görseldeki tek YKS sorusunu OCR ile eksiksiz oku.")
-                        appendLine("Matematiksel sembolleri, üsleri, kesirleri, şekil/tablo açıklamalarını ve A), B), C), D), E) şıklarını koru.")
-                        appendLine("Görselde basılı soru numarası açıkça görünüyorsa originalQuestionNumber alanına yaz; yoksa tahmin etme.")
-                        appendLine("Ders ve konu adını aşağıdaki müfredattan seç; konu adını aynen yaz.")
-                        appendLine(catalogTopics)
-                        appendLine("Kitap bağlamı (yalnızca ipucu): $examTypeHint $subjectNameHint")
-                        appendLine("Yalnızca istenen JSON alanlarını doldur.")
-                    }
-                    val response = withTimeout(30_000L) {
-                        questionOcrModel.generateContent(
-                            content {
-                                image(questionBitmap)
-                                text(prompt)
-                            }
-                        )
-                    }
-                    val obj = JSONObject(cleanJsonResponse(response.text.orEmpty()))
-                    val classification = buildQuestionOcrClassification(
-                        questionText = obj.optString("questionText", "").trim(),
-                        examTypeHint = examTypeHint,
-                        subjectNameHint = subjectNameHint,
-                        suggestedTopicName = obj.optString("topicName", "").trim().ifBlank { pageTopicHint },
-                        trustSuggestedTopic = obj.optString("topicName", "").isNotBlank(),
-                        hasDiagramOrGraph = hasDiagramOrGraph,
-                        lineCountEstimate = lineCountEstimate,
-                        visualDifficultyHint = visualDifficultyHint,
-                        usedLocalOcr = false
-                    )
-                    return classification.copy(
-                        answerKeyQuestionNumber = obj.optInt("originalQuestionNumber", 0).takeIf { it > 0 }
-                    )
-                } catch (e: TimeoutCancellationException) {
-                    if (aiStatus.shouldDisableAfterRepeatedFailure()) {
-                        aiStatus.unavailableReason = "Gemini art arda yanıt vermedi; kalan sorular cihaz içi OCR ile aktarılacak."
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: OutOfMemoryError) {
-                    aiStatus.unavailableReason = "Bellek sınırı nedeniyle Gemini OCR kullanılamadı; cihaz içi OCR deneniyor."
-                } catch (e: Exception) {
-                    if (shouldDisableGeminiForPdf(e) || aiStatus.shouldDisableAfterRepeatedFailure()) {
-                        aiStatus.unavailableReason = describeGeminiFailure(e)
-                    }
-                }
         }
 
         val localText = try {
@@ -704,10 +527,10 @@ class AiSolverViewModel : ViewModel() {
         } catch (e: CancellationException) {
             throw e
         } catch (_: OutOfMemoryError) {
-            aiStatus.localOcrFailureCount++
+            processingStatus.ocrFailureCount++
             ""
         } catch (_: Exception) {
-            aiStatus.localOcrFailureCount++
+            processingStatus.ocrFailureCount++
             ""
         }
         return buildQuestionOcrClassification(
@@ -718,14 +541,7 @@ class AiSolverViewModel : ViewModel() {
             trustSuggestedTopic = false,
             hasDiagramOrGraph = hasDiagramOrGraph,
             lineCountEstimate = lineCountEstimate,
-            visualDifficultyHint = visualDifficultyHint,
-            usedLocalOcr = true
-        ).copy(
-            answerKeyQuestionNumber = Regex("""(?m)^\s*(\d{1,3})[.)]?(?=\s|$)""")
-                .find(localText)
-                ?.groupValues
-                ?.getOrNull(1)
-                ?.toIntOrNull()
+            visualDifficultyHint = visualDifficultyHint
         )
     }
 
@@ -739,9 +555,6 @@ class AiSolverViewModel : ViewModel() {
         val lines = recognized.textBlocks.flatMap { it.lines }
         val headerText = lines
             .filter { (it.boundingBox?.top ?: Int.MAX_VALUE) <= bitmap.height * 0.07f }
-            .joinToString("\n") { it.text }
-        val footerText = lines
-            .filter { (it.boundingBox?.bottom ?: Int.MIN_VALUE) >= bitmap.height * 0.94f }
             .joinToString("\n") { it.text }
         val anchorRegex = Regex("""^\s*([1-9]|[1-3][0-9])[\.\-\)]\s*""")
         val numberRegex = Regex("""^\s*(?:[1-9]|[1-3][0-9])[\.\-\)]?$""")
@@ -778,7 +591,6 @@ class AiSolverViewModel : ViewModel() {
         return PdfPageOcrLayout(
             text = recognized.text,
             headerText = headerText,
-            footerText = footerText,
             questionNumberAnchors = anchors,
             optionAnchors = options
         )
@@ -803,8 +615,7 @@ class AiSolverViewModel : ViewModel() {
         trustSuggestedTopic: Boolean,
         hasDiagramOrGraph: Boolean,
         lineCountEstimate: Int,
-        visualDifficultyHint: String,
-        usedLocalOcr: Boolean
+        visualDifficultyHint: String
     ): QuestionOcrClassification {
         val topicClassification = SoruLabCatalog.classifyQuestionTopicFromText(
             examTypeHint = examTypeHint,
@@ -852,8 +663,7 @@ class AiSolverViewModel : ViewModel() {
                 .trim(),
             topicName = topicClassification?.second?.name.orEmpty(),
             difficulty = difficulty.label,
-            targetLevel = targetLevel,
-            usedLocalOcr = usedLocalOcr
+            targetLevel = targetLevel
         )
     }
 
@@ -876,163 +686,6 @@ class AiSolverViewModel : ViewModel() {
             score == 2 -> DifficultyLevel.OSYM
             score == 3 -> DifficultyLevel.ZOR
             else -> DifficultyLevel.COK_ZOR
-        }
-    }
-
-    private fun shouldDisableGeminiForPdf(error: Exception): Boolean {
-        val details = "${error.javaClass.simpleName} ${error.message.orEmpty()}".lowercase()
-        return listOf(
-            "invalid api key",
-            "api key not valid",
-            "invalid token",
-            "invalid credentials",
-            "unauthenticated",
-            "permission_denied",
-            "app check",
-            "401",
-            "403",
-            "quota",
-            "429",
-            "resource_exhausted",
-            "rate limit"
-        ).any(details::contains)
-    }
-
-    private suspend fun extractQuestionsFromPageWithGemini(
-        context: Context,
-        pageBitmap: Bitmap,
-        pageIndex: Int,
-        pageInfo: StudioImageAndPdfEngine.LocalPageMapEntry,
-        aiStatus: PdfAiStatus
-    ): List<PageQuestionCandidate> {
-        if (aiStatus.unavailableReason != null || aiStatus.pageFallbackDisabled) return emptyList()
-        try {
-            val catalogTopics = SoruLabCatalog.allSubjects
-                .filter { it.examType.name.equals(pageInfo.examType, ignoreCase = true) }
-                .joinToString("\n") { subject ->
-                    "${subject.name}: ${subject.topics.joinToString(", ") { it.name }}"
-                }
-            val prompt = buildString {
-                appendLine("Bu PDF sayfasındaki tüm soru bloklarını tek tek bul ve JSON şemasına göre çıkar.")
-                appendLine("Her soru için koordinatları [ymin, xmin, ymax, xmax] olarak 0-1000 aralığında ver; soru kökü, varsa şekil ve görünen şıkları tamamen kapsa.")
-                appendLine("Soru numarasını PDF'te basılı olan numaradan al. Okunmayan soru metnini veya cevabı uydurma.")
-                appendLine("Ders ve konu için aşağıdaki müfredatı kullan; emin değilsen sayfa bağlamını izle.")
-                appendLine(catalogTopics)
-                appendLine("Sayfa bağlamı: ${pageInfo.examType} ${pageInfo.subjectName} ${pageInfo.topicName}")
-                appendLine("Cevap anahtarı sayfada açıkça görünmüyorsa cevap üretme.")
-            }
-            val response = withTimeout(30_000L) {
-                pageQuestionsExtractorModel.generateContent(
-                    content {
-                        image(pageBitmap)
-                        text(prompt)
-                    }
-                )
-            }
-            val root = JSONObject(cleanJsonResponse(response.text.orEmpty()))
-            val questions = root.optJSONArray("sorular")
-                ?: throw IllegalStateException("Gemini sayfa yanıtında soru listesi bulunamadı.")
-            val pageExamType = pageInfo.examType
-            val pageSubject = pageInfo.subjectName
-            val pageTopic = pageInfo.topicName
-            val candidates = mutableListOf<PageQuestionCandidate>()
-            for (index in 0 until questions.length()) {
-                val question = questions.optJSONObject(index)
-                if (question == null) {
-                    aiStatus.pageFallbackRejectedQuestionCount++
-                    continue
-                }
-                val boxJson = question.optJSONArray("box_2d")
-                if (boxJson == null || boxJson.length() != 4) {
-                    aiStatus.pageFallbackRejectedQuestionCount++
-                    continue
-                }
-                val box = (0 until boxJson.length()).map { boxJson.optInt(it, -1) }
-                if (box.any { it !in 0..1000 } ||
-                    box[2] <= box[0] ||
-                    box[3] <= box[1]
-                ) {
-                    aiStatus.pageFallbackRejectedQuestionCount++
-                    continue
-                }
-
-                val subject = pageSubject
-                val topic = question.optString("konu", pageTopic).ifBlank { pageTopic }
-                val examType = pageExamType
-                val difficulty = question.optString("zorluk", pageInfo.difficulty).ifBlank { pageInfo.difficulty }
-                val cropBox = StudioImageAndPdfEngine.cropQuestionFromNormalizedBox(
-                    context = context,
-                    pageBitmap = pageBitmap,
-                    box2d = box,
-                    pageIndex = pageIndex,
-                    questionOrder = index + 1,
-                    difficulty = difficulty
-                )
-                if (cropBox == null) {
-                    aiStatus.pageFallbackRejectedQuestionCount++
-                    continue
-                }
-                val classification = buildQuestionOcrClassification(
-                    questionText = question.optString("soruMetni", "").trim(),
-                    examTypeHint = examType,
-                    subjectNameHint = subject,
-                    suggestedTopicName = topic,
-                    trustSuggestedTopic = question.optString("konu", "").isNotBlank(),
-                    hasDiagramOrGraph = false,
-                    lineCountEstimate = 6,
-                    visualDifficultyHint = difficulty,
-                    usedLocalOcr = false
-                )
-                candidates.add(
-                    PageQuestionCandidate(
-                        cropBox = cropBox,
-                        classification = classification,
-                        answerKeyQuestionNumber = question.optInt("orijinalSoruNo", 0).takeIf { it > 0 }
-                    )
-                )
-            }
-            return candidates
-        } catch (e: TimeoutCancellationException) {
-            aiStatus.pageFallbackFailureCount++
-            aiStatus.pageFallbackDisabled = true
-            return emptyList()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: OutOfMemoryError) {
-            aiStatus.pageFallbackFailureCount++
-            aiStatus.pageFallbackDisabled = true
-            return emptyList()
-        } catch (e: Exception) {
-            aiStatus.pageFallbackFailureCount++
-            aiStatus.pageFallbackDisabled = true
-            if (shouldDisableGeminiForPdf(e)) {
-                aiStatus.unavailableReason = describeGeminiFailure(e)
-            }
-            return emptyList()
-        }
-    }
-
-    private fun describeGeminiFailure(error: Exception): String {
-        val details = "${error.javaClass.simpleName} ${error.message.orEmpty()}".lowercase()
-        return when {
-            listOf(
-                "invalid api key",
-                "api key not valid",
-                "invalid token",
-                "invalid credentials",
-                "unauthenticated",
-                "permission_denied",
-                "app check",
-                "401",
-                "403"
-            )
-                .any(details::contains) ->
-                "Firebase/Gemini doğrulaması başarısız; google-services.json, Generative Language API ve App Check yapılandırması kontrol edilmeli."
-            listOf("quota", "429", "resource_exhausted", "rate limit").any(details::contains) ->
-                "Gemini kullanım kotası dolmuş."
-            listOf("timeout", "timed out", "unavailable", "network", "connection").any(details::contains) ->
-                "Gemini servisine ağ üzerinden ulaşılamadı."
-            else -> "Gemini OCR isteği başarısız oldu (${error.javaClass.simpleName})."
         }
     }
 
@@ -1106,54 +759,6 @@ class AiSolverViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Automatic Answer Key OCR from the last page(s) of the PDF
-     */
-    suspend fun extractAnswerKeyFromBookPages(
-        answerKeyBitmaps: List<Bitmap>,
-        testNumberOrTitleHint: String = ""
-    ): Map<Int, String> {
-        if (answerKeyBitmaps.isEmpty()) return emptyMap()
-        val combinedMap = mutableMapOf<Int, String>()
-        val prompt = buildString {
-            appendLine("Bu görsel bir YKS soru bankası veya deneme kitabının CEVAP ANAHTARI sayfasıdır.")
-            if (testNumberOrTitleHint.isNotBlank()) {
-                appendLine("Özellikle '$testNumberOrTitleHint' başlıklı testin cevap anahtarını oku.")
-            }
-            appendLine("Her soru numarasını (orijinalSoruNo: 1, 2, 3...) ve karşısındaki doğru seçeneği (correctOption: A, B, C, D veya E) eksiksiz ve %100 doğru olarak JSON formatında çıkar.")
-        }
-
-        for (bmp in answerKeyBitmaps) {
-            try {
-                val response = withTimeout(45_000L) {
-                    answerKeyExtractorModel.generateContent(
-                        content {
-                            image(bmp)
-                            text(prompt)
-                        }
-                    )
-                }
-                val rawJson = response.text.orEmpty()
-                if (rawJson.isNotBlank()) {
-                    val obj = JSONObject(rawJson)
-                    val arr = obj.optJSONArray("answers")
-                    if (arr != null) {
-                        for (i in 0 until arr.length()) {
-                            val item = arr.optJSONObject(i) ?: continue
-                            val qNum = item.optInt("orijinalSoruNo", item.optInt("questionNumber", 0))
-                            val opt = item.optString("correctOption", "").uppercase()
-                            if (qNum > 0 && opt in listOf("A", "B", "C", "D", "E")) {
-                                combinedMap[qNum] = opt
-                            }
-                        }
-                    }
-                }
-            } catch (_: Exception) {
-            }
-        }
-        return combinedMap
-    }
-
     private fun cleanJsonResponse(raw: String): String {
         val trimmed = raw.trim()
         if (trimmed.startsWith("```")) {
@@ -1163,52 +768,8 @@ class AiSolverViewModel : ViewModel() {
         return trimmed
     }
 
-    private val singleShotBookBlueprintSchema = Schema.obj(
-        properties = mapOf(
-            "kitapAdi" to Schema.string("PDF'ten tespit edilen kitap veya deneme adı"),
-            "sinavTuru" to Schema.string("TYT veya AYT"),
-            "ders" to Schema.string("Matematik, Geometri, Fizik, Kimya, Biyoloji veya Türkçe"),
-            "sayfaHaritasi" to Schema.array(
-                Schema.obj(
-                    properties = mapOf(
-                        "baslangicSayfa" to Schema.integer("1-tabanlı başlangıç sayfası"),
-                        "bitisSayfa" to Schema.integer("1-tabanlı bitiş sayfası"),
-                        "atla" to Schema.boolean("Kapak veya içindekiler sayfası ise true, soru testi ise false"),
-                        "ders" to Schema.string("Matematik, Geometri, Fizik, Kimya, Biyoloji veya Türkçe"),
-                        "konu" to Schema.string("YKS müfredat konusu (Örn: Fonksiyonlarda Uygulamalar, Polinomlar, Logaritma, Diziler, Türev, İntegral, Olasılık)"),
-                        "zorluk" to Schema.string("5'li zorluk seviyesi: Kolay, Orta, ÖSYM, Zor veya Çok Zor")
-                    ),
-                    optionalProperties = listOf("atla")
-                ),
-                "Kitaptaki testlerin sayfa, ders, konu ve 5'li zorluk haritası"
-            ),
-            "cevapAnahtari" to Schema.array(
-                Schema.obj(
-                    mapOf(
-                        "soruNo" to Schema.integer("Soru sıra numarası (1, 2, 3...)"),
-                        "dogruSecenek" to Schema.string("A, B, C, D veya E")
-                    )
-                ),
-                "Tespit edilen cevap anahtarı eşleşmeleri"
-            )
-        ),
-        optionalProperties = listOf("sayfaHaritasi", "cevapAnahtari")
-    )
-
-    private val singleShotBookBlueprintModel by lazy {
-        Firebase.ai.generativeModel(
-            modelName = "gemini-3.8-flash",
-            generationConfig = generationConfig {
-                responseMimeType = "application/json"
-                responseSchema = singleShotBookBlueprintSchema
-            }
-        )
-    }
-
     /**
-     * Builds a local PDF blueprint, optionally enriches it with Gemini, then crops questions locally.
-     * Gemini OCR is preferred; if it is unavailable or cannot validate a crop, bundled ML Kit OCR
-     * continues the import without inventing question text or answer keys.
+     * Builds a local PDF blueprint, recognizes text on-device, and crops question regions locally.
      */
     fun extractFullPdfFastParallel(
         context: Context,
@@ -1229,7 +790,7 @@ class AiSolverViewModel : ViewModel() {
         viewModelScope.launch {
             val reusableBitmapRef = arrayOfNulls<Bitmap>(1)
             val reusablePixelsRef = arrayOfNulls<IntArray>(1)
-            val aiStatus = PdfAiStatus()
+            val processingStatus = PdfLocalProcessingStatus()
             var completionSent = false
             fun completeOnce(items: List<ExtractedPdfQuestionItem>, coverPath: String, title: String) {
                 if (completionSent) return
@@ -1279,13 +840,14 @@ class AiSolverViewModel : ViewModel() {
                 }
 
                 val mergedAnswerKey = localBlueprint.answerKeyMap.toMutableMap()
-                val mergedPageMap = localBlueprint.pageMap.toMutableMap()
-                var finalBookTitle = localBlueprint.detectedBookTitle
+                val ambiguousAnswerNumbers = localBlueprint.ambiguousAnswerNumbers.toMutableSet()
+                val mergedPageMap = localBlueprint.pageMap
+                val finalBookTitle = localBlueprint.detectedBookTitle
                 var defaultExamType = localBlueprint.defaultExamType
                 var lockedBookSubject = StudioImageAndPdfEngine.detectSubjectNameFromText(
                     "$resolvedDisplayName $publisherName"
                 ) ?: localBlueprint.defaultSubjectName.takeIf(String::isNotBlank)
-                var defaultSubject = lockedBookSubject ?: localBlueprint.defaultSubjectName
+                val defaultSubject = lockedBookSubject ?: localBlueprint.defaultSubjectName
                 val explicitlyTytBook = Regex("""(?i)(?:^|[^A-Z])TYT(?:$|[^A-Z])""")
                     .containsMatchIn(
                         "$resolvedDisplayName $publisherName ${localBlueprint.extractedTextSampleForAi}"
@@ -1294,161 +856,17 @@ class AiSolverViewModel : ViewModel() {
                     defaultExamType = "AYT"
                 }
 
-                // STEP 2: Single-Shot (1 Request) AI Book & Answer Key Analysis (Quota-Safe: never fails on Quota Exceeded!)
+                // STEP 2: Use the local PDF text layer and curriculum dictionary.
                 _batchProgressPercent.value = 14
-                try {
-                    val catalogSummary = SoruLabCatalog.allSubjects.joinToString("\n") { subj ->
-                        "${subj.examType.name} ${subj.name}: ${subj.topics.joinToString(", ") { it.name }}"
-                    }
-                    val singleShotPrompt = buildString {
-                        appendLine("Sen bir YKS kitap ve cevap anahtarı yapılandırma uzmanısın.")
-                        appendLine("Yayınevi: $publisherName")
-                        appendLine("Dosya Adı: $resolvedDisplayName")
-                        appendLine("Toplam Sayfa Sayısı: $totalPdfPages")
-                        if (localBlueprint.extractedTextSampleForAi.isNotBlank()) {
-                            appendLine("PDF'ten Çıkarılan Başlık ve Cevap Anahtarı Metni:")
-                            appendLine(localBlueprint.extractedTextSampleForAi.take(3500))
-                        }
-                        appendLine("YKS Müfredat Sözlüğü:")
-                        appendLine(catalogSummary)
-                        appendLine("KESİN KURAL 1: Dosya adında veya metinde 'AYT', 'İleri Matematik', 'Fonksiyonlarda Uygulama', 'Türev', 'İntegral', 'Limit', 'Trigonometri', 'Logaritma', 'Diziler', 'Parabol', 'Polinom', 'Bağıl Hareket', 'Atışlar', 'Momentum', 'Tork' geçiyorsa sinavTuru KESİNLİKLE 'AYT' olmalıdır (Asla TYT yazma!).")
-                        appendLine("KESİN KURAL 2: Zorluk seviyelerini 5'li yapıda sınıflandır: 'Kolay', 'Orta', 'ÖSYM' (ÖSYM Tadında/Tarzı/Birebir ÖSYM), 'Zor', 'Çok Zor' (Tümevarım/Barışça/Orijinal/Derece).")
-                        appendLine("Bu kaynağın kitap adını (`kitapAdi`), sınav türünü (`sinavTuru`), dersini (`ders`), sayfa haritasını (`sayfaHaritasi`) ve cevap anahtarını (`cevapAnahtari`) JSON olarak çıkar.")
-                    }
+                _batchStatusText.value =
+                    "Yerel PDF metin haritası hazırlandı • ML Kit OCR ve SoruLab kırpma motoru başlatılıyor..."
 
-                    val tailBitmaps = withContext(Dispatchers.IO) {
-                        StudioImageAndPdfEngine.extractLastPagesForAnswerKeyOcr(
-                            context = context,
-                            pdfUri = pdfUri,
-                            maxTailPages = 1
-                        )
-                    }
-
-                    val aiResponse = try {
-                        withTimeout(18_000L) {
-                            val tailBmp = tailBitmaps.firstOrNull()
-                            if (tailBmp != null) {
-                                singleShotBookBlueprintModel.generateContent(
-                                    content {
-                                        image(tailBmp)
-                                        text(singleShotPrompt)
-                                    }
-                                )
-                            } else {
-                                singleShotBookBlueprintModel.generateContent(singleShotPrompt)
-                            }
-                        }
-                    } finally {
-                        tailBitmaps.forEach { bitmap ->
-                            if (!bitmap.isRecycled) bitmap.recycle()
-                        }
-                    }
-
-                    val rawJson = cleanJsonResponse(aiResponse.text.orEmpty())
-                    if (rawJson.isNotBlank()) {
-                        val obj = JSONObject(rawJson)
-                        val aiTitle = obj.optString("kitapAdi", "").trim()
-                        if (aiTitle.length >= 4) {
-                            finalBookTitle = aiTitle
-                        }
-                        val aiExam = obj.optString("sinavTuru", "").uppercase()
-                        // Never downgrade a locally verified AYT book to TYT!
-                        if (defaultExamType == "AYT" || aiExam.contains("AYT") || finalBookTitle.contains("AYT", ignoreCase = true)) {
-                            defaultExamType = "AYT"
-                        } else if (aiExam.contains("TYT")) {
-                            defaultExamType = "TYT"
-                        }
-
-                        val aiDers = obj.optString("ders", "")
-                            .replace("TYT ", "", ignoreCase = true)
-                            .replace("AYT ", "", ignoreCase = true)
-                            .trim()
-                        if (lockedBookSubject != null) {
-                            defaultSubject = lockedBookSubject
-                        } else if (aiDers.isNotBlank()) {
-                            defaultSubject = aiDers
-                        }
-
-                        val keyArr = obj.optJSONArray("cevapAnahtari")
-                        if (keyArr != null) {
-                            for (i in 0 until keyArr.length()) {
-                                val kObj = keyArr.optJSONObject(i) ?: continue
-                                val sn = kObj.optInt("soruNo", 0)
-                                val opt = kObj.optString("dogruSecenek", "").uppercase().trim()
-                                if (sn > 0 && opt in listOf("A", "B", "C", "D", "E")) {
-                                    mergedAnswerKey[sn] = opt
-                                }
-                            }
-                        }
-
-                        val mapArr = obj.optJSONArray("sayfaHaritasi")
-                        if (mapArr != null && (mapArr.length() >= 4 || totalPdfPages <= 18)) {
-                            for (i in 0 until mapArr.length()) {
-                                val mObj = mapArr.optJSONObject(i) ?: continue
-                                val startP = (mObj.optInt("baslangicSayfa", 1) - 1).coerceIn(0, totalPdfPages - 1)
-                                val endP = (mObj.optInt("bitisSayfa", startP + 1) - 1).coerceIn(startP, totalPdfPages - 1)
-                                if (totalPdfPages > 24 && (endP - startP) > (totalPdfPages / 2)) continue
-                                val mDers = (lockedBookSubject ?: mObj.optString("ders", defaultSubject))
-                                    .replace("TYT ", "", ignoreCase = true)
-                                    .replace("AYT ", "", ignoreCase = true)
-                                    .trim()
-                                    .ifBlank { defaultSubject }
-                                val mKonuRaw = mObj.optString("konu", "").trim()
-                                val matchedTopicForRange = if (mKonuRaw.isNotBlank()) {
-                                    SoruLabCatalog.matchBestTopic(
-                                        examTypeHint = defaultExamType,
-                                        subjectNameHint = mDers,
-                                        topicOrQuestionText = mKonuRaw
-                                    )
-                                } else {
-                                    null
-                                }
-                                val mZorluk = SoruLabCatalog.classifyDifficulty5FromText(
-                                    rawDifficultyHint = mObj.optString("zorluk", ""),
-                                    headerOrQuestionText = "$mKonuRaw $finalBookTitle",
-                                    questionIndexInPage = i
-                                ).label
-
-                                for (p in startP..endP) {
-                                    mergedPageMap[p] = StudioImageAndPdfEngine.LocalPageMapEntry(
-                                        pageIndex = p,
-                                        isSkipPage = false,
-                                        examType = defaultExamType,
-                                        subjectName = mDers,
-                                        topicName = matchedTopicForRange?.second?.name.orEmpty(),
-                                        difficulty = mZorluk
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        aiStatus.bookBlueprintWarning =
-                            "Gemini kitap haritası yanıtı boş döndü; soru başına Gemini analizi sürdürülecek."
-                    }
-                } catch (e: TimeoutCancellationException) {
-                    aiStatus.bookBlueprintWarning =
-                        "Gemini kitap haritası zaman aşımına uğradı; soru başına Gemini analizi sürdürülecek."
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    if (shouldDisableGeminiForPdf(e)) {
-                        aiStatus.unavailableReason = describeGeminiFailure(e)
-                    } else {
-                        aiStatus.bookBlueprintWarning =
-                            "${describeGeminiFailure(e)} Soru başına Gemini analizi yine denenecek."
-                    }
-                }
-                aiStatus.unavailableReason?.let {
-                    _batchStatusText.value = "$it Gemini kullanılamadığı için yerel yedek analiz devrede."
-                }
-
-                // STEP 3: 100% Free & Unlimited Local Dual-Column Vector & Pixel Projection Cropping Loop
+                // STEP 3: On-device ML Kit OCR anchors plus SoruLab's local question-region cropper.
                 val resolvedPub = SoruLabPublisherPresets.resolvePublisher(publisherName, customPublishers)
                 val finalPubName = publisherName.ifBlank { resolvedPub.name }
                 val finalLogoUri = publisherLogoUri.ifBlank { resolvedPub.customLogoPath }
 
                 val allExtractedQuestions = mutableListOf<ExtractedPdfQuestionItem>()
-                var localOcrCount = 0
                 var pageRenderFailureCount = 0
 
                 val pageIndicesToScan = 0 until totalPdfPages
@@ -1479,11 +897,7 @@ class AiSolverViewModel : ViewModel() {
                                     lastProgressUpdateMs = nowMs
                                     val progressPct = 16 + (((scanPos + 1).toFloat() / totalPdfPages.coerceAtLeast(1).toFloat()) * 82f).toInt()
                                     _batchProgressPercent.value = progressPct.coerceIn(16, 98)
-                                    val analysisLabel = if (aiStatus.unavailableReason == null) {
-                                        "Gemini soru analizi • ML Kit konumlama"
-                                    } else {
-                                        "Yerel ML Kit yedek analizi • Gemini kullanılamıyor"
-                                    }
+                                    val analysisLabel = "Yerel ML Kit OCR • SoruLab kırpma"
                                     _batchStatusText.value = "Sayfa ${pageIdx + 1} / $totalPdfPages işleniyor • ${allExtractedQuestions.size} soru • $analysisLabel"
                                 }
 
@@ -1514,23 +928,28 @@ class AiSolverViewModel : ViewModel() {
                                     throw e
                                 } catch (_: OutOfMemoryError) {
                                     reusablePixelsRef[0] = null
-                                    aiStatus.localOcrFailureCount++
+                                    processingStatus.ocrFailureCount++
                                     PdfPageOcrLayout()
                                 } catch (_: Exception) {
-                                    aiStatus.localOcrFailureCount++
+                                    processingStatus.ocrFailureCount++
                                     PdfPageOcrLayout()
                                 }
-                                StudioImageAndPdfEngine.parseAnswerKeyRegex(pageLayout.footerText)
-                                    .forEach { (number, option) ->
-                                        mergedAnswerKey.putIfAbsent(number, option)
-                                    }
-                                if (StudioImageAndPdfEngine.shouldSkipQuestionPage(
-                                        text = pageLayout.text,
-                                        topHeaderText = pageLayout.headerText,
-                                        pageIndex = pageIdx,
-                                        totalPages = totalPdfPages
+                                val hasAnswerKeyMarker =
+                                    StudioImageAndPdfEngine.hasAnswerKeyMarker(pageLayout.text)
+                                if (hasAnswerKeyMarker) {
+                                    StudioImageAndPdfEngine.mergeAnswerKeyCandidates(
+                                        mergedAnswerKey,
+                                        ambiguousAnswerNumbers,
+                                        StudioImageAndPdfEngine.parseAnswerKeyCandidates(pageLayout.text)
                                     )
-                                ) {
+                                }
+                                val skipPage = StudioImageAndPdfEngine.shouldSkipQuestionPage(
+                                    text = pageLayout.text,
+                                    topHeaderText = pageLayout.headerText,
+                                    pageIndex = pageIdx,
+                                    totalPages = totalPdfPages
+                                )
+                                if (skipPage || hasAnswerKeyMarker) {
                                     continue
                                 }
 
@@ -1610,13 +1029,7 @@ class AiSolverViewModel : ViewModel() {
                                 }
 
                                 val pageCandidates = if (croppedBoxes.isEmpty()) {
-                                    extractQuestionsFromPageWithGemini(
-                                        context = context,
-                                        pageBitmap = pageBitmap,
-                                        pageIndex = pageIdx,
-                                        pageInfo = scanPageInfo,
-                                        aiStatus = aiStatus
-                                    )
+                                    emptyList()
                                 } else {
                                     val classifications = coroutineScope {
                                         val semaphore = Semaphore(2)
@@ -1632,7 +1045,7 @@ class AiSolverViewModel : ViewModel() {
                                                         visualDifficultyHint = cropBox.estimatedDifficulty5,
                                                         hasDiagramOrGraph = cropBox.hasDiagramOrGraph,
                                                         lineCountEstimate = cropBox.lineCountEstimate,
-                                                        aiStatus = aiStatus
+                                                        processingStatus = processingStatus
                                                     )
                                                 }
                                             }
@@ -1643,8 +1056,8 @@ class AiSolverViewModel : ViewModel() {
                                         PageQuestionCandidate(
                                             cropBox = cropBox,
                                             classification = classification,
-                                            answerKeyQuestionNumber = classification.answerKeyQuestionNumber
-                                                ?: cropBox.questionOrderInPage.takeIf { it > 0 }
+                                            answerKeyQuestionNumber = cropBox.questionOrderInPage
+                                                .takeIf { cropBox.hasPrintedQuestionNumber && it > 0 }
                                         )
                                     }
                                 }
@@ -1652,8 +1065,6 @@ class AiSolverViewModel : ViewModel() {
                                 for ((boxIdx, candidate) in pageCandidates.withIndex()) {
                                     val cropBox = candidate.cropBox
                                     val classification = candidate.classification
-                                    if (classification.usedLocalOcr) localOcrCount++
-
                                     val globalQuestionNum = allExtractedQuestions.size + 1
                                     val verifiedAnswer = resolveAnswerKeyOption(
                                         questionNumber = candidate.answerKeyQuestionNumber,
@@ -1698,45 +1109,25 @@ class AiSolverViewModel : ViewModel() {
                 }
 
                 if (allExtractedQuestions.isEmpty()) {
-                    val aiHint = aiStatus.unavailableReason?.let { " $it" }.orEmpty()
                     val pageHint = buildString {
                         if (pageRenderFailureCount > 0) {
                             append(" $pageRenderFailureCount sayfa işlenirken hata oluştu.")
                         }
-                        if (aiStatus.pageFallbackFailureCount > 0) {
-                            append(" Gemini sayfa taraması yanıt vermedi.")
-                        }
-                        if (aiStatus.pageFallbackRejectedQuestionCount > 0) {
-                            append(" ${aiStatus.pageFallbackRejectedQuestionCount} Gemini kırpma kutusu güvenli sınırları geçemedi.")
-                        }
-                        if (aiStatus.localOcrFailureCount > 0) {
-                            append(" Cihaz içi OCR ${aiStatus.localOcrFailureCount} soruda tamamlanamadı.")
+                        if (processingStatus.ocrFailureCount > 0) {
+                            append(" Cihaz içi OCR ${processingStatus.ocrFailureCount} soruda tamamlanamadı.")
                         }
                     }
-                    _batchErrorText.value = "PDF'te aktarılabilir soru bloğu bulunamadı.$pageHint$aiHint Kırpma alanını ve PDF kalitesini kontrol edip yeniden deneyin."
+                    _batchErrorText.value = "PDF'te aktarılabilir soru bloğu bulunamadı.$pageHint Kırpma alanını ve PDF kalitesini kontrol edip yeniden deneyin."
                     completeOnce(emptyList(), coverPath, finalBookTitle)
                     return@launch
                 }
 
                 val warnings = buildList {
-                    aiStatus.bookBlueprintWarning?.let { add(it) }
-                    aiStatus.unavailableReason?.let {
-                        add("$it Kitap aktarımı yerel ML Kit yedek analiziyle sürdürüldü.")
-                    }
-                    if (localOcrCount > 0 && aiStatus.unavailableReason == null) {
-                        add("$localOcrCount soruda Gemini soru analizi başarısız oldu; bu sorular yerel ML Kit OCR ile okundu.")
-                    }
-                    if (aiStatus.localOcrFailureCount > 0) {
-                        add("Cihaz içi OCR ${aiStatus.localOcrFailureCount} soruda tamamlanamadı; kırpılmış görseller yine aktarıldı.")
+                    if (processingStatus.ocrFailureCount > 0) {
+                        add("Cihaz içi OCR ${processingStatus.ocrFailureCount} soruda tamamlanamadı; kırpılmış görseller yine aktarıldı.")
                     }
                     if (pageRenderFailureCount > 0) {
                         add("$pageRenderFailureCount PDF sayfası işlenemedi; diğer sayfalar aktarıldı.")
-                    }
-                    if (aiStatus.pageFallbackFailureCount > 0) {
-                        add("Gemini sayfa taraması ${aiStatus.pageFallbackFailureCount} sayfada tamamlanamadı.")
-                    }
-                    if (aiStatus.pageFallbackRejectedQuestionCount > 0) {
-                        add("${aiStatus.pageFallbackRejectedQuestionCount} Gemini kırpma kutusu güvenli sınırları geçemedi.")
                     }
                 }
                 _batchWarningText.value = warnings.takeIf { it.isNotEmpty() }?.joinToString(" ")

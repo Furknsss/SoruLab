@@ -76,6 +76,70 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+private data class TwoColumnQuestionPage(
+    val left: List<YksQuestion>,
+    val right: List<YksQuestion>
+) {
+    val questions: List<YksQuestion> get() = left + right
+}
+
+private fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>): List<TwoColumnQuestionPage> {
+    if (questions.isEmpty()) return listOf(TwoColumnQuestionPage(emptyList(), emptyList()))
+    val pages = mutableListOf<TwoColumnQuestionPage>()
+    var index = 0
+
+    while (index < questions.size) {
+        val columns = listOf(mutableListOf<YksQuestion>(), mutableListOf<YksQuestion>())
+        repeat(2) {
+            var columnHeight = 0f
+            var columnCount = 0
+            while (index < questions.size && columnCount < 4) {
+                val question = questions[index]
+                val normalizedWidth = (question.normRight - question.normLeft).coerceAtLeast(0.08f)
+                val normalizedHeight = (question.normBottom - question.normTop).coerceAtLeast(0.04f)
+                val hasImage = question.croppedImagePath.isNotBlank() || !question.imageBase64.isNullOrBlank()
+                val estimatedHeight = if (
+                    !hasImage && normalizedWidth >= 0.98f && normalizedHeight >= 0.98f
+                ) {
+                    val contentLength = question.stemTop.length + question.stemBottom.length +
+                        question.bulletsOrSteps.sumOf { it.length }
+                    (0.28f + contentLength / 220f +
+                        if (question.visualType != QuestionVisualType.NONE) 0.42f else 0f)
+                        .coerceIn(0.28f, 1.1f)
+                } else {
+                    (normalizedHeight / normalizedWidth * 1.45f).coerceIn(0.16f, 1.3f)
+                }
+                val spacing = if (columnCount == 0) 0f else 0.13f
+                if (columnCount > 0 && columnHeight + spacing + estimatedHeight > 2.1f) break
+                columns[it] += question
+                columnHeight += spacing + estimatedHeight
+                columnCount++
+                index++
+            }
+        }
+        pages += TwoColumnQuestionPage(columns[0], columns[1])
+    }
+
+    if (pages.size > 1 && pages.last().questions.size == 1) {
+        val previous = pages[pages.lastIndex - 1]
+        if (previous.questions.size > 2) {
+            val moved = previous.right.lastOrNull() ?: previous.left.last()
+            pages[pages.lastIndex - 1] = if (previous.right.isNotEmpty()) {
+                previous.copy(right = previous.right.dropLast(1))
+            } else {
+                previous.copy(left = previous.left.dropLast(1))
+            }
+            val lastPage = pages.last()
+            pages[pages.lastIndex] = lastPage.copy(left = listOf(moved) + lastPage.left)
+        } else {
+            val finalQuestion = pages.last().questions.single()
+            pages[pages.lastIndex - 1] = previous.copy(right = previous.right + finalQuestion)
+            pages.removeAt(pages.lastIndex)
+        }
+    }
+    return pages
+}
+
 /**
  * 345 All Star 1-to-1 Test Çözüm, Optik Form, Test Sonu Fırça İzi (`✓`/`✗`),
  * `⋮` (Üç Nokta) Popover Menüsü, Yan Yana İkiz Soru Ekranı ve Başarı Durumu (Karne) Sayfası.
@@ -102,6 +166,7 @@ fun LiveSolvingBoardScreen(
     onFinishTest: () -> Unit,
     onGoToStatsTab: () -> Unit,
     onAskAiForQuestion: (YksQuestion) -> Unit,
+    onSolveTwinTest: () -> Unit = {},
     onGenerateTwinQuestion: (YksQuestion, (TwinQuestionModalData) -> Unit) -> Unit = { _, _ -> },
     onGenerateSolutionForQuestion: (YksQuestion, (String) -> Unit) -> Unit = { _, _ -> },
     onAddQuestionToKumbara: (YksQuestion) -> Unit = {},
@@ -109,11 +174,12 @@ fun LiveSolvingBoardScreen(
 ) {
     val questions = session.testItem.questions
     val totalQuestions = questions.size.coerceAtLeast(1)
-
-    // 4 questions per 2-column book page (Left column: Q1 & Q2, Right column: Q3 & Q4)
-    val questionsPerPage = 4
-    val totalBookPages = ((totalQuestions + questionsPerPage - 1) / questionsPerPage).coerceAtLeast(1)
-    val initialBookPage = (session.currentQuestionIndex / questionsPerPage).coerceIn(0, totalBookPages - 1)
+    val packedBookPages = remember(questions) { packQuestionsIntoTwoColumnPages(questions) }
+    val totalBookPages = packedBookPages.size.coerceAtLeast(1)
+    val currentQuestionId = questions.getOrNull(session.currentQuestionIndex)?.id
+    val initialBookPage = packedBookPages.indexOfFirst { page ->
+        page.questions.any { it.id == currentQuestionId }
+    }.coerceAtLeast(0)
     val bookPagerState = rememberPagerState(
         initialPage = initialBookPage,
         pageCount = { totalBookPages }
@@ -128,7 +194,10 @@ fun LiveSolvingBoardScreen(
     // Keep HorizontalPager synced when currentQuestionIndex is updated externally
     LaunchedEffect(session.currentQuestionIndex, session.viewMode) {
         if (session.viewMode == BoardViewMode.FULL_PAGE) {
-            val targetPage = (session.currentQuestionIndex / questionsPerPage).coerceIn(0, totalBookPages - 1)
+            val targetQuestionId = questions.getOrNull(session.currentQuestionIndex)?.id
+            val targetPage = packedBookPages.indexOfFirst { page ->
+                page.questions.any { it.id == targetQuestionId }
+            }.coerceAtLeast(0)
             if (targetPage != bookPagerState.currentPage && !bookPagerState.isScrollInProgress) {
                 bookPagerState.scrollToPage(targetPage)
             }
@@ -143,9 +212,15 @@ fun LiveSolvingBoardScreen(
     // Update ViewModel question index when the user swipes horizontally between book pages
     LaunchedEffect(bookPagerState.settledPage, session.viewMode) {
         if (session.viewMode == BoardViewMode.FULL_PAGE) {
-            val expectedFirstQ = (bookPagerState.settledPage * questionsPerPage).coerceIn(0, totalQuestions - 1)
-            if (session.currentQuestionIndex / questionsPerPage != bookPagerState.settledPage) {
-                onSelectQuestionIndex(expectedFirstQ)
+            val page = packedBookPages.getOrNull(bookPagerState.settledPage)
+                ?: TwoColumnQuestionPage(emptyList(), emptyList())
+            val firstQuestionIndex = questions.indexOfFirst { it.id == page.questions.firstOrNull()?.id }
+                .coerceIn(0, totalQuestions - 1)
+            val currentPage = packedBookPages.indexOfFirst { candidate ->
+                candidate.questions.any { it.id == questions.getOrNull(session.currentQuestionIndex)?.id }
+            }
+            if (currentPage != bookPagerState.settledPage) {
+                onSelectQuestionIndex(firstQuestionIndex)
             }
         }
     }
@@ -162,6 +237,7 @@ fun LiveSolvingBoardScreen(
     // Sub-screens inside LiveSolvingBoardScreen:
     // 1. Full-Screen Report Card ("▸ Başarı Durumuna Git" / Karne)
     var showFullReportCardScreen by remember(session.testItem.id) { mutableStateOf(false) }
+    var showFinishConfirmation by remember(session.testItem.id) { mutableStateOf(false) }
 
     // 2. Full-Screen Side-by-Side "İkiz Soru" Comparison Screen
     var activeTwinScreenQuestion by remember { mutableStateOf<YksQuestion?>(null) }
@@ -255,24 +331,12 @@ fun LiveSolvingBoardScreen(
             wrongCount = wrongCount,
             emptyCount = emptyCount,
             ungradedCount = ungradedCount,
-            showTwinSuggestion = wrongCount > 0,
+            showTwinSuggestion = wrongCount > 0 || emptyCount > 0,
             onBackToBookPage = {
                 showFullReportCardScreen = false
             },
             onSolveTwinTestForWrongQuestions = {
-                val firstWrong = questions.firstOrNull { q ->
-                    q.answerKeyVerified && session.selectedAnswers[q.number].let { !it.isNullOrBlank() && it != q.correctOption }
-                }
-                if (firstWrong != null) {
-                    showFullReportCardScreen = false
-                    activeTwinScreenQuestion = firstWrong
-                    activeTwinScreenData = null
-                    isGeneratingTwin = true
-                    onGenerateTwinQuestion(firstWrong) { generated ->
-                        activeTwinScreenData = generated
-                        isGeneratingTwin = false
-                    }
-                }
+                onSolveTwinTest()
             },
             onWatchQuestionSolution = { q ->
                 showFullReportCardScreen = false
@@ -312,10 +376,7 @@ fun LiveSolvingBoardScreen(
             testTitle = session.testItem.fullTitle.ifBlank { "${session.topicName} - Test 1" },
             isReviewMode = session.isReviewMode,
             onBack = onExitSession,
-            onFinishTest = {
-                openThreeDotQuestionNumber = null
-                onFinishTest()
-            },
+            onFinishTest = { showFinishConfirmation = true },
             onOpenReportCard = {
                 openThreeDotQuestionNumber = null
                 showFullReportCardScreen = true
@@ -406,8 +467,8 @@ fun LiveSolvingBoardScreen(
                             .fillMaxSize()
                             .testTag("book_horizontal_pager")
                     ) { pageIdx ->
-                        val pageStartQIdx = pageIdx * questionsPerPage
-                        val pageQuestions = questions.drop(pageStartQIdx).take(questionsPerPage)
+                        val pageQuestions = packedBookPages.getOrNull(pageIdx)
+                            ?: TwoColumnQuestionPage(emptyList(), emptyList())
                         val pageOffset = (bookPagerState.currentPage - pageIdx) + bookPagerState.currentPageOffsetFraction
 
                         Box(
@@ -665,10 +726,7 @@ fun LiveSolvingBoardScreen(
                     selectedAnswers = session.selectedAnswers,
                     onToggleDrawer = onToggleOpticalForm,
                     onSelectOption = onSelectOption,
-                    onFinishTest = {
-                        openThreeDotQuestionNumber = null
-                        onFinishTest()
-                    },
+                    onFinishTest = { showFinishConfirmation = true },
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .zIndex(35f)
@@ -685,9 +743,55 @@ fun LiveSolvingBoardScreen(
                     ungradedCount = ungradedCount,
                     onToggleDrawer = onToggleStatsDrawer,
                     modifier = Modifier
-                        .align(Alignment.CenterEnd)
+                        .align(Alignment.BottomEnd)
                         .zIndex(35f)
                 )
+            }
+        }
+    }
+
+    if (showFinishConfirmation) {
+        Dialog(onDismissRequest = { showFinishConfirmation = false }) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = Color.White,
+                shadowElevation = 16.dp,
+                modifier = Modifier.fillMaxWidth().widthIn(max = 420.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 26.dp, vertical = 28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Text(
+                        text = "Dikkat!",
+                        color = Color(0xFF0F172A),
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 21.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = "Testi bitirmek üzeresin. Onayladığında sonuç ekranına yönlendirileceksin. Devam etmek istediğine emin misin?",
+                        color = Color(0xFF475569),
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Button(
+                        onClick = {
+                            showFinishConfirmation = false
+                            openThreeDotQuestionNumber = null
+                            onFinishTest()
+                        },
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Evet, Testi Bitir.", fontWeight = FontWeight.Bold)
+                    }
+                    TextButton(onClick = { showFinishConfirmation = false }) {
+                        Text("Vazgeç", color = Color(0xFF64748B), fontWeight = FontWeight.SemiBold)
+                    }
+                }
             }
         }
     }
@@ -1166,7 +1270,7 @@ private fun BookPageTopBar345(
 @Composable
 private fun RealTwoColumnBookPageSurface(
     session: ActiveSolvingSession,
-    pageQuestions: List<YksQuestion>,
+    pageQuestions: TwoColumnQuestionPage,
     currentBookPageIndex: Int,
     totalBookPages: Int,
     customPublishers: List<YksPublisherInfo>,
@@ -1181,8 +1285,8 @@ private fun RealTwoColumnBookPageSurface(
     onPrevBookPage: () -> Unit = {},
     onNextBookPage: () -> Unit = {}
 ) {
-    val leftColumnQuestions = remember(pageQuestions) { pageQuestions.take(2) }
-    val rightColumnQuestions = remember(pageQuestions) { pageQuestions.drop(2).take(2) }
+    val leftColumnQuestions = pageQuestions.left
+    val rightColumnQuestions = pageQuestions.right
     val scrollState = rememberScrollState()
 
     // Tam Ekran Kitap Sayfası Deneyimi (Üstte gereksiz başlıklar kaldırıldı, alttaki boşluk sıfırlandı)
@@ -1213,62 +1317,9 @@ private fun RealTwoColumnBookPageSurface(
                 .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
                 .heightIn(min = pageMinHeight)
                 .verticalScroll(scrollState)
-                .padding(horizontal = 18.dp, vertical = 10.dp),
+                .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // GERÇEK BASILI TEST KİTABI ÜST ŞERİDİ (Sayfa Başlığı & Konu - Test No)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(4.dp)
-                                .height(16.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(Color(0xFF2563EB))
-                        )
-                        Text(
-                            text = "${session.subjectName.uppercase()}  •  ${session.topicName.uppercase()}",
-                            color = Color(0xFF334155),
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 11.5.sp,
-                            letterSpacing = 0.4.sp
-                        )
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFFEFF6FF),
-                        border = BorderStroke(1.dp, Color(0xFFBFDBFE))
-                    ) {
-                        Text(
-                            text = session.testItem.title.uppercase(),
-                            color = Color(0xFF1D4ED8),
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(6.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.2.dp)
-                        .background(Color(0xFFCBD5E1))
-                )
-            }
-
             // ÇİFT SÜTUNLU (SOL SÜTUN & SAĞ SÜTUN) VE ORTADAN İNCE DİKEY ÇİZGİLİ TAM SAYFA DÜZENİ
             Row(
                 modifier = Modifier
@@ -1302,8 +1353,8 @@ private fun RealTwoColumnBookPageSurface(
                             onOpenTwinScreen = { onOpenTwinScreen(q) },
                             onAddToKumbara = { onAddToKumbara(q) }
                         )
-                        if (idx == 0 && leftColumnQuestions.size > 1) {
-                            Spacer(modifier = Modifier.height(18.dp))
+                        if (idx < leftColumnQuestions.lastIndex) {
+                            Spacer(modifier = Modifier.height(24.dp))
                         }
                     }
                 }
@@ -1313,7 +1364,7 @@ private fun RealTwoColumnBookPageSurface(
                     modifier = Modifier
                         .fillMaxHeight()
                         .width(1.dp)
-                        .background(Color(0xFFCBD5E1))
+                        .background(Color(0xFFD6DCE5))
                 )
 
                 // SAĞ SÜTUN (Soru 3 ve 4) — Gerçek kitap sayfası gibi dengeli dikey yerleşim
@@ -1343,8 +1394,8 @@ private fun RealTwoColumnBookPageSurface(
                                 onOpenTwinScreen = { onOpenTwinScreen(q) },
                                 onAddToKumbara = { onAddToKumbara(q) }
                             )
-                            if (idx == 0 && rightColumnQuestions.size > 1) {
-                                Spacer(modifier = Modifier.height(18.dp))
+                            if (idx < rightColumnQuestions.lastIndex) {
+                                Spacer(modifier = Modifier.height(24.dp))
                             }
                         }
                     }
@@ -1412,6 +1463,17 @@ private fun BookPageQuestionItem345(
     onAddToKumbara: () -> Unit
 ) {
     val context = LocalContext.current
+    val publisherLogo by produceState<Bitmap?>(
+        initialValue = null,
+        question.publisherLogoUri
+    ) {
+        value = withContext(Dispatchers.IO) {
+            val logoPath = question.publisherLogoUri
+                .removePrefix("file://")
+                .takeIf(String::isNotBlank)
+            logoPath?.let(BitmapFactory::decodeFile)
+        }
+    }
     val croppedBitmap by produceState<Bitmap?>(
         initialValue = null,
         question.id,
@@ -1471,22 +1533,72 @@ private fun BookPageQuestionItem345(
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // Sol kenarda yalnızca uygulamanın soru numarası gösterilir.
+            // Sol oluk: logo ve soru numarası soru görselinden ayrı tutulur.
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.width(30.dp)
+                modifier = Modifier.width(42.dp)
             ) {
-                Text(
-                    text = "${question.number}.",
-                    color = Color(0xFF2563EB),
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 15.sp
-                )
+                Box(
+                    modifier = Modifier.size(26.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val logo = publisherLogo
+                    if (logo != null) {
+                        Image(
+                            bitmap = logo.asImageBitmap(),
+                            contentDescription = "${question.publisherName} logosu",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFEFF6FF),
+                            border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = question.publisherStamp
+                                        .filter(Char::isLetterOrDigit)
+                                        .take(3)
+                                        .ifBlank { "345" }
+                                        .uppercase(),
+                                    color = Color(0xFF2B5B84),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 8.sp,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Box(
+                    modifier = Modifier.size(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "${question.number}.",
+                        color = Color(0xFF2B5B84),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    if (isReviewMode) {
+                        HandDrawnBrushMark345(
+                            isEmpty = isEmpty || isUngraded,
+                            isCorrect = isCorrect,
+                            isUngraded = false,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
             }
 
-            // Sağ Kısım: Numarasız Saf Kırpılmış Soru Görseli (veya Metin/Diyagram)
+            // Soru içeriği; sağ aksiyon marjı ayrı olduğundan görselin üstüne binmez.
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -1503,55 +1615,6 @@ private fun BookPageQuestionItem345(
                             .wrapContentHeight()
                             .background(Color.White)
                     )
-                    // Kitap sayfasında her kırpılmış sorunun hemen altında hızlı şık işaretleme barı (A B C D E)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        listOf("A", "B", "C", "D", "E").forEach { optKey ->
-                            val isChosen = selectedOption == optKey
-                            val isRightOpt = isReviewMode && question.answerKeyVerified && optKey == question.correctOption
-                            val isWrongChosen = isReviewMode && question.answerKeyVerified && isChosen && optKey != question.correctOption
-                            Surface(
-                                shape = CircleShape,
-                                color = when {
-                                    isRightOpt -> Color(0xFFDCFCE7)
-                                    isWrongChosen -> Color(0xFFFEE2E2)
-                                    isChosen -> Color(0xFF2563EB)
-                                    else -> Color(0xFFF8FAFC)
-                                },
-                                border = BorderStroke(
-                                    1.dp,
-                                    when {
-                                        isRightOpt -> Color(0xFF16A34A)
-                                        isWrongChosen -> Color(0xFFDC2626)
-                                        isChosen -> Color(0xFF2563EB)
-                                        else -> Color(0xFFCBD5E1)
-                                    }
-                                ),
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clickable(enabled = !isReviewMode) { onSelectOption(optKey) }
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = optKey,
-                                        color = when {
-                                            isRightOpt -> Color(0xFF15803D)
-                                            isWrongChosen -> Color(0xFFB91C1C)
-                                            isChosen -> Color.White
-                                            else -> Color(0xFF475569)
-                                        },
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            }
-                        }
-                    }
                 } else {
                     // Fallback vector/text rendering if a catalog question has no bitmap
                     if (question.stemTop.isNotBlank()) {
@@ -1627,44 +1690,18 @@ private fun BookPageQuestionItem345(
                     }
                 }
             }
-        }
 
-        // 2. TEST SONU: SOL ÜST KÖŞEDE DURUM İKONU (`✓` YEŞİL TİK, `✗` KIRMIZI ÇARPI VEYA `⊖` GRİ BOŞ DAİRE)
-        if (isReviewMode) {
-            HandDrawnBrushMark345(
-                isEmpty = isEmpty,
-                isCorrect = isCorrect,
-                isUngraded = isUngraded,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .offset(x = (-6).dp, y = (-4).dp)
-                    .size(48.dp)
-                    .zIndex(40f)
-            )
-            if (isUngraded) {
-                Text(
-                    text = "?",
-                    color = Color(0xFFB45309),
-                    fontWeight = FontWeight.ExtraBold,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .offset(x = 10.dp, y = 8.dp)
-                )
-            }
-
-            // 3. SAĞ ÜST KÖŞEDE AÇIK MAVİ (`#60A5FA`) YUVARLAK `⋮` (ÜÇ NOKTA) BUTONU (Yüksek Z-Index + Popup ile Her Zaman Tıklanabilir!)
             Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .zIndex(65f)
+                modifier = Modifier.width(36.dp),
+                contentAlignment = Alignment.TopCenter
             ) {
                 Surface(
                     onClick = onToggleThreeDotMenu,
                     shape = CircleShape,
-                    color = if (isThreeDotMenuOpen) Color(0xFF2563EB) else Color(0xFF60A5FA).copy(alpha = 0.94f),
-                    shadowElevation = 8.dp,
+                    color = if (isThreeDotMenuOpen) Color(0xFF2563EB) else Color(0xFF60A5FA),
+                    shadowElevation = 4.dp,
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(28.dp)
                         .testTag("three_dot_btn_${question.number}")
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -1672,16 +1709,14 @@ private fun BookPageQuestionItem345(
                             imageVector = Icons.Default.MoreVert,
                             contentDescription = "${question.number}. Soru Seçenekleri",
                             tint = Color.White,
-                            modifier = Modifier.size(21.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
-
-                // 4. `⋮` (ÜÇ NOKTA) POPOVER KARTI (Popup penceresi olarak en üst katmanda açılır, tıklamalar %100 çalışır)
                 if (isThreeDotMenuOpen) {
                     Popup(
                         alignment = Alignment.TopEnd,
-                        offset = IntOffset(0, 108),
+                        offset = IntOffset(0, 100),
                         onDismissRequest = onToggleThreeDotMenu,
                         properties = PopupProperties(
                             focusable = true,
@@ -1809,7 +1844,7 @@ private fun HandDrawnBrushMark345(
             }
             isUngraded -> {
                 drawCircle(
-                    color = Color(0xFFB45309),
+                    color = Color(0xFF94A3B8),
                     radius = min(w, h) * 0.33f,
                     center = Offset(w * 0.46f, h * 0.46f),
                     style = Stroke(width = w * 0.10f)
@@ -2094,7 +2129,7 @@ private fun RightSlidingOpticalFormDrawer345(
     ) {
         // Sol dış kenara yapışık kompakt dikey mavi "⠿ Optik" kulakçığı
         VerticalBlueSideTab345(
-            title = "Optik",
+            title = "Optik Form",
             isStatsIcon = false,
             onClick = onToggleDrawer,
             testTag = "optical_form_tab"
@@ -2132,10 +2167,10 @@ private fun RightSlidingOpticalFormDrawer345(
 
                     LazyColumn(
                         modifier = Modifier
-                            .weight(1f, fill = false)
+                            .weight(1f, fill = true)
                             .fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp)
+                        contentPadding = PaddingValues(vertical = 8.dp)
                     ) {
                         items(questions, key = { it.number }) { q ->
                             val chosenOpt = selectedAnswers[q.number]
@@ -3639,8 +3674,10 @@ private fun FullScreenSuccessReportCardView(
                             modifier = Modifier.weight(1.1f)
                         )
                         Text(
-                            text = if (q.answerKeyVerified) q.correctOption else "?",
-                            color = Color(0xFF0F172A),
+                            text = q.correctOption.takeIf {
+                                q.answerKeyVerified && it in listOf("A", "B", "C", "D", "E")
+                            } ?: "—",
+                            color = if (q.answerKeyVerified) Color(0xFF0F172A) else Color(0xFF64748B),
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
                             textAlign = TextAlign.Center,

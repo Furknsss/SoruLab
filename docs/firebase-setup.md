@@ -50,3 +50,18 @@ The Firebase Console Android app must have a matching App Check provider. If
 Firestore App Check enforcement is enabled, verify production app requests
 first; debug builds use the Firebase App Check debug provider and need a
 registered debug token when enforcement is active.
+
+## Free on-device PDF question cropping and answer matching
+
+The PDF import path uses the PDF's embedded text layer when available, on-device
+ML Kit Latin-script text recognition for scanned pages, and SoruLab's local
+dual-column pixel-projection cropper. Page images are not sent to an OCR vendor,
+and the PDF cropping and answer-key extraction path does not use Gemini or a
+paid cloud OCR API.
+
+Answer keys are extracted only from pages with a recognized answer-key heading
+and matched by a printed question number detected on the question page. Page
+order is never treated as the printed question number. Conflicting repeated
+numbers are left unmatched; image quality, unusual layouts, and OCR mistakes
+can still require manual verification. The local answer-key parser tests cover
+the supported printed answer-key formats.

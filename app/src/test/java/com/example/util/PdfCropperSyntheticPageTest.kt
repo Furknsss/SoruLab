@@ -39,6 +39,24 @@ class PdfCropperSyntheticPageTest {
         text(855f, 320f, "A) Secenek A")
         text(855f, 368f, "B) Secenek B")
 
+        // Render deterministic text-like strokes directly into the bitmap.
+        // Robolectric may not rasterize Canvas.drawText the same way as a device,
+        // so the pixel segmentation test must not accidentally analyze blank paper.
+        fun strokes(x: Int, top: Int) {
+            val ink = IntArray(450 * 7) { Color.BLACK }
+            for (row in 0..6) {
+                val y = top + row * 35
+                bmp.setPixels(ink, 0, 450, x, y, 450, 7)
+            }
+        }
+        strokes(160, 290)
+        strokes(160, 900)
+        strokes(855, 290)
+        val pixelCheck = IntArray(1400 * 1800)
+        bmp.getPixels(pixelCheck, 0, 1400, 0, 0, 1400, 1800)
+        assertTrue("The synthetic page must visibly contain black pixels",
+            pixelCheck.any { it == Color.BLACK })
+
         val numbers = listOf(
             QuestionNumberAnchor(1, 110, 235, 145, 270),
             QuestionNumberAnchor(2, 110, 855, 145, 890),

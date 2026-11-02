@@ -15,6 +15,7 @@ import com.example.data.YksQuestion
 import com.example.data.resolveAnswerKeyOption
 import com.example.util.QuestionNumberAnchor
 import com.example.util.QuestionOptionAnchor
+import com.example.util.PdfAnswerScope
 import com.example.util.PdfAdaptiveAnswerRows
 import com.example.util.PdfOcrTextCell
 import com.example.util.PdfScopedAnswerKeys

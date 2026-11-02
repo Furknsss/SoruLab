@@ -94,16 +94,24 @@ internal class PdfScopedAnswerKeys {
                 ?: return null
             val normalizedHeader = normalize(headerText)
             val isOsym = "osym" in normalizedHeader
-            val detectedSection = headerText.lines().map { it.trim() }
+            val hint = normalize(topicHint)
+            val headings = headerText.lines().map { it.trim() }
                 .filter { it.isNotBlank() && !normalize(it).contains("test") }
                 .map { normalize(it.replace(trailingPageNumber, "")) }
-                .firstOrNull { line ->
+                .filter { line ->
                     line.length in 5..65 && line.any(Char::isLetter) &&
                         nonSectionWords.none { it in line } &&
                         !line.startsWith("www") && !line.startsWith("kuasar") &&
                         !line.startsWith("yildiz") && !line.startsWith("mg")
                 }
-            val section = detectedSection ?: normalize(topicHint).takeIf { it.isNotBlank() }
+            // Scanners sometimes recognize "Sinir Sistemi1" without the space
+            // separating the printed unit suffix. Use the recognized topic only
+            // when the visible heading matches it (with an optional 1-2 digit suffix).
+            val matchedHint = hint.takeIf { it.isNotBlank() && headings.any { heading ->
+                heading == it || heading.removePrefix(it).matches(Regex("[0-9]{1,2}"))
+                    && heading.startsWith(it)
+            } }
+            val section = matchedHint ?: headings.firstOrNull() ?: hint.takeIf(String::isNotBlank)
             if (section.isNullOrBlank()) return null
             return PdfAnswerScope(section, testNum, isOsym)
         }

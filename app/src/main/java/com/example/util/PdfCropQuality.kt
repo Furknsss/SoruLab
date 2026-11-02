@@ -13,7 +13,7 @@ internal object PdfCropQuality {
     )
 
     private val answerChoice = Regex(
-        """(?i)(?:^|\\s)([A-E])\\s*[).:]"""
+        """(?i)(?:^|\s)([A-E])\s*[).:]"""
     )
 
     fun warning(ocrText: String, expectedPrintedNumber: Int?): String? {

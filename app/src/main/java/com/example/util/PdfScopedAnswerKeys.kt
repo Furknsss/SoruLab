@@ -18,17 +18,20 @@ internal data class PdfAnswerId(
 internal class PdfScopedAnswerKeys {
     private val answers = mutableMapOf<PdfAnswerId, String>()
     private val ambiguous = mutableSetOf<PdfAnswerId>()
+    private var lastRecognizedSection: String? = null
 
     val answerCount: Int get() = answers.size
 
     fun addOcrRows(rows: List<String>) {
-        var currentSection: String? = null
+        // A table may continue onto the next answer-key page without a repeated heading.
+        var currentSection: String? = lastRecognizedSection
         for (row in rows) {
             val clean = row.trim().replace(Regex("\\s+"), " ")
             if (clean.isEmpty()) continue
             val detectedSection = detectSectionHeading(clean)
             if (detectedSection != null) {
                 currentSection = detectedSection
+                lastRecognizedSection = detectedSection
                 continue
             }
             val test = testLabel.find(clean) ?: continue
@@ -84,8 +87,12 @@ internal class PdfScopedAnswerKeys {
 
         fun looksLikeAnswerPage(rows: List<String>): Boolean {
             val normalized = normalize(rows.joinToString(" "))
+            val strongRows = rows.count {
+                testLabel.containsMatchIn(it) && questionAnswer.findAll(it).count() >= 3
+            }
             return "cevap anahtar" in normalized ||
-                rows.count { testLabel.containsMatchIn(it) && questionAnswer.findAll(it).count() >= 2 } >= 3
+                strongRows >= 2 ||
+                (strongRows >= 1 && rows.any { detectSectionHeading(it) != null })
         }
 
         /** Missing test/section evidence is deliberately left unmatched. */

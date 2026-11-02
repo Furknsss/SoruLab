@@ -218,8 +218,10 @@ object StudioImageAndPdfEngine {
         totalPages: Int = -1
     ): Boolean {
         val hasStructure = hasQuestionAndOptionStructure(text)
-        if (containsNonQuestionPageMarker(text) || containsNonQuestionPageMarker(topHeaderText)) return true
-        if (pageIndex in 0..4 && !hasStructure) return true
+        // Recognizable questions take precedence over front-matter keyword matches.
+        if (!hasStructure && (containsNonQuestionPageMarker(text) || containsNonQuestionPageMarker(topHeaderText))) return true
+        // Partial OCR may see question numbering without reading every option.
+        if (pageIndex in 0..4 && !hasStructure && !hasQuestionNumberOrOptions(text)) return true
         if (text.isBlank()) return pageIndex in 0..4
 
         val normalizedText = normalizeTurkishText(text)

@@ -106,7 +106,8 @@ data class ExtractedPdfQuestionItem(
     val imageBase64: String = "",
     val pdfFilePath: String = "",
     val pageIndex: Int = -1,
-    val questionNumberInTest: Int = 0
+    val questionNumberInTest: Int = 0,
+    val sourceTestId: String = ""
 ) {
     val imagePath: String get() = croppedImagePath
     val subject: String get() = subjectName
@@ -1164,7 +1165,10 @@ class AiSolverViewModel : ViewModel() {
                                             pdfFilePath = archivedPdfPath,
                                             pageIndex = pageIdx,
                                             questionNumberInTest = candidate.answerKeyQuestionNumber
-                                                ?: cropBox.questionOrderInPage
+                                                ?: cropBox.questionOrderInPage,
+                                            sourceTestId = pageAnswerScope?.let { scope ->
+                                                "${scope.section}~${if (scope.isOsymTest) "osym" else "normal"}~${scope.testNumber}"
+                                            }.orEmpty()
                                         )
                                     )
                                 }

@@ -19,7 +19,7 @@ internal object PdfQuestionCropBounds {
     ): Band? {
         if (anchorTop !in bodyTop until bodyBottom || bodyBottom <= bodyTop + 1) return null
         val beforeNumber = (pageHeight * 0.005f).toInt().coerceIn(6, 18)
-        val afterOptions = (pageHeight * 0.010f).toInt().coerceIn(10, 35)
+        val afterOptions = (pageHeight * 0.021f).toInt().coerceIn(18, 90)
         val top = (anchorTop - beforeNumber).coerceAtLeast(bodyTop)
         val nextLimit = nextAnchorTop?.minus(beforeNumber)
             ?.coerceAtMost(bodyBottom)

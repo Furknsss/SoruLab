@@ -959,7 +959,8 @@ class AiSolverViewModel : ViewModel() {
                                     topicName = "",
                                     difficulty = "Orta"
                                 )
-                                if (pageInfo.isSkipPage) continue
+                                // Blueprint text-layer flags are unreliable for scanned PDFs.
+                                // OCR must inspect this page before deciding whether to skip it.
 
                                 val nowMs = System.currentTimeMillis()
                                 if (nowMs - lastProgressUpdateMs >= 110L || scanPos == 0 || scanPos == totalPdfPages - 1) {

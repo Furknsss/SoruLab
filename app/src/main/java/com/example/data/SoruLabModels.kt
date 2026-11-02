@@ -230,6 +230,12 @@ data class CustomQuestionRecord(
 
     @delegate:Transient
     @get:Exclude
+    val sourceTestId: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        parsedMetaMap["sourceTest"].orEmpty()
+    }
+
+    @delegate:Transient
+    @get:Exclude
     val bookCoverPath: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
         parsedMetaMap["cover"].orEmpty()
     }
@@ -291,7 +297,8 @@ data class CustomQuestionRecord(
             bookOrTestName: String = "",
             bookCoverPath: String = "",
             isInKumbara: Boolean = false,
-            fiveTierDifficulty: String = ""
+            fiveTierDifficulty: String = "",
+            sourceTestId: String = ""
         ): String {
             val cleanSol = if (solutionText.startsWith("[META:")) {
                 solutionText.substringAfter("]").trimStart()
@@ -304,6 +311,7 @@ data class CustomQuestionRecord(
                 if (croppedImagePath.isNotBlank()) add("img=${croppedImagePath.replace("|", "").replace("]", "")}")
                 if (publisherLogoUri.isNotBlank()) add("logo=${publisherLogoUri.replace("|", "").replace("]", "")}")
                 if (bookOrTestName.isNotBlank()) add("book=${bookOrTestName.replace("|", "").replace("]", "")}")
+                if (sourceTestId.isNotBlank()) add("sourceTest=${sourceTestId.replace("|", "").replace("]", "").take(100)}")
                 if (bookCoverPath.isNotBlank()) add("cover=${bookCoverPath.replace("|", "").replace("]", "")}")
                 if (isInKumbara) add("kumbara=1")
                 add("ak=${if (answerKeyVerified) "1" else "0"}")

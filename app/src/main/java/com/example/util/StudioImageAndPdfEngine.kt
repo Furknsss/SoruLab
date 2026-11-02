@@ -2028,6 +2028,17 @@ object StudioImageAndPdfEngine {
 
         bodyTop = max(bodyTop, (height * 0.065f).roundToInt())
             .coerceIn(0, (height - 1).coerceAtLeast(0))
+        // Header trimming must not swallow the first printed question. On a
+        // sparse page its first line may fall inside the broad header probe.
+        questionNumberAnchors
+            .filter { it.number in 1..200 && it.top >= (height * 0.06f).roundToInt() }
+            .minOfOrNull { it.top }
+            ?.let { firstQuestionTop ->
+                bodyTop = min(
+                    bodyTop,
+                    (firstQuestionTop - (height * 0.012f).roundToInt()).coerceAtLeast(0)
+                )
+            }
         bodyBottom = min(bodyBottom, (height * 0.945f).roundToInt())
             .coerceIn(bodyTop + 1, height)
         val bodyH = (bodyBottom - bodyTop).coerceAtLeast(1)

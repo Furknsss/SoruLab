@@ -2182,30 +2182,30 @@ object StudioImageAndPdfEngine {
                         .asSequence()
                         .filter { it.top < anchor.top && (previousAnchorTop == null || it.top >= previousAnchorTop) }
                         .maxOfOrNull { it.bottom }
-                    val precedingInkTop = projectedBands
-                        .lastOrNull { it.first <= anchor.top && it.second >= anchor.bottom }
-                        ?.first
-                        ?: (if (anchorIndex == 0) {
-                            projectedBands.firstOrNull { it.second < anchor.top }?.first
-                        } else {
-                            null
-                        })
-                        ?: projectedBands.lastOrNull {
-                            it.second < anchor.top && anchor.top - it.second <= (bodyH * 0.12f).roundToInt()
-                        }?.first
-                    val startY = (previousOptionsBottom?.plus(8) ?: (precedingInkTop ?: anchor.top) - 16)
+                    // The OCR printed number marks the question START, not a
+                    // projection band that might also contain earlier questions.
+                    // A hard next-number boundary is more important than the
+                    // current option's OCR box (which can accidentally include
+                    // the following question or a publisher watermark).
+                    val anchorPadding = (height * 0.008f).roundToInt().coerceIn(9, 22)
+                    val startY = (anchor.top - anchorPadding)
                         .coerceIn(bodyTop, bodyBottom - 1)
-                    val endY = (optionBottom?.plus(16)
-                        ?: nextAnchorTop?.minus(16)
-                        ?: projectedBands.lastOrNull { it.second >= anchor.bottom }?.second
-                        ?: (bodyBottom - 1))
-                        .coerceIn(startY + 1, bodyBottom - 1)
+                    val hardEnd = nextAnchorTop?.minus(anchorPadding)
+                        ?.coerceIn(startY + 1, bodyBottom - 1)
+                        ?: (bodyBottom - 1)
+                    val withinQuestionOptions = optionBottom?.takeIf { it < hardEnd }
+                    val lastQuestionInk = projectedBands
+                        .filter { it.second >= anchor.bottom && it.first < hardEnd }
+                        .maxOfOrNull { it.second.coerceAtMost(hardEnd) }
+                    val endY = (withinQuestionOptions?.plus(anchorPadding)
+                        ?: lastQuestionInk?.plus(anchorPadding)
+                        ?: hardEnd).coerceIn(startY + 1, hardEnd)
                     startY to endY
                 }
             }
 
             for ((qIdx, band) in questionBands.withIndex()) {
-                val (rawTop, rawBottom) = expandBandToConnectedInkIslands(
+                val (expandedTop, expandedBottom) = expandBandToConnectedInkIslands(
                     pixels = pixels,
                     pageWidth = width,
                     pageHeight = height,
@@ -2216,6 +2216,15 @@ object StudioImageAndPdfEngine {
                     maxExpansion = (bodyH * 0.025f).roundToInt().coerceAtLeast(12),
                     isInkPixel = ::isInkPixel
                 )
+                val cropAnchor = anchors.getOrNull(qIdx)
+                val nextNumberTop = anchors.getOrNull(qIdx + 1)?.top
+                // Expansion must never pull the next printed question into this
+                // image; nor may it pull remnants of the previous question.
+                val rawTop = if (cropAnchor != null) maxOf(expandedTop, band.first) else expandedTop
+                val rawBottom = if (nextNumberTop != null) {
+                    minOf(expandedBottom, nextNumberTop - 8)
+                } else expandedBottom
+                if (rawBottom <= rawTop) continue
                 val bandH = rawBottom - rawTop
                 if (bandH < 80) continue
 
@@ -2268,8 +2277,10 @@ object StudioImageAndPdfEngine {
                     .coerceIn(colLeft, colRight - 120)
                 val finalRight = (maxContentX + 16).coerceAtMost(colRight - padX)
                     .coerceAtLeast(finalLeft + 119)
-                val finalTop = (rawTop - padY).coerceAtLeast(bodyTop)
-                val finalBottom = (rawBottom + padY).coerceAtMost(bodyBottom)
+                val finalTop = (rawTop - padY)
+                    .coerceAtLeast(if (cropAnchor != null) band.first else bodyTop)
+                val finalBottom = (rawBottom + padY)
+                    .coerceAtMost(nextNumberTop?.minus(4) ?: bodyBottom)
 
                 val safeLeft = finalLeft.coerceIn(0, width - 1)
                 val safeTop = finalTop.coerceIn(0, height - 1)

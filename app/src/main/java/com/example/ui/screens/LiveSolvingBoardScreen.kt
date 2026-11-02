@@ -299,6 +299,7 @@ fun LiveSolvingBoardScreen(
         FullScreenTwinQuestionComparisonView(
             session = session,
             originalQuestion = twinTargetQ,
+            customPublishers = customPublishers,
             twinData = activeTwinScreenData,
             isLoadingTwin = isGeneratingTwin,
             studentAnswer = session.selectedAnswers[twinTargetQ.number],
@@ -2938,6 +2939,7 @@ private fun BottomDarkNavyDrawingBar345(
 private fun FullScreenTwinQuestionComparisonView(
     session: ActiveSolvingSession,
     originalQuestion: YksQuestion,
+    customPublishers: List<YksPublisherInfo>,
     twinData: TwinQuestionModalData?,
     isLoadingTwin: Boolean,
     studentAnswer: String?,
@@ -2957,6 +2959,15 @@ private fun FullScreenTwinQuestionComparisonView(
     var twinStrokes by remember(originalQuestion.id) { mutableStateOf<List<DrawStroke>>(emptyList()) }
 
     val originalBitmap = StudioImageAndPdfEngine.rememberGuaranteedQuestionBitmap(originalQuestion)
+    val originalPublisher = remember(
+        originalQuestion.publisherId, originalQuestion.publisherName, customPublishers
+    ) {
+        customPublishers.firstOrNull { it.id == originalQuestion.publisherId &&
+            originalQuestion.publisherId.isNotBlank() }
+            ?: SoruLabPublisherPresets.resolvePublisher(
+                originalQuestion.publisherName, customPublishers
+            )
+    }
 
     Column(
         modifier = Modifier
@@ -3370,6 +3381,38 @@ private fun FullScreenTwinQuestionComparisonView(
                                                 color = if (!hasStudentAns) Color(0xFF64748B) else Color.White,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 fontSize = 14.sp
+                                            )
+                                        }
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                                        .testTag("twin_original_source"),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    PublisherLogoEmblem(
+                                        publisher = originalPublisher,
+                                        size = 30.dp,
+                                        overrideLogoPath = originalQuestion.publisherLogoUri
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = originalQuestion.publisherName
+                                                .ifBlank { "Kaynak belirtilmedi" },
+                                            color = Color(0xFF334155),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        if (originalQuestion.sourceBookTitle.isNotBlank()) {
+                                            Text(
+                                                text = originalQuestion.sourceBookTitle,
+                                                color = Color(0xFF64748B),
+                                                fontSize = 11.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                         }
                                     }

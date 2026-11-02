@@ -677,7 +677,7 @@ class SoruLabRepository(
                 "difficulty" to (record.difficulty.takeIf { it in listOf("Kolay", "Orta", "Zor") } ?: "Orta"),
                 "correctOption" to (record.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty()),
                 "questionText" to record.questionText.ifBlank { "YKS Sorusu" }.take(1950),
-                "publisherTag" to record.publisherTag.ifBlank { "YKS Yayınları" }.take(115),
+                "publisherTag" to record.publisherTag.ifBlank { "Kaynak Belirtilmedi" }.take(115),
                 "aiSolutionSummary" to record.aiSolutionSummary.take(3950),
                 "cropAspectRatio" to safeRatio,
                 "createdAt" to FieldValue.serverTimestamp(),
@@ -770,7 +770,7 @@ class SoruLabRepository(
             "difficulty" to (record.difficulty.takeIf { it in listOf("Kolay", "Orta", "Zor") } ?: "Orta"),
             "correctOption" to (record.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty()),
             "questionText" to record.questionText.ifBlank { "YKS Sorusu" }.take(1950),
-            "publisherTag" to record.publisherTag.ifBlank { "YKS Yayınları" }.take(115),
+            "publisherTag" to record.publisherTag.ifBlank { "Kaynak Belirtilmedi" }.take(115),
             "aiSolutionSummary" to record.aiSolutionSummary.take(3950),
             "cropAspectRatio" to safeRatio,
             "createdAt" to FieldValue.serverTimestamp(),
@@ -846,7 +846,9 @@ class SoruLabRepository(
                         difficulty = obj.optString("difficulty", "Orta"),
                         correctOption = obj.optString("correctOption", "C"),
                         questionText = obj.optString("questionText", ""),
-                        publisherTag = obj.optString("publisherTag", "ÜçDörtBeş Yayınları"),
+                        publisherTag = obj.optString("publisherTag", "Kaynak Belirtilmedi"),
+                        publisherId = obj.optString("publisherId", ""),
+                        sourceBookTitle = obj.optString("sourceBookTitle", ""),
                         aiSolutionSummary = obj.optString("aiSolutionSummary", ""),
                         cropAspectRatio = obj.optDouble("cropAspectRatio", 1.25),
                         bookId = obj.optString("bookId", ""),
@@ -950,6 +952,8 @@ class SoruLabRepository(
                 obj.put("correctOption", rec.correctOption)
                 obj.put("questionText", rec.questionText)
                 obj.put("publisherTag", rec.publisherTag)
+                obj.put("publisherId", rec.publisherId)
+                obj.put("sourceBookTitle", rec.sourceBookTitle)
                 obj.put("aiSolutionSummary", rec.aiSolutionSummary)
                 obj.put("cropAspectRatio", rec.cropAspectRatio)
                 obj.put("bookId", rec.bookId)

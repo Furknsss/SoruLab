@@ -871,7 +871,7 @@ class AiSolverViewModel : ViewModel() {
 
                 // A global question-number map is unsafe for books where each test
                 // restarts from question 1. Use a section + test scoped index instead.
-                val scopedAnswers = PdfScopedAnswerKeys()
+                val pendingAnswerRegions = mutableListOf<List<String>>()
                 val mergedPageMap = localBlueprint.pageMap
                 val finalBookTitle = localBlueprint.detectedBookTitle
                 var defaultExamType = localBlueprint.defaultExamType
@@ -986,9 +986,7 @@ class AiSolverViewModel : ViewModel() {
                                     totalPages = totalPdfPages
                                 )
                                 if (hasAnswerKeyMarker || isAnswerTablePage) {
-                                    for (region in pageLayout.answerRegions) {
-                                        scopedAnswers.addOcrRows(region)
-                                    }
+                                    pendingAnswerRegions.addAll(pageLayout.answerRegions)
                                     detectedAnswerPages++
                                     // A dedicated answer-key page has no new test
                                     // questions; don't mistake answer cells for stems.
@@ -1175,6 +1173,17 @@ class AiSolverViewModel : ViewModel() {
                             }
                         }
                     }
+                }
+
+                // After the full OCR scan, we know the printed chapters used
+                // by THIS book. Re-read the buffered answer-table rows against
+                // those sections. This rejects publisher titles and unrelated
+                // uppercase headers without maintaining any brand-specific list.
+                val observedSections = expectedScopeByQuestionId.values
+                    .map { it.section }.filter(String::isNotBlank).toSet()
+                val scopedAnswers = PdfScopedAnswerKeys(observedSections)
+                for (region in pendingAnswerRegions) {
+                    scopedAnswers.addOcrRows(region)
                 }
 
                 // Match the completed, per-PDF answer index to the exact

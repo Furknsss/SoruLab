@@ -166,7 +166,9 @@ data class CustomQuestionRecord(
     val difficulty: String = "Orta",
     val correctOption: String = "C",
     val questionText: String = "",
-    val publisherTag: String = "3D Yayınları",
+    val publisherTag: String = "Kaynak Belirtilmedi",
+    val publisherId: String = "",
+    val sourceBookTitle: String = "",
     val aiSolutionSummary: String = "",
     val cropAspectRatio: Double = 1.25,
     val bookId: String = "",
@@ -535,7 +537,12 @@ data class YksQuestion(
     val normLeft: Float = 0f,
     val normTop: Float = 0f,
     val normRight: Float = 1f,
-    val normBottom: Float = 1f
+    val normBottom: Float = 1f,
+    val publisherId: String = "",
+    val sourceBookTitle: String = "",
+    val sourceTestId: String = "",
+    val sourcePageIndex: Int = -1,
+    val sourcePrintedQuestionNumber: Int = 0
 ) {
     @get:Exclude
     val imagePath: String

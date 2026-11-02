@@ -65,6 +65,8 @@ class PdfCropperSyntheticPageTest {
         try {
             assertEquals("Three independent questions must be returned", 3, items.size)
             assertEquals(setOf(1, 2, 3), items.map { it.questionOrderInPage }.toSet())
+            assertEquals("Keep the left and right columns separate", setOf(0, 1),
+                items.map { it.columnIndex }.toSet())
             assertTrue(items.all { it.croppedImagePath.isNotBlank() })
             assertTrue(items.all { File(it.croppedImagePath).isFile })
         } finally {

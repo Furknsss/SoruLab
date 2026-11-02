@@ -87,8 +87,39 @@ class PdfCropperSyntheticPageTest {
                 items.map { it.columnIndex }.toSet())
             assertTrue(items.all { it.croppedImagePath.isNotBlank() })
             assertTrue(items.all { File(it.croppedImagePath).isFile })
+            // The second printed question starts at pixel 855. The first
+            // crop must end BEFORE that number, even after ink expansion.
+            val first = items.first { it.columnIndex == 0 && it.questionOrderInPage == 1 }
+            val second = items.first { it.columnIndex == 0 && it.questionOrderInPage == 2 }
+            assertTrue("First crop swallowed the next printed question",
+                first.boxNormalized[2] < 855f / 1800f)
+            assertTrue("Adjacent question crops overlap",
+                first.boxNormalized[2] <= second.boxNormalized[0])
         } finally {
             items.forEach { File(it.croppedImagePath).delete() }
+        }
+
+        // OCR misses printed 2. The earlier question still must not swallow
+        // all of question 2: its FIRST E answer option ends question 1.
+        val fewerAnchors = numbers.filter { it.number != 2 }
+        val withEndingOption = opts + QuestionOptionAnchor(
+            "E", 155, 395, 175, 430
+        )
+        val conservative = StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
+            context = RuntimeEnvironment.getApplication(),
+            pageBitmap = bmp,
+            pageIndex = 3,
+            totalPages = 8,
+            reusablePixelsRef = arrayOfNulls<IntArray>(1),
+            questionNumberAnchors = fewerAnchors,
+            optionAnchors = withEndingOption
+        )
+        try {
+            val first = conservative.first { it.questionOrderInPage == 1 }
+            assertTrue("Missing next OCR anchor caused merged questions",
+                first.boxNormalized[2] < 855f / 1800f)
+        } finally {
+            conservative.forEach { File(it.croppedImagePath).delete() }
             bmp.recycle()
         }
     }

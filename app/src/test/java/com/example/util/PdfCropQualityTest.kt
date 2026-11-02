@@ -18,4 +18,10 @@ class PdfCropQualityTest {
     @Test fun `missing original number is not silently matched to answer key`() {
         assertNotNull(PdfCropQuality.warning("Sorunun kökü ve şıklar", null))
     }
+
+    @Test fun `missing A-E answer options cannot enter a scored question pool`() {
+        val stem = "3. Soru metni\nA) Bir\nB) İki"
+        assertNotNull(PdfCropQuality.warning(stem, 3))
+    }
+
 }

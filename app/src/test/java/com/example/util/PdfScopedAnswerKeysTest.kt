@@ -135,4 +135,28 @@ class PdfScopedAnswerKeysTest {
         )))
     }
 
+
+    @Test
+    fun `ML Kit split answer table cells still map to source test`() {
+        val rows = listOf(
+            "SİNİR SİSTEMİ",
+            "Test 1",
+            "1.E 2.B 3.A 4.A 5.E 6.D 7.B 8.A 9.D 10.C",
+            "Test 2",
+            "1.B 2.E 3.C 4.D 5.C 6.E 7.B 8.A 9.B 10.E"
+        )
+        assertTrue(PdfScopedAnswerKeys.looksLikeAnswerPage(rows))
+        val index = PdfScopedAnswerKeys()
+        index.addOcrRows(rows)
+        val test1 = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST\n1\nSinir Sistemi1", "Sinir Sistemi"
+        )
+        val test2 = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 2\nSinir Sistemi 2", "Sinir Sistemi"
+        )
+        assertEquals("E", index.get(test1, 1))
+        assertEquals("C", index.get(test1, 10))
+        assertEquals("B", index.get(test2, 1))
+    }
+
 }

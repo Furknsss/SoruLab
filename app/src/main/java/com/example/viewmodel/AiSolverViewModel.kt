@@ -107,7 +107,8 @@ data class ExtractedPdfQuestionItem(
     val pdfFilePath: String = "",
     val pageIndex: Int = -1,
     val questionNumberInTest: Int = 0,
-    val sourceTestId: String = ""
+    val sourceTestId: String = "",
+    val qualityWarning: String = ""
 ) {
     val imagePath: String get() = croppedImagePath
     val subject: String get() = subjectName
@@ -1168,7 +1169,11 @@ class AiSolverViewModel : ViewModel() {
                                                 ?: cropBox.questionOrderInPage,
                                             sourceTestId = pageAnswerScope?.let { scope ->
                                                 "${scope.section}~${if (scope.isOsymTest) "osym" else "normal"}~${scope.testNumber}"
-                                            }.orEmpty()
+                                            }.orEmpty(),
+                                            qualityWarning = com.example.util.PdfCropQuality.warning(
+                                                classification.questionText,
+                                                candidate.answerKeyQuestionNumber
+                                            ).orEmpty()
                                         )
                                     )
                                 }

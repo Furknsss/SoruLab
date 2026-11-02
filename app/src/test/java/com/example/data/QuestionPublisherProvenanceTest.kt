@@ -3,6 +3,7 @@ package com.example.data
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.viewmodel.interleaveByGroup
 
 class QuestionPublisherProvenanceTest {
     private val publisherA = YksPublisherInfo(
@@ -59,4 +60,19 @@ class QuestionPublisherProvenanceTest {
         assertEquals(7, mixedTestNumbering.sourcePrintedQuestionNumber)
         assertEquals(publisherB.customLogoPath, mixedTestNumbering.publisherLogoUri)
     }
+
+    @Test
+    fun `mixed practice alternates publishers without changing question origins`() {
+        val inputs = listOf(
+            CustomQuestionRecord(id = "a1", publisherTag = publisherA.name, publisherId = publisherA.id),
+            CustomQuestionRecord(id = "a2", publisherTag = publisherA.name, publisherId = publisherA.id),
+            CustomQuestionRecord(id = "b1", publisherTag = publisherB.name, publisherId = publisherB.id),
+            CustomQuestionRecord(id = "b2", publisherTag = publisherB.name, publisherId = publisherB.id)
+        )
+        val mixed = interleaveByGroup(inputs) { it.publisherId.ifBlank { it.publisherTag } }
+        assertEquals(4, mixed.size)
+        assertEquals(2, mixed.take(2).map { it.publisherId }.distinct().size)
+        assertEquals(inputs.map { it.id }.toSet(), mixed.map { it.id }.toSet())
+    }
+
 }

@@ -157,4 +157,33 @@ class StudioImageAndPdfEngineTest {
             )
         )
     }
+
+    @Test
+    fun `printed question number is masked but following stem is preserved`() {
+        // OCR may accidentally return a bounding box including the beginning
+        // of the stem, not only the printed 1. prefix.
+        val rect = StudioImageAndPdfEngine.safePrintedQuestionNumberMask(
+            anchorLeft = 75, anchorTop = 130,
+            anchorRight = 260, anchorBottom = 151,
+            cropLeft = 65, cropTop = 120,
+            cropWidth = 400, cropHeight = 280
+        )
+        assertTrue(rect != null)
+        assertTrue(rect!!.left <= 10f)
+        assertTrue(rect.right < 65f) // Do not remove the word after "1."
+        assertTrue(rect.bottom < 40f)
+    }
+
+    @Test
+    fun `do not remove text mistaken for a number outside question prefix`() {
+        val rect = StudioImageAndPdfEngine.safePrintedQuestionNumberMask(
+            anchorLeft = 280, anchorTop = 290,
+            anchorRight = 325, anchorBottom = 310,
+            cropLeft = 65, cropTop = 120,
+            cropWidth = 400, cropHeight = 280
+        )
+        assertTrue(rect == null)
+    }
+
+
 }

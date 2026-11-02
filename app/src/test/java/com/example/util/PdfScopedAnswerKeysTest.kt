@@ -73,4 +73,19 @@ class PdfScopedAnswerKeysTest {
             "SİNİR SİSTEMİ", "Test 1 1.E 2.B", "Test 2 1.C 2.A", "ÖSYM Test 6 1.E 2.B"
         )))
     }
+
+    @Test
+    fun `ocr compact cells without punctuation remain readable`() {
+        val index = PdfScopedAnswerKeys()
+        index.addOcrRows(listOf(
+            "SINIR SISTEMI",
+            "Test1 1.E 2B 3A 4A 5.E 6D 7B 8A 9.D 10.C"
+        ))
+        val scope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 1\nSinir Sistemi 1", "Sinir Sistemi"
+        )
+        assertEquals(listOf("E", "B", "A", "A", "E", "D", "B", "A", "D", "C"),
+            (1..10).map { index.get(scope, it) })
+    }
+
 }

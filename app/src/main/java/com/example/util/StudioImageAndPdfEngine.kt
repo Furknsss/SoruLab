@@ -2264,7 +2264,14 @@ object StudioImageAndPdfEngine {
                         }
                     }
                 }
-                val finalLeft = (minContentX - 16).coerceAtLeast(colLeft)
+                // Publisher side-watermarks often sit left of the printed
+                // question number. Start each crop just before that number,
+                // not at the side watermark or unrelated column decoration.
+                // This also guarantees the number stays inside the bitmap so
+                // safePrintedQuestionNumberMask can erase it reliably.
+                val finalLeft = (anchor?.let {
+                    it.left - (colWidth * 0.015f).roundToInt().coerceAtLeast(6)
+                } ?: (minContentX - 16))
                     .coerceIn(colLeft, colRight - 120)
                 val finalRight = (maxContentX + 16).coerceAtMost(colRight - padX)
                     .coerceAtLeast(finalLeft + 119)

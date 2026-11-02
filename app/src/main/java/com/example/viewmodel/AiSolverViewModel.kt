@@ -900,6 +900,7 @@ class AiSolverViewModel : ViewModel() {
                 val finalLogoUri = publisherLogoUri.ifBlank { resolvedPub.customLogoPath }
 
                 val allExtractedQuestions = mutableListOf<ExtractedPdfQuestionItem>()
+                val expectedScopeByQuestionId = mutableMapOf<String, PdfAnswerScope>()
                 var pageRenderFailureCount = 0
 
                 val pageIndicesToScan = 0 until totalPdfPages
@@ -921,7 +922,6 @@ class AiSolverViewModel : ViewModel() {
                             // the answer key may follow the question it belongs to.
                             var detectedAnswerPages = 0
                             var pageQuestionScope: PdfAnswerScope? = null
-                            val expectedScopeByQuestionId = mutableMapOf<String, PdfAnswerScope>()
 
                             for ((scanPos, pageIdx) in pageIndicesToScan.withIndex()) {
                                 if (pageIdx >= rendererTotal) continue

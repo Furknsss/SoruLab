@@ -15,6 +15,8 @@ import com.example.data.YksQuestion
 import com.example.data.resolveAnswerKeyOption
 import com.example.util.QuestionNumberAnchor
 import com.example.util.QuestionOptionAnchor
+import com.example.util.PdfAdaptiveAnswerRows
+import com.example.util.PdfOcrTextCell
 import com.example.util.PdfScopedAnswerKeys
 import com.example.util.StudioImageAndPdfEngine
 import com.google.firebase.Firebase
@@ -138,6 +140,7 @@ private data class PdfPageOcrLayout(
     val headerText: String = "",
     val scopeHeaderText: String = "",
     val answerRows: List<String> = emptyList(),
+    val answerRegions: List<List<String>> = emptyList(),
     val questionNumberAnchors: List<QuestionNumberAnchor> = emptyList(),
     val optionAnchors: List<QuestionOptionAnchor> = emptyList()
 )
@@ -565,27 +568,21 @@ class AiSolverViewModel : ViewModel() {
             (it.boundingBox?.top ?: Int.MAX_VALUE) <= bitmap.height * 0.17f
         }.sortedBy { it.boundingBox?.top ?: Int.MAX_VALUE }.joinToString("\n") { it.text }
 
-        // ML Kit may emit each answer-table cell as an independent line. Reassemble
-        // horizontal rows by their bounding-box Y coordinate before parsing keys.
-        val positioned = lines.mapNotNull { line ->
-            line.boundingBox?.let { line.text to it }
-        }.sortedBy { it.second.centerY() }
-        val grouped = mutableListOf<MutableList<Pair<String, android.graphics.Rect>>>()
-        for (entry in positioned) {
-            val previous = grouped.lastOrNull()
-            val midY = entry.second.centerY()
-            val groupMid = previous?.map { it.second.centerY() }?.average()
-            val groupHeight = previous?.map { it.second.height() }?.average()
-            if (previous != null && groupMid != null &&
-                kotlin.math.abs(midY - groupMid) <= maxOf(8.0, (groupHeight ?: 0.0) * 0.7)) {
-                previous.add(entry)
-            } else {
-                grouped.add(mutableListOf(entry))
-            }
-        }
-        val answerRows = grouped.map { row ->
-            row.sortedBy { it.second.left }.joinToString(" ") { it.first }
-        }
+        // Use this PDF's actual OCR geometry. Independent answer-key
+        // columns must not share cells just because they have the same Y.
+        val answerRegions = PdfAdaptiveAnswerRows.regions(
+            cells = lines.mapNotNull { line ->
+                line.boundingBox?.let {
+                    PdfOcrTextCell(
+                        text = line.text,
+                        left = it.left, top = it.top,
+                        right = it.right, bottom = it.bottom
+                    )
+                }
+            },
+            pageWidth = bitmap.width
+        )
+        val answerRows = answerRegions.flatten()
         val anchorRegex = Regex("""^\s*([1-9]|[1-3][0-9])[\.\-\)]\s*""")
         val numberRegex = Regex("""^\s*(?:[1-9]|[1-3][0-9])[\.\-\)]?$""")
         val optionRegex = Regex("""^\s*([A-E])\s*[).:]\s*""", RegexOption.IGNORE_CASE)
@@ -623,6 +620,7 @@ class AiSolverViewModel : ViewModel() {
             headerText = headerText,
             scopeHeaderText = scopeHeaderText,
             answerRows = answerRows,
+            answerRegions = answerRegions,
             questionNumberAnchors = anchors,
             optionAnchors = options
         )
@@ -988,7 +986,9 @@ class AiSolverViewModel : ViewModel() {
                                     totalPages = totalPdfPages
                                 )
                                 if (hasAnswerKeyMarker || isAnswerTablePage) {
-                                    scopedAnswers.addOcrRows(pageLayout.answerRows)
+                                    for (region in pageLayout.answerRegions) {
+                                        scopedAnswers.addOcrRows(region)
+                                    }
                                     detectedAnswerPages++
                                     // A dedicated answer-key page has no new test
                                     // questions; don't mistake answer cells for stems.

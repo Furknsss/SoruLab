@@ -25,6 +25,7 @@ import com.example.data.YksQuestion
 import com.example.data.YksTestItem
 import com.example.data.YksTopic
 import com.example.data.recommendedDifficultyLevels
+import com.example.util.PdfScopedAnswerKeys
 import com.example.util.StudioImageAndPdfEngine
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseUser

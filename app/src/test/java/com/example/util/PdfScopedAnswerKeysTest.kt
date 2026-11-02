@@ -97,7 +97,7 @@ class PdfScopedAnswerKeysTest {
             "Test 1 1.E 2.B 3.A 4.A 5.E 6.D 7.B 8.A 9.D 10.C"
         ))
         val scope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
-            "@KuasarNemesis\\nDR BIYOLOJI\\nTEST\\n1\\nSinir Sistemi1",
+            "@KuasarNemesis\nDR BIYOLOJI\nTEST\n1\nSinir Sistemi1",
             "Sinir Sistemi"
         )
         assertEquals("E", keys.get(scope, 1))
@@ -108,7 +108,7 @@ class PdfScopedAnswerKeysTest {
     @Test
     fun `unrelated topic must not be silently rewritten by catalog hint`() {
         val scope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
-            "TEST 2\\nENDOKRIN SISTEM HOMEOSTAZI 2", "Sinir Sistemi"
+            "TEST 2\nENDOKRIN SISTEM HOMEOSTAZI 2", "Sinir Sistemi"
         )
         assertEquals("endokrin sistem homeostazi", scope?.section)
     }

@@ -914,42 +914,14 @@ class AiSolverViewModel : ViewModel() {
                             var lastProgressUpdateMs = 0L
                             val lastTopicBySubject = mutableMapOf<String, String>()
 
-                            // Read the answer tables first: scanned books commonly keep
-                            // every answer key at the very end, after question pages.
-                            // Limit the extra OCR pass to the tail; do not guess answers
-                            // if the tail layout cannot be read confidently.
-                            val tailBitmapRef = arrayOfNulls<Bitmap>(1)
-                            try {
-                                for (answerPage in (rendererTotal - 12).coerceAtLeast(0) until rendererTotal) {
-                                    val bitmap = try {
-                                        StudioImageAndPdfEngine.renderPageForLocalAnalysis(
-                                            renderer = renderer,
-                                            pageIndex = answerPage,
-                                            totalPages = rendererTotal,
-                                            reusableBitmapRef = tailBitmapRef
-                                        )
-                                    } catch (e: CancellationException) {
-                                        throw e
-                                    } catch (_: Exception) {
-                                        null
-                                    }
-                                    if (bitmap == null) continue
-                                    val answerLayout = try {
-                                        recognizePdfPageLayout(bitmap)
-                                    } catch (e: CancellationException) {
-                                        throw e
-                                    } catch (_: Exception) {
-                                        null
-                                    }
-                                    if (answerLayout != null &&
-                                        PdfScopedAnswerKeys.looksLikeAnswerPage(answerLayout.answerRows)) {
-                                        scopedAnswers.addOcrRows(answerLayout.answerRows)
-                                    }
-                                }
-                            } finally {
-                                tailBitmapRef[0]?.recycle()
-                                tailBitmapRef[0] = null
-                            }
+                            // Discover answer keys anywhere in this specific PDF
+                            // during the normal single OCR pass. No publisher-specific
+                            // page offsets, no assumption about front/end placement.
+                            // Answers are associated AFTER scanning all pages because
+                            // the answer key may follow the question it belongs to.
+                            var detectedAnswerPages = 0
+                            var pageQuestionScope: PdfAnswerScope? = null
+                            val expectedScopeByQuestionId = mutableMapOf<String, PdfAnswerScope>()
 
                             for ((scanPos, pageIdx) in pageIndicesToScan.withIndex()) {
                                 if (pageIdx >= rendererTotal) continue
@@ -1015,7 +987,21 @@ class AiSolverViewModel : ViewModel() {
                                     pageIndex = pageIdx,
                                     totalPages = totalPdfPages
                                 )
-                                if (skipPage || hasAnswerKeyMarker || isAnswerTablePage) {
+                                if (hasAnswerKeyMarker || isAnswerTablePage) {
+                                    scopedAnswers.addOcrRows(pageLayout.answerRows)
+                                    detectedAnswerPages++
+                                    // A dedicated answer-key page has no new test
+                                    // questions; don't mistake answer cells for stems.
+                                    if (isAnswerTablePage || pageLayout.optionAnchors.size < 3) {
+                                        continue
+                                    }
+                                }
+                                if (skipPage) continue
+                                // A scanned foreword, contents page or advertisement
+                                // can have numbered paragraphs that look like 1./2.
+                                // Require A-E evidence before creating YKS questions.
+                                if (pageLayout.questionNumberAnchors.isEmpty() ||
+                                    pageLayout.optionAnchors.map { it.option }.distinct().size < 3) {
                                     continue
                                 }
 
@@ -1072,9 +1058,16 @@ class AiSolverViewModel : ViewModel() {
                                     topicName = resolvedPageTopic,
                                     isSkipPage = false
                                 )
-                                val pageAnswerScope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+                                val detectedScope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
                                     pageLayout.scopeHeaderText, scanPageInfo.topicName
                                 )
+                                // Some books print the test name only on the first page.
+                                // Carry that scope onto continuation pages, but not into
+                                // a new "question 1" where a new test may have started.
+                                val beginsNewTest = pageLayout.questionNumberAnchors.any { it.number == 1 }
+                                val pageAnswerScope = detectedScope
+                                    ?: pageQuestionScope.takeUnless { beginsNewTest }
+                                pageQuestionScope = pageAnswerScope
 
                                 val croppedBoxes = try {
                                     StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
@@ -1135,13 +1128,18 @@ class AiSolverViewModel : ViewModel() {
                                     val cropBox = candidate.cropBox
                                     val classification = candidate.classification
                                     val globalQuestionNum = allExtractedQuestions.size + 1
-                                    val verifiedAnswer = scopedAnswers.get(
-                                        pageAnswerScope, candidate.answerKeyQuestionNumber
-                                    )
+                                    // Deferred answer matching: future pages
+                                    // may contain the key for this exact test.
+                                    val verifiedAnswer: String? = null
+                                    val extractedId =
+                                        "local_q_${System.currentTimeMillis()}_p${pageIdx + 1}_${boxIdx + 1}_$globalQuestionNum"
+                                    if (pageAnswerScope != null) {
+                                        expectedScopeByQuestionId[extractedId] = pageAnswerScope
+                                    }
 
                                     allExtractedQuestions.add(
                                         ExtractedPdfQuestionItem(
-                                            id = "local_q_${System.currentTimeMillis()}_p${pageIdx + 1}_${boxIdx + 1}_$globalQuestionNum",
+                                            id = extractedId,
                                             questionNumber = globalQuestionNum,
                                             examType = classification.examType,
                                             subjectName = classification.subjectName,
@@ -1176,6 +1174,24 @@ class AiSolverViewModel : ViewModel() {
                                 kotlinx.coroutines.yield()
                             }
                         }
+                    }
+                }
+
+                // Match the completed, per-PDF answer index to the exact
+                // chapter/test/printed-number identity of each extracted question.
+                // A missing or ambiguous answer remains unresolved; never guess.
+                for (idx in allExtractedQuestions.indices) {
+                    val original = allExtractedQuestions[idx]
+                    val scope = expectedScopeByQuestionId[original.id]
+                    val correct = scopedAnswers.get(scope, original.questionNumberInTest)
+                    if (correct != null) {
+                        allExtractedQuestions[idx] = original.copy(
+                            correctOption = correct,
+                            answerKeyMatched = true,
+                            solutionSummary = original.solutionSummary
+                                .substringBefore(" • Cevap anahtarı eşleşmesi bulunamadı") +
+                                " • Doğrulanmış Cevap: $correct"
+                        )
                     }
                 }
 

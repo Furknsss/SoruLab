@@ -22,6 +22,14 @@ internal class PdfScopedAnswerKeys {
 
     val answerCount: Int get() = answers.size
 
+    fun expectedNumbersBySourceTestId(): Map<String, Set<Int>> =
+        answers.keys.groupBy(
+            keySelector = { id ->
+                "${id.scope.section}~${if (id.scope.isOsymTest) "osym" else "normal"}~${id.scope.testNumber}"
+            },
+            valueTransform = { it.questionNumber }
+        ).mapValues { (_, numbers) -> numbers.toSet() }
+
     fun addOcrRows(rows: List<String>) {
         var currentSection: String? = lastRecognizedSection
         var activeScope: PdfAnswerScope? = null

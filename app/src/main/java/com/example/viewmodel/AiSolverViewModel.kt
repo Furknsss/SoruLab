@@ -15,6 +15,7 @@ import com.example.data.YksQuestion
 import com.example.data.resolveAnswerKeyOption
 import com.example.util.QuestionNumberAnchor
 import com.example.util.QuestionOptionAnchor
+import com.example.util.PdfScopedAnswerKeys
 import com.example.util.StudioImageAndPdfEngine
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
@@ -134,6 +135,8 @@ private data class PageQuestionCandidate(
 private data class PdfPageOcrLayout(
     val text: String = "",
     val headerText: String = "",
+    val scopeHeaderText: String = "",
+    val answerRows: List<String> = emptyList(),
     val questionNumberAnchors: List<QuestionNumberAnchor> = emptyList(),
     val optionAnchors: List<QuestionOptionAnchor> = emptyList()
 )
@@ -556,6 +559,32 @@ class AiSolverViewModel : ViewModel() {
         val headerText = lines
             .filter { (it.boundingBox?.top ?: Int.MAX_VALUE) <= bitmap.height * 0.07f }
             .joinToString("\n") { it.text }
+        // Read the full top header (not only the first 7%) for the printed TEST label.
+        val scopeHeaderText = lines.filter {
+            (it.boundingBox?.top ?: Int.MAX_VALUE) <= bitmap.height * 0.17f
+        }.sortedBy { it.boundingBox?.top ?: Int.MAX_VALUE }.joinToString("\n") { it.text }
+
+        // ML Kit may emit each answer-table cell as an independent line. Reassemble
+        // horizontal rows by their bounding-box Y coordinate before parsing keys.
+        val positioned = lines.mapNotNull { line ->
+            line.boundingBox?.let { line.text to it }
+        }.sortedBy { it.second.centerY() }
+        val grouped = mutableListOf<MutableList<Pair<String, android.graphics.Rect>>>()
+        for (entry in positioned) {
+            val previous = grouped.lastOrNull()
+            val midY = entry.second.centerY()
+            val groupMid = previous?.map { it.second.centerY() }?.average()
+            val groupHeight = previous?.map { it.second.height() }?.average()
+            if (previous != null && groupMid != null &&
+                kotlin.math.abs(midY - groupMid) <= maxOf(8.0, (groupHeight ?: 0.0) * 0.7)) {
+                previous.add(entry)
+            } else {
+                grouped.add(mutableListOf(entry))
+            }
+        }
+        val answerRows = grouped.map { row ->
+            row.sortedBy { it.second.left }.joinToString(" ") { it.first }
+        }
         val anchorRegex = Regex("""^\s*([1-9]|[1-3][0-9])[\.\-\)]\s*""")
         val numberRegex = Regex("""^\s*(?:[1-9]|[1-3][0-9])[\.\-\)]?$""")
         val optionRegex = Regex("""^\s*([A-E])\s*[).:]\s*""", RegexOption.IGNORE_CASE)
@@ -591,6 +620,8 @@ class AiSolverViewModel : ViewModel() {
         return PdfPageOcrLayout(
             text = recognized.text,
             headerText = headerText,
+            scopeHeaderText = scopeHeaderText,
+            answerRows = answerRows,
             questionNumberAnchors = anchors,
             optionAnchors = options
         )
@@ -839,8 +870,9 @@ class AiSolverViewModel : ViewModel() {
                     )
                 }
 
-                val mergedAnswerKey = localBlueprint.answerKeyMap.toMutableMap()
-                val ambiguousAnswerNumbers = localBlueprint.ambiguousAnswerNumbers.toMutableSet()
+                // A global question-number map is unsafe for books where each test
+                // restarts from question 1. Use a section + test scoped index instead.
+                val scopedAnswers = PdfScopedAnswerKeys()
                 val mergedPageMap = localBlueprint.pageMap
                 val finalBookTitle = localBlueprint.detectedBookTitle
                 var defaultExamType = localBlueprint.defaultExamType
@@ -881,6 +913,43 @@ class AiSolverViewModel : ViewModel() {
                             var lastProgressUpdateMs = 0L
                             val lastTopicBySubject = mutableMapOf<String, String>()
 
+                            // Read the answer tables first: scanned books commonly keep
+                            // every answer key at the very end, after question pages.
+                            // Limit the extra OCR pass to the tail; do not guess answers
+                            // if the tail layout cannot be read confidently.
+                            val tailBitmapRef = arrayOfNulls<Bitmap>(1)
+                            try {
+                                for (answerPage in (rendererTotal - 12).coerceAtLeast(0) until rendererTotal) {
+                                    val bitmap = try {
+                                        StudioImageAndPdfEngine.renderPageForLocalAnalysis(
+                                            renderer = renderer,
+                                            pageIndex = answerPage,
+                                            totalPages = rendererTotal,
+                                            reusableBitmapRef = tailBitmapRef
+                                        )
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (_: Exception) {
+                                        null
+                                    }
+                                    if (bitmap == null) continue
+                                    val answerLayout = try {
+                                        recognizePdfPageLayout(bitmap)
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (_: Exception) {
+                                        null
+                                    }
+                                    if (answerLayout != null &&
+                                        PdfScopedAnswerKeys.looksLikeAnswerPage(answerLayout.answerRows)) {
+                                        scopedAnswers.addOcrRows(answerLayout.answerRows)
+                                    }
+                                }
+                            } finally {
+                                tailBitmapRef[0]?.recycle()
+                                tailBitmapRef[0] = null
+                            }
+
                             for ((scanPos, pageIdx) in pageIndicesToScan.withIndex()) {
                                 if (pageIdx >= rendererTotal) continue
                                 val pageInfo = mergedPageMap[pageIdx] ?: StudioImageAndPdfEngine.LocalPageMapEntry(
@@ -890,7 +959,8 @@ class AiSolverViewModel : ViewModel() {
                                     topicName = "",
                                     difficulty = "Orta"
                                 )
-                                if (pageInfo.isSkipPage) continue
+                                // Blueprint text-layer flags are unreliable for scanned PDFs.
+                                // OCR must inspect this page before deciding whether to skip it.
 
                                 val nowMs = System.currentTimeMillis()
                                 if (nowMs - lastProgressUpdateMs >= 110L || scanPos == 0 || scanPos == totalPdfPages - 1) {
@@ -936,20 +1006,15 @@ class AiSolverViewModel : ViewModel() {
                                 }
                                 val hasAnswerKeyMarker =
                                     StudioImageAndPdfEngine.hasAnswerKeyMarker(pageLayout.text)
-                                if (hasAnswerKeyMarker) {
-                                    StudioImageAndPdfEngine.mergeAnswerKeyCandidates(
-                                        mergedAnswerKey,
-                                        ambiguousAnswerNumbers,
-                                        StudioImageAndPdfEngine.parseAnswerKeyCandidates(pageLayout.text)
-                                    )
-                                }
+                                val isAnswerTablePage =
+                                    PdfScopedAnswerKeys.looksLikeAnswerPage(pageLayout.answerRows)
                                 val skipPage = StudioImageAndPdfEngine.shouldSkipQuestionPage(
                                     text = pageLayout.text,
                                     topHeaderText = pageLayout.headerText,
                                     pageIndex = pageIdx,
                                     totalPages = totalPdfPages
                                 )
-                                if (skipPage || hasAnswerKeyMarker) {
+                                if (skipPage || hasAnswerKeyMarker || isAnswerTablePage) {
                                     continue
                                 }
 
@@ -1005,6 +1070,9 @@ class AiSolverViewModel : ViewModel() {
                                     subjectName = subjectForPage,
                                     topicName = resolvedPageTopic,
                                     isSkipPage = false
+                                )
+                                val pageAnswerScope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+                                    pageLayout.scopeHeaderText, scanPageInfo.topicName
                                 )
 
                                 val croppedBoxes = try {
@@ -1066,9 +1134,8 @@ class AiSolverViewModel : ViewModel() {
                                     val cropBox = candidate.cropBox
                                     val classification = candidate.classification
                                     val globalQuestionNum = allExtractedQuestions.size + 1
-                                    val verifiedAnswer = resolveAnswerKeyOption(
-                                        questionNumber = candidate.answerKeyQuestionNumber,
-                                        answerKey = mergedAnswerKey
+                                    val verifiedAnswer = scopedAnswers.get(
+                                        pageAnswerScope, candidate.answerKeyQuestionNumber
                                     )
 
                                     allExtractedQuestions.add(
@@ -1123,6 +1190,13 @@ class AiSolverViewModel : ViewModel() {
                 }
 
                 val warnings = buildList {
+                    if (scopedAnswers.answerCount == 0) {
+                        add("Test bazlı cevap anahtarı okunamadı. Hiçbir cevap tahmin edilmedi.")
+                    }
+                    val unresolved = allExtractedQuestions.count { !it.answerKeyMatched }
+                    if (unresolved > 0) {
+                        add("$unresolved soru cevabı güvenle eşleştirilemedi; manuel doğrulama gerekli.")
+                    }
                     if (processingStatus.ocrFailureCount > 0) {
                         add("Cihaz içi OCR ${processingStatus.ocrFailureCount} soruda tamamlanamadı; kırpılmış görseller yine aktarıldı.")
                     }

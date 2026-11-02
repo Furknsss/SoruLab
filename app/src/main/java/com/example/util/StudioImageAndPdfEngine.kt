@@ -218,8 +218,12 @@ object StudioImageAndPdfEngine {
         totalPages: Int = -1
     ): Boolean {
         val hasStructure = hasQuestionAndOptionStructure(text)
-        if (containsNonQuestionPageMarker(text) || containsNonQuestionPageMarker(topHeaderText)) return true
-        if (pageIndex in 0..4 && !hasStructure) return true
+        // Preserve recognizable question pages even if the text mentions a word
+        // commonly used on front-matter pages (e.g. "Atatürk").
+        if (!hasStructure &&
+            (containsNonQuestionPageMarker(text) || containsNonQuestionPageMarker(topHeaderText))) return true
+        // A scan's partial OCR may read only the question number or a choice.
+        if (pageIndex in 0..4 && !hasStructure && !hasQuestionNumberOrOptions(text)) return true
         if (text.isBlank()) return pageIndex in 0..4
 
         val normalizedText = normalizeTurkishText(text)

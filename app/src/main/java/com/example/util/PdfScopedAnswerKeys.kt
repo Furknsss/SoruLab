@@ -15,7 +15,9 @@ internal data class PdfAnswerId(
 )
 
 /** Pure parser: callers supply OCR text rows in top-to-bottom reading order. */
-internal class PdfScopedAnswerKeys {
+internal class PdfScopedAnswerKeys(
+    private val observedSections: Set<String> = emptySet()
+) {
     private val answers = mutableMapOf<PdfAnswerId, String>()
     private val ambiguous = mutableSetOf<PdfAnswerId>()
     private var lastRecognizedSection: String? = null
@@ -28,13 +30,21 @@ internal class PdfScopedAnswerKeys {
         for ((rowIndex, row) in rows.withIndex()) {
             val clean = row.trim().replace(Regex("\\s+"), " ")
             if (clean.isEmpty()) continue
-            val detectedSection = detectSectionHeading(clean)
+            val detectedSection = identifySection(clean)
             if (detectedSection != null) {
                 currentSection = detectedSection
                 lastRecognizedSection = detectedSection
                 continue
             }
             val test = testLabel.find(clean) ?: continue
+            // Some publishers print the chapter and test on one line:
+            // "Sinir Sistemi  TEST-1  1.B 2.C". Resolve against the
+            // actual headings discovered in THIS PDF, not a brand preset.
+            val inlineSection = identifySection(clean.substring(0, test.range.first))
+            if (inlineSection != null) {
+                currentSection = inlineSection
+                lastRecognizedSection = inlineSection
+            }
             val section = currentSection ?: continue // Never guess the section.
             val testNum = test.groupValues[2].toIntOrNull() ?: continue
             val isOsym = normalize(test.groupValues[1]).contains("osym")
@@ -69,13 +79,29 @@ internal class PdfScopedAnswerKeys {
         }
     }
 
+    private fun identifySection(text: String): String? {
+        if (observedSections.isEmpty()) return detectSectionHeading(text)
+        val heading = normalize(text)
+            .replace(Regex("\\s+[0-9]{1,2}$"), "")
+        if (heading.length < 5) return null
+        val matches = observedSections.filter { section ->
+            val expected = normalize(section)
+            heading == expected ||
+                heading.startsWith("$expected ") ||
+                expected.startsWith("$heading ")
+        }
+        return matches.singleOrNull()
+    }
+
     fun get(scope: PdfAnswerScope?, questionNumber: Int?): String? {
         if (scope == null || questionNumber == null || questionNumber <= 0) return null
         return answers[PdfAnswerId(scope, questionNumber)]
     }
 
     companion object {
-        private val testLabel = Regex("(?i)(?:^|\\s)((?:ÖSYM|OSYM|O[SŞ]YM)\\s*)?TEST\\s*([0-9]{1,2})(?=\\s|$|[.:])")
+        private val testLabel = Regex(
+            "(?i)(?:^|\\s)((?:ÖSYM|OSYM|O[SŞ]YM)(?:\\s+TADINDA)?\\s*)?TEST\\s*[-.:–]?\\s*([0-9]{1,2})(?=\\s|$|[.:])"
+        )
         private val questionAnswer = Regex("(?<![0-9])([0-9]{1,3})\\s*[.\\-:)]?\\s*([A-E])(?=\\s|$|[,;|.]|[0-9])", RegexOption.IGNORE_CASE)
         private val questionScopeNumber = Regex("(?i)\\bTEST\\s*([0-9]{1,2})\\b")
         private val trailingPageNumber = Regex("\\s+[0-9]{1,2}\\s*$")

@@ -2164,16 +2164,19 @@ object StudioImageAndPdfEngine {
             // a question or attach its printed answer-key identity.
             if (anchors.isEmpty()) continue
             val questionBands = anchors.mapIndexed { anchorIndex, anchor ->
-                    val previousAnchorTop = anchors.getOrNull(anchorIndex - 1)?.top
                     val nextAnchorTop = anchors.getOrNull(anchorIndex + 1)?.top
                     val optionsForQuestion = columnOptions.filter {
                         it.top >= anchor.top && (nextAnchorTop == null || it.top < nextAnchorTop)
+                    }.sortedBy { it.top }
+                    // When the next printed number is missing from OCR, all
+                    // following A-E rows would otherwise be absorbed into this
+                    // one crop. The FIRST complete sequence ending with E is a
+                    // conservative alternative end marker.
+                    val firstEndingE = optionsForQuestion.firstOrNull {
+                        it.option.equals("E", ignoreCase = true)
                     }
-                    val optionBottom = optionsForQuestion.maxOfOrNull { it.bottom }
-                    val previousOptionsBottom = columnOptions
-                        .asSequence()
-                        .filter { it.top < anchor.top && (previousAnchorTop == null || it.top >= previousAnchorTop) }
-                        .maxOfOrNull { it.bottom }
+                    val optionBottom = firstEndingE?.bottom
+                        ?: optionsForQuestion.maxOfOrNull { it.bottom }
                     // The OCR printed number marks the question START, not a
                     // projection band that might also contain earlier questions.
                     // A hard next-number boundary is more important than the

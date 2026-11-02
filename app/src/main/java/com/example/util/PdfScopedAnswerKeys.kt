@@ -88,6 +88,7 @@ internal class PdfScopedAnswerKeys(
             val expected = normalize(section)
             heading == expected ||
                 heading.startsWith("$expected ") ||
+                heading.endsWith(" $expected") ||
                 expected.startsWith("$heading ")
         }
         return matches.singleOrNull()
@@ -105,7 +106,11 @@ internal class PdfScopedAnswerKeys(
         private val questionAnswer = Regex("(?<![0-9])([0-9]{1,3})\\s*[.\\-:)]?\\s*([A-E])(?=\\s|$|[,;|.]|[0-9])", RegexOption.IGNORE_CASE)
         private val questionScopeNumber = Regex("(?i)\\bTEST\\s*([0-9]{1,2})\\b")
         private val trailingPageNumber = Regex("\\s+[0-9]{1,2}\\s*$")
-        private val nonSectionWords = listOf("cevap", "anahtar", "soru bankasi", "test", "osym", "tadinda", "dr biyoloji", "yayin")
+        // Generic document/branding words, not a list of known publishers.
+        private val nonSectionWords = listOf(
+            "cevap", "anahtar", "soru bankasi", "test", "osym",
+            "tadinda", "yayin", "kitap", "www", "pdf", "instagram"
+        )
 
         fun normalize(text: String): String = text.lowercase(Locale.forLanguageTag("tr-TR"))
             .replace('ı', 'i').replace('ş', 's').replace('ğ', 'g')
@@ -146,13 +151,21 @@ internal class PdfScopedAnswerKeys(
             val isOsym = "osym" in normalizedHeader
             val hint = normalize(topicHint)
             val headings = headerText.lines().map { it.trim() }
-                .filter { it.isNotBlank() && !normalize(it).contains("test") }
+                .filter { original ->
+                    original.isNotBlank() &&
+                        !original.contains('@') &&
+                        !original.contains("http", ignoreCase = true) &&
+                        !normalize(original).contains("test")
+                }
                 .map { normalize(it.replace(trailingPageNumber, "")) }
                 .filter { line ->
                     line.length in 5..65 && line.any(Char::isLetter) &&
                         nonSectionWords.none { it in line } &&
-                        !line.startsWith("www") && !line.startsWith("kuasar") &&
-                        !line.startsWith("yildiz") && !line.startsWith("mg")
+                        !line.startsWith("www") &&
+                        line !in listOf(
+                            "biyoloji", "matematik", "fizik", "kimya",
+                            "geometri", "turkce", "tarih", "cografya"
+                        )
                 }
             // Scanners sometimes recognize "Sinir Sistemi1" without the space
             // separating the printed unit suffix. Use the recognized topic only

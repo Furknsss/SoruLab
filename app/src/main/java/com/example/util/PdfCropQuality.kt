@@ -12,6 +12,10 @@ internal object PdfCropQuality {
         """(?m)^\s*([1-9]|[1-3][0-9])[.)]\s+(?=\S)"""
     )
 
+    private val answerChoice = Regex(
+        """(?i)(?:^|\\s)([A-E])\\s*[).:]"""
+    )
+
     fun warning(ocrText: String, expectedPrintedNumber: Int?): String? {
         if (ocrText.isBlank()) return "Kırpılan sorunun metni OCR ile doğrulanamadı."
         val numbers = numberedQuestionStart.findAll(ocrText)
@@ -22,6 +26,11 @@ internal object PdfCropQuality {
         }
         if (expectedPrintedNumber == null || expectedPrintedNumber <= 0) {
             return "Basılı soru numarası doğrulanamadı."
+        }
+        val recognizedChoices = answerChoice.findAll(ocrText)
+            .map { it.groupValues[1].uppercase() }.toSet()
+        if (recognizedChoices.size < 4) {
+            return "A-E cevap seçeneklerinin çoğu OCR ile doğrulanamadı; eksik kırpma olabilir."
         }
         return null
     }

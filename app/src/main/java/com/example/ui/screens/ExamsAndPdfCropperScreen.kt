@@ -66,9 +66,14 @@ fun PublisherLogoEmblem(
     overrideLogoPath: String = "",
     modifier: Modifier = Modifier
 ) {
-    val effectivePath = overrideLogoPath
+    // Imported logos may be stored as absolute paths or file:// URIs.
+    // Never show a random publisher's artwork if this question's image is missing.
+    val overrideFilePath = overrideLogoPath.removePrefix("file://")
+    val publisherFilePath = publisher.customLogoPath.removePrefix("file://")
+    val effectivePath = overrideFilePath
         .takeIf { it.isNotBlank() && File(it).isFile }
-        ?: publisher.customLogoPath
+        ?: publisherFilePath.takeIf { it.isNotBlank() && File(it).isFile }
+        .orEmpty()
     val customBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(effectivePath)
 
     if (customBitmap != null) {

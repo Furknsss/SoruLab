@@ -1704,6 +1704,36 @@ object StudioImageAndPdfEngine {
         }
     }
 
+    /**
+     * Dense answer-key tables need larger OCR glyphs than regular question
+     * pages. Only used for the tail-page answer scan and reused per page.
+     */
+    fun renderAnswerKeyPageForLocalAnalysis(
+        renderer: PdfRenderer,
+        pageIndex: Int,
+        totalPages: Int,
+        reusableBitmapRef: Array<Bitmap?>
+    ): Bitmap? {
+        if (pageIndex !in 0 until totalPages) return null
+        return renderer.openPage(pageIndex).use { page ->
+            val targetW = (page.width * 2f).roundToInt().coerceIn(2000, 2600)
+            val targetH = (page.height.toFloat() * targetW / page.width)
+                .roundToInt().coerceIn(1600, 3800)
+            val old = reusableBitmapRef[0]
+            val bmp = if (old == null || old.isRecycled ||
+                old.width != targetW || old.height != targetH
+            ) {
+                old?.recycle()
+                Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888).also {
+                    reusableBitmapRef[0] = it
+                }
+            } else old
+            bmp.eraseColor(Color.WHITE)
+            page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+            bmp
+        }
+    }
+
     fun cropRenderedPageLocalDualColumn(
         context: Context,
         pageBitmap: Bitmap,

@@ -157,4 +157,29 @@ class StudioImageAndPdfEngineTest {
             )
         )
     }
+
+    @Test
+    fun `question with front matter keyword is preserved`() {
+        assertFalse(
+            StudioImageAndPdfEngine.shouldSkipQuestionPage(
+                text = "1. Atatürk ilkeleri ile ilgili hangisi doğrudur?\nA) Bir\nB) İki\nC) Üç",
+                topHeaderText = "Tarih",
+                pageIndex = 12,
+                totalPages = 120
+            )
+        )
+    }
+
+    @Test
+    fun `early question page with incomplete OCR is preserved`() {
+        assertFalse(
+            StudioImageAndPdfEngine.shouldSkipQuestionPage(
+                text = "1. Aşağıdaki işlemin sonucu kaçtır?",
+                topHeaderText = "Matematik",
+                pageIndex = 1,
+                totalPages = 120
+            )
+        )
+    }
+
 }

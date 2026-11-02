@@ -1045,7 +1045,10 @@ fun SoruHavuzuAndPdfStudioView(
                                                 bookTitle = autoDetectedBookTitle,
                                                 bookCoverPath = coverPath
                                             )
-                                            excludedPdfCropIds = emptySet()
+                                            excludedPdfCropIds = extractedItems.filter {
+                                                !it.answerKeyMatched || it.qualityWarning.isNotBlank() ||
+                                                    it.sourceTestId.isBlank()
+                                            }.map { it.id }.toSet()
                                         }
                                     }
                                 },
@@ -1829,8 +1832,16 @@ fun SoruHavuzuAndPdfStudioView(
                     else excludedPdfCropIds + id
             },
             onConfirm = {
-                val accepted = pendingImport.items.filterNot { it.id in excludedPdfCropIds }
-                val discarded = pendingImport.items.filter { it.id in excludedPdfCropIds }
+                // A verified answer and clean crop are mandatory for a scored
+                // YKS question. Never allow unchecked publisher questions into
+                // the active pool, even if the selection state becomes stale.
+                val accepted = pendingImport.items.filter {
+                    it.id !in excludedPdfCropIds &&
+                        it.answerKeyMatched && it.qualityWarning.isBlank() &&
+                        it.sourceTestId.isNotBlank()
+                }
+                val acceptedIds = accepted.map { it.id }.toSet()
+                val discarded = pendingImport.items.filter { it.id !in acceptedIds }
                 if (accepted.isNotEmpty()) {
                     onSaveExtractedPdfBatch(
                         accepted,
@@ -2119,8 +2130,17 @@ private fun PdfImportCropReviewDialog(
     var current by remember(items) { mutableIntStateOf(0) }
     val item = items[current.coerceIn(0, items.lastIndex)]
     val bitmap = StudioImageAndPdfEngine.rememberCachedBitmap(item.croppedImagePath)
-    val includedCount = items.size - excludedIds.size
+    val verifiedCount = items.count {
+        it.answerKeyMatched && it.qualityWarning.isBlank() &&
+            it.sourceTestId.isNotBlank()
+    }
+    val includedCount = items.count {
+        it.id !in excludedIds && it.answerKeyMatched &&
+            it.qualityWarning.isBlank() && it.sourceTestId.isNotBlank()
+    }
     val isExcluded = item.id in excludedIds
+    val itemCanBeSaved = item.answerKeyMatched &&
+        item.qualityWarning.isBlank() && item.sourceTestId.isNotBlank()
 
     Dialog(onDismissRequest = {}) {
         Surface(
@@ -2140,7 +2160,7 @@ private fun PdfImportCropReviewDialog(
                     color = Color(0xFF1E3A8A)
                 )
                 Text(
-                    "Soru ${current + 1} / ${items.size} • Kaydedilecek: $includedCount",
+                    "Soru ${current + 1} / ${items.size} • Doğrulanan: $verifiedCount • Kaydedilecek: $includedCount",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color(0xFF475569)
                 )
@@ -2177,7 +2197,25 @@ private fun PdfImportCropReviewDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = if (item.answerKeyMatched) Color(0xFF15803D) else Color(0xFFB45309)
                 )
+                if (item.qualityWarning.isNotBlank() || item.sourceTestId.isBlank()) {
+                    Text(
+                        item.qualityWarning.ifBlank {
+                            "Kitaptaki kaynak test doğrulanamadı; bu soru kaydedilemez."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFB91C1C)
+                    )
+                }
+                if (!itemCanBeSaved) {
+                    Text(
+                        "Bu soru güvenli kabul edilmedi. Cevap anahtarı, kaynak test " +
+                            "ve kırpma doğrulanmadan kaydedilemez.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFB91C1C)
+                    )
+                }
                 OutlinedButton(
+                    enabled = itemCanBeSaved,
                     onClick = { onToggleExclude(item.id) },
                     modifier = Modifier.fillMaxWidth()
                 ) {

@@ -1463,16 +1463,10 @@ private fun BookPageQuestionItem345(
     onAddToKumbara: () -> Unit
 ) {
     val context = LocalContext.current
-    val publisherLogo by produceState<Bitmap?>(
-        initialValue = null,
-        question.publisherLogoUri
-    ) {
-        value = withContext(Dispatchers.IO) {
-            val logoPath = question.publisherLogoUri
-                .removePrefix("file://")
-                .takeIf(String::isNotBlank)
-            logoPath?.let(BitmapFactory::decodeFile)
-        }
+    var sourceDetailsVisible by remember(question.id) { mutableStateOf(false) }
+    val sourcePublisher = remember(question.publisherId, question.publisherName, customPublishers) {
+        customPublishers.firstOrNull { it.id == question.publisherId && question.publisherId.isNotBlank() }
+            ?: SoruLabPublisherPresets.resolvePublisher(question.publisherName, customPublishers)
     }
     val croppedBitmap by produceState<Bitmap?>(
         initialValue = null,
@@ -1519,6 +1513,53 @@ private fun BookPageQuestionItem345(
             bitmap
         }
     }
+    if (sourceDetailsVisible) {
+        AlertDialog(
+            onDismissRequest = { sourceDetailsVisible = false },
+            shape = RoundedCornerShape(22.dp),
+            containerColor = Color.White,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PublisherLogoEmblem(
+                        publisher = sourcePublisher,
+                        size = 44.dp,
+                        overrideLogoPath = question.publisherLogoUri
+                    )
+                    Column {
+                        Text("Soru kaynağı", color = Color(0xFF64748B),
+                            style = MaterialTheme.typography.labelMedium)
+                        Text(question.publisherName.ifBlank { "Kaynak belirtilmedi" },
+                            color = Color(0xFF172554),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    if (question.sourceBookTitle.isNotBlank()) {
+                        Text("Kitap: ${question.sourceBookTitle}")
+                    }
+                    if (question.sourceTestId.isNotBlank()) {
+                        Text("Kaynak test: ${question.sourceTestId.replace("~", " • ")}")
+                    }
+                    if (question.sourcePageIndex >= 0) {
+                        Text("PDF sayfası: ${question.sourcePageIndex + 1}")
+                    }
+                    if (question.sourcePrintedQuestionNumber > 0) {
+                        Text("Kitaptaki soru: ${question.sourcePrintedQuestionNumber}")
+                    }
+                    Text("SoruLab'daki soru numarası: ${question.number}",
+                        color = Color(0xFF64748B))
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { sourceDetailsVisible = false }) { Text("Kapat") }
+            }
+        )
+    }
+
     val isEmpty = selectedOption.isNullOrBlank()
     val isUngraded = !question.answerKeyVerified
     val isCorrect = !isEmpty && question.answerKeyVerified && selectedOption == question.correctOption
@@ -1541,39 +1582,16 @@ private fun BookPageQuestionItem345(
                 modifier = Modifier.width(42.dp)
             ) {
                 Box(
-                    modifier = Modifier.size(26.dp),
+                    modifier = Modifier.size(36.dp)
+                        .testTag("question_source_logo_${question.number}")
+                        .clickable { sourceDetailsVisible = true },
                     contentAlignment = Alignment.Center
                 ) {
-                    val logo = publisherLogo
-                    if (logo != null) {
-                        Image(
-                            bitmap = logo.asImageBitmap(),
-                            contentDescription = "${question.publisherName} logosu",
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFFEFF6FF),
-                            border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = question.publisherStamp
-                                        .filter(Char::isLetterOrDigit)
-                                        .take(3)
-                                        .ifBlank { "345" }
-                                        .uppercase(),
-                                    color = Color(0xFF2B5B84),
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 8.sp,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                    }
+                    PublisherLogoEmblem(
+                        publisher = sourcePublisher,
+                        size = 34.dp,
+                        overrideLogoPath = question.publisherLogoUri
+                    )
                 }
                 Spacer(Modifier.height(4.dp))
                 Box(

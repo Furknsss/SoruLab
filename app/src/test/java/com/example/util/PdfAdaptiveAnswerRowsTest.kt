@@ -62,4 +62,36 @@ class PdfAdaptiveAnswerRowsTest {
         assertEquals("C", keys.get(second, 1))
         assertEquals("A", keys.get(third, 1))
     }
+
+    @Test
+    fun `chapter headings can be learned from a book without publisher templates`() {
+        val keys = PdfScopedAnswerKeys(setOf("sinir sistemi", "hormonlar"))
+        // Mixed-case section, a generic running header, and a punctuated test
+        // label are common across unrelated publishers.
+        keys.addOcrRows(listOf(
+            "ÜST DÜZEY BİYOLOJİ",
+            "Sinir Sistemi",
+            "TEST-1 1.E 2.B 3.A 4.D",
+            "Hormonlar TEST:2 1.A 2.C 3.B"
+        ))
+        assertEquals("E", keys.get(
+            PdfAnswerScope("sinir sistemi", 1, false), 1
+        ))
+        assertEquals("C", keys.get(
+            PdfAnswerScope("hormonlar", 2, false), 2
+        ))
+    }
+
+    @Test
+    fun `nearby unknown publisher heading must not become a chapter`() {
+        val keys = PdfScopedAnswerKeys(setOf("hormonlar"))
+        keys.addOcrRows(listOf(
+            "BAŞKA YAYINEVİ SORU BANKASI",
+            "TEST 1 1.A 2.B 3.C"
+        ))
+        assertEquals(null, keys.get(
+            PdfAnswerScope("hormonlar", 1, false), 1
+        ))
+    }
+
 }

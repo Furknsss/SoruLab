@@ -1411,9 +1411,14 @@ fun SoruHavuzuAndPdfStudioView(
             // Preserve PDF reading order: page -> left column -> vertical position.
             activeBookPanel.questions.sortedWith(
                 compareBy<com.example.data.CustomQuestionRecord>(
+                    { if (it.pageIndex >= 0) 0 else 1 },
                     { if (it.pageIndex >= 0) it.pageIndex else Int.MAX_VALUE },
-                    { if (it.normLeft >= 0.50f) 1 else 0 },
-                    { it.normTop },
+                    // Firestore may lack local-only PDF coordinates. A saved
+                    // source test identity still provides safe stable ordering.
+                    { if (it.pageIndex < 0) it.sourceTestId.substringBeforeLast("~", "") else "" },
+                    { if (it.pageIndex < 0) it.sourceTestId.substringAfterLast("~").toIntOrNull() ?: Int.MAX_VALUE else 0 },
+                    { if (it.pageIndex >= 0 && it.normLeft >= 0.50f) 1 else 0 },
+                    { if (it.pageIndex >= 0) it.normTop else it.questionNumberInBook.toFloat() },
                     { if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE }
                 )
             )

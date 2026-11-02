@@ -118,9 +118,13 @@ internal class PdfScopedAnswerKeys {
             val shortRows = rows.count {
                 testLabel.containsMatchIn(it) && questionAnswer.findAll(it).count() >= 2
             }
+            val totalPairs = rows.sumOf { questionAnswer.findAll(it).count() }
+            val testRows = rows.count { testLabel.containsMatchIn(it) }
+            val hasSection = rows.any { detectSectionHeading(it) != null }
             return "cevap anahtar" in normalized ||
                 strongRows >= 2 || shortRows >= 3 ||
-                (strongRows >= 1 && rows.any { detectSectionHeading(it) != null })
+                (strongRows >= 1 && hasSection) ||
+                (testRows >= 1 && totalPairs >= 8 && hasSection)
         }
 
         /** Missing test/section evidence is deliberately left unmatched. */

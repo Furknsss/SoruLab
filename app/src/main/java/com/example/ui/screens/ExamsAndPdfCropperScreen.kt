@@ -518,6 +518,14 @@ private fun MockExamCardItem(
  * - Altta sadece "KİTAPLIĞIM" vitrini yer alır: Her kaynak; Kitap Kapağı, Yayın Logosu,
  *   Kitap Adı ve içinde kaç aktif soru olduğu rozetiyle bir "Kitap Kartı" olarak dizilir.
  */
+private data class PendingPdfQuestionImport(
+    val items: List<ExtractedPdfQuestionItem>,
+    val publisherName: String,
+    val publisherLogoUri: String,
+    val bookTitle: String,
+    val bookCoverPath: String
+)
+
 @Composable
 fun SoruHavuzuAndPdfStudioView(
     customQuestions: List<CustomQuestionRecord>,
@@ -561,6 +569,8 @@ fun SoruHavuzuAndPdfStudioView(
     var selectedPdfUri by remember { mutableStateOf<Uri?>(null) }
     var selectedPdfFileName by remember { mutableStateOf("") }
     var totalPdfPages by remember { mutableIntStateOf(0) }
+    var pendingPdfImport by remember { mutableStateOf<PendingPdfQuestionImport?>(null) }
+    var excludedPdfCropIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     var showAddPublisherModal by remember { mutableStateOf(false) }
     var newPubName by remember { mutableStateOf("") }
@@ -1021,19 +1031,23 @@ fun SoruHavuzuAndPdfStudioView(
                                         publisher
                                     ) { extractedItems, coverPath, autoDetectedBookTitle ->
                                         if (extractedItems.isNotEmpty()) {
-                                            onSaveExtractedPdfBatch(
-                                                extractedItems,
-                                                publisher.name,
-                                                publisher.customLogoPath,
-                                                autoDetectedBookTitle,
-                                                coverPath
+                                            // Never write automatically: even OCR-complete pages can
+                                            // contain clipped choices, stray diagrams, or merged questions.
+                                            pendingPdfImport = PendingPdfQuestionImport(
+                                                items = extractedItems,
+                                                publisherName = publisher.name,
+                                                publisherLogoUri = publisher.customLogoPath,
+                                                bookTitle = autoDetectedBookTitle,
+                                                bookCoverPath = coverPath
                                             )
+                                            excludedPdfCropIds = emptySet()
                                         }
                                     }
                                 },
                                 enabled = selectedPdfUri != null &&
                                     selectedPublisher != null &&
-                                    !batchCropState.isAnalyzing,
+                                    !batchCropState.isAnalyzing &&
+                                    pendingPdfImport == null,
                                 shape = RoundedCornerShape(16.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color(0xFF1E3A8A),
@@ -1798,6 +1812,56 @@ fun SoruHavuzuAndPdfStudioView(
             }
         }
     }
+
+    val pendingImport = pendingPdfImport
+    if (pendingImport != null) {
+        PdfImportCropReviewDialog(
+            items = pendingImport.items,
+            excludedIds = excludedPdfCropIds,
+            onToggleExclude = { id ->
+                excludedPdfCropIds =
+                    if (id in excludedPdfCropIds) excludedPdfCropIds - id
+                    else excludedPdfCropIds + id
+            },
+            onConfirm = {
+                val accepted = pendingImport.items.filterNot { it.id in excludedPdfCropIds }
+                val discarded = pendingImport.items.filter { it.id in excludedPdfCropIds }
+                if (accepted.isNotEmpty()) {
+                    onSaveExtractedPdfBatch(
+                        accepted,
+                        pendingImport.publisherName,
+                        pendingImport.publisherLogoUri,
+                        pendingImport.bookTitle,
+                        pendingImport.bookCoverPath
+                    )
+                }
+                pendingPdfImport = null
+                excludedPdfCropIds = emptySet()
+                if (discarded.isNotEmpty()) {
+                    scope.launch(Dispatchers.IO) {
+                        discarded.forEach { item ->
+                            StudioImageAndPdfEngine.deleteQuestionImage(
+                                context.applicationContext, item.croppedImagePath
+                            )
+                        }
+                    }
+                }
+            },
+            onCancel = {
+                pendingPdfImport = null
+                excludedPdfCropIds = emptySet()
+                // Only the temporary per-crop JPEGs are removed. Keep the original
+                // PDF archive untouched; another import may already reference it.
+                scope.launch(Dispatchers.IO) {
+                    pendingImport.items.forEach { item ->
+                        StudioImageAndPdfEngine.deleteQuestionImage(
+                            context.applicationContext, item.croppedImagePath
+                        )
+                    }
+                }
+            }
+        )
+    }
 }
 
 /**
@@ -2028,6 +2092,121 @@ private fun LibraryBookShowcaseCard(
                             fontSize = 12.sp
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+
+/**
+ * One crop at a time: never decode a hundreds-of-pages book's thumbnails together.
+ * Users must approve the selected images before any question reaches the pool.
+ */
+@Composable
+private fun PdfImportCropReviewDialog(
+    items: List<ExtractedPdfQuestionItem>,
+    excludedIds: Set<String>,
+    onToggleExclude: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
+) {
+    var current by remember(items) { mutableIntStateOf(0) }
+    val item = items[current.coerceIn(0, items.lastIndex)]
+    val bitmap = StudioImageAndPdfEngine.rememberCachedBitmap(item.croppedImagePath)
+    val includedCount = items.size - excludedIds.size
+    val isExcluded = item.id in excludedIds
+
+    Dialog(onDismissRequest = {}) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.90f),
+            shape = RoundedCornerShape(20.dp),
+            color = Color.White,
+            shadowElevation = 10.dp
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "PDF soru kırpma kontrolü",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E3A8A)
+                )
+                Text(
+                    "Soru ${current + 1} / ${items.size} • Kaydedilecek: $includedCount",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF475569)
+                )
+                Text(
+                    "PDF sayfası ${item.pageIndex + 1} • Kitap soru no: ${item.questionNumberInTest}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF64748B)
+                )
+                Box(
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFF8FAFC)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (bitmap != null) {
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "Kırpılan soru önizlemesi",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize().padding(6.dp)
+                        )
+                    } else {
+                        Text(
+                            "Görsel okunamadı; bu soruyu dışarıda bırakın.",
+                            color = Color(0xFFB91C1C),
+                            modifier = Modifier.padding(18.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+                Text(
+                    if (item.answerKeyMatched) "Cevap anahtarı: ${item.correctOption} (eşleşti)"
+                    else "Cevap anahtarı doğrulanamadı; cevap tahmin edilmeyecek.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (item.answerKeyMatched) Color(0xFF15803D) else Color(0xFFB45309)
+                )
+                OutlinedButton(
+                    onClick = { onToggleExclude(item.id) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (isExcluded) "Soruyu tekrar dahil et" else "Bu hatalı kırpmayı aktarım dışında bırak")
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        enabled = current > 0,
+                        onClick = { current-- },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Önceki") }
+                    OutlinedButton(
+                        enabled = current < items.lastIndex,
+                        onClick = { current++ },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Sonraki") }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TextButton(
+                        onClick = onCancel,
+                        modifier = Modifier.weight(1f)
+                    ) { Text("İptal") }
+                    Button(
+                        enabled = includedCount > 0,
+                        onClick = onConfirm,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A))
+                    ) { Text("Seçilenleri kaydet") }
                 }
             }
         }

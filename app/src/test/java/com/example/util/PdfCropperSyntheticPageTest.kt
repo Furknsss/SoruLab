@@ -1,0 +1,75 @@
+package com.example.util
+
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import java.io.File
+
+/**
+ * Synthetic, originally authored page: no publisher material is stored in Git.
+ * Checks the real crop engine when OCR has located printed numbers and options.
+ */
+@RunWith(RobolectricTestRunner::class)
+class PdfCropperSyntheticPageTest {
+    @Test
+    fun `two column question page keeps three independent crop regions`() {
+        val bmp = Bitmap.createBitmap(1400, 1800, Bitmap.Config.ARGB_8888)
+        bmp.eraseColor(Color.WHITE)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 30f
+        }
+        val canvas = Canvas(bmp)
+        fun text(x: Float, y: Float, label: String) = canvas.drawText(label, x, y, paint)
+
+        text(110f, 270f, "1. Sol sutun soru bir")
+        text(155f, 320f, "A) Secenek A")
+        text(155f, 368f, "B) Secenek B")
+        text(110f, 890f, "2. Sol sutun soru iki")
+        text(155f, 940f, "A) Secenek A")
+        text(155f, 990f, "B) Secenek B")
+        text(810f, 270f, "3. Sag sutun soru uc")
+        text(855f, 320f, "A) Secenek A")
+        text(855f, 368f, "B) Secenek B")
+
+        val numbers = listOf(
+            QuestionNumberAnchor(1, 110, 235, 145, 270),
+            QuestionNumberAnchor(2, 110, 855, 145, 890),
+            QuestionNumberAnchor(3, 810, 235, 845, 270)
+        )
+        val opts = listOf(
+            QuestionOptionAnchor("A", 155, 290, 175, 323),
+            QuestionOptionAnchor("B", 155, 338, 175, 371),
+            QuestionOptionAnchor("A", 155, 910, 175, 943),
+            QuestionOptionAnchor("B", 155, 958, 175, 993),
+            QuestionOptionAnchor("A", 855, 290, 875, 323),
+            QuestionOptionAnchor("B", 855, 338, 875, 371)
+        )
+
+        val items = StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
+            context = RuntimeEnvironment.getApplication(),
+            pageBitmap = bmp,
+            pageIndex = 3,
+            totalPages = 8,
+            reusablePixelsRef = arrayOfNulls<IntArray>(1),
+            questionNumberAnchors = numbers,
+            optionAnchors = opts
+        )
+        try {
+            assertEquals("Three independent questions must be returned", 3, items.size)
+            assertEquals(setOf(1, 2, 3), items.map { it.questionOrderInPage }.toSet())
+            assertTrue(items.all { it.croppedImagePath.isNotBlank() })
+            assertTrue(items.all { File(it.croppedImagePath).isFile })
+        } finally {
+            items.forEach { File(it.croppedImagePath).delete() }
+            bmp.recycle()
+        }
+    }
+}

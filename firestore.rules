@@ -47,7 +47,13 @@ service cloud.firestore {
         'aiSolutionSummary', 'cropAspectRatio', 'createdAt', 'updatedAt'
       ];
       return data.keys().hasAll(keys)
-        && data.keys().hasOnly(keys)
+        && data.keys().hasOnly(keys.concat(['publisherId', 'sourceBookTitle', 'bookId']))
+        && data.get('publisherId', '') is string
+        && data.get('publisherId', '').size() <= 120
+        && data.get('sourceBookTitle', '') is string
+        && data.get('sourceBookTitle', '').size() <= 160
+        && data.get('bookId', '') is string
+        && data.get('bookId', '').size() <= 120
         && data.userId is string && data.userId == request.auth.uid
         && data.examType is string && (data.examType == 'TYT' || data.examType == 'AYT')
         && data.subjectId is string && data.subjectId.size() >= 1 && data.subjectId.size() <= 64

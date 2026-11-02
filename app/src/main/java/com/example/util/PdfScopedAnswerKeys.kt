@@ -61,7 +61,7 @@ internal class PdfScopedAnswerKeys {
 
     companion object {
         private val testLabel = Regex("(?i)(?:^|\\s)((?:ÖSYM|OSYM|O[SŞ]YM)\\s*)?TEST\\s*([0-9]{1,2})(?=\\s|$|[.:])")
-        private val questionAnswer = Regex("(?<![0-9])([0-9]{1,3})\\s*[.\\-:)]\\s*([A-E])(?=\\s|$|[,;|.]|[0-9])", RegexOption.IGNORE_CASE)
+        private val questionAnswer = Regex("(?<![0-9])([0-9]{1,3})\\s*[.\\-:)]?\\s*([A-E])(?=\\s|$|[,;|.]|[0-9])", RegexOption.IGNORE_CASE)
         private val questionScopeNumber = Regex("(?i)\\bTEST\\s*([0-9]{1,2})\\b")
         private val trailingPageNumber = Regex("\\s+[0-9]{1,2}\\s*$")
         private val nonSectionWords = listOf("cevap", "anahtar", "soru bankasi", "test", "osym", "tadinda", "dr biyoloji", "yayin")

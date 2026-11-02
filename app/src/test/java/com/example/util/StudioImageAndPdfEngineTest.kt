@@ -162,7 +162,7 @@ class StudioImageAndPdfEngineTest {
     fun `history question mentioning Ataturk must not be mistaken for front matter`() {
         assertFalse(
             StudioImageAndPdfEngine.shouldSkipQuestionPage(
-                text = "1. Atatürk ilkeleri hakkında hangisi doğrudur?\\nA) Bir\\nB) İki",
+                text = "1. Atatürk ilkeleri hakkında hangisi doğrudur?\nA) Bir\nB) İki",
                 topHeaderText = "Tarih",
                 pageIndex = 8,
                 totalPages = 180

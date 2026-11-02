@@ -1478,7 +1478,7 @@ fun SoruHavuzuAndPdfStudioView(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "${activeBookPanel.subjectsSummary} • Toplam ${sortedBookQuestions.size} Soru",
+                                    text = "${activeBookPanel.subjectsSummary} • ${sortedBookQuestions.count { it.answerKeyVerified }} doğrulanmış / ${sortedBookQuestions.size} toplam",
                                     color = Color(0xFF2563EB),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.5.sp
@@ -1586,7 +1586,13 @@ fun SoruHavuzuAndPdfStudioView(
                     )
                     if (testChunks.isEmpty()) {
                         Text(
-                            text = "Bu kitapta seçili seviyeye uygun soru bulunamadı.",
+                            text = if (filteredQuestionsForChunks.isEmpty()) {
+                                "Bu kitabın soru cevap anahtarı doğrulanmamış olabilir. " +
+                                    "Hatalı içe aktarılan sorular testte kullanılmıyor; kitabı " +
+                                    "orijinal PDF'den yeniden işleyin."
+                            } else {
+                                "Bu kitapta seçili seviyeye uygun doğrulanmış soru bulunamadı."
+                            },
                             color = Color(0xFF64748B),
                             fontSize = 13.sp
                         )

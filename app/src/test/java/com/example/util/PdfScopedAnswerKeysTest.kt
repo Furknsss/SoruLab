@@ -113,4 +113,26 @@ class PdfScopedAnswerKeysTest {
         assertEquals("endokrin sistem homeostazi", scope?.section)
     }
 
+
+    @Test
+    fun `a table continuing on the next answer page keeps its heading`() {
+        val keys = PdfScopedAnswerKeys()
+        keys.addOcrRows(listOf("SİNİR SİSTEMİ", "Test 1 1.E 2.B"))
+        keys.addOcrRows(listOf("Test 2 1.A 2.C 3.D"))
+        val scope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 2\nSinir Sistemi 2", "Sinir Sistemi")
+        assertEquals("A", keys.get(scope, 1))
+        assertEquals("D", keys.get(scope, 3))
+    }
+
+    @Test
+    fun `single section answer table is detected but question page stays excluded`() {
+        assertTrue(PdfScopedAnswerKeys.looksLikeAnswerPage(listOf(
+            "SİNİR SİSTEMİ", "Test 1 1.E 2.B 3.A 4.D"
+        )))
+        assertFalse(PdfScopedAnswerKeys.looksLikeAnswerPage(listOf(
+            "Sinir Sistemi", "Test 1", "1. Aşağıdaki ifadelerden hangisi doğrudur?"
+        )))
+    }
+
 }

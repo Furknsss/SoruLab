@@ -2158,20 +2158,12 @@ object StudioImageAndPdfEngine {
                     option.left >= colLeft &&
                     option.left < colRight
             }
-            val questionBands = if (anchors.isEmpty()) {
-                projectedBands.flatMap { band ->
-                    splitOversizedProjectionBand(
-                        pixels = pixels,
-                        pageWidth = width,
-                        colLeft = colLeft,
-                        colRight = colRight,
-                        band = band,
-                        bodyHeight = bodyH,
-                        isInkPixel = ::isInkPixel
-                    )
-                }
-            } else {
-                anchors.mapIndexed { anchorIndex, anchor ->
+            // Fail closed. Pixel projection alone repeatedly produced merged
+            // 7+8 crops and completely unrelated snippets from scanned books.
+            // Without a recognized printed number we cannot reliably locate
+            // a question or attach its printed answer-key identity.
+            if (anchors.isEmpty()) continue
+            val questionBands = anchors.mapIndexed { anchorIndex, anchor ->
                     val previousAnchorTop = anchors.getOrNull(anchorIndex - 1)?.top
                     val nextAnchorTop = anchors.getOrNull(anchorIndex + 1)?.top
                     val optionsForQuestion = columnOptions.filter {
@@ -2202,7 +2194,6 @@ object StudioImageAndPdfEngine {
                         ?: hardEnd).coerceIn(startY + 1, hardEnd)
                     startY to endY
                 }
-            }
 
             for ((qIdx, band) in questionBands.withIndex()) {
                 val (expandedTop, expandedBottom) = expandBandToConnectedInkIslands(

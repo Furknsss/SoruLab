@@ -1619,7 +1619,12 @@ fun SoruHavuzuAndPdfStudioView(
                             val verifiedAnswerCount = chunkQuestions.count { it.answerKeyVerified }
                             val previewBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(firstInChunk.croppedImagePath)
                             val topicTitle = firstInChunk.topicName.ifBlank { "Konu belirlenmedi" }
-                            val cleanTestName = "$topicTitle - Test ${chunkIdx + 1}"
+                            val printedTestNumber = firstInChunk.sourceTestId
+                                .substringAfterLast("~", "").toIntOrNull()
+                            val isOsymSource = "~osym~" in firstInChunk.sourceTestId
+                            val cleanTestName = if (printedTestNumber != null) {
+                                "$topicTitle - ${if (isOsymSource) "ÖSYM " else ""}Test $printedTestNumber"
+                            } else "$topicTitle - Test ${chunkIdx + 1}"
 
                             Surface(
                                 onClick = {

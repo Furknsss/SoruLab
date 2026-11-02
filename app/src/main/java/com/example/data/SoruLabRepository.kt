@@ -51,6 +51,20 @@ internal object LocalQuestionCacheIO {
         candidates.filterNotNull().firstOrNull { raw ->
             raw.isNotBlank() && runCatching { JSONArray(raw) }.isSuccess
         }
+
+    /**
+     * The device-global fallback may have been written by another signed-in
+     * account. Restore only when every record explicitly belongs to this user.
+     */
+    fun verifiedUserFallback(json: String?, userId: String): String? {
+        if (json.isNullOrBlank() || userId.isBlank()) return null
+        return runCatching {
+            val arr = JSONArray(json)
+            if ((0 until arr.length()).all { i ->
+                arr.optJSONObject(i)?.optString("userId") == userId
+            }) json else null
+        }.getOrNull()
+    }
 }
 
 @Immutable
@@ -800,14 +814,21 @@ class SoruLabRepository(
             // AtomicFile can recover an interrupted write. If an older cache is
             // malformed, try its backup and legacy preferences rather than
             // treating the entire question bank as empty.
-            val raw = LocalQuestionCacheIO.firstValidJson(
+            val userScoped = LocalQuestionCacheIO.firstValidJson(
                 listOf(
                     LocalQuestionCacheIO.readJson(userCacheFile),
+                    prefs.getString("custom_questions_$userId", null)
+                )
+            )
+            val globalFallback = LocalQuestionCacheIO.firstValidJson(
+                listOf(
                     LocalQuestionCacheIO.readJson(globalCacheFile),
-                    prefs.getString("custom_questions_$userId", null),
                     prefs.getString("custom_questions_global_device", null)
                 )
-            ) ?: return emptyList()
+            )
+            val raw = userScoped
+                ?: LocalQuestionCacheIO.verifiedUserFallback(globalFallback, userId)
+                ?: return emptyList()
             val arr = JSONArray(raw)
             val len = arr.length()
             val list = ArrayList<CustomQuestionRecord>(len)

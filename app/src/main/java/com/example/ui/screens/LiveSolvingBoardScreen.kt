@@ -2952,6 +2952,7 @@ private fun FullScreenTwinQuestionComparisonView(
 ) {
     var twinSelectedOption by remember(originalQuestion.id) { mutableStateOf<String?>(null) }
     var isTwinAnswerRevealed by remember(originalQuestion.id) { mutableStateOf(false) }
+    var isTwinSolutionRevealed by remember(originalQuestion.id) { mutableStateOf(false) }
     var originalTwinStrokes by remember(originalQuestion.id) { mutableStateOf<List<DrawStroke>>(emptyList()) }
     var twinStrokes by remember(originalQuestion.id) { mutableStateOf<List<DrawStroke>>(emptyList()) }
 
@@ -2993,8 +2994,8 @@ private fun FullScreenTwinQuestionComparisonView(
             )
         }
 
-        // RTL places the twin card on the right while keeping each card's content LTR.
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        // Tablet landscape: twin question on the LEFT; printed source question on the RIGHT.
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Row(
                 modifier = Modifier
                     .weight(1f)
@@ -3002,7 +3003,7 @@ private fun FullScreenTwinQuestionComparisonView(
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-            // İkiz kartı sağda, Test Sorusu kartı solda yer alır.
+            // İkiz soru soldadır; öğrenci yanındaki orijinal ile karşılaştırır.
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Column(
                 modifier = Modifier
@@ -3081,44 +3082,77 @@ private fun FullScreenTwinQuestionComparisonView(
                                     Text(
                                         text = twinData.questionStem,
                                         color = Color(0xFF1E293B),
-                                        fontSize = 14.5.sp,
-                                        lineHeight = 21.sp,
+                                        fontSize = 17.sp,
+                                        lineHeight = 25.sp,
                                         fontWeight = FontWeight.Medium
                                     )
 
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(top = 8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         listOf("A", "B", "C", "D", "E").forEach { optKey ->
-                                            val optVal = twinData.options[optKey] ?: optKey
+                                            val optionText = twinData.options[optKey].orEmpty()
                                             val isSelected = twinSelectedOption == optKey
-                                            val isCorrectOpt = isTwinAnswerRevealed && optKey == twinData.correctOption
+                                            val isCorrect = isTwinAnswerRevealed && optKey == twinData.correctOption
+                                            val isWrong = isTwinAnswerRevealed && isSelected && !isCorrect
                                             Surface(
-                                                onClick = { twinSelectedOption = optKey },
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = when {
-                                                    isCorrectOpt -> Color(0xFFDCFCE7)
-                                                    isSelected -> Color(0xFFDBEAFE)
-                                                    else -> Color.Transparent
+                                                onClick = {
+                                                    if (!isTwinAnswerRevealed) twinSelectedOption = optKey
                                                 },
-                                                border = if (isSelected || isCorrectOpt) {
-                                                    BorderStroke(
-                                                        1.dp,
-                                                        if (isCorrectOpt) Color(0xFF16A34A) else Color(0xFF2563EB)
-                                                    )
-                                                } else null
+                                                modifier = Modifier.fillMaxWidth()
+                                                    .testTag("twin_option_$optKey"),
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = when {
+                                                    isCorrect -> Color(0xFFF0FDF4)
+                                                    isWrong -> Color(0xFFFEF2F2)
+                                                    isSelected -> Color(0xFFEFF6FF)
+                                                    else -> Color.White
+                                                },
+                                                border = BorderStroke(1.dp, when {
+                                                    isCorrect -> Color(0xFF16A34A)
+                                                    isWrong -> Color(0xFFDC2626)
+                                                    isSelected -> Color(0xFF2563EB)
+                                                    else -> Color(0xFFE2E8F0)
+                                                })
                                             ) {
-                                                Text(
-                                                    text = "$optKey) $optVal",
-                                                    color = Color(0xFF1E293B),
-                                                    fontWeight = if (isSelected || isCorrectOpt) FontWeight.ExtraBold else FontWeight.SemiBold,
-                                                    fontSize = 13.sp,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                                                )
+                                                Row(
+                                                    modifier = Modifier.padding(
+                                                        horizontal = 12.dp, vertical = 11.dp
+                                                    ),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                                ) {
+                                                    Surface(
+                                                        shape = CircleShape,
+                                                        color = when {
+                                                            isCorrect -> Color(0xFF15803D)
+                                                            isWrong -> Color(0xFFDC2626)
+                                                            isSelected -> Color(0xFF2563EB)
+                                                            else -> Color(0xFFF1F5F9)
+                                                        },
+                                                        modifier = Modifier.size(30.dp)
+                                                    ) {
+                                                        Box(contentAlignment = Alignment.Center) {
+                                                            Text(
+                                                                text = optKey,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = if (isCorrect || isWrong || isSelected)
+                                                                    Color.White else Color(0xFF475569),
+                                                                fontSize = 13.sp
+                                                            )
+                                                        }
+                                                    }
+                                                    Text(
+                                                        text = optionText,
+                                                        modifier = Modifier.weight(1f),
+                                                        color = Color(0xFF1E293B),
+                                                        fontWeight = if (isSelected || isCorrect)
+                                                            FontWeight.SemiBold else FontWeight.Normal,
+                                                        fontSize = 15.sp,
+                                                        lineHeight = 21.sp
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -3142,12 +3176,21 @@ private fun FullScreenTwinQuestionComparisonView(
                                                     fontWeight = FontWeight.ExtraBold,
                                                     fontSize = 13.5.sp
                                                 )
-                                                Text(
-                                                    text = twinData.solutionExplanation,
-                                                    color = Color(0xFF166534),
-                                                    fontSize = 12.5.sp,
-                                                    lineHeight = 18.sp
-                                                )
+                                                if (!isTwinSolutionRevealed) {
+                                                    TextButton(
+                                                        onClick = { isTwinSolutionRevealed = true },
+                                                        modifier = Modifier.testTag("twin_show_solution")
+                                                    ) {
+                                                        Text("Adım adım çözümü göster")
+                                                    }
+                                                } else {
+                                                    Text(
+                                                        text = twinData.solutionExplanation,
+                                                        color = Color(0xFF166534),
+                                                        fontSize = 13.sp,
+                                                        lineHeight = 19.sp
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -3161,7 +3204,10 @@ private fun FullScreenTwinQuestionComparisonView(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Surface(
-                                        onClick = { isTwinAnswerRevealed = !isTwinAnswerRevealed },
+                                        onClick = {
+                                            isTwinAnswerRevealed = !isTwinAnswerRevealed
+                                            if (!isTwinAnswerRevealed) isTwinSolutionRevealed = false
+                                        },
                                         shape = RoundedCornerShape(50),
                                         color = Color(0xFF3B82F6),
                                         shadowElevation = 3.dp
@@ -3190,7 +3236,7 @@ private fun FullScreenTwinQuestionComparisonView(
             }
             }
 
-            // Test kartı, RTL düzeni nedeniyle sol tarafta.
+            // Test sorusu sağdadır; kaynağın asıl görseli korunur.
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Column(
                 modifier = Modifier
@@ -3238,7 +3284,7 @@ private fun FullScreenTwinQuestionComparisonView(
                                         originalBitmap.height.toFloat().coerceAtLeast(1f)
                                     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                                         val nativeWidth = with(LocalDensity.current) { originalBitmap.width.toDp() }
-                                        val imageWidth = minOf(maxWidth, 300.dp, nativeWidth)
+                                        val imageWidth = minOf(maxWidth, 520.dp, nativeWidth)
                                         Image(
                                             bitmap = originalBitmap.asImageBitmap(),
                                             contentDescription = "Orijinal Test Sorusu",

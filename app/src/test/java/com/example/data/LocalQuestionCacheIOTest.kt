@@ -31,4 +31,16 @@ class LocalQuestionCacheIOTest {
         ))
         assertNull(LocalQuestionCacheIO.firstValidJson(listOf("{", "", null)))
     }
+
+    @Test
+    fun `global question backup is never restored into a different account`() {
+        val oldAccount = """[{"id":"q1","userId":"account_A"}]"""
+        assertNull(LocalQuestionCacheIO.verifiedUserFallback(oldAccount, "account_B"))
+        assertEquals(oldAccount,
+            LocalQuestionCacheIO.verifiedUserFallback(oldAccount, "account_A"))
+        val mixedAccounts = """[{"id":"q1","userId":"account_A"},{"id":"q2","userId":"account_B"}]"""
+        assertNull(LocalQuestionCacheIO.verifiedUserFallback(mixedAccounts, "account_A"))
+        assertNull(LocalQuestionCacheIO.verifiedUserFallback("{broken", "account_A"))
+    }
+
 }

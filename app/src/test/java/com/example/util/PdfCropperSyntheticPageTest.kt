@@ -97,6 +97,29 @@ class PdfCropperSyntheticPageTest {
                 first.boxNormalized[2] <= second.boxNormalized[0])
         } finally {
             items.forEach { File(it.croppedImagePath).delete() }
+        }
+
+        // OCR misses printed 2. The earlier question still must not swallow
+        // all of question 2: its FIRST E answer option ends question 1.
+        val fewerAnchors = numbers.filter { it.number != 2 }
+        val withEndingOption = opts + QuestionOptionAnchor(
+            "E", 155, 395, 175, 430
+        )
+        val conservative = StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
+            context = RuntimeEnvironment.getApplication(),
+            pageBitmap = bmp,
+            pageIndex = 3,
+            totalPages = 8,
+            reusablePixelsRef = arrayOfNulls<IntArray>(1),
+            questionNumberAnchors = fewerAnchors,
+            optionAnchors = withEndingOption
+        )
+        try {
+            val first = conservative.first { it.questionOrderInPage == 1 }
+            assertTrue("Missing next OCR anchor caused merged questions",
+                first.boxNormalized[2] < 855f / 1800f)
+        } finally {
+            conservative.forEach { File(it.croppedImagePath).delete() }
             bmp.recycle()
         }
     }

@@ -6,7 +6,8 @@ import java.util.Locale
 internal data class PdfAnswerScope(
     val section: String,
     val testNumber: Int,
-    val isOsymTest: Boolean
+    val isOsymTest: Boolean,
+    val testKind: String = "test"
 )
 
 internal data class PdfAnswerId(
@@ -66,14 +67,23 @@ internal class PdfScopedAnswerKeys(
                 n to match.groupValues[2].uppercase(Locale.ROOT)
             }.toList()
             if (pairs.size < 2) continue // Avoid hallucinated single-character OCR matches.
-            for ((number, option) in pairs) {
-                val id = PdfAnswerId(PdfAnswerScope(section, testNum, isOsym), number)
-                if (id in ambiguous) continue
-                val previous = answers.putIfAbsent(id, option)
-                if (previous != null && previous != option) {
-                    answers.remove(id)
-                    ambiguous.add(id)
-                }
+            addPairs(PdfAnswerScope(section, testNum, isOsym), pairs)
+
+        }
+    }
+
+    /** Trusted OCR rows or spatial answer grids for exactly one printed test. */
+    fun addPairs(scope: PdfAnswerScope?, pairs: List<Pair<Int, String>>) {
+        if (scope == null) return
+        for ((number, rawAnswer) in pairs) {
+            val option = rawAnswer.uppercase(Locale.ROOT)
+            if (number !in 1..200 || option !in listOf("A", "B", "C", "D", "E")) continue
+            val id = PdfAnswerId(scope, number)
+            if (id in ambiguous) continue
+            val previous = answers.putIfAbsent(id, option)
+            if (previous != null && previous != option) {
+                answers.remove(id)
+                ambiguous.add(id)
             }
         }
     }
@@ -103,12 +113,15 @@ internal class PdfScopedAnswerKeys(
             "(?i)(?:^|\\s)((?:ÖSYM|OSYM|O[SŞ]YM)(?:\\s+TADINDA)?\\s*)?TEST\\s*[-.:–]?\\s*([0-9]{1,2})(?=\\s|$|[.:])"
         )
         private val questionAnswer = Regex("(?<![0-9])([0-9]{1,3})\\s*[.\\-:)]?\\s*([A-E])(?=\\s|$|[,;|.]|[0-9])", RegexOption.IGNORE_CASE)
-        private val questionScopeNumber = Regex("(?i)\\bTEST\\s*([0-9]{1,2})\\b")
+        private val questionScopeNumber = Regex(
+            "(?i)\\b(TEST|ANALIZ|DENEME|UYGULAMA|ETKINLIK)\\s*[-.:–]?\\s*([0-9]{1,2})\\b"
+        )
         private val trailingPageNumber = Regex("\\s+[0-9]{1,2}\\s*$")
         // Generic document/branding words, not a list of known publishers.
         private val nonSectionWords = listOf(
             "cevap", "anahtar", "soru bankasi", "test", "osym",
-            "tadinda", "yayin", "kitap", "www", "pdf", "instagram"
+            "tadinda", "yayin", "kitap", "www", "pdf", "instagram",
+            "analiz", "deneme", "uygulama", "etkinlik"
         )
 
         fun normalize(text: String): String = text.lowercase(Locale.forLanguageTag("tr-TR"))
@@ -144,8 +157,10 @@ internal class PdfScopedAnswerKeys(
 
         /** Missing test/section evidence is deliberately left unmatched. */
         fun scopeFromQuestionHeader(headerText: String, topicHint: String): PdfAnswerScope? {
-            val testNum = questionScopeNumber.find(normalize(headerText))?.groupValues?.get(1)?.toIntOrNull()
+            val matchedTest = questionScopeNumber.find(normalize(headerText))
                 ?: return null
+            val testNum = matchedTest.groupValues[2].toIntOrNull() ?: return null
+            val kind = matchedTest.groupValues[1].lowercase(Locale.ROOT)
             val normalizedHeader = normalize(headerText)
             val isOsym = "osym" in normalizedHeader
             val hint = normalize(topicHint)
@@ -175,7 +190,7 @@ internal class PdfScopedAnswerKeys(
             } }
             val section = matchedHint ?: headings.firstOrNull() ?: hint.takeIf(String::isNotBlank)
             if (section.isNullOrBlank()) return null
-            return PdfAnswerScope(section, testNum, isOsym)
+            return PdfAnswerScope(section, testNum, isOsym, kind)
         }
     }
 }

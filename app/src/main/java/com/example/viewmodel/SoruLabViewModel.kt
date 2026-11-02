@@ -1264,11 +1264,20 @@ class SoruLabViewModel(
                 sourceFilter = sourceFilter
             )
         }
-        if (sourceCandidates.isEmpty()) return null
+        // A test must never score a question whose source answer key was
+        // explicitly marked unverified during PDF import. Existing broken
+        // imports remain on disk for recovery but are not used to grade YKS.
+        val scoreableCandidates = sourceCandidates.filter { q ->
+            q.answerKeyVerified && q.correctOption in listOf("A", "B", "C", "D", "E")
+        }
+        if (scoreableCandidates.isEmpty()) {
+            showBanner("Bu konuda cevap anahtarı doğrulanmış soru bulunamadı. PDF'yi yeniden kontrol edin.")
+            return null
+        }
         val difficultyPriority = difficultyFallbackOrder(selectedDifficulties)
             .withIndex()
             .associate { it.value to it.index }
-        val strictCandidates = sourceCandidates
+        val strictCandidates = scoreableCandidates
             .distinctBy { it.croppedImagePath.ifBlank { it.id } }
             .sortedBy { difficultyPriority.getValue(it.difficulty) }
 

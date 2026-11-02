@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.Base64
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -44,6 +48,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -61,7 +66,10 @@ import androidx.compose.ui.window.PopupProperties
 import com.example.data.*
 import com.example.util.StudioImageAndPdfEngine
 import com.example.viewmodel.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
@@ -1403,7 +1411,52 @@ private fun BookPageQuestionItem345(
     onOpenTwinScreen: () -> Unit,
     onAddToKumbara: () -> Unit
 ) {
-    val croppedBitmap = StudioImageAndPdfEngine.rememberGuaranteedQuestionBitmap(question)
+    val context = LocalContext.current
+    val croppedBitmap by produceState<Bitmap?>(
+        initialValue = null,
+        question.id,
+        question.imagePath,
+        question.imageBase64
+    ) {
+        value = withContext(Dispatchers.IO) {
+            val file = question.imagePath?.let(::File)
+            val fallbackFile = File(context.filesDir, "questions/q_${question.id}.jpg")
+
+            val bitmap = file
+                ?.takeIf(File::exists)
+                ?.let { BitmapFactory.decodeFile(it.absolutePath) }
+                ?: fallbackFile
+                    .takeIf(File::exists)
+                    ?.let { BitmapFactory.decodeFile(it.absolutePath) }
+                ?: question.imageBase64
+                    ?.takeIf(String::isNotBlank)
+                    ?.let { base64 ->
+                        try {
+                            val bytes = Base64.decode(base64, Base64.DEFAULT)
+                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        } catch (exception: IllegalArgumentException) {
+                            Log.e("SoruLab", "Soru görseli Base64 verisi çözümlenemedi. ID: ${question.id}", exception)
+                            null
+                        }
+                    }
+
+            if (bitmap == null) {
+                val reason = when {
+                    file != null && file.exists() -> "Belirtilen dosya bulundu ancak çözümlenemedi."
+                    fallbackFile.exists() -> "Yedek dosya bulundu ancak çözümlenemedi."
+                    question.imageBase64.isNullOrBlank() -> "Dosyalar bulunamadı ve Base64 görsel verisi yok."
+                    else -> "Dosyalar bulunamadı veya görsel verisi çözümlenemedi."
+                }
+                Log.e(
+                    "SoruLab",
+                    "Görsel bulunamadı! Path: ${question.imagePath}, ID: ${question.id}, " +
+                        "FilesDir: ${context.filesDir.absolutePath}. $reason"
+                )
+            }
+
+            bitmap
+        }
+    }
     val isEmpty = selectedOption.isNullOrBlank()
     val isUngraded = !question.answerKeyVerified
     val isCorrect = !isEmpty && question.answerKeyVerified && selectedOption == question.correctOption
@@ -1438,23 +1491,18 @@ private fun BookPageQuestionItem345(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (croppedBitmap != null) {
-                    val aspect = croppedBitmap.width.toFloat() / croppedBitmap.height.toFloat().coerceAtLeast(1f)
-                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                        val nativeWidth = with(LocalDensity.current) { croppedBitmap.width.toDp() }
-                        val imageWidth = minOf(maxWidth, 300.dp, nativeWidth)
-                        val imageHeight = (imageWidth / aspect).coerceIn(140.dp, 380.dp)
-                        Image(
-                            bitmap = croppedBitmap.asImageBitmap(),
-                            contentDescription = "${question.number}. Soru",
-                            contentScale = ContentScale.Fit,
-                            alignment = Alignment.TopStart,
-                            modifier = Modifier
-                                .width(imageWidth)
-                                .height(imageHeight)
-                                .background(Color.White)
-                        )
-                    }
+                val bitmap = croppedBitmap
+                if (bitmap != null) {
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "${question.number}. Soru",
+                        contentScale = ContentScale.Fit,
+                        alignment = Alignment.TopStart,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .wrapContentHeight()
+                            .background(Color.White)
+                    )
                     // Kitap sayfasında her kırpılmış sorunun hemen altında hızlı şık işaretleme barı (A B C D E)
                     Row(
                         modifier = Modifier

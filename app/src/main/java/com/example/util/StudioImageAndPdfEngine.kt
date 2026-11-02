@@ -20,6 +20,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.text.PDFTextStripper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
@@ -764,6 +767,8 @@ object StudioImageAndPdfEngine {
                     }
                 }
             }
+        } catch (_: OutOfMemoryError) {
+            null to 0
         } catch (_: Exception) {
             // Fallback in case the user picked an image file instead of a PDF
             val decodedImg = runCatching { BitmapFactory.decodeFile(pdfFile.absolutePath) }.getOrNull()
@@ -1325,6 +1330,7 @@ object StudioImageAndPdfEngine {
      * Completes in <150ms even on 300+ page PDFs and provides a 100% self-sufficient fallback if AI quota is exceeded.
      */
     fun extractLocalPdfBlueprint(
+        context: Context,
         pdfFile: File,
         totalPages: Int,
         fileNameHint: String,
@@ -1332,6 +1338,13 @@ object StudioImageAndPdfEngine {
     ): LocalPdfBlueprint {
         val rawTextBuilder = StringBuilder()
         val decodedStreamChunks = mutableListOf<String>()
+        val vectorPageText = extractPdfPageTextLayer(context, pdfFile, totalPages)
+        vectorPageText.forEachIndexed { pageIndex, text ->
+            if (text.isNotBlank()) {
+                rawTextBuilder.append("\n--- PDF METİN SAYFA ").append(pageIndex + 1).appendLine(" ---")
+                rawTextBuilder.appendLine(text)
+            }
+        }
         try {
             val fileLen = pdfFile.length()
             val headBytesSize = min(fileLen, 4_500_000L).toInt()
@@ -1424,15 +1437,16 @@ object StudioImageAndPdfEngine {
                     .coerceIn(0, decodedStreamChunks.lastIndex)
             } else -1
             val streamSnippet = if (mappedStreamIdx >= 0) decodedStreamChunks[mappedStreamIdx] else ""
+            val pageText = vectorPageText.getOrNull(pageIdx).orEmpty().ifBlank { streamSnippet }
             val resolvedSubjForPage = bookSubjectHint
-                ?: detectSubjectFromContent(streamSnippet)
+                ?: detectSubjectFromContent(pageText)
                 ?: detectedSubject
-            val resolvedTopicForPage = if (streamSnippet.length >= 16 && resolvedSubjForPage.isNotBlank()) {
-                detectTopicNameFromText(examType, resolvedSubjForPage, streamSnippet)
+            val resolvedTopicForPage = if (pageText.length >= 16 && resolvedSubjForPage.isNotBlank()) {
+                detectTopicNameFromText(examType, resolvedSubjForPage, pageText)
                     ?: com.example.data.SoruLabCatalog.matchBestTopic(
                         examTypeHint = examType,
                         subjectNameHint = resolvedSubjForPage,
-                        topicOrQuestionText = streamSnippet
+                        topicOrQuestionText = pageText
                     )?.second?.name.orEmpty()
             } else {
                 ""
@@ -1440,12 +1454,18 @@ object StudioImageAndPdfEngine {
 
             val classifiedDiff = com.example.data.SoruLabCatalog.classifyDifficulty5FromText(
                 rawDifficultyHint = "",
-                headerOrQuestionText = streamSnippet
+                headerOrQuestionText = pageText
             )
+            val normalizedPageText = normalizeTurkishText(pageText)
+            val isTextOnlyFrontMatter = pageIdx in 0..4 && pageText.isNotBlank() &&
+                !hasQuestionAndOptionStructure(pageText)
+            val isAnswerKeyPage = normalizedPageText.contains("cevap anahtari") &&
+                !hasQuestionAndOptionStructure(pageText)
 
             pageMap[pageIdx] = LocalPageMapEntry(
                 pageIndex = pageIdx,
-                isSkipPage = false,
+                isSkipPage = containsNonQuestionPageMarker(pageText) ||
+                    isTextOnlyFrontMatter || isAnswerKeyPage,
                 examType = examType,
                 subjectName = resolvedSubjForPage,
                 topicName = resolvedTopicForPage,
@@ -1462,6 +1482,26 @@ object StudioImageAndPdfEngine {
             answerKeyMap = answerKeyMap,
             pageMap = pageMap
         )
+    }
+
+    private fun extractPdfPageTextLayer(
+        context: Context,
+        pdfFile: File,
+        totalPages: Int
+    ): List<String> = try {
+        PDFBoxResourceLoader.init(context.applicationContext)
+        PDDocument.load(pdfFile).use { document ->
+            val stripper = PDFTextStripper()
+            List(min(totalPages, document.numberOfPages).coerceAtLeast(0)) { pageIndex ->
+                stripper.startPage = pageIndex + 1
+                stripper.endPage = pageIndex + 1
+                stripper.getText(document).take(12_000)
+            }
+        }
+    } catch (_: OutOfMemoryError) {
+        emptyList()
+    } catch (_: Exception) {
+        emptyList()
     }
 
     private fun extractReadablePdfTextFromBytes(

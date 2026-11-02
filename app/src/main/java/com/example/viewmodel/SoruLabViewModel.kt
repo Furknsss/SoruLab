@@ -1098,13 +1098,15 @@ class SoruLabViewModel(
                 requestedQuestionCount = reqCount
             )
         }
-        val questionCountForSelection: (Set<DifficultyLevel>, QuestionSourceFilter) -> Int = { _, source ->
+        val questionCountForSelection: (Set<DifficultyLevel>, QuestionSourceFilter) -> Int = { difficulties, source ->
+            val activeDifficulties = difficulties.ifEmpty { DifficultyLevel.entries.toSet() }
             if (level == TopicTestLevel.IKIZ && source == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
-                collectRealPoolQuestionsForTopicAndLevel(topic, level).size
+                collectRealPoolQuestionsForTopicAndLevel(topic, level)
+                    .count { it.difficulty in activeDifficulties }
             } else {
                 collectQuestionsByTopicSourceAndDifficulty(
                     topic,
-                    DifficultyLevel.entries.toSet(),
+                    activeDifficulties,
                     source
                 ).size
             }
@@ -1233,12 +1235,15 @@ class SoruLabViewModel(
         sourceFilter: QuestionSourceFilter,
         requestedQuestionCount: Int
     ): YksTestItem? {
+        if (requestedQuestionCount != AUTOMATIC_TEST_QUESTION_COUNT) return null
+        val activeDifficulties = selectedDifficulties.ifEmpty { DifficultyLevel.entries.toSet() }
         val sourceCandidates = if (level == TopicTestLevel.IKIZ && sourceFilter == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
             collectRealPoolQuestionsForTopicAndLevel(topic, level)
+                .filter { it.difficulty in activeDifficulties }
         } else {
             collectQuestionsByTopicSourceAndDifficulty(
                 topic = topic,
-                selectedDifficulties = DifficultyLevel.entries.toSet(),
+                selectedDifficulties = activeDifficulties,
                 sourceFilter = sourceFilter
             )
         }
@@ -1290,8 +1295,8 @@ class SoruLabViewModel(
             }
         }
 
-        if (orderedPool.size < requestedQuestionCount.coerceAtLeast(1)) return null
-        val safeCount = requestedQuestionCount.coerceAtLeast(1)
+        val safeCount = AUTOMATIC_TEST_QUESTION_COUNT
+        if (orderedPool.size < safeCount) return null
         val questionsToUse = orderedPool.take(safeCount)
         if (questionsToUse.isEmpty()) return null
 

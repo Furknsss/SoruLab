@@ -61,8 +61,8 @@ android {
     applicationId = "com.aistudio.sorulab.ykslab"
     minSdk = 24
     targetSdk = 36
-    versionCode = 20
-    versionName = "1.2.1"
+    versionCode = 21
+    versionName = "1.2.2"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -244,6 +244,7 @@ dependencies {
   // Sign-In via Credential Manager:
   implementation(libs.firebase.auth)
   implementation(libs.mlkit.text.recognition)
+  implementation(libs.pdfbox.android)
   implementation(libs.androidx.credentials)
   implementation(libs.androidx.credentials.play.services)
   implementation(libs.googleid)

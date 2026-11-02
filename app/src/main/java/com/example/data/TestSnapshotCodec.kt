@@ -21,6 +21,7 @@ object TestSnapshotCodec {
                     .put("publisherName", question.publisherName)
                     .put("publisherLogoUri", question.publisherLogoUri.takeIf { includeImageFallback }.orEmpty())
                     .put("croppedImagePath", question.croppedImagePath.takeIf { includeImageFallback }.orEmpty())
+                    .put("imagePath", question.imagePath.takeIf { includeImageFallback }.orEmpty())
                     .put("answerKeyVerified", question.answerKeyVerified)
                     .put("stemTop", question.stemTop)
                     .put("bulletsOrSteps", bullets)
@@ -80,7 +81,8 @@ object TestSnapshotCodec {
                 publisherStamp = item.optString("publisherStamp"),
                 publisherName = item.optString("publisherName"),
                 publisherLogoUri = item.optString("publisherLogoUri"),
-                croppedImagePath = item.optString("croppedImagePath"),
+                croppedImagePath = item.optString("imagePath")
+                    .ifBlank { item.optString("croppedImagePath") },
                 answerKeyVerified = item.optBoolean("answerKeyVerified", true),
                 stemTop = item.optString("stemTop"),
                 bulletsOrSteps = bullets,

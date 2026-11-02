@@ -1270,6 +1270,7 @@ class AiSolverViewModel : ViewModel() {
                 // STEP 1: Fast local structural text + Regex Answer Key + YKS Curriculum Dictionary blueprint
                 val localBlueprint = withContext(Dispatchers.IO) {
                     StudioImageAndPdfEngine.extractLocalPdfBlueprint(
+                        context = context,
                         pdfFile = seekablePdfFile,
                         totalPages = totalPdfPages,
                         fileNameHint = resolvedDisplayName,
@@ -1471,6 +1472,7 @@ class AiSolverViewModel : ViewModel() {
                                     topicName = "",
                                     difficulty = "Orta"
                                 )
+                                if (pageInfo.isSkipPage) continue
 
                                 val nowMs = System.currentTimeMillis()
                                 if (nowMs - lastProgressUpdateMs >= 110L || scanPos == 0 || scanPos == totalPdfPages - 1) {

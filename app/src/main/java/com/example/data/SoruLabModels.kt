@@ -511,7 +511,7 @@ data class YksQuestion(
     val id: String,
     val number: Int,
     val badgeTitle: String = "GÜNLÜK ÖDEV 5",
-    val topicHeader: String = "TEMEL KAVRAMLAR",
+    val topicHeader: String = "",
     val publisherStamp: String = "ÜÇDÖRTBEŞ YAYINLARI",
     val publisherName: String = "ÜçDörtBeş Yayınları",
     val publisherLogoUri: String = "",

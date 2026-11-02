@@ -30,21 +30,20 @@ internal class PdfScopedAnswerKeys(
         for ((rowIndex, row) in rows.withIndex()) {
             val clean = row.trim().replace(Regex("\\s+"), " ")
             if (clean.isEmpty()) continue
-            val detectedSection = identifySection(clean)
-            if (detectedSection != null) {
-                currentSection = detectedSection
-                lastRecognizedSection = detectedSection
-                continue
+            val test = testLabel.find(clean)
+            val sectionHeading = if (test != null) {
+                identifySection(clean.substring(0, test.range.first))
+            } else identifySection(clean)
+            if (sectionHeading != null) {
+                currentSection = sectionHeading
+                lastRecognizedSection = sectionHeading
             }
-            val test = testLabel.find(clean) ?: continue
+            // A heading and its first test may share a printed table row.
+            // In that case process both, never skip the test after the heading.
+            if (test == null) continue
             // Some publishers print the chapter and test on one line:
             // "Sinir Sistemi  TEST-1  1.B 2.C". Resolve against the
             // actual headings discovered in THIS PDF, not a brand preset.
-            val inlineSection = identifySection(clean.substring(0, test.range.first))
-            if (inlineSection != null) {
-                currentSection = inlineSection
-                lastRecognizedSection = inlineSection
-            }
             val section = currentSection ?: continue // Never guess the section.
             val testNum = test.groupValues[2].toIntOrNull() ?: continue
             val isOsym = normalize(test.groupValues[1]).contains("osym")

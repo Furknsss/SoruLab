@@ -88,4 +88,29 @@ class PdfScopedAnswerKeysTest {
             (1..10).map { index.get(scope, it) })
     }
 
+
+    @Test
+    fun `compact section number and publisher header do not confuse answer matching`() {
+        val keys = PdfScopedAnswerKeys()
+        keys.addOcrRows(listOf(
+            "SİNİR SİSTEMİ",
+            "Test 1 1.E 2.B 3.A 4.A 5.E 6.D 7.B 8.A 9.D 10.C"
+        ))
+        val scope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "@KuasarNemesis\\nDR BIYOLOJI\\nTEST\\n1\\nSinir Sistemi1",
+            "Sinir Sistemi"
+        )
+        assertEquals("E", keys.get(scope, 1))
+        assertEquals("C", keys.get(scope, 10))
+        assertEquals("sinir sistemi", scope?.section)
+    }
+
+    @Test
+    fun `unrelated topic must not be silently rewritten by catalog hint`() {
+        val scope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 2\\nENDOKRIN SISTEM HOMEOSTAZI 2", "Sinir Sistemi"
+        )
+        assertEquals("endokrin sistem homeostazi", scope?.section)
+    }
+
 }

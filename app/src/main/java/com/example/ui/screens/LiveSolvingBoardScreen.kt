@@ -3774,13 +3774,34 @@ private fun FullScreenSuccessReportCardView(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = if (q.answerKeyVerified) "${q.topicHeader} • Doğru Cevap: ${q.correctOption}"
-                                    else "${q.topicHeader} • Cevap anahtarı doğrulanmadı",
-                                    color = Color(0xFF334155),
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 13.sp
-                                )
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Text(
+                                        text = if (q.answerKeyVerified) "${q.topicHeader} • Doğru Cevap: ${q.correctOption}"
+                                        else "${q.topicHeader} • Cevap anahtarı doğrulanmadı",
+                                        color = Color(0xFF334155),
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 13.sp
+                                    )
+                                    Text(
+                                        text = buildString {
+                                            append("Kaynak: ")
+                                            append(q.publisherName.ifBlank { "Belirtilmedi" })
+                                            if (q.sourceBookTitle.isNotBlank()) {
+                                                append(" • "); append(q.sourceBookTitle)
+                                            }
+                                            if (q.sourcePrintedQuestionNumber > 0) {
+                                                append(" • Kitaptaki ${q.sourcePrintedQuestionNumber}. soru")
+                                            }
+                                        },
+                                        color = Color(0xFF64748B),
+                                        fontSize = 11.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     Surface(
                                         onClick = { onOpenTwinForQuestion(q) },

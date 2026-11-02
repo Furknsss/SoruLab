@@ -890,7 +890,9 @@ class AiSolverViewModel : ViewModel() {
                                     topicName = "",
                                     difficulty = "Orta"
                                 )
-                                if (pageInfo.isSkipPage) continue
+                                // The PDF text layer may be incomplete or absent for scanned pages.
+                                // Do not trust blueprint skip flags until OCR has inspected the page.
+                                // The OCR-based shouldSkipQuestionPage check below filters covers.
 
                                 val nowMs = System.currentTimeMillis()
                                 if (nowMs - lastProgressUpdateMs >= 110L || scanPos == 0 || scanPos == totalPdfPages - 1) {

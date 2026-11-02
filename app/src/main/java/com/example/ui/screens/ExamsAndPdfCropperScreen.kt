@@ -1406,9 +1406,17 @@ fun SoruHavuzuAndPdfStudioView(
     val activeBookPanel = selectedBookForTestPanel
     if (activeBookPanel != null) {
         val sortedBookQuestions = remember(activeBookPanel.questions) {
-            activeBookPanel.questions.sortedBy {
-                if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE
-            }
+            // Printed question numbers restart from 1 for every source test.
+            // Sorting the entire book by that number mixes unrelated tests.
+            // Preserve PDF reading order: page -> left column -> vertical position.
+            activeBookPanel.questions.sortedWith(
+                compareBy<com.example.data.CustomQuestionRecord>(
+                    { if (it.pageIndex >= 0) it.pageIndex else Int.MAX_VALUE },
+                    { if (it.normLeft >= 0.50f) 1 else 0 },
+                    { it.normTop },
+                    { if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE }
+                )
+            )
         }
         val topicsInBook = remember(sortedBookQuestions) {
             sortedBookQuestions
@@ -1417,16 +1425,13 @@ fun SoruHavuzuAndPdfStudioView(
                 .sortedByDescending { it.second }
         }
         val filteredQuestionsForChunks = remember(sortedBookQuestions, selectedTopicInBookModal) {
-            if (selectedTopicInBookModal == null) {
-                sortedBookQuestions
-            } else {
-                sortedBookQuestions.filter {
-                    if (selectedTopicInBookModal == "Konu belirlenmedi") {
-                        it.topicName.isBlank()
-                    } else {
-                        it.topicName == selectedTopicInBookModal
-                    }
-                }
+            val scoreable = sortedBookQuestions.filter { record ->
+                record.answerKeyVerified && record.correctOption in listOf("A", "B", "C", "D", "E")
+            }
+            if (selectedTopicInBookModal == null) scoreable
+            else scoreable.filter {
+                if (selectedTopicInBookModal == "Konu belirlenmedi") it.topicName.isBlank()
+                else it.topicName == selectedTopicInBookModal
             }
         }
         val testChunks = remember(filteredQuestionsForChunks, selectedTestLevel) {

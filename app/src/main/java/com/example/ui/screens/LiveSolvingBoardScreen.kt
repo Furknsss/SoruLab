@@ -823,10 +823,14 @@ fun LiveSolvingBoardScreen(
                         .fillMaxSize()
                         .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
                 ) {
-                    // Persistent ink is isolated from the 120 Hz live preview:
-                    // the full handwriting history is not rebuilt each time
-                    // a stylus sample arrives.
-                    strokes.forEach { stroke -> drawSmoothStroke(stroke) }
+                    // Keep ink history cached during writing. Eraser alone
+                    // temporarily composites old ink with its Clear path in
+                    // the preview layer for immediate visual feedback.
+                    val liveErasing = activeTool == DrawingTool.ERASER &&
+                        liveDrawTick.intValue >= 0 && liveRawPoints.isNotEmpty()
+                    if (!liveErasing) {
+                        strokes.forEach { stroke -> drawSmoothStroke(stroke) }
+                    }
                 }
                 Canvas(
                     modifier = Modifier
@@ -835,6 +839,13 @@ fun LiveSolvingBoardScreen(
                         .testTag("live_spen_preview")
                 ) {
                     val tick = liveDrawTick.intValue
+                    // The clear stroke must share an offscreen layer with the
+                    // ink it erases. Otherwise erasing would only appear on UP.
+                    if (activeTool == DrawingTool.ERASER &&
+                        liveRawPoints.isNotEmpty()
+                    ) {
+                        strokes.forEach { stroke -> drawSmoothStroke(stroke) }
+                    }
                     if (tick >= 0 && liveRawPoints.size >= 2) {
                         val isEraser = activeTool == DrawingTool.ERASER
                         val isHigh = activeTool == DrawingTool.HIGHLIGHTER

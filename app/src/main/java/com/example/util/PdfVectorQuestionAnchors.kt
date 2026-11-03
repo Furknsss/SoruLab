@@ -31,7 +31,7 @@ data class PdfSourcePageAnchors(
  * For image-only PDFs this returns empty and the ML Kit OCR path is unchanged.
  */
 internal object PdfVectorQuestionAnchors {
-    private val printed = Regex("""^[1-9][0-9]?[.):\-]$""")
+    private val printed = Regex("""^[1-9][0-9]{0,2}[.):\-]$""")
     private val glyphLetters = Regex("""^[0-9.):\-]+$""")
 
     fun find(
@@ -139,7 +139,7 @@ internal object PdfVectorQuestionAnchors {
                 val word = current.joinToString("") { it.text }
                 if (printed.matches(word)) {
                     val number = word.dropLast(1).toIntOrNull()
-                    if (number != null) {
+                    if (number != null && number in 1..200) {
                         output.add(
                             PdfSourceQuestionAnchor(
                                 number, current.minOf { it.x },

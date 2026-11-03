@@ -40,6 +40,7 @@ jobs:
           --tests com.example.util.PdfTextFooterKeysTest
           --tests com.example.util.PdfVectorAnswerStripTest
           --tests com.example.util.PdfVectorQuestionAnchorsTest
+          --tests com.example.util.PdfVectorTestMarkerTest
           --tests com.example.util.PdfColumnLayoutEvidenceTest
           --tests com.example.util.PdfColumnGeometryTest
           --tests com.example.util.PdfAdaptiveGutterTest

@@ -70,7 +70,7 @@ internal object PdfHorizontalAnswerGridReader {
                 val middleY = sequence.map { it.middleY }.average()
                 val minX = sequence.minOf { it.middleX }
                 val maxX = sequence.maxOf { it.middleX }
-                if (maxX - minX < pageWidth * 0.15) continue
+                if (maxX - minX < pageWidth * 0.08) continue
                 val gap = sequence.zipWithNext { a, b -> b.middleX - a.middleX }
                     .filter { it > 0 }.sorted()
                     .let { if (it.isEmpty()) 0.0 else it[it.size / 2].toDouble() }

@@ -2331,13 +2331,14 @@ class SoruLabViewModel(
                 val previous = existingBySource[Triple(item.bookId, item.pageIndex, item.questionNumberInTest)]
                 val identity = "${item.bookId}|${item.sourceTestId}|${item.pageIndex}|${item.questionNumberInTest}|${item.boxNormalized}"
                 val recordId = previous?.id ?: if (item.bookId.isNotBlank()) "cq_" + java.util.UUID.nameUUIDFromBytes(identity.toByteArray(Charsets.UTF_8)) else "cq_${batchTimestamp}_${idx}_${(100..999).random()}"
-                val canonicalImagePath = if (item.croppedImagePath.isNotBlank()) {
-                    withContext(Dispatchers.IO) {
-                        repository.rekeyLocalQuestionImage(item.croppedImagePath, "custom_$recordId")
-                    }.also { if (it == null) imageRekeyFailureCount++ }
-                        ?: item.croppedImagePath
-                } else {
-                    ""
+                // Page crops are already durable files under filesDir/questions.
+                // Copying/renaming hundreds of JPEGs on every import causes a
+                // long extra pass and can interrupt a large book save.
+                val canonicalImagePath = item.croppedImagePath
+                    .takeIf { path -> path.isNotBlank() && java.io.File(path).isFile }
+                    .orEmpty()
+                if (item.croppedImagePath.isNotBlank() && canonicalImagePath.isBlank()) {
+                    imageRekeyFailureCount++
                 }
                 val requestedSubject = SoruLabCatalog.allSubjects.firstOrNull {
                     it.examType.name.equals(item.examType, ignoreCase = true) &&

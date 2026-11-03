@@ -1351,13 +1351,13 @@ object StudioImageAndPdfEngine {
         val sourcePages = extractPdfPageTextLayer(context, pdfFile, totalPages)
         val vectorPageText = sourcePages.map { it.text }
         val pageVectorQuestionAnchors = sourcePages.mapIndexedNotNull { index, page ->
-            page.anchors.takeIf { it.size >= 4 }?.let { anchors ->
+            page.anchors.takeIf { it.size >= 2 }?.let { anchors ->
                 index to PdfSourcePageAnchors(page.pageWidth, page.pageHeight, anchors)
             }
         }.toMap()
         val pageVectorOptionEvidence = sourcePages.mapIndexedNotNull { index, page ->
             val letters = PdfOptionEvidence.letters(page.text)
-            index.takeIf { letters.size >= 3 && page.anchors.size >= 4 }
+            index.takeIf { letters.size >= 3 && page.anchors.size >= 2 }
         }.toSet()
         // Key strips may live on every other page instead of in a separate
         // answer-key chapter. Preserve the exact PDF page association.

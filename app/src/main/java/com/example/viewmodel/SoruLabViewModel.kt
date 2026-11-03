@@ -25,6 +25,7 @@ import com.example.data.YksQuestion
 import com.example.data.YksTestItem
 import com.example.data.YksTopic
 import com.example.data.recommendedDifficultyLevels
+import com.example.util.PdfScopedAnswerKeys
 import com.example.util.StudioImageAndPdfEngine
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseUser
@@ -2318,18 +2319,36 @@ class SoruLabViewModel(
                             ignoreCase = true
                         )
                 }
-                val explicitTopicName = StudioImageAndPdfEngine.detectTopicNameFromText(
-                    examType = item.examType,
-                    subjectName = requestedSubject?.name ?: item.subjectName,
-                    text = "${item.topicName}\n${item.questionText}"
-                )
-                val explicitTopic = explicitTopicName?.let { name ->
-                    requestedSubject?.let { subject ->
-                        subject.topics.firstOrNull { it.name.equals(name, ignoreCase = true) }
-                            ?.let { topic -> subject to topic }
-                    }
+                // The PDF's printed chapter heading is authoritative.
+                // Classifying the OCR of a whole scanned page can pick a word from
+                // an unrelated question and silently place a Botany question into
+                // Sinir Sistemi (or vice versa). For identified printed tests
+                // never override their chapter with keyword-based classification.
+                val sourceSection = item.sourceTestId.substringBefore('~')
+                    .takeIf { item.sourceTestId.contains('~') }
+                    .orEmpty()
+                val sourceTopic = requestedSubject?.topics?.firstOrNull { topic ->
+                    PdfScopedAnswerKeys.normalize(topic.name) ==
+                        PdfScopedAnswerKeys.normalize(sourceSection)
                 }
-                val classifiedTopic = explicitTopic ?: requestedSubject?.let { subject ->
+                val explicitTopicName = if (sourceSection.isBlank()) {
+                    StudioImageAndPdfEngine.detectTopicNameFromText(
+                        examType = item.examType,
+                        subjectName = requestedSubject?.name ?: item.subjectName,
+                        text = "${item.topicName}\n${item.questionText}"
+                    )
+                } else null
+                val explicitTopic = sourceTopic?.let { requestedSubject!! to it }
+                    ?: explicitTopicName?.let { name ->
+                        requestedSubject?.let { subject ->
+                            subject.topics.firstOrNull {
+                                it.name.equals(name, ignoreCase = true)
+                            }?.let { topic -> subject to topic }
+                        }
+                    }
+                val classifiedTopic = explicitTopic ?: if (sourceSection.isNotBlank()) {
+                    null // Unknown printed section must be reviewed, never guessed.
+                } else requestedSubject?.let { subject ->
                     SoruLabCatalog.classifyQuestionTopicFromText(
                         examTypeHint = item.examType,
                         subjectNameHint = subject.name,
@@ -2348,13 +2367,15 @@ class SoruLabViewModel(
                     subjectMemo[subKey] = matchedSubject
                 }
 
-                val matchedTopic = classifiedTopic?.second ?: matchedSubject?.topics?.firstOrNull {
-                        item.topicName.isNotBlank() && (
-                            it.name.equals(item.topicName, ignoreCase = true) ||
-                            item.topicName.contains(it.name, ignoreCase = true) ||
-                            it.name.contains(item.topicName, ignoreCase = true)
-                        )
-                    }
+                val matchedTopic = classifiedTopic?.second ?: if (sourceSection.isNotBlank()) {
+                    null
+                } else matchedSubject?.topics?.firstOrNull {
+                    item.topicName.isNotBlank() && (
+                        it.name.equals(item.topicName, ignoreCase = true) ||
+                        item.topicName.contains(it.name, ignoreCase = true) ||
+                        it.name.contains(item.topicName, ignoreCase = true)
+                    )
+                }
 
                 val resolvedExamType = matchedSubject?.examType?.name ?: item.examType
                 val subjectId = matchedSubject?.id.orEmpty()

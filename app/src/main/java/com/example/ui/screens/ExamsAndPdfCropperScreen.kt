@@ -1829,8 +1829,16 @@ fun SoruHavuzuAndPdfStudioView(
                     else excludedPdfCropIds + id
             },
             onConfirm = {
-                val accepted = pendingImport.items.filterNot { it.id in excludedPdfCropIds }
-                val discarded = pendingImport.items.filter { it.id in excludedPdfCropIds }
+                // Don't silently add unscored/misclassified questions to the
+                // active YKS pool. Import only validated answer+printed-test pairs.
+                val accepted = pendingImport.items.filter {
+                    it.id !in excludedPdfCropIds && it.answerKeyMatched &&
+                        it.correctOption in listOf("A", "B", "C", "D", "E") &&
+                        it.sourceTestId.isNotBlank()
+                }
+                val discarded = pendingImport.items.filter { item ->
+                    accepted.none { it.id == item.id }
+                }
                 if (accepted.isNotEmpty()) {
                     onSaveExtractedPdfBatch(
                         accepted,
@@ -2119,7 +2127,14 @@ private fun PdfImportCropReviewDialog(
     var current by remember(items) { mutableIntStateOf(0) }
     val item = items[current.coerceIn(0, items.lastIndex)]
     val bitmap = StudioImageAndPdfEngine.rememberCachedBitmap(item.croppedImagePath)
-    val includedCount = items.size - excludedIds.size
+    val includedCount = items.count {
+        it.id !in excludedIds && it.answerKeyMatched &&
+            it.correctOption in listOf("A", "B", "C", "D", "E") &&
+            it.sourceTestId.isNotBlank()
+    }
+    val unmatchedCount = items.count {
+        !it.answerKeyMatched || it.sourceTestId.isBlank()
+    }
     val isExcluded = item.id in excludedIds
 
     Dialog(onDismissRequest = {}) {
@@ -2144,6 +2159,14 @@ private fun PdfImportCropReviewDialog(
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color(0xFF475569)
                 )
+                if (unmatchedCount > 0) {
+                    Text(
+                        "$unmatchedCount soru cevap anahtarı veya kaynak test eşleşmesi " +
+                            "olmadığı için otomatik kaydedilmeyecek.",
+                        color = Color(0xFFB45309),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
                 Text(
                     "PDF sayfası ${item.pageIndex + 1} • Kitap soru no: ${item.questionNumberInTest}",
                     style = MaterialTheme.typography.bodySmall,

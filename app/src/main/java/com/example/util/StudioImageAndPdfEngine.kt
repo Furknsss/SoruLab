@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
+import com.tom_roush.pdfbox.text.TextPosition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
@@ -1317,7 +1318,9 @@ object StudioImageAndPdfEngine {
         val ambiguousAnswerNumbers: Set<Int>,
         val pageMap: Map<Int, LocalPageMapEntry>,
         val pageTextFooterKeys: Map<Int, Map<Int, String>> = emptyMap(),
-        val pageSourceHeaders: Map<Int, String> = emptyMap()
+        val pageSourceHeaders: Map<Int, String> = emptyMap(),
+        val pageVectorQuestionAnchors: Map<Int, PdfSourcePageAnchors> = emptyMap(),
+        val pageVectorOptionEvidence: Set<Int> = emptySet()
     )
 
     data class LocalCroppedBoxResult(
@@ -1345,7 +1348,18 @@ object StudioImageAndPdfEngine {
     ): LocalPdfBlueprint {
         val rawTextBuilder = StringBuilder()
         val decodedStreamChunks = mutableListOf<String>()
-        val vectorPageText = extractPdfPageTextLayer(context, pdfFile, totalPages)
+        val sourcePages = extractPdfPageTextLayer(context, pdfFile, totalPages)
+        val vectorPageText = sourcePages.map { it.text }
+        val pageVectorQuestionAnchors = sourcePages.mapIndexedNotNull { index, page ->
+            page.anchors.takeIf { it.size >= 4 }?.let { anchors ->
+                index to PdfSourcePageAnchors(page.pageWidth, page.pageHeight, anchors)
+            }
+        }.toMap()
+        val pageVectorOptionEvidence = sourcePages.mapIndexedNotNull { index, page ->
+            val letters = Regex("""[A-E]\\)""").findAll(page.text.uppercase(Locale.ROOT))
+                .map { it.value.take(1) }.toSet()
+            index.takeIf { letters.size >= 3 && page.anchors.size >= 4 }
+        }.toSet()
         // Key strips may live on every other page instead of in a separate
         // answer-key chapter. Preserve the exact PDF page association.
         val pageTextFooterKeys = vectorPageText.mapIndexedNotNull { index, text ->
@@ -1507,22 +1521,55 @@ object StudioImageAndPdfEngine {
             ambiguousAnswerNumbers = ambiguousAnswerNumbers,
             pageMap = pageMap,
             pageTextFooterKeys = pageTextFooterKeys,
-            pageSourceHeaders = pageSourceHeaders
+            pageSourceHeaders = pageSourceHeaders,
+            pageVectorQuestionAnchors = pageVectorQuestionAnchors,
+            pageVectorOptionEvidence = pageVectorOptionEvidence
         )
+    }
+
+    private data class SourceTextPage(
+        val text: String,
+        val pageWidth: Float,
+        val pageHeight: Float,
+        val anchors: List<PdfSourceQuestionAnchor>
+    )
+
+    private class PdfGeometryTextStripper : PDFTextStripper() {
+        val glyphs = mutableListOf<PdfSourceGlyph>()
+        override fun writeString(text: String, textPositions: MutableList<TextPosition>) {
+            for (p in textPositions) {
+                val value = p.unicode.orEmpty()
+                if (value.isNotBlank() && value.length <= 3) {
+                    glyphs.add(PdfSourceGlyph(value, p.xDirAdj, p.yDirAdj,
+                        p.widthDirAdj, p.heightDir))
+                }
+            }
+            super.writeString(text, textPositions)
+        }
     }
 
     private fun extractPdfPageTextLayer(
         context: Context,
         pdfFile: File,
         totalPages: Int
-    ): List<String> = try {
+    ): List<SourceTextPage> = try {
         PDFBoxResourceLoader.init(context.applicationContext)
         PDDocument.load(pdfFile).use { document ->
-            val stripper = PDFTextStripper()
+            val stripper = PdfGeometryTextStripper()
             List(min(totalPages, document.numberOfPages).coerceAtLeast(0)) { pageIndex ->
+                stripper.glyphs.clear()
                 stripper.startPage = pageIndex + 1
                 stripper.endPage = pageIndex + 1
-                stripper.getText(document).take(12_000)
+                val text = stripper.getText(document).take(12_000)
+                val pageBounds = document.getPage(pageIndex).mediaBox
+                val width = pageBounds.width
+                val height = pageBounds.height
+                SourceTextPage(
+                    text = text,
+                    pageWidth = width,
+                    pageHeight = height,
+                    anchors = PdfVectorQuestionAnchors.find(stripper.glyphs, width, height)
+                )
             }
         }
     } catch (_: OutOfMemoryError) {

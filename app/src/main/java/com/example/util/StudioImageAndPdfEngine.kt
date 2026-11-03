@@ -218,8 +218,12 @@ object StudioImageAndPdfEngine {
         totalPages: Int = -1
     ): Boolean {
         val hasStructure = hasQuestionAndOptionStructure(text)
-        if (containsNonQuestionPageMarker(text) || containsNonQuestionPageMarker(topHeaderText)) return true
-        if (pageIndex in 0..4 && !hasStructure) return true
+        // Preserve recognizable question pages even if the text mentions a word
+        // commonly used on front-matter pages (e.g. "Atatürk").
+        if (!hasStructure &&
+            (containsNonQuestionPageMarker(text) || containsNonQuestionPageMarker(topHeaderText))) return true
+        // A scan's partial OCR may read only the question number or a choice.
+        if (pageIndex in 0..4 && !hasStructure && !hasQuestionNumberOrOptions(text)) return true
         if (text.isBlank()) return pageIndex in 0..4
 
         val normalizedText = normalizeTurkishText(text)
@@ -1707,7 +1711,8 @@ object StudioImageAndPdfEngine {
         totalPages: Int,
         reusablePixelsRef: Array<IntArray?>,
         questionNumberAnchors: List<QuestionNumberAnchor> = emptyList(),
-        optionAnchors: List<QuestionOptionAnchor> = emptyList()
+        optionAnchors: List<QuestionOptionAnchor> = emptyList(),
+        maxQuestionBottomY: Int? = null
     ): List<LocalCroppedBoxResult> {
         if (pageBitmap.isRecycled) return emptyList()
         val width = pageBitmap.width
@@ -1729,7 +1734,8 @@ object StudioImageAndPdfEngine {
             pageIndex = pageIndex,
             totalPages = totalPages,
             questionNumberAnchors = questionNumberAnchors,
-            optionAnchors = optionAnchors
+            optionAnchors = optionAnchors,
+            maxQuestionBottomY = maxQuestionBottomY
         )
     }
 
@@ -1810,7 +1816,8 @@ object StudioImageAndPdfEngine {
         pageIndex: Int,
         totalPages: Int,
         questionNumberAnchors: List<QuestionNumberAnchor>,
-        optionAnchors: List<QuestionOptionAnchor>
+        optionAnchors: List<QuestionOptionAnchor>,
+        maxQuestionBottomY: Int?
     ): List<LocalCroppedBoxResult> {
         // 1. Estimate background paper luminance so off-white / gray / yellow backgrounds are ignored
         var highLumSum = 0L
@@ -1855,7 +1862,9 @@ object StudioImageAndPdfEngine {
         }
         val pageInkRatio = totalInkSample.toFloat() / totalChecked.coerceAtLeast(1).toFloat()
         // Blank page (< 0.004) or full-bleed dark cover/poster (> 0.34) is NEVER a question page
-        if (pageInkRatio < 0.004f) {
+        // Sparse pages can still contain genuine questions. Trust numbered OCR
+        // anchors over the coarse whole-page ink-density blank-page heuristic.
+        if (pageInkRatio < 0.004f && questionNumberAnchors.isEmpty()) {
             return emptyList()
         }
         // AKILLI MARJ VE BAŞLIK/CEVAP ANAHTARI TEMİZLİĞİ:
@@ -2022,8 +2031,27 @@ object StudioImageAndPdfEngine {
 
         bodyTop = max(bodyTop, (height * 0.065f).roundToInt())
             .coerceIn(0, (height - 1).coerceAtLeast(0))
+        // Header trimming must not swallow the first printed question. On a
+        // sparse page its first line may fall inside the broad header probe.
+        questionNumberAnchors
+            .filter { it.number in 1..200 && it.top >= (height * 0.06f).roundToInt() }
+            .minOfOrNull { it.top }
+            ?.let { firstQuestionTop ->
+                bodyTop = min(
+                    bodyTop,
+                    (firstQuestionTop - (height * 0.012f).roundToInt()).coerceAtLeast(0)
+                )
+            }
         bodyBottom = min(bodyBottom, (height * 0.945f).roundToInt())
             .coerceIn(bodyTop + 1, height)
+        // If this PDF prints the answer grid directly under the final
+        // multiple-choice question, do not include that key in the crop.
+        // The limit is derived from OCR geometry, never a fixed page fraction.
+        maxQuestionBottomY?.takeIf { gridTop ->
+            gridTop > bodyTop + 80 && gridTop < bodyBottom
+        }?.let { gridTop ->
+            bodyBottom = min(bodyBottom, gridTop - 7)
+        }
         val bodyH = (bodyBottom - bodyTop).coerceAtLeast(1)
 
         // 2. Detect Center Vertical Gutter or Divider Line (`midX`)
@@ -2085,9 +2113,18 @@ object StudioImageAndPdfEngine {
 
         val minHalfInkThreshold = ((bodyH / 4) * ((leftCheckEnd - leftCheckStart) / 4) * 0.008f).roundToInt().coerceAtLeast(24)
         val avgGutterRowInk = minGutterInk.toFloat() / ((windowRadius * 2 + 1) * sampledRows).coerceAtLeast(1).toFloat()
-        val isDualColumn = avgGutterRowInk < 0.048f &&
-            leftHalfInk >= minHalfInkThreshold &&
-            rightHalfInk >= minHalfInkThreshold
+        // An OCR number near each outer quarter is strong evidence of a
+        // two-column page, even when the text is too sparse for pixel density.
+        val hasLeftNumberAnchor = questionNumberAnchors.any {
+            it.left in 0 until (width * 0.44f).roundToInt()
+        }
+        val hasRightNumberAnchor = questionNumberAnchors.any {
+            it.left in (width * 0.56f).roundToInt() until width
+        }
+        val isDualColumn = (hasLeftNumberAnchor && hasRightNumberAnchor) ||
+            (avgGutterRowInk < 0.048f &&
+                leftHalfInk >= minHalfInkThreshold &&
+                rightHalfInk >= minHalfInkThreshold)
 
         val midX = bestGutterX
         val gutterMargin = (width * 0.012f).roundToInt().coerceAtLeast(10)
@@ -2132,54 +2169,48 @@ object StudioImageAndPdfEngine {
                     option.left >= colLeft &&
                     option.left < colRight
             }
-            val questionBands = if (anchors.isEmpty()) {
-                projectedBands.flatMap { band ->
-                    splitOversizedProjectionBand(
-                        pixels = pixels,
-                        pageWidth = width,
-                        colLeft = colLeft,
-                        colRight = colRight,
-                        band = band,
-                        bodyHeight = bodyH,
-                        isInkPixel = ::isInkPixel
-                    )
-                }
-            } else {
-                anchors.mapIndexed { anchorIndex, anchor ->
-                    val previousAnchorTop = anchors.getOrNull(anchorIndex - 1)?.top
+            // Fail closed. Pixel projection alone repeatedly produced merged
+            // 7+8 crops and completely unrelated snippets from scanned books.
+            // Without a recognized printed number we cannot reliably locate
+            // a question or attach its printed answer-key identity.
+            if (anchors.isEmpty()) continue
+            val questionBands = anchors.mapIndexed { anchorIndex, anchor ->
                     val nextAnchorTop = anchors.getOrNull(anchorIndex + 1)?.top
                     val optionsForQuestion = columnOptions.filter {
                         it.top >= anchor.top && (nextAnchorTop == null || it.top < nextAnchorTop)
+                    }.sortedBy { it.top }
+                    // When the next printed number is missing from OCR, all
+                    // following A-E rows would otherwise be absorbed into this
+                    // one crop. The FIRST complete sequence ending with E is a
+                    // conservative alternative end marker.
+                    val firstEndingE = optionsForQuestion.firstOrNull {
+                        it.option.equals("E", ignoreCase = true)
                     }
-                    val optionBottom = optionsForQuestion.maxOfOrNull { it.bottom }
-                    val previousOptionsBottom = columnOptions
-                        .asSequence()
-                        .filter { it.top < anchor.top && (previousAnchorTop == null || it.top >= previousAnchorTop) }
-                        .maxOfOrNull { it.bottom }
-                    val precedingInkTop = projectedBands
-                        .lastOrNull { it.first <= anchor.top && it.second >= anchor.bottom }
-                        ?.first
-                        ?: (if (anchorIndex == 0) {
-                            projectedBands.firstOrNull { it.second < anchor.top }?.first
-                        } else {
-                            null
-                        })
-                        ?: projectedBands.lastOrNull {
-                            it.second < anchor.top && anchor.top - it.second <= (bodyH * 0.12f).roundToInt()
-                        }?.first
-                    val startY = (previousOptionsBottom?.plus(8) ?: (precedingInkTop ?: anchor.top) - 16)
+                    val optionBottom = firstEndingE?.bottom
+                        ?: optionsForQuestion.maxOfOrNull { it.bottom }
+                    // The OCR printed number marks the question START, not a
+                    // projection band that might also contain earlier questions.
+                    // A hard next-number boundary is more important than the
+                    // current option's OCR box (which can accidentally include
+                    // the following question or a publisher watermark).
+                    val anchorPadding = (height * 0.008f).roundToInt().coerceIn(9, 22)
+                    val startY = (anchor.top - anchorPadding)
                         .coerceIn(bodyTop, bodyBottom - 1)
-                    val endY = (optionBottom?.plus(16)
-                        ?: nextAnchorTop?.minus(16)
-                        ?: projectedBands.lastOrNull { it.second >= anchor.bottom }?.second
-                        ?: (bodyBottom - 1))
-                        .coerceIn(startY + 1, bodyBottom - 1)
+                    val hardEnd = nextAnchorTop?.minus(anchorPadding)
+                        ?.coerceIn(startY + 1, bodyBottom - 1)
+                        ?: (bodyBottom - 1)
+                    val withinQuestionOptions = optionBottom?.takeIf { it < hardEnd }
+                    val lastQuestionInk = projectedBands
+                        .filter { it.second >= anchor.bottom && it.first < hardEnd }
+                        .maxOfOrNull { it.second.coerceAtMost(hardEnd) }
+                    val endY = (withinQuestionOptions?.plus(anchorPadding)
+                        ?: lastQuestionInk?.plus(anchorPadding)
+                        ?: hardEnd).coerceIn(startY + 1, hardEnd)
                     startY to endY
                 }
-            }
 
             for ((qIdx, band) in questionBands.withIndex()) {
-                val (rawTop, rawBottom) = expandBandToConnectedInkIslands(
+                val (expandedTop, expandedBottom) = expandBandToConnectedInkIslands(
                     pixels = pixels,
                     pageWidth = width,
                     pageHeight = height,
@@ -2190,6 +2221,15 @@ object StudioImageAndPdfEngine {
                     maxExpansion = (bodyH * 0.025f).roundToInt().coerceAtLeast(12),
                     isInkPixel = ::isInkPixel
                 )
+                val cropAnchor = anchors.getOrNull(qIdx)
+                val nextNumberTop = anchors.getOrNull(qIdx + 1)?.top
+                // Expansion must never pull the next printed question into this
+                // image; nor may it pull remnants of the previous question.
+                val rawTop = if (cropAnchor != null) maxOf(expandedTop, band.first) else expandedTop
+                val rawBottom = if (nextNumberTop != null) {
+                    minOf(expandedBottom, nextNumberTop - 8)
+                } else expandedBottom
+                if (rawBottom <= rawTop) continue
                 val bandH = rawBottom - rawTop
                 if (bandH < 80) continue
 
@@ -2242,8 +2282,10 @@ object StudioImageAndPdfEngine {
                     .coerceIn(colLeft, colRight - 120)
                 val finalRight = (maxContentX + 16).coerceAtMost(colRight - padX)
                     .coerceAtLeast(finalLeft + 119)
-                val finalTop = (rawTop - padY).coerceAtLeast(bodyTop)
-                val finalBottom = (rawBottom + padY).coerceAtMost(bodyBottom)
+                val finalTop = (rawTop - padY)
+                    .coerceAtLeast(if (cropAnchor != null) band.first else bodyTop)
+                val finalBottom = (rawBottom + padY)
+                    .coerceAtMost(nextNumberTop?.minus(4) ?: bodyBottom)
 
                 val safeLeft = finalLeft.coerceIn(0, width - 1)
                 val safeTop = finalTop.coerceIn(0, height - 1)
@@ -2280,12 +2322,19 @@ object StudioImageAndPdfEngine {
                         )
                     }
                 }
+                // Remove the publisher's printed question number from the image.
+                // Important: ML Kit may return a whole stem as the first element.
+                // Restrict the mask to the small number prefix; never whiten words.
                 val numberMask = anchor?.let {
-                    RectF(
-                        (it.left - safeLeft).toFloat(),
-                        (it.top - safeTop).toFloat(),
-                        (it.right - safeLeft + 6).toFloat(),
-                        (it.bottom - safeTop + 4).toFloat()
+                    safePrintedQuestionNumberMask(
+                        anchorLeft = it.left,
+                        anchorTop = it.top,
+                        anchorRight = it.right,
+                        anchorBottom = it.bottom,
+                        cropLeft = safeLeft,
+                        cropTop = safeTop,
+                        cropWidth = cropW,
+                        cropHeight = cropH
                     )
                 }
                 val cleanedCrop = whitenOldQuestionNumberAndEnhance(rawCrop, numberMask)
@@ -2775,6 +2824,43 @@ object StudioImageAndPdfEngine {
      * (NEVER dark ink or diagram boxes!) and applies Adaptive Contrast & Background Whitening (#FFFFFF)
      * without cutting or erasing any part of the question text, formulas, or figures.
      */
+    /**
+     * Printed source numbering is for answer matching only. The practice viewer
+     * supplies its own 1..N numbering. Limit the mask to the isolated prefix
+     * so a combined OCR bounding box never erases question text.
+     */
+    internal fun safePrintedQuestionNumberMask(
+        anchorLeft: Int,
+        anchorTop: Int,
+        anchorRight: Int,
+        anchorBottom: Int,
+        cropLeft: Int,
+        cropTop: Int,
+        cropWidth: Int,
+        cropHeight: Int
+    ): RectF? {
+        if (cropWidth < 120 || cropHeight < 80) return null
+        val numberHeight = anchorBottom - anchorTop
+        if (numberHeight <= 0 || numberHeight > cropHeight * 0.20f) return null
+        val left = (anchorLeft - cropLeft).toFloat()
+        val top = (anchorTop - cropTop).toFloat()
+        if (left < -4f || left > cropWidth * 0.24f || top < -4f || top > cropHeight * 0.30f) {
+            return null
+        }
+        // A 1–3-digit printed number fits this width; longer OCR elements may
+        // contain actual stem words. Cap their width instead of wiping the stem.
+        val boundedNumberWidth = (anchorRight - anchorLeft).toFloat()
+            .coerceAtMost(numberHeight * 2.1f)
+            .coerceAtLeast(numberHeight * 0.6f)
+        val right = (left + boundedNumberWidth + 4f).coerceAtMost(cropWidth.toFloat())
+        val bottom = (top + numberHeight + 3f).coerceAtMost(cropHeight.toFloat())
+        val maskedLeft = (left - 3f).coerceAtLeast(0f)
+        val maskedTop = (top - 3f).coerceAtLeast(0f)
+        return if (right > maskedLeft && bottom > maskedTop) {
+            RectF(maskedLeft, maskedTop, right, bottom)
+        } else null
+    }
+
     private fun whitenOldQuestionNumberAndEnhance(
         sourceCrop: Bitmap,
         printedNumberBounds: RectF? = null

@@ -25,6 +25,7 @@ import com.example.data.YksQuestion
 import com.example.data.YksTestItem
 import com.example.data.YksTopic
 import com.example.data.recommendedDifficultyLevels
+import com.example.util.PdfScopedAnswerKeys
 import com.example.util.StudioImageAndPdfEngine
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseUser
@@ -786,6 +787,13 @@ class SoruLabViewModel(
                     croppedImagePath = source.croppedImagePath.ifBlank { question.croppedImagePath },
                     bookId = source.bookId.ifBlank { question.bookId },
                     sourceQuestionId = source.id,
+                    publisherId = source.publisherId.ifBlank { question.publisherId },
+                    publisherName = source.publisherTag.ifBlank { question.publisherName },
+                    publisherLogoUri = source.publisherLogoUri.ifBlank { question.publisherLogoUri },
+                    sourceBookTitle = source.sourceBookTitle.ifBlank { source.bookOrTestName.ifBlank { question.sourceBookTitle } },
+                    sourceTestId = source.sourceTestId.ifBlank { question.sourceTestId },
+                    sourcePageIndex = source.pageIndex.takeIf { it >= 0 } ?: question.sourcePageIndex,
+                    sourcePrintedQuestionNumber = source.questionNumberInBook.takeIf { it > 0 } ?: question.sourcePrintedQuestionNumber,
                     subject = source.subjectName.ifBlank { question.subject },
                     imageBase64 = source.imageBase64.ifBlank { question.imageBase64 },
                     pdfFilePath = source.pdfFilePath.ifBlank { question.pdfFilePath },
@@ -917,6 +925,11 @@ class SoruLabViewModel(
                 },
                 bookId = custom.bookId,
                 sourceQuestionId = custom.id,
+                publisherId = custom.publisherId,
+                sourceBookTitle = custom.sourceBookTitle.ifBlank { custom.bookOrTestName },
+                sourceTestId = custom.sourceTestId,
+                sourcePageIndex = custom.pageIndex,
+                sourcePrintedQuestionNumber = custom.questionNumberInBook,
                 subject = custom.subjectName,
                 imageBase64 = custom.imageBase64,
                 pdfFilePath = custom.pdfFilePath,
@@ -1044,6 +1057,11 @@ class SoruLabViewModel(
                 },
                 bookId = custom.bookId,
                 sourceQuestionId = custom.id,
+                publisherId = custom.publisherId,
+                sourceBookTitle = custom.sourceBookTitle.ifBlank { custom.bookOrTestName },
+                sourceTestId = custom.sourceTestId,
+                sourcePageIndex = custom.pageIndex,
+                sourcePrintedQuestionNumber = custom.questionNumberInBook,
                 subject = custom.subjectName,
                 imageBase64 = custom.imageBase64,
                 pdfFilePath = custom.pdfFilePath,
@@ -1225,7 +1243,7 @@ class SoruLabViewModel(
         sourceFilter: QuestionSourceFilter,
         requestedQuestionCount: Int
     ): YksTestItem? {
-        if (requestedQuestionCount != AUTOMATIC_TEST_QUESTION_COUNT) return null
+        if (requestedQuestionCount <= 0) return null
         val activeDifficulties = selectedDifficulties.ifEmpty { DifficultyLevel.entries.toSet() }
         val sourceCandidates = if (level == TopicTestLevel.IKIZ && sourceFilter == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
             collectRealPoolQuestionsForTopicAndLevel(topic, level)
@@ -1285,8 +1303,7 @@ class SoruLabViewModel(
             }
         }
 
-        val safeCount = AUTOMATIC_TEST_QUESTION_COUNT
-        if (orderedPool.size < safeCount) return null
+        val safeCount = requestedQuestionCount.coerceAtMost(orderedPool.size)
         val questionsToUse = orderedPool.take(safeCount)
         if (questionsToUse.isEmpty()) return null
 
@@ -1584,6 +1601,11 @@ class SoruLabViewModel(
                 },
                 bookId = record.bookId,
                 sourceQuestionId = record.id,
+                publisherId = record.publisherId,
+                sourceBookTitle = record.sourceBookTitle.ifBlank { record.bookOrTestName },
+                sourceTestId = record.sourceTestId,
+                sourcePageIndex = record.pageIndex,
+                sourcePrintedQuestionNumber = record.questionNumberInBook,
                 subject = record.subjectName,
                 imageBase64 = record.imageBase64,
                 pdfFilePath = record.pdfFilePath,
@@ -1697,6 +1719,11 @@ class SoruLabViewModel(
                 },
                 bookId = record.bookId,
                 sourceQuestionId = record.id,
+                publisherId = record.publisherId,
+                sourceBookTitle = record.sourceBookTitle.ifBlank { record.bookOrTestName },
+                sourceTestId = record.sourceTestId,
+                sourcePageIndex = record.pageIndex,
+                sourcePrintedQuestionNumber = record.questionNumberInBook,
                 subject = record.subjectName,
                 imageBase64 = record.imageBase64,
                 pdfFilePath = record.pdfFilePath,
@@ -2200,6 +2227,8 @@ class SoruLabViewModel(
             correctOption = correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty(),
             questionText = questionText.ifBlank { "PDF'ten kırpılan YKS sorusu" }.take(1800),
             publisherTag = publisherTag.ifBlank { resolvedPublisher.name }.take(100),
+            publisherId = resolvedPublisher.id,
+            sourceBookTitle = bookOrTestName,
             aiSolutionSummary = packedSolution,
             cropAspectRatio = cropAspectRatio.coerceIn(0.3, 4.5),
             questionNumberInTest = questionNumberInBook
@@ -2279,18 +2308,36 @@ class SoruLabViewModel(
                             ignoreCase = true
                         )
                 }
-                val explicitTopicName = StudioImageAndPdfEngine.detectTopicNameFromText(
-                    examType = item.examType,
-                    subjectName = requestedSubject?.name ?: item.subjectName,
-                    text = "${item.topicName}\n${item.questionText}"
-                )
-                val explicitTopic = explicitTopicName?.let { name ->
-                    requestedSubject?.let { subject ->
-                        subject.topics.firstOrNull { it.name.equals(name, ignoreCase = true) }
-                            ?.let { topic -> subject to topic }
-                    }
+                // The PDF's printed chapter heading is authoritative.
+                // Classifying the OCR of a whole scanned page can pick a word from
+                // an unrelated question and silently place a Botany question into
+                // Sinir Sistemi (or vice versa). For identified printed tests
+                // never override their chapter with keyword-based classification.
+                val sourceSection = item.sourceTestId.substringBefore('~')
+                    .takeIf { item.sourceTestId.contains('~') }
+                    .orEmpty()
+                val sourceTopic = requestedSubject?.topics?.firstOrNull { topic ->
+                    PdfScopedAnswerKeys.normalize(topic.name) ==
+                        PdfScopedAnswerKeys.normalize(sourceSection)
                 }
-                val classifiedTopic = explicitTopic ?: requestedSubject?.let { subject ->
+                val explicitTopicName = if (sourceSection.isBlank()) {
+                    StudioImageAndPdfEngine.detectTopicNameFromText(
+                        examType = item.examType,
+                        subjectName = requestedSubject?.name ?: item.subjectName,
+                        text = "${item.topicName}\n${item.questionText}"
+                    )
+                } else null
+                val explicitTopic = sourceTopic?.let { requestedSubject!! to it }
+                    ?: explicitTopicName?.let { name ->
+                        requestedSubject?.let { subject ->
+                            subject.topics.firstOrNull {
+                                it.name.equals(name, ignoreCase = true)
+                            }?.let { topic -> subject to topic }
+                        }
+                    }
+                val classifiedTopic = explicitTopic ?: if (sourceSection.isNotBlank()) {
+                    null // Unknown printed section must be reviewed, never guessed.
+                } else requestedSubject?.let { subject ->
                     SoruLabCatalog.classifyQuestionTopicFromText(
                         examTypeHint = item.examType,
                         subjectNameHint = subject.name,
@@ -2309,13 +2356,15 @@ class SoruLabViewModel(
                     subjectMemo[subKey] = matchedSubject
                 }
 
-                val matchedTopic = classifiedTopic?.second ?: matchedSubject?.topics?.firstOrNull {
-                        item.topicName.isNotBlank() && (
-                            it.name.equals(item.topicName, ignoreCase = true) ||
-                            item.topicName.contains(it.name, ignoreCase = true) ||
-                            it.name.contains(item.topicName, ignoreCase = true)
-                        )
-                    }
+                val matchedTopic = classifiedTopic?.second ?: if (sourceSection.isNotBlank()) {
+                    null
+                } else matchedSubject?.topics?.firstOrNull {
+                    item.topicName.isNotBlank() && (
+                        it.name.equals(item.topicName, ignoreCase = true) ||
+                        item.topicName.contains(it.name, ignoreCase = true) ||
+                        it.name.contains(item.topicName, ignoreCase = true)
+                    )
+                }
 
                 val resolvedExamType = matchedSubject?.examType?.name ?: item.examType
                 val subjectId = matchedSubject?.id.orEmpty()
@@ -2333,7 +2382,8 @@ class SoruLabViewModel(
                     questionNumberInBook = item.questionNumber,
                     bookOrTestName = bookOrTestName,
                     bookCoverPath = effectiveCover,
-                    fiveTierDifficulty = item.difficulty
+                    fiveTierDifficulty = item.difficulty,
+                    sourceTestId = item.sourceTestId
                 )
 
                 val firestoreCompatDiff = when {
@@ -2355,6 +2405,8 @@ class SoruLabViewModel(
                         correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty(),
                         questionText = item.questionText.take(1800),
                         publisherTag = finalPubName,
+                        publisherId = resolvedPublisher.id,
+                        sourceBookTitle = bookOrTestName,
                         aiSolutionSummary = packedSolution,
                         cropAspectRatio = item.cropAspectRatio.coerceIn(0.3, 4.5),
                         bookId = item.bookId,
@@ -2492,7 +2544,8 @@ class SoruLabViewModel(
                 bookOrTestName = target.bookOrTestName,
                 bookCoverPath = target.bookCoverPath,
                 isInKumbara = true,
-                fiveTierDifficulty = target.effectiveDifficultyLabel
+                fiveTierDifficulty = target.effectiveDifficultyLabel,
+                sourceTestId = target.sourceTestId
             )
             val updatedRecord = target.copy(aiSolutionSummary = updatedPacked)
             val mutable = currentQuestions.toMutableList()

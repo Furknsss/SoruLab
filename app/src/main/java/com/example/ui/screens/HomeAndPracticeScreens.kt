@@ -3421,8 +3421,8 @@ private fun SoruLabAiTestGeneratorDialog(
             ?: poolCheck.availableQuestionCount
     }
     val maxAvailableCount = matchingDiffCount.coerceAtLeast(0)
-    val selectedQuestionCount = AUTOMATIC_TEST_QUESTION_COUNT
-    val hasStandardTestPool = maxAvailableCount >= AUTOMATIC_TEST_QUESTION_COUNT
+    var selectedQuestionCount by remember(maxAvailableCount) { mutableIntStateOf(maxAvailableCount.coerceAtMost(AUTOMATIC_TEST_QUESTION_COUNT).coerceAtLeast(1)) }
+    val hasStandardTestPool = maxAvailableCount > 0
     var currentStep by remember { mutableIntStateOf(1) }
     var progressTarget by remember { mutableFloatStateOf(0.20f) }
     var createdTest by remember { mutableStateOf<YksTestItem?>(null) }
@@ -3714,7 +3714,7 @@ private fun SoruLabAiTestGeneratorDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "3. Standart Test Boyutu",
+                                text = "3. Soru Sayısı",
                                 style = MaterialTheme.typography.labelLarge.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 13.sp
@@ -3733,13 +3733,17 @@ private fun SoruLabAiTestGeneratorDialog(
 
                         if (!hasStandardTestPool) {
                             Text(
-                                text = "12 sorudan az bulunan havuzda test başlatılamaz. Kaynak veya zorluk filtresini değiştirin.",
+                                text = "Uygun soru bulunamadı. Başka kaynak ekleyin veya filtreleri değiştirin.",
                                 color = Color(0xFFB91C1C),
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
                     }
 
+                    if (maxAvailableCount > 1) {
+                        Slider(value = selectedQuestionCount.toFloat(), onValueChange = { selectedQuestionCount = it.toInt().coerceIn(1, maxAvailableCount) }, valueRange = 1f..maxAvailableCount.toFloat())
+                        Text("Havuzda $maxAvailableCount gerçek soru var. Seçilen sayıyla test oluşturulur.", fontSize = 12.sp, color = Color(0xFF74708F))
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Row(

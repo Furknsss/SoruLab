@@ -166,7 +166,9 @@ data class CustomQuestionRecord(
     val difficulty: String = "Orta",
     val correctOption: String = "C",
     val questionText: String = "",
-    val publisherTag: String = "3D Yayınları",
+    val publisherTag: String = "Kaynak Belirtilmedi",
+    val publisherId: String = "",
+    val sourceBookTitle: String = "",
     val aiSolutionSummary: String = "",
     val cropAspectRatio: Double = 1.25,
     val bookId: String = "",
@@ -224,6 +226,12 @@ data class CustomQuestionRecord(
     @get:Exclude
     val bookOrTestName: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
         parsedMetaMap["book"].orEmpty()
+    }
+
+    @delegate:Transient
+    @get:Exclude
+    val sourceTestId: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        parsedMetaMap["sourceTest"].orEmpty()
     }
 
     @delegate:Transient
@@ -289,7 +297,8 @@ data class CustomQuestionRecord(
             bookOrTestName: String = "",
             bookCoverPath: String = "",
             isInKumbara: Boolean = false,
-            fiveTierDifficulty: String = ""
+            fiveTierDifficulty: String = "",
+            sourceTestId: String = ""
         ): String {
             val cleanSol = if (solutionText.startsWith("[META:")) {
                 solutionText.substringAfter("]").trimStart()
@@ -302,6 +311,9 @@ data class CustomQuestionRecord(
                 if (croppedImagePath.isNotBlank()) add("img=${croppedImagePath.replace("|", "").replace("]", "")}")
                 if (publisherLogoUri.isNotBlank()) add("logo=${publisherLogoUri.replace("|", "").replace("]", "")}")
                 if (bookOrTestName.isNotBlank()) add("book=${bookOrTestName.replace("|", "").replace("]", "")}")
+                if (sourceTestId.isNotBlank()) {
+                    add("sourceTest=${sourceTestId.replace("|", "").replace("]", "").take(100)}")
+                }
                 if (bookCoverPath.isNotBlank()) add("cover=${bookCoverPath.replace("|", "").replace("]", "")}")
                 if (isInKumbara) add("kumbara=1")
                 add("ak=${if (answerKeyVerified) "1" else "0"}")
@@ -492,10 +504,34 @@ const val AUTOMATIC_TEST_QUESTION_COUNT = 12
 fun automaticBookTestChunks(
     questions: List<CustomQuestionRecord>,
     level: TopicTestLevel
-): List<List<CustomQuestionRecord>> =
-    questions
-        .filter { it.difficultyLevel5 in level.recommendedDifficultyLevels() }
-        .chunked(AUTOMATIC_TEST_QUESTION_COUNT)
+): List<List<CustomQuestionRecord>> {
+    val eligible = questions.filter {
+        it.difficultyLevel5 in level.recommendedDifficultyLevels()
+    }
+    if (eligible.isEmpty()) return emptyList()
+    // Books imported before source test detection still use the old 12-question
+    // chunks. New imports must never mix the end of one printed test with the
+    // start of the next. Preserve page/order and split larger tests at 12.
+    if (eligible.none { it.sourceTestId.isNotBlank() }) {
+        return eligible.chunked(AUTOMATIC_TEST_QUESTION_COUNT)
+    }
+    val groups = mutableListOf<List<CustomQuestionRecord>>()
+    var activeKey: String? = null
+    var active = mutableListOf<CustomQuestionRecord>()
+    for (item in eligible) {
+        val key = item.sourceTestId.takeIf(String::isNotBlank) ?: "legacy"
+        if (active.isNotEmpty() &&
+            (key != activeKey || active.size >= AUTOMATIC_TEST_QUESTION_COUNT)
+        ) {
+            groups += active.toList()
+            active = mutableListOf()
+        }
+        activeKey = key
+        active += item
+    }
+    if (active.isNotEmpty()) groups += active.toList()
+    return groups
+}
 
 enum class QuestionVisualType {
     NONE,
@@ -512,8 +548,8 @@ data class YksQuestion(
     val number: Int,
     val badgeTitle: String = "GÜNLÜK ÖDEV 5",
     val topicHeader: String = "",
-    val publisherStamp: String = "ÜÇDÖRTBEŞ YAYINLARI",
-    val publisherName: String = "ÜçDörtBeş Yayınları",
+    val publisherStamp: String = "KAYNAK BELİRTİLMEDİ",
+    val publisherName: String = "Kaynak Belirtilmedi",
     val publisherLogoUri: String = "",
     val croppedImagePath: String = "",
     val answerKeyVerified: Boolean = true,
@@ -535,7 +571,12 @@ data class YksQuestion(
     val normLeft: Float = 0f,
     val normTop: Float = 0f,
     val normRight: Float = 1f,
-    val normBottom: Float = 1f
+    val normBottom: Float = 1f,
+    val publisherId: String = "",
+    val sourceBookTitle: String = "",
+    val sourceTestId: String = "",
+    val sourcePageIndex: Int = -1,
+    val sourcePrintedQuestionNumber: Int = 0
 ) {
     @get:Exclude
     val imagePath: String

@@ -3,6 +3,7 @@ package com.example.data
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.util.Base64
+import android.util.AtomicFile
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.Offset
 import com.example.R
@@ -25,6 +26,48 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
+
+/** Crash-safe cache IO. AtomicFile restores the previous complete JSON after a failed write. */
+internal object LocalQuestionCacheIO {
+    fun writeJson(file: File, json: String) {
+        require(file.parentFile?.isDirectory == true) { "Question cache directory missing" }
+        val atomic = AtomicFile(file)
+        var out: FileOutputStream? = null
+        try {
+            out = atomic.startWrite()
+            out.write(json.toByteArray(Charsets.UTF_8))
+            atomic.finishWrite(out)
+        } catch (e: Exception) {
+            out?.let(atomic::failWrite)
+            throw e
+        }
+    }
+
+    fun readJson(file: File): String? = try {
+        AtomicFile(file).openRead().bufferedReader(Charsets.UTF_8).use { it.readText() }
+    } catch (_: Exception) {
+        null
+    }
+
+    fun firstValidJson(candidates: List<String?>): String? =
+        candidates.filterNotNull().firstOrNull { raw ->
+            raw.isNotBlank() && runCatching { JSONArray(raw) }.isSuccess
+        }
+
+    /**
+     * The device-global fallback may have been written by another signed-in
+     * account. Restore only when every record explicitly belongs to this user.
+     */
+    fun verifiedUserFallback(json: String?, userId: String): String? {
+        if (json.isNullOrBlank() || userId.isBlank()) return null
+        return runCatching {
+            val arr = JSONArray(json)
+            if ((0 until arr.length()).all { i ->
+                arr.optJSONObject(i)?.optString("userId") == userId
+            }) json else null
+        }.getOrNull()
+    }
+}
 
 @Immutable
 data class RecognizedDeviceAccount(
@@ -696,7 +739,7 @@ class SoruLabRepository(
             "difficulty" to (record.difficulty.takeIf { it in listOf("Kolay", "Orta", "Zor") } ?: "Orta"),
             "correctOption" to (record.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty()),
             "questionText" to record.questionText.ifBlank { "YKS Sorusu" }.take(1950),
-            "publisherTag" to record.publisherTag.ifBlank { "YKS Yayınları" }.take(115),
+            "publisherTag" to record.publisherTag.ifBlank { "Kaynak Belirtilmedi" }.take(115),
             "aiSolutionSummary" to record.aiSolutionSummary.take(3950),
             "cropAspectRatio" to safeRatio,
             "createdAt" to (existingCreatedAt ?: record.createdAt ?: FieldValue.serverTimestamp()),
@@ -737,16 +780,25 @@ class SoruLabRepository(
             val globalCacheFile = java.io.File(cacheDir, "custom_questions_global_device.json")
 
             val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
-            val scopedRaw = if (userCacheFile.exists() && userCacheFile.length() > 2L) {
-                userCacheFile.readText(Charsets.UTF_8)
-            } else {
-                prefs.getString("custom_questions_$userId", null)
-            }
-            val raw = scopedRaw
-                ?: globalCacheFile.takeIf { it.isFile && it.length() > 2L }?.readText(Charsets.UTF_8)
-                ?: prefs.getString("custom_questions_global_device", null)
+            // AtomicFile can recover an interrupted write. If an older cache is
+            // malformed, try its backup and legacy preferences rather than
+            // treating the entire question bank as empty.
+            val userScoped = LocalQuestionCacheIO.firstValidJson(
+                listOf(
+                    LocalQuestionCacheIO.readJson(userCacheFile),
+                    prefs.getString("custom_questions_$userId", null)
+                )
+            )
+            val globalFallback = LocalQuestionCacheIO.firstValidJson(
+                listOf(
+                    LocalQuestionCacheIO.readJson(globalCacheFile),
+                    prefs.getString("custom_questions_global_device", null)
+                )
+            )
+            val raw = userScoped
+                ?: LocalQuestionCacheIO.verifiedUserFallback(globalFallback, userId)
                 ?: return emptyList()
-            val isOwnedCache = scopedRaw != null
+            val isOwnedCache = userScoped != null
             val arr = JSONArray(raw)
             val len = arr.length()
             val list = ArrayList<CustomQuestionRecord>(len)
@@ -766,7 +818,9 @@ class SoruLabRepository(
                         difficulty = obj.optString("difficulty", "Orta"),
                         correctOption = obj.optString("correctOption", ""),
                         questionText = obj.optString("questionText", ""),
-                        publisherTag = obj.optString("publisherTag", "ÜçDörtBeş Yayınları"),
+                        publisherTag = obj.optString("publisherTag", "Kaynak Belirtilmedi"),
+                        publisherId = obj.optString("publisherId", ""),
+                        sourceBookTitle = obj.optString("sourceBookTitle", ""),
                         aiSolutionSummary = obj.optString("aiSolutionSummary", ""),
                         cropAspectRatio = obj.optDouble("cropAspectRatio", 1.25),
                         bookId = obj.optString("bookId", ""),
@@ -871,6 +925,8 @@ class SoruLabRepository(
                 obj.put("correctOption", rec.correctOption)
                 obj.put("questionText", rec.questionText)
                 obj.put("publisherTag", rec.publisherTag)
+                obj.put("publisherId", rec.publisherId)
+                obj.put("sourceBookTitle", rec.sourceBookTitle)
                 obj.put("aiSolutionSummary", rec.aiSolutionSummary)
                 obj.put("cropAspectRatio", rec.cropAspectRatio)
                 obj.put("bookId", rec.bookId)
@@ -887,7 +943,7 @@ class SoruLabRepository(
             val jsonStr = arr.toString()
             val safeUid = userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
             val userCacheFile = java.io.File(cacheDir, "custom_questions_$safeUid.json")
-            userCacheFile.writeText(jsonStr, Charsets.UTF_8)
+            LocalQuestionCacheIO.writeJson(userCacheFile, jsonStr)
             // Keep SharedPreferences light (remove oversized old payloads if > 500 questions)
             if (records.size > 400) {
                 val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)

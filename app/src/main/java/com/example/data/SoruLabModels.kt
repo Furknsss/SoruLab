@@ -249,7 +249,7 @@ data class CustomQuestionRecord(
     @delegate:Transient
     @get:Exclude
     val answerKeyVerified: Boolean by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        parsedMetaMap["ak"] != "0"
+        parsedMetaMap["ak"] == "1"
     }
 
     @delegate:Transient

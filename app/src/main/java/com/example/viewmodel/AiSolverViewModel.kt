@@ -886,7 +886,16 @@ class AiSolverViewModel : ViewModel() {
                 val resolvedDisplayName = withContext(Dispatchers.IO) {
                     StudioImageAndPdfEngine.resolvePdfDisplayName(context, pdfUri, fileNameHint)
                 }
-                val bookId = "book_${Integer.toHexString("$resolvedDisplayName|$publisherName".hashCode())}"
+                val pdfDigest = java.security.MessageDigest.getInstance("SHA-256")
+                seekablePdfFile.inputStream().use { input ->
+                    val buffer = ByteArray(65536)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        pdfDigest.update(buffer, 0, count)
+                    }
+                }
+                val bookId = "book_" + pdfDigest.digest().joinToString("") { "%02x".format(it) }
                 val archivedPdfPath = withContext(Dispatchers.IO) {
                     StudioImageAndPdfEngine.persistBookPdf(context, seekablePdfFile, bookId)
                 }

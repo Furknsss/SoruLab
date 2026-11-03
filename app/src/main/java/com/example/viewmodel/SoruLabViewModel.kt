@@ -2289,7 +2289,8 @@ class SoruLabViewModel(
             val newRecords = ArrayList<CustomQuestionRecord>(cleanItems.size)
             var imageRekeyFailureCount = 0
             for ((idx, item) in cleanItems.withIndex()) {
-                val recordId = "cq_${batchTimestamp}_${idx}_${(100..999).random()}"
+                val identity = "${item.bookId}|${item.sourceTestId}|${item.pageIndex}|${item.questionNumberInTest}|${item.boxNormalized}"
+                val recordId = if (item.bookId.isNotBlank()) "cq_" + java.util.UUID.nameUUIDFromBytes(identity.toByteArray(Charsets.UTF_8)) else "cq_${batchTimestamp}_${idx}_${(100..999).random()}"
                 val canonicalImagePath = if (item.croppedImagePath.isNotBlank()) {
                     withContext(Dispatchers.IO) {
                         repository.rekeyLocalQuestionImage(item.croppedImagePath, "custom_$recordId")
@@ -2424,7 +2425,7 @@ class SoruLabViewModel(
 
             val updatedList = ArrayList<CustomQuestionRecord>(newRecords.size + _userCustomQuestions.value.size)
             updatedList.addAll(newRecords)
-            updatedList.addAll(_userCustomQuestions.value)
+            updatedList.addAll(_userCustomQuestions.value.filterNot { old -> newRecords.any { it.id == old.id } })
 
             var localCacheSaved = true
             try {

@@ -2050,7 +2050,11 @@ private fun PdfCropReviewDialog(
     var currentIndex by remember(review) { mutableIntStateOf(0) }
     var excludedIndices by remember(review) { mutableStateOf(emptySet<Int>()) }
     if (!visible || review.items.isEmpty()) return
-    val current = review.items[currentIndex]
+    var answerOverrides by remember(review) { mutableStateOf(emptyMap<Int, String>()) }
+    val original = review.items[currentIndex]
+    val current = answerOverrides[currentIndex]?.let { answer ->
+        original.copy(correctOption = answer, answerKeyMatched = answer.isNotBlank(), solutionSummary = original.solutionSummary + " • Kullanıcı tarafından doğrulandı")
+    } ?: original
     val preview = StudioImageAndPdfEngine.rememberCachedBitmap(current.croppedImagePath)
     val included = currentIndex !in excludedIndices
     val selectedCount = review.items.size - excludedIndices.size
@@ -2103,6 +2107,14 @@ private fun PdfCropReviewDialog(
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Sonraki kırpma")
                     }
                 }
+                Text("Cevabı yalnızca kaynak cevap anahtarıyla karşılaştırdıktan sonra doğrula.", color = Color(0xFF77738F), fontSize = 12.sp)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    listOf("A", "B", "C", "D", "E", "").forEach { answer ->
+                        FilterChip(selected = current.answerKeyMatched && current.correctOption == answer,
+                            onClick = { answerOverrides = answerOverrides + (currentIndex to answer) },
+                            label = { Text(answer.ifBlank { "Belirsiz" }) })
+                    }
+                }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = included, onCheckedChange = { checked -> excludedIndices = if (checked) excludedIndices - currentIndex else excludedIndices + currentIndex })
                     Text("Bu soruyu kitaplığıma ekle", modifier = Modifier.weight(1f), color = Color(0xFF25205E), fontSize = 13.sp)
@@ -2111,7 +2123,9 @@ private fun PdfCropReviewDialog(
                     }
                 }
                 Button(
-                    onClick = { onSave(review.items.filterIndexed { index, _ -> index !in excludedIndices }) },
+                    onClick = { onSave(review.items.mapIndexed { index, item ->
+                        answerOverrides[index]?.let { answer -> item.copy(correctOption = answer, answerKeyMatched = answer.isNotBlank(), solutionSummary = item.solutionSummary + " • Kullanıcı tarafından doğrulandı") } ?: item
+                    }.filterIndexed { index, _ -> index !in excludedIndices }) },
                     enabled = selectedCount > 0,
                     shape = RoundedCornerShape(50), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF346CFA)),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("save_reviewed_crops")

@@ -1654,7 +1654,7 @@ private fun BookPageQuestionItem345(
                         alignment = Alignment.TopStart,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .wrapContentHeight()
+                            .aspectRatio(bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1))
                             .background(Color.White)
                     )
                 } else {

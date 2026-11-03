@@ -265,4 +265,69 @@ class PdfScopedAnswerKeysTest {
         ))
     }
 
+    @Test
+    fun `test chapter heading is found without a catalog topic hint`() {
+        val source = listOf(
+            "1. ÜNİTE: İNSAN FİZYOLOJİSİ",
+            "ANALİZ", "1", "Sinir Sistemi", "1.", "A) Seçenek"
+        ).joinToString("\n")
+        val result = PdfScopedAnswerKeys.scopeFromQuestionHeader(source, "")
+        assertEquals("sinir sistemi", result?.section)
+        assertEquals(1, result?.testNumber)
+        assertEquals("analiz", result?.testKind)
+    }
+
+    @Test
+    fun `unrelated footer publisher and unit headings cannot replace visible test topic`() {
+        val source = "DR BIYOLOJI\n1. UNITE: FIZYOLOJI\nTEST\n12\nEndokrin Sistem Homeostazi12"
+        val result = PdfScopedAnswerKeys.scopeFromQuestionHeader(source, "")
+        assertEquals("endokrin sistem homeostazi", result?.section)
+        assertEquals(12, result?.testNumber)
+    }
+
+    @Test
+    fun `explicit topic before printed test marker is respected when no heading follows`() {
+        val source = "ÜREME SİSTEMİ\nTEST 8"
+        val result = PdfScopedAnswerKeys.scopeFromQuestionHeader(source, "")
+        assertEquals("ureme sistemi", result?.section)
+        assertEquals(8, result?.testNumber)
+    }
+
+    @Test
+    fun `three-digit test numbers map to their own answer scope`() {
+        val keys = PdfScopedAnswerKeys()
+        keys.addOcrRows(listOf(
+            "GENEL TEKRAR",
+            "Test 120 1.A 2.B 3.C",
+            "Test 121 1.D 2.E 3.A"
+        ))
+        val a = PdfScopedAnswerKeys.scopeFromQuestionHeader("TEST 120\nGenel Tekrar", "")
+        val b = PdfScopedAnswerKeys.scopeFromQuestionHeader("TEST 121\nGenel Tekrar", "")
+        assertEquals(120, a?.testNumber)
+        assertEquals("A", keys.get(a, 1))
+        assertEquals("D", keys.get(b, 1))
+        assertNull(PdfScopedAnswerKeys.scopeFromQuestionHeader("TEST 2026\nGenel Tekrar", ""))
+    }
+
+    @Test
+    fun genuineUnitAssessmentTopicIsNotDroppedAsRunningUnitBanner() {
+        val identity = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "SENTEZ 18\nÜnite Değerlendirme", ""
+        )
+        assertEquals("unite degerlendirme", identity?.section)
+        assertEquals(18, identity?.testNumber)
+        val source = PdfScopedAnswerKeys()
+        source.addOcrRows(listOf("ÜNİTE DEĞERLENDİRME", "SENTEZ 18 1.A 2.C 3.D"))
+        assertEquals("A", source.get(identity, 1))
+    }
+
+    @Test
+    fun pageRunningUnitHeadingCannotOverrideRealPrintedTopic() {
+        val identity = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "ANALİZ 16\n1. ÜNİTE: İNSAN FİZYOLOJİSİ\nEndokrin Sistem Genel Tekrar", ""
+        )
+        assertEquals("endokrin sistem genel tekrar", identity?.section)
+        assertEquals(16, identity?.testNumber)
+    }
+
 }

@@ -2,11 +2,16 @@ name: PDF preview APK
 on:
   workflow_dispatch:
   push:
-    branches: ['feat/premium-pdf-v5', 'fix/pdf-rc5-patternsyntax-regression', 'fix/rc7-auth-universal-pdf-layout-ink']
+    branches: ['feat/premium-pdf-v5', 'fix/pdf-rc5-patternsyntax-regression', 'fix/rc7-auth-universal-pdf-layout-ink', 'fix/rc8-pdf-completeness-spen-layout']
   pull_request:
-    branches: ['feat/premium-pdf-v5', 'feat/pdf-v5-biyotik-premium-review', 'feat/s-pen-s9feplus-ink-gestures']
+    branches: ['feat/premium-pdf-v5', 'feat/pdf-v5-biyotik-premium-review', 'feat/s-pen-s9feplus-ink-gestures', 'fix/rc7-auth-universal-pdf-layout-ink']
 permissions:
   contents: read
+# A new commit supersedes old RC8 test runs, preventing dozens of outdated
+# Android builds from blocking the current acceptance suite.
+concurrency:
+  group: pdf-preview-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   preview:
     runs-on: ubuntu-latest
@@ -35,7 +40,13 @@ jobs:
           --tests com.example.util.PdfTextFooterKeysTest
           --tests com.example.util.PdfVectorAnswerStripTest
           --tests com.example.util.PdfVectorQuestionAnchorsTest
+          --tests com.example.util.PdfVectorTestMarkerTest
+          --tests com.example.util.PdfVectorPageHeaderTest
           --tests com.example.util.PdfColumnLayoutEvidenceTest
+          --tests com.example.util.PdfColumnGeometryTest
+          --tests com.example.util.PdfAdaptiveGutterTest
+          --tests com.example.util.PdfCropRecoveryPolicyTest
+          --tests com.example.util.PdfOcrQuestionMarkerTest
           --tests com.example.util.PdfSourceHeaderExtractorTest
           --tests com.example.util.PdfLibraryAccountTest
           --tests com.example.data.LocalQuestionCacheIOTest
@@ -77,7 +88,7 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
           keytool -list -keystore my-upload-key.jks -storepass "$STORE_PASSWORD" -alias upload >/dev/null
           python3 scripts/check_release_oauth_signing.py
-      - name: Build signed RC7 preview with established release certificate
+      - name: Build signed RC8 validation package with established release certificate
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
@@ -87,6 +98,6 @@ jobs:
           test -s app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: SoruLab-1.2.5-rc7-signed-preview
+          name: SoruLab-1.2.5-rc8-UNVERIFIED-validation
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error

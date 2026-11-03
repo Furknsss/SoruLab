@@ -1319,6 +1319,7 @@ object StudioImageAndPdfEngine {
         val pageMap: Map<Int, LocalPageMapEntry>,
         val pageTextFooterKeys: Map<Int, Map<Int, String>> = emptyMap(),
         val pageSourceHeaders: Map<Int, String> = emptyMap(),
+        val pageVectorTestMarkers: Map<Int, PdfPrintedTestMarker> = emptyMap(),
         val pageVectorQuestionAnchors: Map<Int, PdfSourcePageAnchors> = emptyMap(),
         val pageVectorOptionEvidence: Set<Int> = emptySet()
     )
@@ -1370,9 +1371,16 @@ object StudioImageAndPdfEngine {
             }
             keys.takeIf { it.isNotEmpty() }?.let { index to it }
         }.toMap()
-        val pageSourceHeaders = vectorPageText.mapIndexedNotNull { index, text ->
-            PdfSourceHeaderExtractor.extract(text)
-                .takeIf(String::isNotBlank)?.let { index to it }
+        val pageSourceHeaders = sourcePages.mapIndexedNotNull { index, page ->
+            val header = page.geometryHeaderText.ifBlank {
+                PdfSourceHeaderExtractor.extract(page.text)
+            }
+            header.takeIf(String::isNotBlank)?.let { index to it }
+        }.toMap()
+        // Spatially verify printed test identities. A footer answer row can
+        // appear before the page-top test number in PDFTextStripper's text.
+        val pageVectorTestMarkers = sourcePages.mapIndexedNotNull { index, page ->
+            page.printedTestMarker?.let { index to it }
         }.toMap()
         vectorPageText.forEachIndexed { pageIndex, text ->
             if (text.isNotBlank()) {
@@ -1527,6 +1535,7 @@ object StudioImageAndPdfEngine {
             pageMap = pageMap,
             pageTextFooterKeys = pageTextFooterKeys,
             pageSourceHeaders = pageSourceHeaders,
+            pageVectorTestMarkers = pageVectorTestMarkers,
             pageVectorQuestionAnchors = pageVectorQuestionAnchors,
             pageVectorOptionEvidence = pageVectorOptionEvidence
         )
@@ -1537,17 +1546,25 @@ object StudioImageAndPdfEngine {
         val pageWidth: Float,
         val pageHeight: Float,
         val anchors: List<PdfSourceQuestionAnchor>,
-        val vectorFooterKeys: Map<Int, String>
+        val vectorFooterKeys: Map<Int, String>,
+        val printedTestMarker: PdfPrintedTestMarker?,
+        val geometryHeaderText: String
     )
 
     private class PdfGeometryTextStripper : PDFTextStripper() {
         val glyphs = mutableListOf<PdfSourceGlyph>()
+        val headerGlyphs = mutableListOf<PdfSourceGlyph>()
         override fun writeString(text: String, textPositions: MutableList<TextPosition>) {
             for (p in textPositions) {
                 val value = p.unicode.orEmpty()
-                if (value.isNotBlank() && value.length <= 3) {
-                    glyphs.add(PdfSourceGlyph(value, p.xDirAdj, p.yDirAdj,
-                        p.widthDirAdj, p.heightDir))
+                if (value.isNotEmpty() && value.length <= 3) {
+                    val glyph = PdfSourceGlyph(
+                        value, p.xDirAdj, p.yDirAdj, p.widthDirAdj, p.heightDir
+                    )
+                    // Keep literal PDF spaces only in the header lane;
+                    // adding them to numeric/footer tokenizers changes keys.
+                    headerGlyphs.add(glyph)
+                    if (value.isNotBlank()) glyphs.add(glyph)
                 }
             }
             super.writeString(text, textPositions)
@@ -1561,27 +1578,44 @@ object StudioImageAndPdfEngine {
     ): List<SourceTextPage> = try {
         PDFBoxResourceLoader.init(context.applicationContext)
         PDDocument.load(pdfFile).use { document ->
-            val stripper = PdfGeometryTextStripper()
             List(min(totalPages, document.numberOfPages).coerceAtLeast(0)) { pageIndex ->
-                stripper.glyphs.clear()
-                stripper.startPage = pageIndex + 1
-                stripper.endPage = pageIndex + 1
-                val text = stripper.getText(document).take(12_000)
+                // Isolate individual PDF pages. A single malformed/oversized
+                // page must never discard the whole document's answer index.
                 val pageBounds = document.getPage(pageIndex).mediaBox
                 val width = pageBounds.width
                 val height = pageBounds.height
-                SourceTextPage(
-                    text = text,
-                    pageWidth = width,
-                    pageHeight = height,
-                    anchors = PdfVectorQuestionAnchors.find(stripper.glyphs, width, height),
-                    vectorFooterKeys = PdfVectorAnswerStrip.read(stripper.glyphs, width, height)
-                )
+                try {
+                    val stripper = PdfGeometryTextStripper()
+                    stripper.startPage = pageIndex + 1
+                    stripper.endPage = pageIndex + 1
+                    val text = stripper.getText(document).take(12_000)
+                    val printedAnchors =
+                        PdfVectorQuestionAnchors.find(stripper.glyphs, width, height)
+                    SourceTextPage(
+                        text = text,
+                        pageWidth = width,
+                        pageHeight = height,
+                        anchors = printedAnchors,
+                        vectorFooterKeys = PdfVectorAnswerStrip.read(stripper.glyphs, width, height),
+                        printedTestMarker = PdfVectorTestMarker.find(stripper.glyphs, width, height),
+                        geometryHeaderText = PdfVectorPageHeader.read(
+                            stripper.headerGlyphs,
+                            width, height, printedAnchors.minOfOrNull { it.y }
+                        )
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w(
+                        "SoruLabPdfText", "PDF text layer failed at page ${pageIndex + 1}; OCR fallback", e
+                    )
+                    SourceTextPage("", width, height, emptyList(), emptyMap(), null, "")
+                }
             }
         }
-    } catch (_: OutOfMemoryError) {
+    } catch (e: OutOfMemoryError) {
+        android.util.Log.e("SoruLabPdfText", "PDF text layer out of memory; OCR fallback", e)
         emptyList()
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        android.util.Log.e("SoruLabPdfText", "PDF text layer unavailable; OCR fallback", e)
         emptyList()
     }
 
@@ -2123,8 +2157,11 @@ object StudioImageAndPdfEngine {
         val bodyH = (bodyBottom - bodyTop).coerceAtLeast(1)
 
         // 2. Detect Center Vertical Gutter or Divider Line (`midX`)
-        val centerStart = (width * 0.45f).roundToInt()
-        val centerEnd = (width * 0.55f).roundToInt()
+        val gutterSearch = PdfAdaptiveGutter.window(
+            width, questionNumberAnchors, bodyTop, bodyBottom
+        )
+        val centerStart = gutterSearch.start
+        val centerEnd = gutterSearch.end
         val colInkCounts = IntArray(centerEnd - centerStart + 1)
 
         for (x in centerStart..centerEnd) {
@@ -2140,14 +2177,14 @@ object StudioImageAndPdfEngine {
         val sampledRows = (bodyH / 2).coerceAtLeast(1)
         // Or find the cleanest vertical whitespace corridor near center
         var minGutterInk = Int.MAX_VALUE
-        var bestGutterX = width / 2
+        var bestGutterX = gutterSearch.preferredX
         val windowRadius = (width * 0.006f).roundToInt().coerceAtLeast(3)
         for (x in (centerStart + windowRadius)..(centerEnd - windowRadius)) {
             var winSum = 0
             for (dx in -windowRadius..windowRadius) {
                 winSum += colInkCounts[x + dx - centerStart]
             }
-            val centerBias = abs(x - width / 2) / 12
+            val centerBias = abs(x - gutterSearch.preferredX) / 12
             val score = winSum + centerBias
             if (score < minGutterInk) {
                 minGutterInk = score
@@ -2205,14 +2242,16 @@ object StudioImageAndPdfEngine {
         val gutterMargin = (width * 0.012f).roundToInt().coerceAtLeast(10)
         val outerMargin = (width * 0.02f).roundToInt().coerceAtLeast(8)
 
-        val columns: List<Triple<Int, Int, Int>> = if (isDualColumn) {
-            listOf(
-                Triple(outerMargin, (midX - gutterMargin).coerceAtLeast(outerMargin + 120), 0),
-                Triple((midX + gutterMargin).coerceAtMost(width - outerMargin - 120), width - outerMargin, 1)
-            )
-        } else {
-            listOf(Triple(outerMargin, width - outerMargin, 0))
-        }
+        val columns = PdfColumnGeometry.columns(
+            width = width,
+            gutterX = midX,
+            gutterMargin = gutterMargin,
+            outerMargin = outerMargin,
+            isDualColumn = isDualColumn,
+            anchors = questionNumberAnchors,
+            bodyTop = bodyTop,
+            bodyBottom = bodyBottom
+        )
 
         val results = mutableListOf<LocalCroppedBoxResult>()
 

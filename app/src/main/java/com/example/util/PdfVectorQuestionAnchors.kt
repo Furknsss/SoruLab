@@ -31,8 +31,8 @@ data class PdfSourcePageAnchors(
  * For image-only PDFs this returns empty and the ML Kit OCR path is unchanged.
  */
 internal object PdfVectorQuestionAnchors {
-    private val printed = Regex("""^[1-9][0-9]?[.)]$""")
-    private val glyphLetters = Regex("""^[0-9.)]+$""")
+    private val printed = Regex("""^[1-9][0-9]{0,2}[.):\-]$""")
+    private val glyphLetters = Regex("""^[0-9.):\-]+$""")
 
     fun find(
         glyphs: List<PdfSourceGlyph>,
@@ -42,8 +42,10 @@ internal object PdfVectorQuestionAnchors {
         if (pageWidth <= 0f || pageHeight <= 0f) return emptyList()
         val tokens = tokenize(glyphs)
             .filter {
-                it.x > pageWidth * .075f && it.x < pageWidth * .94f &&
-                    it.y > pageHeight * .085f && it.y < pageHeight * .91f
+                // Publisher margin sizes vary; use a wide physical safety
+                // band, then reject false numbers by aligned sequence tests.
+                it.x > pageWidth * .025f && it.x < pageWidth * .975f &&
+                    it.y > pageHeight * .04f && it.y < pageHeight * .965f
             }
         if (tokens.isEmpty()) return emptyList()
         // Align by printed number's LEFT edge, not by the x position of prose.
@@ -58,39 +60,75 @@ internal object PdfVectorQuestionAnchors {
                 clusters.add(mutableListOf(token))
             }
         }
-        fun ordered(cluster: List<PdfSourceQuestionAnchor>) =
-            cluster.sortedBy { it.y }
+        // Margin page numbers and graph labels can sit on the exact same X
+        // alignment as a real question run. Find the best ordered subsequence
+        // instead of requiring EVERY number in the X cluster to be consecutive.
+        fun candidateRuns(cluster: List<PdfSourceQuestionAnchor>):
+            List<List<PdfSourceQuestionAnchor>> {
+            val ordered = cluster.sortedBy { it.y }
+            if (ordered.isEmpty()) return emptyList()
+            val minGap = max(6f, pageHeight * .025f)
+            val paths = ordered.indices.map { i ->
+                mutableListOf(ordered[i])
+            }.toMutableList()
+            for (i in ordered.indices) {
+                for (j in 0 until i) {
+                    if (ordered[i].number == ordered[j].number + 1 &&
+                        ordered[i].y - ordered[j].y >= minGap &&
+                        paths[j].size + 1 > paths[i].size
+                    ) {
+                        paths[i] = (paths[j] + ordered[i]).toMutableList()
+                    }
+                }
+            }
+            // A singleton is still useful for an asymmetric 1+2 column page.
+            return paths.distinctBy { path ->
+                path.joinToString("|") { "${it.number}@${it.y.toInt()}" }
+            }.sortedWith(
+                compareByDescending<List<PdfSourceQuestionAnchor>> { it.size }
+                    .thenByDescending { it.last().y - it.first().y }
+            ).take(3)
+        }
         fun contiguous(items: List<PdfSourceQuestionAnchor>): Boolean =
-            items.isNotEmpty() && items.zipWithNext().all { (a, b) -> b.number == a.number + 1 }
-        // A page may have 1 question in one column and 3+ in the other.
-        // A two-column run MUST be globally consecutive across the gutter.
-        val choices = mutableListOf<List<PdfSourceQuestionAnchor>>()
+            items.isNotEmpty() && items.zipWithNext().all { (a, b) ->
+                b.number == a.number + 1
+            }
+        val runsByCluster = clusters.map(::candidateRuns)
+        // A two-column run must increase through the left column and then
+        // continue through the right column; labels within a chart cannot
+        // override a stronger printed sequence.
+        data class Candidate(
+            val anchors: List<PdfSourceQuestionAnchor>,
+            val columnEvidence: Int
+        )
+        val choices = mutableListOf<Candidate>()
         for (i in clusters.indices) {
-            val left = ordered(clusters[i])
-            if (!contiguous(left)) continue
-            if (left.size >= 3 || (
-                    left.size == 2 &&
-                        // Short columns need stronger margin + separation evidence;
-                        // graph axes inside a figure are not question starts.
-                        ((left.first().x < pageWidth * .18f) ||
-                            (left.first().x in pageWidth * .48f..pageWidth * .63f)) &&
-                        (left[1].y - left[0].y > pageHeight * .085f)
-                    )
-                ) choices.add(left)
-            for (j in i + 1 until clusters.size) {
-                val right = ordered(clusters[j])
-                if (!contiguous(right)) continue
-                if (abs(left.first().x - right.first().x) < pageWidth * .20f) continue
-                val sequence = left + right
-                if (sequence.size >= 4 && contiguous(sequence)) {
-                    choices.add(sequence)
+            for (left in runsByCluster[i]) {
+                if (left.size >= 2) choices += Candidate(left, 0)
+                for (j in i + 1 until clusters.size) {
+                    for (right in runsByCluster[j]) {
+                        if (abs(left.first().x - right.first().x) < pageWidth * .20f) continue
+                        val sequence = left + right
+                        if (sequence.size >= 3 && contiguous(sequence)) {
+                            // Prefer a geometrically coherent left/right page
+                            // over a longer 1..7 sequence printed INSIDE a
+                            // graph on a real four-question page.
+                            val support = if (left.size >= 2 && right.size >= 2) 4 else 2
+                            choices += Candidate(sequence, support)
+                        }
+                    }
                 }
             }
         }
+        val outermostPrintedX = tokens.minOf { it.x }
         return choices.maxWithOrNull(
-            compareBy<List<PdfSourceQuestionAnchor>> { it.size }
-                .thenBy { it.map(PdfSourceQuestionAnchor::number).distinct().size }
-        ).orEmpty()
+            compareBy<Candidate> { candidate ->
+                candidate.anchors.size + candidate.columnEvidence +
+                    if (candidate.anchors.first().x <= outermostPrintedX +
+                        pageWidth * .025f) 1 else 0
+            }.thenBy { it.anchors.size }
+                .thenBy { it.anchors.map(PdfSourceQuestionAnchor::number).distinct().size }
+        )?.anchors.orEmpty()
     }
 
     private fun tokenize(glyphs: List<PdfSourceGlyph>): List<PdfSourceQuestionAnchor> {
@@ -114,7 +152,7 @@ internal object PdfVectorQuestionAnchors {
                 val word = current.joinToString("") { it.text }
                 if (printed.matches(word)) {
                     val number = word.dropLast(1).toIntOrNull()
-                    if (number != null) {
+                    if (number != null && number in 1..200) {
                         output.add(
                             PdfSourceQuestionAnchor(
                                 number, current.minOf { it.x },

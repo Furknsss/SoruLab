@@ -11,7 +11,7 @@ internal object PdfSourceHeaderExtractor {
     private val testHeading = Regex(
         """(?i)\b(analiz|sentez|deneme|test|uygulama|etkinlik|osym|ö sym|ösym)\b"""
     )
-    private val printedQuestion = Regex("""^[1-9][0-9]?[.)]$""")
+    private val printedQuestion = Regex("""^[1-9][0-9]{0,2}[.)]$""")
     private val standaloneNumber = Regex("""^[1-9][0-9]?$""")
     private val titledNumber = Regex(
         """(?i)\b(?:analiz|sentez|deneme|test|uygulama|etkinlik|osym|ösym)\s+[1-9][0-9]?\b"""

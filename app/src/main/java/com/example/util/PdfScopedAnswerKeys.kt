@@ -68,7 +68,7 @@ internal class PdfScopedAnswerKeys(
                     }
                 }
                 val section = currentSection ?: continue
-                val testNum = test.groupValues[2].toIntOrNull() ?: continue
+                val testNum = test.groupValues[2].toIntOrNull()?.takeIf { it in 1..200 } ?: continue
                 val isOsym = normalize(test.groupValues[1]).contains("osym")
                 val nextTest = tests.getOrNull(labelIndex + 1)
                 val tail = clean.substring(
@@ -149,13 +149,13 @@ internal class PdfScopedAnswerKeys(
 
     companion object {
         private val testLabel = Regex(
-            "(?i)(?:^|\\s)((?:ÖSYM|OSYM|O[SŞ]YM)(?:\\s+TADINDA)?\\s*)?(?:TEST|ANAL[İI]Z|SENTEZ|DENEME|UYGULAMA|ETK[İI]NL[İI]K)\\s*[-.:–]?\\s*([0-9]{1,2})(?=\\s|$|[.:])"
+            "(?i)(?:^|\\s)((?:ÖSYM|OSYM|O[SŞ]YM)(?:\\s+TADINDA)?\\s*)?(?:TEST|ANAL[İI]Z|SENTEZ|DENEME|UYGULAMA|ETK[İI]NL[İI]K)\\s*[-.:–]?\\s*([0-9]{1,3})(?=\\s|$|[.:])"
         )
         private val questionAnswer = Regex("(?<![0-9])([0-9]{1,3})\\s*[.\\-:)]?\\s*([A-E])(?=\\s|$|[,;|.]|[0-9])", RegexOption.IGNORE_CASE)
         private val questionScopeNumber = Regex(
-            "(?i)\\b(TEST|ANALIZ|SENTEZ|DENEME|UYGULAMA|ETKINLIK)\\s*[-.:–]?\\s*([0-9]{1,2})\\b"
+            "(?i)\\b(TEST|ANALIZ|SENTEZ|DENEME|UYGULAMA|ETKINLIK)\\s*[-.:–]?\\s*([0-9]{1,3})\\b"
         )
-        private val trailingPageNumber = Regex("\\s+[0-9]{1,2}\\s*$")
+        private val trailingPageNumber = Regex("\\s+[0-9]{1,3}\\s*$")
         // Generic document/branding words, not a list of known publishers.
         private val nonSectionWords = listOf(
             "cevap", "anahtar", "soru bankasi", "test", "osym",
@@ -211,39 +211,62 @@ internal class PdfScopedAnswerKeys(
             // short heading area supplied by the page reader, never question
             // body text, and never guess a number when none was printed.
             val splitHeaderTest = if (matchedTest == null) {
-                Regex("""\b(analiz|sentez)\b(?:\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,8})?\s+([0-9]{1,2})(?=\s|$)""")
+                Regex("""\b(analiz|sentez)\b(?:\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,8})?\s+([0-9]{1,3})(?=\s|$)""")
                     .find(normalizedHeader)
             } else null
             val match = matchedTest ?: splitHeaderTest ?: return null
-            val testNum = match.groupValues[2].toIntOrNull() ?: return null
+            val testNum = match.groupValues[2].toIntOrNull()?.takeIf { it in 1..200 } ?: return null
             val kind = match.groupValues[1].lowercase(Locale.ROOT)
             val isOsym = "osym" in normalizedHeader
             val hint = normalize(topicHint)
-            val headings = headerText.lines().map { it.trim() }
-                .filter { original ->
-                    original.isNotBlank() &&
-                        !original.contains('@') &&
-                        !original.contains("http", ignoreCase = true) &&
-                        !normalize(original).contains("test")
-                }
-                .map { normalize(it.replace(trailingPageNumber, "")) }
-                .filter { line ->
-                    line.length in 5..65 && line.any(Char::isLetter) &&
-                        !containsNonSectionWord(line) &&
-                        !line.startsWith("www") &&
-                        line !in listOf(
-                            "biyoloji", "matematik", "fizik", "kimya",
-                            "geometri", "turkce", "tarih", "cografya"
-                        )
-                }
-            // Scanners sometimes recognize "Sinir Sistemi1" without the space
-            // separating the printed unit suffix. Use the recognized topic only
-            // when the visible heading matches it (with an optional 1-2 digit suffix).
-            val matchedHint = hint.takeIf { it.isNotBlank() && headings.any { heading ->
-                heading == it || heading.removePrefix(it).matches(Regex("[0-9]{1,2}"))
-                    && heading.startsWith(it)
+            val headerLines = headerText.lines()
+            val testLineIndex = headerLines.indexOfFirst { line ->
+                Regex("""\b(test|analiz|sentez|deneme|uygulama|etkinlik)\b""")
+                    .containsMatchIn(normalize(line))
+            }
+            val headings = headerLines.mapIndexedNotNull { index, raw ->
+                if (raw.isBlank() || raw.contains('@') ||
+                    raw.contains("http", ignoreCase = true)
+                ) return@mapIndexedNotNull null
+                var heading = normalize(raw.replace(trailingPageNumber, ""))
+                // OCR may join the printed test number to the topic:
+                // "Sinir Sistemi1" and "Sinir Sistemi 1" are the same heading.
+                val suffix = testNum.toString()
+                if (heading.length > suffix.length + 4 && heading.endsWith(suffix) &&
+                    heading[heading.length - suffix.length - 1].isLetter()
+                ) heading = heading.dropLast(suffix.length)
+                val chapterHeading = Regex("""(?:^|\s)(?:unite|bolum|chapter|sinif)(?:\s|$)""")
+                    .containsMatchIn(heading)
+                // "1. ÜNİTE: ..." is a running chapter banner, but a
+                // standalone "Ünite Değerlendirme" is a legitimate source
+                // test section in many books. Never discard that topic.
+                val assessmentSection = Regex(
+                    """^(?:unite|bolum|chapter)\s+(?:degerlendirme|genel tekrar|tekrari|review)(?:\s|$)"""
+                ).containsMatchIn(heading)
+                if (heading.length !in 5..65 || !heading.any(Char::isLetter) ||
+                    (chapterHeading && !assessmentSection) ||
+                    containsNonSectionWord(heading) ||
+                    heading.startsWith("www") ||
+                    heading in listOf(
+                        "biyoloji", "matematik", "fizik", "kimya",
+                        "geometri", "turkce", "tarih", "cografya"
+                    )
+                ) null else index to heading
+            }
+            // Only accept a topic hint when the heading visibly supports it.
+            val matchedHint = hint.takeIf { it.isNotBlank() && headings.any { (_, text) ->
+                text == it || text.startsWith(it) &&
+                    text.removePrefix(it).matches(Regex("""\s*[0-9]{1,2}"""))
             } }
-            val section = matchedHint ?: headings.firstOrNull() ?: hint.takeIf(String::isNotBlank)
+            // When a test number is printed beside its chapter label, prefer
+            // the specific topic following that label; running unit headings
+            // and publisher headers must never replace the actual chapter.
+            val nearestAfter = headings.filter { it.first > testLineIndex }
+                .minByOrNull { it.first }?.second
+            val nearestBefore = headings.filter { it.first < testLineIndex }
+                .maxByOrNull { it.first }?.second
+            val section = matchedHint ?: nearestAfter ?: nearestBefore
+                ?: headings.lastOrNull()?.second ?: hint.takeIf(String::isNotBlank)
             if (section.isNullOrBlank()) return null
             return PdfAnswerScope(section, testNum, isOsym, kind)
         }

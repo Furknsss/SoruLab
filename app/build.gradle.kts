@@ -61,8 +61,8 @@ android {
     applicationId = "com.aistudio.sorulab.ykslab"
     minSdk = 24
     targetSdk = 36
-    versionCode = 30
-    versionName = "1.2.5-rc7"
+    versionCode = 31
+    versionName = "1.2.5-rc8"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

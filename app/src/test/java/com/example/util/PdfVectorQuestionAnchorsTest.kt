@@ -31,4 +31,101 @@ class PdfVectorQuestionAnchorsTest {
         )
         assertTrue(PdfVectorQuestionAnchors.find(glyphs, 595f, 792f).isEmpty())
     }
+    @Test
+    fun sparseMixedColumnLayoutsAreNotLost() {
+        val glyphs = listOf(
+            PdfSourceGlyph("1.", 42f, 90f, 10f, 9f),
+            PdfSourceGlyph("2.", 250f, 90f, 10f, 9f),
+            PdfSourceGlyph("3.", 250f, 285f, 10f, 9f)
+        )
+        val anchors = PdfVectorQuestionAnchors.find(glyphs, 460f, 600f)
+        assertEquals(listOf(1, 2, 3), anchors.map { it.number })
+    }
+
+    @Test
+    fun nonstandardNarrowMarginsAreStillProcessed() {
+        val glyphs = listOf(
+            PdfSourceGlyph("1.", 15f, 35f, 12f, 9f),
+            PdfSourceGlyph("2.", 15f, 280f, 12f, 9f),
+            PdfSourceGlyph("3.", 235f, 35f, 12f, 9f)
+        )
+        val anchors = PdfVectorQuestionAnchors.find(glyphs, 460f, 600f)
+        assertEquals(listOf(1, 2, 3), anchors.map { it.number })
+    }
+
+    @Test
+    fun multiplePrintedNumberStylesWorkWithoutPublisherSpecificTemplates() {
+        val glyphs = listOf(
+            PdfSourceGlyph("1:", 42f, 95f, 13f, 9f),
+            PdfSourceGlyph("2-", 42f, 312f, 13f, 9f),
+            PdfSourceGlyph("3)", 247f, 90f, 13f, 9f),
+            PdfSourceGlyph("4.", 247f, 301f, 13f, 9f)
+        )
+        val result = PdfVectorQuestionAnchors.find(glyphs, 460f, 600f)
+        assertEquals(listOf(1, 2, 3, 4), result.map { it.number })
+    }
+
+    @Test
+    fun printedFooterAndDiagramNumbersCannotEraseAValidQuestionSequence() {
+        val glyphs = listOf(
+            PdfSourceGlyph("1.", 57f, 82f, 12f, 9f),
+            PdfSourceGlyph("2.", 57f, 288f, 12f, 9f),
+            PdfSourceGlyph("3.", 57f, 607f, 12f, 9f),
+            PdfSourceGlyph("4.", 315f, 82f, 12f, 9f),
+            PdfSourceGlyph("5.", 315f, 508f, 12f, 9f),
+            // Page footer happens to be printed at the left margin.
+            PdfSourceGlyph("1.", 57f, 755f, 12f, 9f),
+            // Diagram labels within a question should not win.
+            PdfSourceGlyph("8.", 93f, 315f, 12f, 9f),
+            PdfSourceGlyph("9.", 93f, 330f, 12f, 9f)
+        )
+        val anchors = PdfVectorQuestionAnchors.find(glyphs, 623f, 807f)
+        assertEquals(listOf(1, 2, 3, 4, 5), anchors.map { it.number })
+        assertEquals(5, anchors.size)
+    }
+
+    @Test
+    fun anInterleavedSpuriousNumberIsSkippedInsteadOfResettingTheColumn() {
+        val glyphs = listOf(
+            PdfSourceGlyph("1.", 71f, 90f, 12f, 9f),
+            PdfSourceGlyph("2.", 71f, 290f, 12f, 9f),
+            PdfSourceGlyph("11.", 71f, 354f, 12f, 9f),
+            PdfSourceGlyph("3.", 71f, 490f, 12f, 9f),
+            PdfSourceGlyph("4.", 330f, 90f, 12f, 9f),
+            PdfSourceGlyph("5.", 330f, 390f, 12f, 9f)
+        )
+        assertEquals(
+            listOf(1, 2, 3, 4, 5),
+            PdfVectorQuestionAnchors.find(glyphs, 623f, 807f).map { it.number }
+        )
+    }
+
+    @Test
+    fun sourcePdfMarkersBeyondQuestionNinetyNineAreKept() {
+        val glyphs = listOf(
+            PdfSourceGlyph("118.", 53f, 90f, 20f, 9f),
+            PdfSourceGlyph("119)", 53f, 320f, 20f, 9f),
+            PdfSourceGlyph("120:", 53f, 540f, 20f, 9f)
+        )
+        assertEquals(
+            listOf(118, 119, 120),
+            PdfVectorQuestionAnchors.find(glyphs, 623f, 807f).map { it.number }
+        )
+    }
+
+    @Test
+    fun figureNumberingOneThroughSevenCannotOutvoteRealTwoColumnQuestions() {
+        val glyphs = listOf(
+            PdfSourceGlyph("1.", 57f, 82f, 12f, 10f),
+            PdfSourceGlyph("2.", 57f, 192f, 12f, 10f),
+            PdfSourceGlyph("3.", 315f, 82f, 12f, 10f),
+            PdfSourceGlyph("4.", 315f, 464f, 12f, 10f)
+        ) + (1..7).map { n ->
+            PdfSourceGlyph("$n.", 91f, 299f + (n - 1) * 30f, 12f, 10f)
+        }
+        val numbers = PdfVectorQuestionAnchors.find(glyphs, 623f, 807f)
+            .map { it.number }
+        assertEquals(listOf(1, 2, 3, 4), numbers)
+    }
+
 }

@@ -571,9 +571,8 @@ class AiSolverViewModel : ViewModel() {
         // Publisher layouts vary: the title/test may start at 8%, 20% or
         // much lower on an illustrated page. Read until the first actual
         // numbered QUESTION instead of using a fixed 17%-of-page cutoff.
-        val printedQuestionLine = Regex("""^\s*(?:[1-9]|[1-3][0-9])[.)-](?:\s|$)""")
         val firstQuestionTop = lines.filter {
-            printedQuestionLine.containsMatchIn(it.text)
+            com.example.util.PdfOcrQuestionMarker.numberAtStart(it.text) != null
         }.mapNotNull { it.boundingBox?.top }.minOrNull()
         val headerLimit = firstQuestionTop?.let { firstTop ->
             (firstTop - bitmap.height * 0.006f).toInt()
@@ -616,14 +615,12 @@ class AiSolverViewModel : ViewModel() {
             val footerCells = recognizeAnswerFooter(bitmap)
             answerGrids = PdfHorizontalAnswerGridReader.find(footerCells, bitmap.width, bitmap.height)
         }
-        val anchorRegex = Regex("""^\s*([1-9]|[1-3][0-9])[\.\-\)]\s*""")
-        val numberRegex = Regex("""^\s*(?:[1-9]|[1-3][0-9])[\.\-\)]?$""")
         val optionRegex = Regex("""^\s*([A-E])\s*[).:]\s*""", RegexOption.IGNORE_CASE)
         val anchors = lines.mapNotNull { line ->
-            val match = anchorRegex.find(line.text) ?: return@mapNotNull null
-            val number = match.groupValues.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
+            val number = com.example.util.PdfOcrQuestionMarker
+                .numberAtStart(line.text) ?: return@mapNotNull null
             val numberElement = line.elements.firstOrNull {
-                numberRegex.matches(it.text.trim())
+                com.example.util.PdfOcrQuestionMarker.isStandaloneNumberElement(it.text)
             }
             val bounds = numberElement?.boundingBox
                 ?: line.elements.firstOrNull()?.boundingBox
@@ -988,6 +985,7 @@ class AiSolverViewModel : ViewModel() {
                 val pendingVectorFooterKeys = mutableListOf<Pair<PdfAnswerScope, Map<Int, String>>>()
                 var detectedAnswerPages = 0
                 var pageRenderFailureCount = 0
+                var recoveredPrintedQuestionPages = 0
 
                 val pageIndicesToScan = 0 until totalPdfPages
 
@@ -1110,8 +1108,33 @@ class AiSolverViewModel : ViewModel() {
                                 // The PDF's embedded text layer can preserve tiny
                                 // table titles which whole-page device OCR misses.
                                 // Resolve only from THIS page's printed heading.
-                                val vectorHeaderScope = localBlueprint.pageSourceHeaders[pageIdx]?.let {
-                                    PdfScopedAnswerKeys.scopeFromQuestionHeader(it, pageInfo.topicName)
+                                val printedTestMarker =
+                                    localBlueprint.pageVectorTestMarkers[pageIdx]
+                                val pageSourceHeader = localBlueprint.pageSourceHeaders[pageIdx]
+                                // PDF text order is not page geometry. For example:
+                                // an embedded answer table may emit 1..12 *before*
+                                // the actual printed "ANALİZ 12" test identity.
+                                // Prefix the source header with the independently
+                                // verified spatial identity so the textual section
+                                // still comes from this page, never from a guessed
+                                // global numbering map or the previous test.
+                                val spatialHeader = if (printedTestMarker != null) {
+                                    val kind = printedTestMarker.testKind.uppercase()
+                                    val prefix = if (printedTestMarker.isOsymTest)
+                                        "ÖSYM " else ""
+                                    "$prefix$kind ${printedTestMarker.testNumber}\n" +
+                                        pageSourceHeader.orEmpty()
+                                } else pageSourceHeader
+                                val vectorHeaderScope = spatialHeader?.let {
+                                    PdfScopedAnswerKeys.scopeFromQuestionHeader(
+                                        it, pageInfo.topicName
+                                    )
+                                }?.let { scoped ->
+                                    if (printedTestMarker != null) scoped.copy(
+                                        testNumber = printedTestMarker.testNumber,
+                                        testKind = printedTestMarker.testKind,
+                                        isOsymTest = printedTestMarker.isOsymTest
+                                    ) else scoped
                                 }
                                 val footerFromTextLayer = localBlueprint.pageTextFooterKeys[pageIdx]
                                 if (footerFromTextLayer != null && vectorHeaderScope != null) {
@@ -1239,7 +1262,7 @@ class AiSolverViewModel : ViewModel() {
                                     pendingHorizontalGrids += pageAnswerScope to grid
                                 }
 
-                                val croppedBoxes = try {
+                                var croppedBoxes = try {
                                     StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
                                         context = context,
                                         pageBitmap = pageBitmap,
@@ -1263,6 +1286,73 @@ class AiSolverViewModel : ViewModel() {
                                 } catch (_: Exception) {
                                     pageRenderFailureCount++
                                     emptyList()
+                                }
+
+                                // Independent safety pass: if the native PDF text
+                                // proves that printed questions exist but OCR-based
+                                // cropping missed them, retry using the validated
+                                // page-local printed numbers. Accept the second pass
+                                // only if it preserves all source-confirmed questions
+                                // and adds at least one missing number; never guess.
+                                val sourcePrintedNumbers =
+                                    nativeAnchors.map { it.number }.toSet()
+                                val firstPassPrintedNumbers = croppedBoxes.filter {
+                                    it.hasPrintedQuestionNumber
+                                }.map { it.questionOrderInPage }
+                                val sourceHasOptionEvidence =
+                                    pageIdx in localBlueprint.pageVectorOptionEvidence
+                                if (com.example.util.PdfCropRecoveryPolicy.shouldRetry(
+                                        sourcePrintedNumbers, firstPassPrintedNumbers.toSet(),
+                                        sourceHasOptionEvidence
+                                    )
+                                ) {
+                                    val reCropped = try {
+                                        StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
+                                            context = context,
+                                            pageBitmap = pageBitmap,
+                                            pageIndex = pageIdx,
+                                            totalPages = rendererTotal,
+                                            reusablePixelsRef = reusablePixelsRef,
+                                            questionNumberAnchors = nativeAnchors,
+                                            optionAnchors = pageLayout.optionAnchors,
+                                            maxQuestionBottomY = pageLayout.answerGrids
+                                                .filter { grid ->
+                                                    grid.top > (nativeAnchors.maxOfOrNull { it.top }
+                                                        ?: Int.MAX_VALUE)
+                                                }.minOfOrNull { it.top }
+                                        )
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (_: OutOfMemoryError) {
+                                        reusablePixelsRef[0] = null
+                                        emptyList()
+                                    } catch (e: Exception) {
+                                        android.util.Log.w(
+                                            "SoruLabPdfImport",
+                                            "Native number recovery unavailable at page ${pageIdx + 1}", e
+                                        )
+                                        emptyList()
+                                    }
+                                    val recoveredNumbers = reCropped.filter {
+                                        it.hasPrintedQuestionNumber
+                                    }.map { it.questionOrderInPage }
+                                    val useRecovered =
+                                        com.example.util.PdfCropRecoveryPolicy.preferRecovery(
+                                            sourcePrintedNumbers, firstPassPrintedNumbers, recoveredNumbers
+                                        )
+                                    val unselected = if (useRecovered) croppedBoxes else reCropped
+                                    // Delete only the temporary images from the
+                                    // unselected crop pass; none were added to
+                                    // the student's question library yet.
+                                    unselected.forEach { box ->
+                                        if (box.croppedImagePath.isNotBlank()) {
+                                            runCatching { java.io.File(box.croppedImagePath).delete() }
+                                        }
+                                    }
+                                    if (useRecovered) {
+                                        croppedBoxes = reCropped
+                                        recoveredPrintedQuestionPages++
+                                    }
                                 }
 
                                 val pageCandidates = if (croppedBoxes.isEmpty()) {
@@ -1482,6 +1572,10 @@ class AiSolverViewModel : ViewModel() {
                             "$conflictingKeys çelişkili cevap • " +
                             "$absentKeyCells testte eksik cevap hücresi. " +
                             "Yanlış cevap tahmini yapılmadı.")
+                    }
+                    if (recoveredPrintedQuestionPages > 0) {
+                        add("$recoveredPrintedQuestionPages sayfada basılı numara temelli ikinci " +
+                            "kırpma denemesi daha eksiksiz sonuç verdi.")
                     }
                     if (processingStatus.ocrFailureCount > 0) {
                         add("Cihaz içi OCR ${processingStatus.ocrFailureCount} soruda tamamlanamadı; kırpılmış görseller yine aktarıldı.")

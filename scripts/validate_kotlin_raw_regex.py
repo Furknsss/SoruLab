@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile literal Kotlin raw-string Regex patterns with Java's regex engine.
+"""Compile literal Kotlin Regex patterns with Java's regex engine.
 
 Kotlin Regex uses java.util.regex.Pattern on Android. Kotlin/Gradle compilation
 alone does not instantiate these patterns. An invalid raw regex previously
@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "app" / "src" / "main" / "java"
 RAW_REGEX = re.compile(r'\bRegex\s*\(\s*"""(.*?)"""', re.DOTALL)
+QUOTED_REGEX = re.compile(r'\bRegex\s*\(\s*(?!""")("(?:\\.|[^"\\])*")', re.DOTALL)
 DYNAMIC = re.compile(r'\$\{|\$[A-Za-z_]')
 
 
@@ -28,13 +29,25 @@ def collect():
                 continue  # A runtime interpolation must be checked by a dedicated unit test.
             line = source.count("\n", 0, match.start()) + 1
             results.append((f"{path.relative_to(ROOT)}:{line}", pattern))
+        for match in QUOTED_REGEX.finditer(source):
+            literal = match.group(1)
+            if DYNAMIC.search(literal):
+                continue
+            try:
+                pattern = json.loads(literal)
+            except json.JSONDecodeError:
+                # Kotlin-specific escapes or generated expressions must get
+                # dedicated tests; do not compile an incorrectly decoded form.
+                continue
+            line = source.count("\n", 0, match.start()) + 1
+            results.append((f"{path.relative_to(ROOT)}:{line}", pattern))
     return results
 
 
 def main():
     entries = collect()
     if not entries:
-        print("ERROR: no literal Kotlin raw Regex expressions found", file=sys.stderr)
+        print("ERROR: no static Kotlin Regex expressions found", file=sys.stderr)
         return 1
     commands = []
     for source, pattern in entries:
@@ -57,7 +70,7 @@ public final class KotlinRawRegexPreflight {
   public static void main(String[] args) {
 """ + "\n".join(commands) + """
     if (errors != 0) throw new AssertionError(errors + " invalid regex patterns");
-    System.out.println("Validated " + """ + str(len(entries)) + """ + " Kotlin raw Regex patterns.");
+    System.out.println("Validated " + """ + str(len(entries)) + """ + " static Kotlin Regex patterns.");
   }
 }
 """

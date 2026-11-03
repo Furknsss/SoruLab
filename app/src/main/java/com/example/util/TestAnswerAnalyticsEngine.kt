@@ -61,7 +61,7 @@ internal object TestAnswerAnalyticsEngine {
                 answer == correct -> AnswerOutcome.CORRECT
                 else -> AnswerOutcome.WRONG
             }
-            val text = listOf(question.stemTop, question.stemBottom)
+            val text = listOf(question.analyticsText, question.stemTop, question.stemBottom)
                 .plus(question.bulletsOrSteps).joinToString(" ")
             val lesson = question.subject.takeIf(String::isNotBlank)
                 ?: lessonHint.takeIf(String::isNotBlank) ?: "Ders belirtilmedi"

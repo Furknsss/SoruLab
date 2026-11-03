@@ -13,11 +13,11 @@ package com.example.util
  * as the answer identity. Scanned PDFs fall back to geometric ML Kit OCR.
  */
 internal object PdfTextFooterKeys {
-    private val spacing = Regex("""\\s+""")
+    private val spacing = Regex("""\s+""")
     private val option = Regex("""^[A-E]$""")
 
     fun read(text: String): Map<Int, String> {
-        val lines = text.lineSequence().map(String::trim)
+        val lines = text.lineSequence().map { it.trim() }
             .filter(String::isNotEmpty).toList().takeLast(10)
         for (rowIndex in (lines.lastIndex - 1) downTo 0) {
             val candidates = lines[rowIndex + 1].split(spacing)

@@ -65,4 +65,39 @@ class PdfVectorQuestionAnchorsTest {
         assertEquals(listOf(1, 2, 3, 4), result.map { it.number })
     }
 
+    @Test
+    fun printedFooterAndDiagramNumbersCannotEraseAValidQuestionSequence() {
+        val glyphs = listOf(
+            PdfSourceGlyph("1.", 57f, 82f, 12f, 9f),
+            PdfSourceGlyph("2.", 57f, 288f, 12f, 9f),
+            PdfSourceGlyph("3.", 57f, 607f, 12f, 9f),
+            PdfSourceGlyph("4.", 315f, 82f, 12f, 9f),
+            PdfSourceGlyph("5.", 315f, 508f, 12f, 9f),
+            // Page footer happens to be printed at the left margin.
+            PdfSourceGlyph("1.", 57f, 755f, 12f, 9f),
+            // Diagram labels within a question should not win.
+            PdfSourceGlyph("8.", 93f, 315f, 12f, 9f),
+            PdfSourceGlyph("9.", 93f, 330f, 12f, 9f)
+        )
+        val anchors = PdfVectorQuestionAnchors.find(glyphs, 623f, 807f)
+        assertEquals(listOf(1, 2, 3, 4, 5), anchors.map { it.number })
+        assertEquals(5, anchors.size)
+    }
+
+    @Test
+    fun anInterleavedSpuriousNumberIsSkippedInsteadOfResettingTheColumn() {
+        val glyphs = listOf(
+            PdfSourceGlyph("1.", 71f, 90f, 12f, 9f),
+            PdfSourceGlyph("2.", 71f, 290f, 12f, 9f),
+            PdfSourceGlyph("11.", 71f, 354f, 12f, 9f),
+            PdfSourceGlyph("3.", 71f, 490f, 12f, 9f),
+            PdfSourceGlyph("4.", 330f, 90f, 12f, 9f),
+            PdfSourceGlyph("5.", 330f, 390f, 12f, 9f)
+        )
+        assertEquals(
+            listOf(1, 2, 3, 4, 5),
+            PdfVectorQuestionAnchors.find(glyphs, 623f, 807f).map { it.number }
+        )
+    }
+
 }

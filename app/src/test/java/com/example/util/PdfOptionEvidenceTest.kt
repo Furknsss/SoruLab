@@ -49,4 +49,9 @@ class PdfOptionEvidenceTest {
         assertTrue(PdfOptionEvidence.letters("A)\nB)\nC)\nD)\nE)").isEmpty())
     }
 
+    @Test
+    fun `one bare label followed by a different complete label is not evidence`() {
+        assertEquals(setOf("B"), PdfOptionEvidence.letters("A)\nB) Gerçek cevap"))
+    }
+
 }

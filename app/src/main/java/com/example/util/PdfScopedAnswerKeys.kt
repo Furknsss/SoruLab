@@ -68,7 +68,7 @@ internal class PdfScopedAnswerKeys(
                     }
                 }
                 val section = currentSection ?: continue
-                val testNum = test.groupValues[2].toIntOrNull() ?: continue
+                val testNum = test.groupValues[2].toIntOrNull()?.takeIf { it in 1..200 } ?: continue
                 val isOsym = normalize(test.groupValues[1]).contains("osym")
                 val nextTest = tests.getOrNull(labelIndex + 1)
                 val tail = clean.substring(
@@ -149,13 +149,13 @@ internal class PdfScopedAnswerKeys(
 
     companion object {
         private val testLabel = Regex(
-            "(?i)(?:^|\\s)((?:ÖSYM|OSYM|O[SŞ]YM)(?:\\s+TADINDA)?\\s*)?(?:TEST|ANAL[İI]Z|SENTEZ|DENEME|UYGULAMA|ETK[İI]NL[İI]K)\\s*[-.:–]?\\s*([0-9]{1,2})(?=\\s|$|[.:])"
+            "(?i)(?:^|\\s)((?:ÖSYM|OSYM|O[SŞ]YM)(?:\\s+TADINDA)?\\s*)?(?:TEST|ANAL[İI]Z|SENTEZ|DENEME|UYGULAMA|ETK[İI]NL[İI]K)\\s*[-.:–]?\\s*([0-9]{1,3})(?=\\s|$|[.:])"
         )
         private val questionAnswer = Regex("(?<![0-9])([0-9]{1,3})\\s*[.\\-:)]?\\s*([A-E])(?=\\s|$|[,;|.]|[0-9])", RegexOption.IGNORE_CASE)
         private val questionScopeNumber = Regex(
-            "(?i)\\b(TEST|ANALIZ|SENTEZ|DENEME|UYGULAMA|ETKINLIK)\\s*[-.:–]?\\s*([0-9]{1,2})\\b"
+            "(?i)\\b(TEST|ANALIZ|SENTEZ|DENEME|UYGULAMA|ETKINLIK)\\s*[-.:–]?\\s*([0-9]{1,3})\\b"
         )
-        private val trailingPageNumber = Regex("\\s+[0-9]{1,2}\\s*$")
+        private val trailingPageNumber = Regex("\\s+[0-9]{1,3}\\s*$")
         // Generic document/branding words, not a list of known publishers.
         private val nonSectionWords = listOf(
             "cevap", "anahtar", "soru bankasi", "test", "osym",
@@ -215,7 +215,7 @@ internal class PdfScopedAnswerKeys(
                     .find(normalizedHeader)
             } else null
             val match = matchedTest ?: splitHeaderTest ?: return null
-            val testNum = match.groupValues[2].toIntOrNull() ?: return null
+            val testNum = match.groupValues[2].toIntOrNull()?.takeIf { it in 1..200 } ?: return null
             val kind = match.groupValues[1].lowercase(Locale.ROOT)
             val isOsym = "osym" in normalizedHeader
             val hint = normalize(topicHint)

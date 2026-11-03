@@ -1319,6 +1319,7 @@ object StudioImageAndPdfEngine {
         val pageMap: Map<Int, LocalPageMapEntry>,
         val pageTextFooterKeys: Map<Int, Map<Int, String>> = emptyMap(),
         val pageSourceHeaders: Map<Int, String> = emptyMap(),
+        val pageVectorTestMarkers: Map<Int, PdfPrintedTestMarker> = emptyMap(),
         val pageVectorQuestionAnchors: Map<Int, PdfSourcePageAnchors> = emptyMap(),
         val pageVectorOptionEvidence: Set<Int> = emptySet()
     )
@@ -1373,6 +1374,11 @@ object StudioImageAndPdfEngine {
         val pageSourceHeaders = vectorPageText.mapIndexedNotNull { index, text ->
             PdfSourceHeaderExtractor.extract(text)
                 .takeIf(String::isNotBlank)?.let { index to it }
+        }.toMap()
+        // Spatially verify printed test identities. A footer answer row can
+        // appear before the page-top test number in PDFTextStripper's text.
+        val pageVectorTestMarkers = sourcePages.mapIndexedNotNull { index, page ->
+            page.printedTestMarker?.let { index to it }
         }.toMap()
         vectorPageText.forEachIndexed { pageIndex, text ->
             if (text.isNotBlank()) {
@@ -1527,6 +1533,7 @@ object StudioImageAndPdfEngine {
             pageMap = pageMap,
             pageTextFooterKeys = pageTextFooterKeys,
             pageSourceHeaders = pageSourceHeaders,
+            pageVectorTestMarkers = pageVectorTestMarkers,
             pageVectorQuestionAnchors = pageVectorQuestionAnchors,
             pageVectorOptionEvidence = pageVectorOptionEvidence
         )
@@ -1537,7 +1544,8 @@ object StudioImageAndPdfEngine {
         val pageWidth: Float,
         val pageHeight: Float,
         val anchors: List<PdfSourceQuestionAnchor>,
-        val vectorFooterKeys: Map<Int, String>
+        val vectorFooterKeys: Map<Int, String>,
+        val printedTestMarker: PdfPrintedTestMarker?
     )
 
     private class PdfGeometryTextStripper : PDFTextStripper() {
@@ -1577,13 +1585,14 @@ object StudioImageAndPdfEngine {
                         pageWidth = width,
                         pageHeight = height,
                         anchors = PdfVectorQuestionAnchors.find(stripper.glyphs, width, height),
-                        vectorFooterKeys = PdfVectorAnswerStrip.read(stripper.glyphs, width, height)
+                        vectorFooterKeys = PdfVectorAnswerStrip.read(stripper.glyphs, width, height),
+                        printedTestMarker = PdfVectorTestMarker.find(stripper.glyphs, width, height)
                     )
                 } catch (e: Exception) {
                     android.util.Log.w(
                         "SoruLabPdfText", "PDF text layer failed at page ${pageIndex + 1}; OCR fallback", e
                     )
-                    SourceTextPage("", width, height, emptyList(), emptyMap())
+                    SourceTextPage("", width, height, emptyList(), emptyMap(), null)
                 }
             }
         }

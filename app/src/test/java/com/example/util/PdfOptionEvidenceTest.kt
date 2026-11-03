@@ -38,4 +38,15 @@ class PdfOptionEvidenceTest {
         assertTrue(PdfOptionEvidence.letters("A: B: C: D: E:").isEmpty())
     }
 
+    @Test
+    fun `a different publisher may place each option label on its own line`() {
+        val source = "A)\nBirinci cevap\nB)\nİkinci cevap\nC)\nÜçüncü cevap\nD)\nDördüncü cevap\nE)\nBeşinci cevap"
+        assertEquals(setOf("A", "B", "C", "D", "E"), PdfOptionEvidence.letters(source))
+    }
+
+    @Test
+    fun `a naked row of option letters is not a question page`() {
+        assertTrue(PdfOptionEvidence.letters("A)\nB)\nC)\nD)\nE)").isEmpty())
+    }
+
 }

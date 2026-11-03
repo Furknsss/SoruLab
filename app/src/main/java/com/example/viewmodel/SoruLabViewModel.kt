@@ -54,6 +54,45 @@ enum class BoardViewMode {
     SINGLE_QUESTION
 }
 
+/** Cloud owns shared metadata; this device owns paths, source pages and crop coordinates. */
+internal fun mergeCloudQuestionsWithLocalMedia(
+    userId: String,
+    cloud: List<CustomQuestionRecord>,
+    local: List<CustomQuestionRecord>
+): List<CustomQuestionRecord> {
+    val ownedLocal = local.filter { it.userId == userId }
+    val localById = ownedLocal.associateBy { it.id }
+    val merged = cloud.filter { it.userId == userId }.map { remote ->
+        val cached = localById[remote.id] ?: return@map remote
+        val hasLocalPdf = cached.pdfFilePath.isNotBlank() && cached.pageIndex >= 0
+        remote.copy(
+            bookId = cached.bookId.ifBlank { remote.bookId },
+            imageBase64 = cached.imageBase64.ifBlank { remote.imageBase64 },
+            pdfFilePath = if (hasLocalPdf) cached.pdfFilePath else remote.pdfFilePath,
+            pageIndex = if (hasLocalPdf) cached.pageIndex else remote.pageIndex,
+            questionNumberInTest = cached.questionNumberInTest.takeIf { it > 0 } ?: remote.questionNumberInTest,
+            normLeft = if (hasLocalPdf) cached.normLeft else remote.normLeft,
+            normTop = if (hasLocalPdf) cached.normTop else remote.normTop,
+            normRight = if (hasLocalPdf) cached.normRight else remote.normRight,
+            normBottom = if (hasLocalPdf) cached.normBottom else remote.normBottom,
+            aiSolutionSummary = CustomQuestionRecord.packSolutionWithMeta(
+                solutionText = remote.cleanSolutionSummary,
+                targetLevel = remote.targetLevelName,
+                croppedImagePath = cached.croppedImagePath.ifBlank { remote.croppedImagePath },
+                publisherLogoUri = cached.publisherLogoUri.ifBlank { remote.publisherLogoUri },
+                answerKeyVerified = remote.answerKeyVerified,
+                questionNumberInBook = remote.questionNumberInBook,
+                bookOrTestName = remote.bookOrTestName,
+                bookCoverPath = cached.bookCoverPath.ifBlank { remote.bookCoverPath },
+                isInKumbara = remote.isInKumbara,
+                fiveTierDifficulty = remote.effectiveDifficultyLabel
+            )
+        )
+    }
+    val cloudIds = merged.mapTo(mutableSetOf()) { it.id }
+    return merged + ownedLocal.filter { it.id !in cloudIds }
+}
+
 internal fun <T> interleaveByGroup(items: List<T>, groupKey: (T) -> String): List<T> {
     val groups = items
         .groupBy { groupKey(it).trim().lowercase() }
@@ -281,11 +320,8 @@ class SoruLabViewModel(
         }
     }
 
-    private var shouldPurgeCloudDemoOnce = false
-
     init {
         repository.ensureDemoDataCleanedOnce()
-        shouldPurgeCloudDemoOnce = repository.consumePendingCloudDemoPurge()
         auth?.addAuthStateListener(authStateListener)
         val current = auth?.currentUser
         if (current != null) {
@@ -307,11 +343,8 @@ class SoruLabViewModel(
     }
 
     private fun isLegacyDemoQuestion(q: CustomQuestionRecord): Boolean {
-        val hasValidCroppedImage = q.croppedImagePath.isNotBlank()
-        return !hasValidCroppedImage ||
-            q.questionText.contains("a, b ve c tam sayıları için", ignoreCase = true) ||
-            q.questionText.contains("sadece biri çift sayıdır", ignoreCase = true) ||
-            q.id.startsWith("demo_")
+        // Missing images or familiar question text do not identify demo data.
+        return q.id.startsWith("demo_")
     }
 
     private fun isLegacyDemoTestRecord(rec: TestResultRecord): Boolean {
@@ -337,6 +370,7 @@ class SoruLabViewModel(
             val cachedStrokes = repository.loadCachedBoardStrokes(uid)
 
             withContext(Dispatchers.Main) {
+                if (effectiveUserId() != uid) return@withContext
                 _deletedTestIds.value = delIds
                 _customPublishers.value = (customPubs + _customPublishers.value).distinctBy { it.id }
                 if (_userCustomQuestions.value.isEmpty() || cachedCustomQuestions.size >= _userCustomQuestions.value.size) {
@@ -412,27 +446,6 @@ class SoruLabViewModel(
             repository.observeUserTestResults(uid)
                 .catch { }
                 .collect { records ->
-                    if (shouldPurgeCloudDemoOnce) {
-                        records.forEach { rec ->
-                            if (rec.id.isNotBlank()) {
-                                launch { runCatching { repository.deleteTestResult(rec.id) } }
-                            }
-                        }
-                        allCloudTestRecords = emptyList()
-                        _userTestResults.value = emptyList()
-                        _generatedTopicTests.value = emptyMap()
-                        launch(Dispatchers.IO) { repository.saveCachedSolvedTestResults(uid, emptyList()) }
-                        return@collect
-                    }
-
-                    val demoRecords = records.filter { isLegacyDemoTestRecord(it) }
-                    if (demoRecords.isNotEmpty()) {
-                        demoRecords.forEach { demo ->
-                            if (demo.id.isNotBlank()) {
-                                launch { runCatching { repository.deleteTestResult(demo.id) } }
-                            }
-                        }
-                    }
                     val cleanRecords = records.filterNot { isLegacyDemoTestRecord(it) }
                     allCloudTestRecords = cleanRecords
                     val solvedOnly = cleanRecords.filter { it.isSolvedAttempt }
@@ -460,22 +473,7 @@ class SoruLabViewModel(
             repository.observeUserCustomQuestions(uid)
                 .catch { }
                 .collect { cloudQuestions ->
-                    if (shouldPurgeCloudDemoOnce) {
-                        shouldPurgeCloudDemoOnce = false
-                        val idsToDelete = cloudQuestions.mapNotNull { it.id.takeIf { id -> id.isNotBlank() } }
-                        if (idsToDelete.isNotEmpty()) {
-                            launch(Dispatchers.IO) { repository.deleteCustomQuestionsBatch(idsToDelete) }
-                        }
-                        _userCustomQuestions.value = emptyList()
-                        saveCustomQuestionsCacheAsync(uid, emptyList())
-                        return@collect
-                    }
-
                     val (cleanCloud, merged) = withContext(Dispatchers.Default) {
-                        val demoIds = cloudQuestions.filter { isLegacyDemoQuestion(it) }.mapNotNull { it.id.takeIf { id -> id.isNotBlank() } }
-                        if (demoIds.isNotEmpty()) {
-                            launch(Dispatchers.IO) { repository.deleteCustomQuestionsBatch(demoIds) }
-                        }
                         val validCloud = cloudQuestions.filterNot { isLegacyDemoQuestion(it) }
                         val currentInMemory = _userCustomQuestions.value
                         val baseLocal = if (currentInMemory.isNotEmpty()) {
@@ -485,15 +483,7 @@ class SoruLabViewModel(
                                 repository.loadCachedCustomQuestions(uid).filterNot { isLegacyDemoQuestion(it) }
                             }
                         }
-                        val combined = ArrayList<CustomQuestionRecord>(validCloud.size + baseLocal.size)
-                        val seenIds = HashSet<String>((validCloud.size + baseLocal.size) * 2)
-                        for (q in validCloud) {
-                            if (q.id.isBlank() || seenIds.add(q.id)) combined.add(q)
-                        }
-                        for (q in baseLocal) {
-                            if (q.id.isBlank() || seenIds.add(q.id)) combined.add(q)
-                        }
-                        validCloud to combined
+                        validCloud to mergeCloudQuestionsWithLocalMedia(uid, validCloud, baseLocal)
                     }
 
                     if (merged.size != _userCustomQuestions.value.size || cleanCloud.isNotEmpty()) {
@@ -2470,6 +2460,17 @@ class SoruLabViewModel(
         saveCustomQuestionsCacheAsync(uid, updated)
         syncPdfPoolToPracticeTests(updated)
         showBanner("Soru konusu “$newTopicName” olarak güncellendi.")
+        val firebaseUid = _currentUser.value?.uid ?: return
+        val updatedRecord = updated.firstOrNull { it.id == questionId } ?: return
+        viewModelScope.launch {
+            try {
+                repository.saveCustomQuestion(updatedRecord.copy(userId = firebaseUid))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                showBanner("Konu cihazda güncellendi; buluta kaydedilemedi. Bağlantınızı kontrol edip yeniden deneyin.")
+            }
+        }
     }
 
     fun addQuestionToKumbara(question: YksQuestion) {

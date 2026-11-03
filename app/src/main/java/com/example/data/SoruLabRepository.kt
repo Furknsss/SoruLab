@@ -10,6 +10,8 @@ import com.example.util.ensureFirebaseInitialized
 import com.example.util.StudioImageAndPdfEngine
 import com.example.viewmodel.DrawStroke
 import com.google.firebase.FirebaseApp
+import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.channels.awaitClose
@@ -159,49 +161,14 @@ class SoruLabRepository(
         }
     }
 
-    /**
-     * One-time automatic migration that wipes any previously cached demo/sample generated tests,
-     * solved test results, sample cropped questions, or preset publishers without real logo files
-     * so the app starts 100% clean.
-     */
+    /** Retire the destructive legacy migration without deleting student data. */
     fun ensureDemoDataCleanedOnce() {
         val ctx = appContext ?: return
-        try {
-            val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
-            val alreadyCleaned = prefs.getBoolean("clean_demo_data_v6", false)
-            if (!alreadyCleaned) {
-                val editor = prefs.edit()
-                prefs.all.keys.forEach { key ->
-                    if (key.startsWith("solved_results_") ||
-                        key.startsWith("gen_tests_") ||
-                        key.startsWith("gen_snapshots_") ||
-                        key.startsWith("gen_snapshot_") ||
-                        key.startsWith("custom_questions_") ||
-                        key == "custom_publishers_v1"
-                    ) {
-                        editor.remove(key)
-                    }
-                }
-                editor.putBoolean("clean_demo_data_v6", true)
-                editor.putBoolean("pending_cloud_demo_purge_v6", true)
-                editor.apply()
-            }
-        } catch (_: Exception) {
-        }
-    }
-
-    fun consumePendingCloudDemoPurge(): Boolean {
-        val ctx = appContext ?: return false
-        return try {
-            val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
-            val pending = prefs.getBoolean("pending_cloud_demo_purge_v6", false)
-            if (pending) {
-                prefs.edit().putBoolean("pending_cloud_demo_purge_v6", false).apply()
-            }
-            pending
-        } catch (_: Exception) {
-            false
-        }
+        ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("clean_demo_data_v6", true)
+            .remove("pending_cloud_demo_purge_v6")
+            .apply()
     }
 
     fun clearAllLocalUserData(userId: String) {
@@ -335,7 +302,7 @@ class SoruLabRepository(
         return try {
             val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
             val raw = prefs.getString("gen_tests_$userId", null)
-                ?: prefs.getString("gen_tests_global_device", null)
+                ?: (if (userId == "device_yks_student_tr") prefs.getString("gen_tests_global_device", null) else null)
                 ?: return emptyList()
             val arr = JSONArray(raw)
             val result = mutableListOf<Triple<String, TopicTestLevel, Int>>()
@@ -370,7 +337,6 @@ class SoruLabRepository(
             val jsonStr = arr.toString()
             prefs.edit()
                 .putString("gen_tests_$userId", jsonStr)
-                .putString("gen_tests_global_device", jsonStr)
                 .apply()
         } catch (_: Exception) {
         }
@@ -443,7 +409,7 @@ class SoruLabRepository(
         return try {
             val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
             val raw = prefs.getString("deleted_tests_$userId", null)
-                ?: prefs.getString("deleted_tests_global_device", null)
+                ?: (if (userId == "device_yks_student_tr") prefs.getString("deleted_tests_global_device", null) else null)
                 ?: return emptySet()
             val arr = JSONArray(raw)
             val result = mutableSetOf<String>()
@@ -468,7 +434,6 @@ class SoruLabRepository(
             val jsonStr = arr.toString()
             prefs.edit()
                 .putString("deleted_tests_$userId", jsonStr)
-                .putString("deleted_tests_global_device", jsonStr)
                 .apply()
         } catch (_: Exception) {
         }
@@ -619,27 +584,8 @@ class SoruLabRepository(
             customQuestionsCollection.document()
         }
         try {
-            val safeRatio = if (record.cropAspectRatio.isFinite()) {
-                record.cropAspectRatio.coerceIn(0.25, 4.8)
-            } else {
-                1.25
-            }
-            val payload = mapOf(
-                "userId" to record.userId,
-                "examType" to if (record.examType.equals("AYT", ignoreCase = true)) "AYT" else "TYT",
-                "subjectId" to record.subjectId.take(64),
-                "subjectName" to record.subjectName.take(100),
-                "topicId" to record.topicId.take(64),
-                "topicName" to record.topicName.take(120),
-                "difficulty" to (record.difficulty.takeIf { it in listOf("Kolay", "Orta", "Zor") } ?: "Orta"),
-                "correctOption" to (record.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty()),
-                "questionText" to record.questionText.ifBlank { "YKS Sorusu" }.take(1950),
-                "publisherTag" to record.publisherTag.ifBlank { "YKS Yayınları" }.take(115),
-                "aiSolutionSummary" to record.aiSolutionSummary.take(3950),
-                "cropAspectRatio" to safeRatio,
-                "createdAt" to FieldValue.serverTimestamp(),
-                "updatedAt" to FieldValue.serverTimestamp()
-            )
+            val creationDates = existingQuestionCreationDates(listOf(record.copy(id = docRef.id)))
+            val payload = customQuestionFirestorePayload(record, creationDates[docRef.id])
             docRef.set(payload).await()
             return docRef.id
         } catch (e: Exception) {
@@ -684,9 +630,13 @@ class SoruLabRepository(
             var attempt = 0
             while (true) {
                 try {
+                    // Resolve again after a retry: a timed-out write may already have committed.
+                    val creationDates = existingQuestionCreationDates(
+                        chunk.mapIndexed { index, record -> record.copy(id = documentRefs[index].id) }
+                    )
                     val batch = db.batch()
                     chunk.forEachIndexed { index, record ->
-                        batch.set(documentRefs[index], customQuestionFirestorePayload(record))
+                        batch.set(documentRefs[index], customQuestionFirestorePayload(record, creationDates[documentRefs[index].id]))
                     }
                     batch.commit().await()
                     break
@@ -711,7 +661,26 @@ class SoruLabRepository(
         }
     }
 
-    private fun customQuestionFirestorePayload(record: CustomQuestionRecord): Map<String, Any> {
+    private suspend fun existingQuestionCreationDates(records: List<CustomQuestionRecord>): Map<String, Timestamp> {
+        val dates = mutableMapOf<String, Timestamp>()
+        // An owner-scoped query can safely return an empty result for a new ID. A direct
+        // read of a missing document is denied by the ownership rules.
+        records.groupBy { it.userId }.forEach { (uid, ownedRecords) ->
+            ownedRecords.map { it.id.take(120) }.distinct().chunked(30).forEach { ids ->
+                val snapshot = customQuestionsCollection.whereEqualTo("userId", uid)
+                    .whereIn(FieldPath.documentId(), ids).get().await()
+                snapshot.documents.forEach { document ->
+                    document.getTimestamp("createdAt")?.let { dates[document.id] = it }
+                }
+            }
+        }
+        return dates
+    }
+
+    private fun customQuestionFirestorePayload(
+        record: CustomQuestionRecord,
+        existingCreatedAt: Timestamp? = null
+    ): Map<String, Any> {
         val safeRatio = if (record.cropAspectRatio.isFinite()) {
             record.cropAspectRatio.coerceIn(0.25, 4.8)
         } else {
@@ -730,7 +699,7 @@ class SoruLabRepository(
             "publisherTag" to record.publisherTag.ifBlank { "YKS Yayınları" }.take(115),
             "aiSolutionSummary" to record.aiSolutionSummary.take(3950),
             "cropAspectRatio" to safeRatio,
-            "createdAt" to FieldValue.serverTimestamp(),
+            "createdAt" to (existingCreatedAt ?: record.createdAt ?: FieldValue.serverTimestamp()),
             "updatedAt" to FieldValue.serverTimestamp()
         )
     }
@@ -767,32 +736,35 @@ class SoruLabRepository(
             val userCacheFile = java.io.File(cacheDir, "custom_questions_${userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")}.json")
             val globalCacheFile = java.io.File(cacheDir, "custom_questions_global_device.json")
 
-            val raw = when {
-                userCacheFile.exists() && userCacheFile.length() > 2L -> userCacheFile.readText(Charsets.UTF_8)
-                globalCacheFile.exists() && globalCacheFile.length() > 2L -> globalCacheFile.readText(Charsets.UTF_8)
-                else -> {
-                    val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
-                    prefs.getString("custom_questions_$userId", null)
-                        ?: prefs.getString("custom_questions_global_device", null)
-                        ?: return emptyList()
-                }
+            val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+            val scopedRaw = if (userCacheFile.exists() && userCacheFile.length() > 2L) {
+                userCacheFile.readText(Charsets.UTF_8)
+            } else {
+                prefs.getString("custom_questions_$userId", null)
             }
+            val raw = scopedRaw
+                ?: globalCacheFile.takeIf { it.isFile && it.length() > 2L }?.readText(Charsets.UTF_8)
+                ?: prefs.getString("custom_questions_global_device", null)
+                ?: return emptyList()
+            val isOwnedCache = scopedRaw != null
             val arr = JSONArray(raw)
             val len = arr.length()
             val list = ArrayList<CustomQuestionRecord>(len)
             for (i in 0 until len) {
                 val obj = arr.optJSONObject(i) ?: continue
+                val owner = obj.optString("userId").ifBlank { if (isOwnedCache) userId else "" }
+                if (owner != userId) continue
                 list.add(
                     CustomQuestionRecord(
                         id = obj.optString("id"),
-                        userId = obj.optString("userId", userId),
+                        userId = owner,
                         examType = obj.optString("examType", "TYT"),
                         subjectId = obj.optString("subjectId", ""),
                         subjectName = obj.optString("subjectName", ""),
                         topicId = obj.optString("topicId", ""),
                         topicName = obj.optString("topicName", ""),
                         difficulty = obj.optString("difficulty", "Orta"),
-                        correctOption = obj.optString("correctOption", "C"),
+                        correctOption = obj.optString("correctOption", ""),
                         questionText = obj.optString("questionText", ""),
                         publisherTag = obj.optString("publisherTag", "ÜçDörtBeş Yayınları"),
                         aiSolutionSummary = obj.optString("aiSolutionSummary", ""),
@@ -885,10 +857,11 @@ class SoruLabRepository(
             val arr = JSONArray()
             val seenIds = HashSet<String>(records.size)
             for (rec in records) {
+                if (rec.userId.isNotBlank() && rec.userId != userId) continue
                 if (rec.id.isNotBlank() && !seenIds.add(rec.id)) continue
                 val obj = JSONObject()
                 obj.put("id", rec.id)
-                obj.put("userId", rec.userId)
+                obj.put("userId", userId)
                 obj.put("examType", rec.examType)
                 obj.put("subjectId", rec.subjectId)
                 obj.put("subjectName", rec.subjectName)
@@ -914,9 +887,7 @@ class SoruLabRepository(
             val jsonStr = arr.toString()
             val safeUid = userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
             val userCacheFile = java.io.File(cacheDir, "custom_questions_$safeUid.json")
-            val globalCacheFile = java.io.File(cacheDir, "custom_questions_global_device.json")
             userCacheFile.writeText(jsonStr, Charsets.UTF_8)
-            globalCacheFile.writeText(jsonStr, Charsets.UTF_8)
             // Keep SharedPreferences light (remove oversized old payloads if > 500 questions)
             if (records.size > 400) {
                 val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)

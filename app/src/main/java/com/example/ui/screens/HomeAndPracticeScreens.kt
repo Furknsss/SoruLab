@@ -23,6 +23,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -61,9 +63,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -1999,11 +2003,16 @@ fun SoruPratigiScreen(
             SoruLabCatalog.allSubjects.filter { it.examType == selectedExamType }
         }
 
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF3F6FA))
+                .background(Color(0xFFEFEEF6))
         ) {
+            val topicCardWidth = if (maxWidth >= 600.dp) {
+                ((maxWidth - 80.dp) / 3).coerceAtMost(280.dp)
+            } else {
+                ((maxWidth - 64.dp) / 2).coerceAtLeast(148.dp)
+            }
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
@@ -2011,7 +2020,7 @@ fun SoruPratigiScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFF3F6FA))
+                        .background(Color(0xFFEFEEF6))
                         .padding(horizontal = 24.dp, vertical = 12.dp)
                 ) {
                     Row(
@@ -2052,7 +2061,7 @@ fun SoruPratigiScreen(
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Medium
                             ),
-                            color = Color(0xFF475569)
+                            color = Color(0xFF28215E)
                         )
                     }
 
@@ -2063,10 +2072,12 @@ fun SoruPratigiScreen(
                     ) {
                         Row(
                             modifier = Modifier
-                                .width(330.dp)
+                                .widthIn(max = 360.dp)
+                                .fillMaxWidth(0.76f)
                                 .height(48.dp)
                                 .clip(RoundedCornerShape(50))
-                                .background(Color(0xFFE9EEF5))
+                                .background(Color(0xFFE6E3F0))
+                                .selectableGroup()
                                 .padding(3.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2078,9 +2089,13 @@ fun SoruPratigiScreen(
                                         .fillMaxHeight()
                                         .clip(RoundedCornerShape(50))
                                         .background(
-                                        if (active) Color(0xFF2563EB) else Color.Transparent
+                                        if (active) Color(0xFF3674F4) else Color.Transparent
                                         )
-                                        .clickable { onSelectExamType(type) }
+                                        .selectable(
+                                            selected = active,
+                                            role = Role.Tab,
+                                            onClick = { onSelectExamType(type) }
+                                        )
                                         .testTag("exam_toggle_${type.name.lowercase()}"),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -2131,7 +2146,7 @@ fun SoruPratigiScreen(
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold
                                     ),
-                                    color = Color(0xFF475569)
+                                    color = Color(0xFF28215E)
                                 )
                                 Spacer(modifier = Modifier.width(14.dp))
                                 Box(
@@ -2154,6 +2169,7 @@ fun SoruPratigiScreen(
                                 ) { topic ->
                                     TopicLandscapeCard(
                                         topic = topic,
+                                        cardWidth = topicCardWidth,
                                         onClick = { onSelectTopic(topic) }
                                     )
                                 }
@@ -2181,13 +2197,11 @@ fun SoruPratigiScreen(
                     shadowElevation = 6.dp
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "?",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = Color.White
+                        Icon(
+                            imageVector = Icons.Outlined.Crop,
+                            contentDescription = "PDF soru kırpma stüdyosunu aç",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
@@ -2204,12 +2218,12 @@ fun SoruPratigiScreen(
                         shadowElevation = 5.dp
                     ) {
                         Text(
-                            text = "All Star Asistan",
+                            text = "SoruLab Asistan",
                             style = MaterialTheme.typography.labelLarge.copy(
                                 fontSize = 13.5.sp,
                                 fontWeight = FontWeight.Medium
                             ),
-                            color = Color(0xFF475569),
+                            color = Color(0xFF28215E),
                             modifier = Modifier.padding(start = 16.dp, end = 22.dp, top = 8.dp, bottom = 8.dp)
                         )
                     }
@@ -2306,7 +2320,7 @@ fun SoruPratigiScreen(
                             fontSize = 14.5.sp,
                             fontWeight = FontWeight.Medium
                         ),
-                        color = Color(0xFF475569),
+                        color = Color(0xFF28215E),
                         textAlign = TextAlign.Center
                     )
 
@@ -2387,7 +2401,7 @@ fun SoruPratigiScreen(
                                             .filter { it.isNotBlank() }
                                             .joinToString("\n")
                                             .ifBlank { "Soru metni mevcut değil." },
-                                        color = Color(0xFF475569),
+                                        color = Color(0xFF28215E),
                                         style = MaterialTheme.typography.bodySmall,
                                         maxLines = 4,
                                         overflow = TextOverflow.Ellipsis
@@ -2574,28 +2588,30 @@ private fun SubjectFormulaBadge(
 @Composable
 private fun TopicLandscapeCard(
     topic: YksTopic,
+    cardWidth: Dp = 180.dp,
     onClick: () -> Unit
 ) {
     Surface(
         modifier = Modifier
-            .width(150.dp)
-            .height(115.dp)
+            .width(cardWidth)
+            .height((cardWidth * 0.76f).coerceIn(136.dp, 192.dp))
             .clip(RoundedCornerShape(14.dp))
             .clickable { onClick() }
             .testTag("topic_card_${topic.id}"),
         shape = RoundedCornerShape(14.dp),
-        color = Color.White,
-        shadowElevation = 1.dp
+        color = Color(0xFFF8F7FC),
+        border = BorderStroke(1.dp, Color.White),
+        shadowElevation = 0.dp
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .drawWithCache {
-                    val watermarkColor = Color(0xFF334155).copy(alpha = 0.06f)
+                    val watermarkColor = Color.White.copy(alpha = 0.95f)
                     onDrawBehind {
                         val gridSize = 68.dp.toPx()
                         val cx = size.width - 36.dp.toPx()
-                        val cy = size.height - 34.dp.toPx()
+                        val cy = 36.dp.toPx()
                         val half = gridSize * 0.5f
                         val q = gridSize * 0.25f
                         val s = 6.dp.toPx()
@@ -2691,7 +2707,7 @@ private fun TopicLandscapeCard(
                     fontWeight = FontWeight.Medium,
                     lineHeight = 22.sp
                 ),
-                color = Color(0xFF475569),
+                color = Color(0xFF28215E),
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.align(Alignment.TopStart)
@@ -2715,14 +2731,14 @@ private fun TopicTestsDetailView(
     onOpenAiAssistant: () -> Unit,
     onOpenPdfCropper: () -> Unit
 ) {
-    // Automatically open the proportional semicircle wheel on the left when entering any topic
-    var isWheelExpanded by remember(topic.id) { mutableStateOf(true) }
+    // Keep the test list unobstructed; the left handle opens the level wheel.
+    var isWheelExpanded by remember(topic.id) { mutableStateOf(false) }
     var showAiGeneratorModal by remember { mutableStateOf(false) }
 
     val wheelProgress by animateFloatAsState(
         targetValue = if (isWheelExpanded) 1f else 0f,
         animationSpec = tween(
-            durationMillis = 140,
+            durationMillis = 240,
             easing = FastOutSlowInEasing
         ),
         label = "wheel_dynamic_spring_anim"
@@ -2731,7 +2747,7 @@ private fun TopicTestsDetailView(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFC))
+            .background(Color(0xFFEFEEF6))
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Top bar: Back + SubjectFormulaBadge + Topic Name ONLY (no redundant level badge on top-right!) + "Oluştur" button
@@ -2753,7 +2769,7 @@ private fun TopicTestsDetailView(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Geri",
-                            tint = Color(0xFF475569)
+                            tint = Color(0xFF716C90)
                         )
                     }
                     Spacer(modifier = Modifier.width(2.dp))
@@ -2768,7 +2784,7 @@ private fun TopicTestsDetailView(
                             fontSize = 17.5.sp,
                             fontWeight = FontWeight.SemiBold
                         ),
-                        color = Color(0xFF0F172A),
+                        color = Color(0xFF28215E),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -2779,9 +2795,9 @@ private fun TopicTestsDetailView(
                 // Top-Right "Test / Soru Üret" Button
                 Button(
                     onClick = { showAiGeneratorModal = true },
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(50),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF1D63DC),
+                        containerColor = Color(0xFF3674F4),
                         contentColor = Color.White
                     ),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
@@ -2794,7 +2810,7 @@ private fun TopicTestsDetailView(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Test / Soru Üret",
+                        text = "Test oluştur",
                         style = MaterialTheme.typography.labelLarge.copy(
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
@@ -2808,20 +2824,20 @@ private fun TopicTestsDetailView(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 14.dp),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F7FC)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .border(1.4.dp, Color(0xFFCFD8E6), RoundedCornerShape(20.dp))
+                        .padding(top = 8.dp, end = 8.dp, bottom = 8.dp)
                 ) {
                     Row(modifier = Modifier.fillMaxSize()) {
                         // Left vertical two-tone indicator bar + Interactive Pull Tab
                         Box(
                             modifier = Modifier
-                                .width(28.dp)
+                                .width(20.dp)
                                 .fillMaxHeight()
                                 .pointerInput(Unit) {
                                     detectHorizontalDragGestures { _, dragAmount ->
@@ -2919,7 +2935,7 @@ private fun TopicTestsDetailView(
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 17.sp
                                     ),
-                                    color = Color(0xFF0F172A),
+                                    color = Color(0xFF28215E),
                                     textAlign = TextAlign.Center
                                 )
 
@@ -2932,7 +2948,7 @@ private fun TopicTestsDetailView(
                                         "Bu seviyede henüz test oluşturulmadı (${selectedTestLevel.poolDistributionLabel}). Sağ üstteki 'Test / Soru Üret' butonuna basarak soru havuzundaki gerçek sorularla test oluşturabilirsin."
                                     },
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Color(0xFF475569),
+                                    color = Color(0xFF716C90),
                                     textAlign = TextAlign.Center
                                 )
 
@@ -2942,7 +2958,7 @@ private fun TopicTestsDetailView(
                                     onClick = { showAiGeneratorModal = true },
                                     shape = RoundedCornerShape(14.dp),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFF1D63DC),
+                                        containerColor = Color(0xFF3674F4),
                                         contentColor = Color.White
                                     ),
                                     modifier = Modifier.testTag("empty_state_olustur_button")
@@ -2961,126 +2977,21 @@ private fun TopicTestsDetailView(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .testTag("topic_tests_list"),
-                                contentPadding = PaddingValues(start = 6.dp, end = 20.dp, top = 18.dp, bottom = 24.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 0.dp, bottom = 96.dp),
+                                verticalArrangement = Arrangement.spacedBy(0.dp)
                             ) {
                                 items(
                                     items = currentLevelTests,
                                     key = { it.id },
                                     contentType = { "test_row" }
                                 ) { testItem ->
-                                    val solved = isTestCompleted(testItem)
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(Color.White)
-                                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
-                                            .clickable { onTestClicked(testItem) }
-                                            .padding(vertical = 12.dp, horizontal = 10.dp)
-                                            .testTag("test_row_${testItem.id}"),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            if (solved) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(30.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Color(0xFF16A34A)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Filled.Check,
-                                                        contentDescription = "Çözüldü",
-                                                        tint = Color.White,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                }
-                                            } else {
-                                                Box(
-                                                    modifier = Modifier.size(32.dp),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.AutoMirrored.Outlined.MenuBook,
-                                                        contentDescription = "Çözülmedi",
-                                                        tint = Color(0xFF94A3B8),
-                                                        modifier = Modifier.size(26.dp)
-                                                    )
-                                                }
-                                            }
-
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = testItem.fullTitle,
-                                                    style = MaterialTheme.typography.titleMedium.copy(
-                                                        fontSize = 15.2.sp,
-                                                        fontWeight = FontWeight.Medium
-                                                    ),
-                                                    color = Color(0xFF0F172A),
-                                                    maxLines = 2,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                Text(
-                                                    text = "${testItem.questions.size} soru • ${testItem.difficulty.label}${if (solved) " • Çözüldü" else ""}",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = Color(0xFF64748B),
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.width(12.dp))
-
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            DifficultyMeterBar(position = testItem.difficultyPosition)
-
-                                            // Şık Kırmızı/Gri Çöp Kutusu (Sil) İkonu - "Çöz" butonunun hemen SOLUNDA
-                                            Surface(
-                                                onClick = { onDeleteTest(testItem) },
-                                                shape = RoundedCornerShape(10.dp),
-                                                color = Color(0xFFFEF2F2),
-                                                border = BorderStroke(1.dp, Color(0xFFFECACA)),
-                                                modifier = Modifier
-                                                    .size(34.dp)
-                                                    .testTag("delete_test_btn_${testItem.id}")
-                                            ) {
-                                                Box(contentAlignment = Alignment.Center) {
-                                                    Icon(
-                                                        imageVector = Icons.Outlined.Delete,
-                                                        contentDescription = "Testi Sil",
-                                                        tint = Color(0xFFDC2626),
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                }
-                                            }
-
-                                            Surface(
-                                                onClick = { onStartTestImmediately(testItem) },
-                                                shape = RoundedCornerShape(10.dp),
-                                                color = Color(0xFF1E3A8A),
-                                                modifier = Modifier.testTag("solve_test_btn_${testItem.id}")
-                                            ) {
-                                                Text(
-                                                    text = "Çöz",
-                                                    color = Color.White,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    fontSize = 12.sp,
-                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
-                                                )
-                                            }
-                                        }
-                                    }
+                                    PremiumPracticeTestRow(
+                                        test = testItem,
+                                        completed = isTestCompleted(testItem),
+                                        onOpen = { onTestClicked(testItem) },
+                                        onStart = { onStartTestImmediately(testItem) },
+                                        onDelete = { onDeleteTest(testItem) }
+                                    )
                                 }
                             }
                         }
@@ -3153,6 +3064,108 @@ private fun TopicTestsDetailView(
                 }
             )
         }
+    }
+}
+
+@Composable
+private fun PremiumPracticeTestRow(
+    test: YksTestItem,
+    completed: Boolean,
+    onOpen: () -> Unit,
+    onStart: () -> Unit,
+    onDelete: () -> Unit
+) {
+    var menuExpanded by remember(test.id) { mutableStateOf(false) }
+    var confirmDelete by remember(test.id) { mutableStateOf(false) }
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth().background(Color.White)) {
+        val compact = maxWidth < 420.dp
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 76.dp)
+                .clickable(onClick = onOpen)
+                .testTag("test_row_${test.id}")
+                .padding(start = if (compact) 10.dp else 18.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(if (completed) Color(0xFF259516) else Color.Transparent),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (completed) Icons.Filled.Check else Icons.AutoMirrored.Filled.MenuBook,
+                    contentDescription = if (completed) "Tamamlandı" else "Henüz çözülmedi",
+                    tint = if (completed) Color.White else Color(0xFFC8C2DE),
+                    modifier = Modifier.size(if (completed) 21.dp else 26.dp)
+                )
+            }
+            Spacer(Modifier.width(if (compact) 10.dp else 14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = test.fullTitle,
+                    color = Color(0xFF28215E),
+                    fontSize = if (compact) 14.sp else 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    lineHeight = 22.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${test.questions.size} soru",
+                    color = Color(0xFF8B84A7),
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 3.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            DifficultyMeterBar(
+                position = test.difficultyPosition,
+                modifier = Modifier.width(if (compact) 82.dp else 110.dp)
+            )
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(
+                        Icons.Filled.MoreVert,
+                        contentDescription = "${test.fullTitle} seçenekleri",
+                        tint = Color(0xFF8B84A7),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text(if (completed) "Tekrar çöz" else "Testi çöz") },
+                        leadingIcon = { Icon(Icons.Filled.PlayArrow, contentDescription = null) },
+                        onClick = { menuExpanded = false; onStart() },
+                        modifier = Modifier.testTag("solve_test_btn_${test.id}")
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Testi sil", color = Color(0xFFCA3658)) },
+                        leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = Color(0xFFCA3658)) },
+                        onClick = { menuExpanded = false; confirmDelete = true },
+                        modifier = Modifier.testTag("delete_test_btn_${test.id}")
+                    )
+                }
+            }
+        }
+    }
+    HorizontalDivider(color = Color(0xFFF4F2F8), thickness = 1.dp)
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Test silinsin mi?") },
+            text = { Text("“${test.fullTitle}” testini listenizden kaldırmak üzeresiniz.") },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; onDelete() }) {
+                    Text("Testi sil", color = Color(0xFFCA3658))
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Vazgeç") } },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(24.dp)
+        )
     }
 }
 
@@ -4052,21 +4065,22 @@ private fun AiGenerationStepRow(
 }
 
 @Composable
-fun DifficultyMeterBar(position: Float) {
+fun DifficultyMeterBar(position: Float, modifier: Modifier = Modifier.width(110.dp)) {
+    val safePosition = if (position.isFinite()) position.coerceIn(0f, 1f) else 0.5f
     val activeCategory = when {
-        position < 0.36f -> 0
-        position < 0.72f -> 1
+        safePosition < 0.36f -> 0
+        safePosition < 0.72f -> 1
         else -> 2
     }
     val fillColor = when {
-        position < 0.36f -> Color(0xFF15803D)
-        position < 0.66f -> Color(0xFFE67E22)
+        safePosition < 0.36f -> Color(0xFF15803D)
+        safePosition < 0.72f -> Color(0xFFE67E22)
         else -> Color(0xFFDC2626)
     }
-    val fillFraction = position.coerceIn(0.18f, 0.94f)
+    val fillFraction = safePosition.coerceIn(0.18f, 0.94f)
 
     Column(
-        modifier = Modifier.width(110.dp),
+        modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Canvas(
@@ -4081,14 +4095,14 @@ fun DifficultyMeterBar(position: Float) {
                 lineTo(pointerX, 6.5.dp.toPx())
                 close()
             }
-            drawPath(pointerPath, color = Color(0xFF1E3A8A))
+            drawPath(pointerPath, color = Color(0xFF28215E))
 
             val barTop = 9.dp.toPx()
             val barHeight = 8.5.dp.toPx()
             val corner = CornerRadius(barHeight / 2f, barHeight / 2f)
 
             drawRoundRect(
-                color = Color(0xFFE2E8F0),
+                color = Color(0xFFE9E6F2),
                 topLeft = Offset(0f, barTop),
                 size = Size(size.width, barHeight),
                 cornerRadius = corner

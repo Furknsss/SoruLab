@@ -1561,27 +1561,37 @@ object StudioImageAndPdfEngine {
     ): List<SourceTextPage> = try {
         PDFBoxResourceLoader.init(context.applicationContext)
         PDDocument.load(pdfFile).use { document ->
-            val stripper = PdfGeometryTextStripper()
             List(min(totalPages, document.numberOfPages).coerceAtLeast(0)) { pageIndex ->
-                stripper.glyphs.clear()
-                stripper.startPage = pageIndex + 1
-                stripper.endPage = pageIndex + 1
-                val text = stripper.getText(document).take(12_000)
+                // Isolate individual PDF pages. A single malformed/oversized
+                // page must never discard the whole document's answer index.
                 val pageBounds = document.getPage(pageIndex).mediaBox
                 val width = pageBounds.width
                 val height = pageBounds.height
-                SourceTextPage(
-                    text = text,
-                    pageWidth = width,
-                    pageHeight = height,
-                    anchors = PdfVectorQuestionAnchors.find(stripper.glyphs, width, height),
-                    vectorFooterKeys = PdfVectorAnswerStrip.read(stripper.glyphs, width, height)
-                )
+                try {
+                    val stripper = PdfGeometryTextStripper()
+                    stripper.startPage = pageIndex + 1
+                    stripper.endPage = pageIndex + 1
+                    val text = stripper.getText(document).take(12_000)
+                    SourceTextPage(
+                        text = text,
+                        pageWidth = width,
+                        pageHeight = height,
+                        anchors = PdfVectorQuestionAnchors.find(stripper.glyphs, width, height),
+                        vectorFooterKeys = PdfVectorAnswerStrip.read(stripper.glyphs, width, height)
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w(
+                        "SoruLabPdfText", "PDF text layer failed at page ${pageIndex + 1}; OCR fallback", e
+                    )
+                    SourceTextPage("", width, height, emptyList(), emptyMap())
+                }
             }
         }
-    } catch (_: OutOfMemoryError) {
+    } catch (e: OutOfMemoryError) {
+        android.util.Log.e("SoruLabPdfText", "PDF text layer out of memory; OCR fallback", e)
         emptyList()
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        android.util.Log.e("SoruLabPdfText", "PDF text layer unavailable; OCR fallback", e)
         emptyList()
     }
 

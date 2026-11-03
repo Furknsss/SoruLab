@@ -19,6 +19,9 @@ internal object PdfOptionEvidence {
     private val bareOptionLine = Regex(
         """^[ \t]*(?:\(([A-E])\)|([A-E])[ \t]*[).:])[ \t]*$"""
     )
+    private val nextOptionLine = Regex(
+        """^[ \t]*(?:\([A-E]\)|[A-E][ \t]*[).:])"""
+    )
 
     fun letters(pageText: String): Set<String> {
         val upper = pageText.uppercase(Locale.ROOT)
@@ -34,7 +37,7 @@ internal object PdfOptionEvidence {
                 ?: return@mapNotNull null
             val next = lines.drop(index + 1).firstOrNull(String::isNotBlank)
                 ?: return@mapNotNull null
-            if (bareOptionLine.matches(next)) return@mapNotNull null
+            if (nextOptionLine.containsMatchIn(next)) return@mapNotNull null
             match.groupValues[1].ifBlank { match.groupValues[2] }
         }.filter(String::isNotBlank).toSet()
         return inlineOptions + splitOptions

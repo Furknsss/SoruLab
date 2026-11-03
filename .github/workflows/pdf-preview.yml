@@ -39,6 +39,7 @@ jobs:
           --tests com.example.util.PdfColumnGeometryTest
           --tests com.example.util.PdfAdaptiveGutterTest
           --tests com.example.util.PdfCropRecoveryPolicyTest
+          --tests com.example.util.PdfOcrQuestionMarkerTest
           --tests com.example.util.PdfSourceHeaderExtractorTest
           --tests com.example.util.PdfLibraryAccountTest
           --tests com.example.data.LocalQuestionCacheIOTest

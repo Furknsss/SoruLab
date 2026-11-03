@@ -122,7 +122,8 @@ class LiveSolvingBoardScreenTest {
                     onSelectTool = {},
                     onSelectStrokeSize = {},
                     onSelectPenColor = {},
-                    onAddStroke = {},
+                    onAddStroke = { _, _ -> },
+                    onBookPageChanged = {},
                     onClearCanvas = {},
                     onSelectQuestionIndex = { session = session.copy(currentQuestionIndex = it) },
                     onSelectOption = { question, answer ->

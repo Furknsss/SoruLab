@@ -1363,12 +1363,14 @@ object StudioImageAndPdfEngine {
         // Key strips may live on every other page instead of in a separate
         // answer-key chapter. Preserve the exact PDF page association.
         val pageTextFooterKeys = sourcePages.mapIndexedNotNull { index, page ->
-            // PDFBox often emits tiny table CELLS as isolated text lines and
-            // even puts the footer BEFORE the question text. Geometry is
-            // authoritative; only fall back to linear text for simpler PDFs.
-            val keys = page.vectorFooterKeys.ifEmpty {
+            // Read independently: the vector geometry may extract only
+            // some answer cells while PDFTextStripper's columnar N-number
+            // then N-letter sequence can recover the rest. Conflicting cells
+            // are quarantined, never selected by publisher/title heuristics.
+            val keys = PdfAnswerSourceConsensus.combine(
+                page.vectorFooterKeys,
                 PdfTextFooterKeys.read(page.text)
-            }
+            )
             keys.takeIf { it.isNotEmpty() }?.let { index to it }
         }.toMap()
         val pageSourceHeaders = sourcePages.mapIndexedNotNull { index, page ->

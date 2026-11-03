@@ -82,7 +82,9 @@ internal object PdfVectorQuestionAnchors {
                 if (!contiguous(right)) continue
                 if (abs(left.first().x - right.first().x) < pageWidth * .20f) continue
                 val sequence = left + right
-                if (sequence.size >= 4 && contiguous(sequence)) {
+                // Sparse mixed layouts can have only three questions (1+2).
+                // Do not require a publisher-specific four-question page.
+                if (sequence.size >= 3 && contiguous(sequence)) {
                     choices.add(sequence)
                 }
             }

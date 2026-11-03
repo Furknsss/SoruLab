@@ -36,4 +36,35 @@ class PdfColumnLayoutEvidenceTest {
             q(3, 315, 755), q(4, 315, 780))
         assertFalse(PdfColumnLayoutEvidence.hasTwoPrintedColumns(anchors, 595, 43, 748))
     }
+    @Test
+    fun `wide page with off center separator uses printed numbering not a 53 percent rule`() {
+        val anchors = listOf(q(11, 110, 100), q(12, 110, 390),
+            q(13, 720, 110), q(14, 720, 465))
+        val actual = PdfColumnLayoutEvidence.findTwoPrintedColumnStarts(
+            anchors, 1200, 55, 780
+        )
+        assertTrue(actual != null)
+        assertTrue(actual!!.second > 1200 * .55f)
+    }
+
+    @Test
+    fun `narrow printed columns with asymmetric margins are supported`() {
+        val anchors = listOf(q(21, 34, 90), q(22, 34, 270),
+            q(23, 241, 90), q(24, 241, 295))
+        val actual = PdfColumnLayoutEvidence.findTwoPrintedColumnStarts(
+            anchors, 460, 32, 560
+        )
+        assertTrue(actual != null)
+        assertTrue(actual!!.second > actual.first)
+    }
+
+    @Test
+    fun `nonconsecutive graphics labels never decide column geometry`() {
+        val anchors = listOf(q(5, 90, 100), q(6, 90, 360),
+            q(12, 720, 110), q(14, 720, 390))
+        assertFalse(PdfColumnLayoutEvidence.hasTwoPrintedColumns(
+            anchors, 1200, 55, 790
+        ))
+    }
+
 }

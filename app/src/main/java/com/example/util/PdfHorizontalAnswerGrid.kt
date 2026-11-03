@@ -84,9 +84,17 @@ internal object PdfHorizontalAnswerGridReader {
                         it.middleX >= minX - gap * 0.55 &&
                         it.middleX <= maxX + gap * 0.55
                 }
-                val letterBands = candidates.groupBy { cell ->
-                    (cell.middleY / max(5.0, avgH * 0.70)).toInt()
-                }.values.sortedBy { group -> group.map { it.middleY }.average() }
+                // OCR boxes jitter by a few pixels; absolute Y buckets
+                // can split one real answer row at a bucket boundary.
+                val letterBands = mutableListOf<MutableList<PdfOcrTextCell>>()
+                for (letter in candidates.sortedBy { it.middleY }) {
+                    val current = letterBands.lastOrNull()
+                    val rowMiddle = current?.map { it.middleY }?.average()
+                    if (current != null && rowMiddle != null &&
+                        abs(letter.middleY - rowMiddle) <= max(6.0, avgH * 0.85)
+                    ) current.add(letter)
+                    else letterBands.add(mutableListOf(letter))
+                }
                 for (answerBand in letterBands) {
                     val answers = linkedMapOf<Int, String>()
                     val usedLetters = mutableSetOf<PdfOcrTextCell>()

@@ -237,7 +237,7 @@ class SoruLabViewModel(
     private val _selectedStrokeSizeIndex = MutableStateFlow(1)
     val selectedStrokeSizeIndex: StateFlow<Int> = _selectedStrokeSizeIndex.asStateFlow()
 
-    private val _selectedPenColorHex = MutableStateFlow(0xFF1D4ED8L)
+    private val _selectedPenColorHex = MutableStateFlow(0xFF111111L)
     val selectedPenColorHex: StateFlow<Long> = _selectedPenColorHex.asStateFlow()
 
     private val _userTestResults = MutableStateFlow<List<TestResultRecord>>(emptyList())

@@ -585,7 +585,7 @@ class AiSolverViewModel : ViewModel() {
 
         // Use this PDF's actual OCR geometry. Independent answer-key
         // columns must not share cells just because they have the same Y.
-        val answerRegions = PdfAdaptiveAnswerRows.regions(
+        var answerRegions = PdfAdaptiveAnswerRows.regions(
             cells = lines.mapNotNull { line ->
                 line.boundingBox?.let {
                     PdfOcrTextCell(
@@ -597,6 +597,29 @@ class AiSolverViewModel : ViewModel() {
             },
             pageWidth = bitmap.width
         )
+        // Dense answer-key pages are frequently fully rasterized. A normal
+        // full-page OCR pass can skip tiny 1.A / 2.C answer cells. Retry two
+        // overlapping half-page views at higher resolution only when multiple
+        // test headers or an explicit answer-key heading are visible.
+        val sourceTestHeadings = Regex(
+            """(?i)\b(?:[ÖO]SYM\s+)?TEST\s*[-.:]?\s*[0-9]{1,3}\b"""
+        ).findAll(recognized.text).count()
+        if (StudioImageAndPdfEngine.hasAnswerKeyMarker(recognized.text) ||
+            sourceTestHeadings >= 3
+        ) {
+            val detailedCells = recognizeDenseAnswerPage(bitmap)
+            val detailedRegions = PdfAdaptiveAnswerRows.regions(
+                cells = detailedCells, pageWidth = bitmap.width
+            )
+            fun recognizedAnswers(regions: List<List<String>>): Int {
+                val index = PdfScopedAnswerKeys()
+                regions.forEach(index::addOcrRows)
+                return index.answerCount
+            }
+            if (recognizedAnswers(detailedRegions) > recognizedAnswers(answerRegions)) {
+                answerRegions = detailedRegions
+            }
+        }
         val answerRows = answerRegions.flatten()
         var answerGrids = PdfHorizontalAnswerGridReader.find(
             cells = lines.flatMap { line ->
@@ -670,6 +693,134 @@ class AiSolverViewModel : ViewModel() {
             questionNumberAnchors = anchors,
             optionAnchors = options
         )
+    }
+
+    /**
+     * Independent OCR for image-only/scanned pages. Whole-page ML Kit often
+     * misses tiny printed numerals because diagrams and all options are
+     * competing in the same recognition image. Read the left margins of both
+     * candidate reading columns with a new high-resolution OCR pass.
+     *
+     * Uses normalized page geometry rather than a publisher-specific layout.
+     * The consensus detector, not this raw OCR output, decides if a recovered
+     * number is trustworthy.
+     */
+    private suspend fun recognizeSupplementalNumberAnchors(bitmap: Bitmap): List<QuestionNumberAnchor> {
+        val w = bitmap.width
+        val h = bitmap.height
+        if (w < 300 || h < 300) return emptyList()
+        val startY = (h * .065f).toInt()
+        val endY = (h * .935f).toInt().coerceAtMost(h)
+        val margins = listOf(.025f to .35f, .435f to .80f)
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val results = mutableListOf<QuestionNumberAnchor>()
+        try {
+            for ((startXFraction, endXFraction) in margins) {
+                val startX = (w * startXFraction).toInt().coerceIn(0, w - 1)
+                val endX = (w * endXFraction).toInt().coerceIn(startX + 1, w)
+                val crop = Bitmap.createBitmap(
+                    bitmap, startX, startY, endX - startX, endY - startY
+                )
+                val scale = minOf(
+                    1.85f, 3400f / crop.height.toFloat(), 1050f / crop.width.toFloat()
+                ).coerceAtLeast(1f)
+                val enlarged = if (scale > 1.01f) Bitmap.createScaledBitmap(
+                    crop, (crop.width * scale).toInt().coerceAtLeast(1),
+                    (crop.height * scale).toInt().coerceAtLeast(1), true
+                ) else crop
+                try {
+                    val recognized = recognizer.process(InputImage.fromBitmap(enlarged, 0)).await()
+                    for (line in recognized.textBlocks.flatMap { it.lines }) {
+                        val printed = com.example.util.PdfOcrQuestionMarker
+                            .numberAtStart(line.text)
+                            ?: line.elements.firstOrNull()?.text?.let {
+                                if (com.example.util.PdfOcrQuestionMarker
+                                        .isStandaloneNumberElement(it)) {
+                                    it.trim().takeWhile(Char::isDigit).toIntOrNull()
+                                } else null
+                            }
+                            ?: continue
+                        val bounds = line.elements.firstOrNull()?.boundingBox
+                            ?: line.boundingBox ?: continue
+                        if (bounds.left > enlarged.width * .80f) continue
+                        val left = (startX + bounds.left / scale).toInt()
+                        val top = (startY + bounds.top / scale).toInt()
+                        val right = (startX + bounds.right / scale).toInt()
+                        val bottom = (startY + bounds.bottom / scale).toInt()
+                        if (top in 0 until h && left in 0 until w && bottom > top) {
+                            results += QuestionNumberAnchor(
+                                printed, left, top, right.coerceAtMost(w),
+                                bottom.coerceAtMost(h)
+                            )
+                        }
+                    }
+                } finally {
+                    if (enlarged !== crop) enlarged.recycle()
+                    crop.recycle()
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (oom: OutOfMemoryError) {
+            android.util.Log.w("SoruLabPdfOCR", "Margin OCR memory limit; primary pass retained")
+        } catch (error: Exception) {
+            android.util.Log.w("SoruLabPdfOCR", "Margin OCR unavailable; primary pass retained", error)
+        } finally {
+            recognizer.close()
+        }
+        return results
+    }
+
+    /** High-resolution, on-device fallback for dense scanned answer tables. */
+    private suspend fun recognizeDenseAnswerPage(bitmap: Bitmap): List<PdfOcrTextCell> {
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val cells = mutableListOf<PdfOcrTextCell>()
+        try {
+            // Overlap preserves test headers located exactly on a tile edge.
+            for ((from, to) in listOf(0f to .53f, .47f to 1f)) {
+                val top = (bitmap.height * from).toInt().coerceIn(0, bitmap.height - 1)
+                val end = (bitmap.height * to).toInt().coerceIn(top + 1, bitmap.height)
+                val cropped = Bitmap.createBitmap(
+                    bitmap, 0, top, bitmap.width, end - top
+                )
+                val scale = minOf(1.65f, 2950f / cropped.width,
+                    2600f / cropped.height).coerceAtLeast(1f)
+                val enlarged = if (scale > 1.01f) Bitmap.createScaledBitmap(
+                    cropped, (cropped.width * scale).toInt().coerceAtLeast(1),
+                    (cropped.height * scale).toInt().coerceAtLeast(1), true
+                ) else cropped
+                try {
+                    val recognized = recognizer.process(
+                        InputImage.fromBitmap(enlarged, 0)
+                    ).await()
+                    for (line in recognized.textBlocks.flatMap { it.lines }) {
+                        val bounds = line.boundingBox ?: continue
+                        val left = (bounds.left / scale).toInt()
+                        val right = (bounds.right / scale).toInt()
+                        val mappedTop = top + (bounds.top / scale).toInt()
+                        val mappedBottom = top + (bounds.bottom / scale).toInt()
+                        if (line.text.isNotBlank()) cells.add(
+                            PdfOcrTextCell(line.text, left, mappedTop, right, mappedBottom)
+                        )
+                    }
+                } finally {
+                    if (enlarged !== cropped) enlarged.recycle()
+                    cropped.recycle()
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (oom: OutOfMemoryError) {
+            android.util.Log.w("SoruLabPdfOCR", "Dense answer page exceeds memory budget")
+        } catch (error: Exception) {
+            android.util.Log.w("SoruLabPdfOCR",
+                "Dense answer OCR fallback unavailable", error)
+        } finally {
+            recognizer.close()
+        }
+        return cells.distinctBy { cell ->
+            Triple(cell.text, cell.left / 9, cell.top / 9)
+        }
     }
 
     private suspend fun recognizeAnswerFooter(bitmap: Bitmap): List<PdfOcrTextCell> {
@@ -981,6 +1132,8 @@ class AiSolverViewModel : ViewModel() {
 
                 val allExtractedQuestions = mutableListOf<ExtractedPdfQuestionItem>()
                 val expectedScopeByQuestionId = mutableMapOf<String, PdfAnswerScope>()
+                val unsafeCropQuestionIds = mutableSetOf<String>()
+                var mergedOrMisnumberedCropCount = 0
                 val pendingHorizontalGrids = mutableListOf<Pair<PdfAnswerScope, PdfHorizontalAnswerGrid>>()
                 val pendingVectorFooterKeys = mutableListOf<Pair<PdfAnswerScope, Map<Int, String>>>()
                 var detectedAnswerPages = 0
@@ -1087,13 +1240,29 @@ class AiSolverViewModel : ViewModel() {
                                     com.example.util.PdfColumnLayoutEvidence.hasTwoPrintedColumns(
                                         nativeAnchors, pageBitmap.width, 0, pageBitmap.height
                                     )
-                                val sourceBackedPage = nativeAnchors.size >= 2 &&
-                                    (vectorHasPrintedColumns ||
-                                        nativeAnchors.size >= ocrPageLayout.questionNumberAnchors.size) &&
-                                    pageIdx in localBlueprint.pageVectorOptionEvidence
+                                val sourceBackedPage =
+                                    com.example.util.PdfNativeQuestionEvidence.trustNativeQuestionStarts(
+                                        nativeAnchorCount = nativeAnchors.size,
+                                        wholePageOcrAnchorCount =
+                                            ocrPageLayout.questionNumberAnchors.size,
+                                        hasTwoPrintedColumns = vectorHasPrintedColumns,
+                                        hasNativeChoiceEvidence =
+                                            pageIdx in localBlueprint.pageVectorOptionEvidence
+                                    )
+                                // For a scanned book, native PDF text is
+                                // usually just a watermark. Validate OCR
+                                // numerals a second time at higher resolution,
+                                // using the two printed column margins.
+                                val imageOnlyAnchors = if (!sourceBackedPage) {
+                                    val secondPass = recognizeSupplementalNumberAnchors(pageBitmap)
+                                    com.example.util.PdfPrintedAnchorConsensus.reconcile(
+                                        ocrPageLayout.questionNumberAnchors, secondPass,
+                                        pageBitmap.width, pageBitmap.height
+                                    )
+                                } else emptyList()
                                 val pageLayout = if (sourceBackedPage) {
                                     ocrPageLayout.copy(questionNumberAnchors = nativeAnchors)
-                                } else ocrPageLayout
+                                } else ocrPageLayout.copy(questionNumberAnchors = imageOnlyAnchors)
                                 val hasQuestionOptions = sourceBackedPage ||
                                     pageLayout.optionAnchors.map { it.option }.distinct().size >= 3
                                 val hasAnswerKeyMarker =
@@ -1355,6 +1524,34 @@ class AiSolverViewModel : ViewModel() {
                                     }
                                 }
 
+                                // A successful image save is NOT proof that
+                                // exactly one source question was cropped.
+                                // Validate rectangles against native printed
+                                // question coordinates when available.
+                                val auditSourceNumbers = when {
+                                    sourceBackedPage -> nativeAnchors
+                                    pageLayout.questionNumberAnchors.size >= 3 &&
+                                        com.example.util.PdfColumnLayoutEvidence
+                                            .hasTwoPrintedColumns(
+                                                pageLayout.questionNumberAnchors,
+                                                pageBitmap.width, 0, pageBitmap.height
+                                            ) -> pageLayout.questionNumberAnchors
+                                    else -> emptyList()
+                                }
+                                val unsafeCropIndexes = if (auditSourceNumbers.isNotEmpty()) {
+                                    croppedBoxes.indices.filter { cropIndex ->
+                                        val box = croppedBoxes[cropIndex]
+                                        com.example.util.PdfCropGeometryAudit.issues(
+                                            com.example.util.PdfQuestionCropEvidence(
+                                                box.questionOrderInPage, box.boxNormalized
+                                            ),
+                                            auditSourceNumbers, pageBitmap.width,
+                                            pageBitmap.height
+                                        ).isNotEmpty()
+                                    }.toSet()
+                                } else emptySet()
+                                mergedOrMisnumberedCropCount += unsafeCropIndexes.size
+
                                 val pageCandidates = if (croppedBoxes.isEmpty()) {
                                     emptyList()
                                 } else {
@@ -1405,6 +1602,12 @@ class AiSolverViewModel : ViewModel() {
                                         "local_q_${System.currentTimeMillis()}_p${pageIdx + 1}_${boxIdx + 1}_$globalQuestionNum"
                                     if (pageAnswerScope != null) {
                                         expectedScopeByQuestionId[extractedId] = pageAnswerScope
+                                    }
+                                    if (boxIdx in unsafeCropIndexes) {
+                                        // Keep for manual correction, but NEVER
+                                        // grade this visually inconsistent crop
+                                        // as a verified answer.
+                                        unsafeCropQuestionIds.add(extractedId)
                                     }
 
                                     allExtractedQuestions.add(
@@ -1474,7 +1677,7 @@ class AiSolverViewModel : ViewModel() {
                     val original = allExtractedQuestions[idx]
                     val scope = expectedScopeByQuestionId[original.id]
                     val correct = scopedAnswers.get(scope, original.questionNumberInTest)
-                    if (correct != null) {
+                    if (correct != null && original.id !in unsafeCropQuestionIds) {
                         allExtractedQuestions[idx] = original.copy(
                             correctOption = correct,
                             answerKeyMatched = true,
@@ -1521,6 +1724,11 @@ class AiSolverViewModel : ViewModel() {
                             (printed - detected).takeIf { it.isNotEmpty() }
                                 ?.let { pageIndex to it }
                         }
+                    if (mergedOrMisnumberedCropCount > 0) {
+                        add("KIRPMA BÜTÜNLÜĞÜ: $mergedOrMisnumberedCropCount görüntüde birden " +
+                            "fazla basılı soru numarası veya yanlış soru başlangıcı saptandı. " +
+                            "Bu görüntüler cevapları bulunsa bile doğrulanmış sayılmadı.")
+                    }
                     val missedPrintedCount = vectorMissingByPage.sumOf { it.second.size }
                     if (missedPrintedCount > 0) {
                         val preview = vectorMissingByPage.take(8).joinToString(", ") {

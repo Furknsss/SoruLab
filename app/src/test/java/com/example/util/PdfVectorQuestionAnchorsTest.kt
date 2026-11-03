@@ -42,4 +42,15 @@ class PdfVectorQuestionAnchorsTest {
         assertEquals(listOf(1, 2, 3), anchors.map { it.number })
     }
 
+    @Test
+    fun nonstandardNarrowMarginsAreStillProcessed() {
+        val glyphs = listOf(
+            PdfSourceGlyph("1.", 15f, 35f, 12f, 9f),
+            PdfSourceGlyph("2.", 15f, 280f, 12f, 9f),
+            PdfSourceGlyph("3.", 235f, 35f, 12f, 9f)
+        )
+        val anchors = PdfVectorQuestionAnchors.find(glyphs, 460f, 600f)
+        assertEquals(listOf(1, 2, 3), anchors.map { it.number })
+    }
+
 }

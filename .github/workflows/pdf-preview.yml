@@ -2,9 +2,9 @@ name: PDF preview APK
 on:
   workflow_dispatch:
   push:
-    branches: ['feat/premium-pdf-v5', 'fix/pdf-rc5-patternsyntax-regression']
+    branches: ['feat/premium-pdf-v5', 'fix/pdf-rc5-patternsyntax-regression', 'fix/rc7-auth-universal-pdf-layout-ink']
   pull_request:
-    branches: ['feat/premium-pdf-v5', 'feat/pdf-v5-biyotik-premium-review']
+    branches: ['feat/premium-pdf-v5', 'feat/pdf-v5-biyotik-premium-review', 'feat/s-pen-s9feplus-ink-gestures']
 permissions:
   contents: read
 jobs:
@@ -23,17 +23,17 @@ jobs:
           # Match the existing release workflow instead of installing that default.
           packages: platform-tools
       - run: sdkmanager 'platforms;android-36.1' 'build-tools;36.0.0'
-      - name: Restore development signing key
+      - name: Restore stable development signing key
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
-          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
-            printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > debug.keystore
-          elif [ -f debug.keystore.base64 ]; then
-            base64 --decode debug.keystore.base64 > debug.keystore
-          else
-            keytool -genkeypair -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -validity 10000
+          if [ -z "$DEBUG_KEYSTORE_BASE64" ]; then
+            echo "::error::DEBUG_KEYSTORE_BASE64 secret is required. Random signing keys break Google OAuth and upgrades."
+            exit 1
           fi
+          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > debug.keystore
+          keytool -list -keystore debug.keystore -storepass android -alias androiddebugkey >/dev/null
+          python3 scripts/check_debug_oauth_signing.py
       - name: Preflight all literal Kotlin regular expressions
         run: python3 scripts/validate_kotlin_raw_regex.py
       - name: Run answer-key matching regression tests
@@ -62,6 +62,6 @@ jobs:
       - run: bash ./gradlew :app:assembleDebug --no-daemon --no-configuration-cache --max-workers=2
       - uses: actions/upload-artifact@v4
         with:
-          name: SoruLab-1.2.5-rc6-spen-debug
+          name: SoruLab-1.2.5-rc7-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

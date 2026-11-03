@@ -111,10 +111,10 @@ class PdfAdaptiveAnswerRowsTest {
         val keys = PdfScopedAnswerKeys()
         for (region in regions) keys.addOcrRows(region)
         val left = PdfScopedAnswerKeys.scopeFromQuestionHeader(
-            "ANALİZ 2\\nNöronlar", "Nöronlar"
+            "ANALİZ 2\nNöronlar", "Nöronlar"
         )
         val right = PdfScopedAnswerKeys.scopeFromQuestionHeader(
-            "DENEME 2\\nFotosentez", "Fotosentez"
+            "DENEME 2\nFotosentez", "Fotosentez"
         )
         assertEquals("A", keys.get(left, 1))
         assertEquals("D", keys.get(left, 4))

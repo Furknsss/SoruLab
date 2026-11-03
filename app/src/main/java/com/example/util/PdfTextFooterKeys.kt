@@ -17,8 +17,38 @@ internal object PdfTextFooterKeys {
     private val option = Regex("""^[A-E]$""")
 
     fun read(text: String): Map<Int, String> {
-        val lines = text.lineSequence().map { it.trim() }
-            .filter(String::isNotEmpty).toList().takeLast(10)
+        val allLines = text.lineSequence().map { it.trim() }
+            .filter(String::isNotEmpty).toList()
+
+        // Selectable PDFs may serialize a horizontal answer grid column by
+        // column: "1\\n2\\n...\\n10\\nE\\nB\\n...". Neither a
+        // last-ten-lines window nor ordinary row tokenization can see it.
+        // Require exactly matching consecutive printed indices and one A-E
+        // letter per index; a partial/misaligned grid must remain unresolved.
+        val vertical = mutableListOf<Map<Int, String>>()
+        for (start in allLines.indices) {
+            if (allLines[start] != "1") continue
+            var cursor = start
+            var expected = 1
+            while (cursor < allLines.size && expected <= 40 &&
+                allLines[cursor] == expected.toString()
+            ) {
+                cursor++
+                expected++
+            }
+            val count = expected - 1
+            if (count < 4 || cursor + count > allLines.size) continue
+            val answerTokens = allLines.subList(cursor, cursor + count)
+                .map(String::uppercase)
+            if (answerTokens.all { option.matches(it) }) {
+                vertical += answerTokens.mapIndexed { index, answer ->
+                    index + 1 to answer
+                }.toMap()
+            }
+        }
+        vertical.maxByOrNull { it.size }?.let { return it }
+
+        val lines = allLines.takeLast(10)
         for (rowIndex in (lines.lastIndex - 1) downTo 0) {
             val candidates = lines[rowIndex + 1].split(spacing)
                 .map { it.trim().uppercase() }

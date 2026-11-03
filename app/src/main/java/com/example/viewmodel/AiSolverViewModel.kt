@@ -984,6 +984,7 @@ class AiSolverViewModel : ViewModel() {
                 val allExtractedQuestions = mutableListOf<ExtractedPdfQuestionItem>()
                 val expectedScopeByQuestionId = mutableMapOf<String, PdfAnswerScope>()
                 val pendingHorizontalGrids = mutableListOf<Pair<PdfAnswerScope, PdfHorizontalAnswerGrid>>()
+                val pendingVectorFooterKeys = mutableListOf<Pair<PdfAnswerScope, Map<Int, String>>>()
                 var detectedAnswerPages = 0
                 var pageRenderFailureCount = 0
 
@@ -1069,6 +1070,16 @@ class AiSolverViewModel : ViewModel() {
                                 val gridHeaderScope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
                                     pageLayout.scopeHeaderText, pageInfo.topicName
                                 )
+                                // The PDF's embedded text layer can preserve tiny
+                                // table titles which whole-page device OCR misses.
+                                // Resolve only from THIS page's printed heading.
+                                val vectorHeaderScope = localBlueprint.pageSourceHeaders[pageIdx]?.let {
+                                    PdfScopedAnswerKeys.scopeFromQuestionHeader(it, pageInfo.topicName)
+                                }
+                                val footerFromTextLayer = localBlueprint.pageTextFooterKeys[pageIdx]
+                                if (footerFromTextLayer != null && vectorHeaderScope != null) {
+                                    pendingVectorFooterKeys += vectorHeaderScope to footerFromTextLayer
+                                }
                                 if (pageLayout.answerGrids.isNotEmpty() && !hasAnswerKeyMarker && !isAnswerTablePage) {
                                     detectedAnswerPages++
                                 }
@@ -1164,7 +1175,7 @@ class AiSolverViewModel : ViewModel() {
                                     topicName = resolvedPageTopic,
                                     isSkipPage = false
                                 )
-                                val detectedScope = gridHeaderScope
+                                val detectedScope = vectorHeaderScope ?: gridHeaderScope
                                     ?: PdfScopedAnswerKeys.scopeFromQuestionHeader(
                                         pageLayout.scopeHeaderText, scanPageInfo.topicName
                                     )
@@ -1325,6 +1336,9 @@ class AiSolverViewModel : ViewModel() {
                 }
                 for ((scope, grid) in pendingHorizontalGrids) {
                     scopedAnswers.addPairs(scope, grid.answers.toList())
+                }
+                for ((scope, pageKeys) in pendingVectorFooterKeys) {
+                    scopedAnswers.addPairs(scope, pageKeys.toList())
                 }
 
                 // Match the completed, per-PDF answer index to the exact

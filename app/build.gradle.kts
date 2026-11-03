@@ -276,7 +276,9 @@ dependencies {
 
 tasks.withType<Test> {
   failFast = true
-  timeout.set(Duration.ofMinutes(2))
+  // Robolectric SDK sandboxes must not share the native font ZIP filesystem.
+  forkEvery = 1
+  timeout.set(Duration.ofMinutes(10))
   testLogging {
     events("passed", "failed", "skipped")
     exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

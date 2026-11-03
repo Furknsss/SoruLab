@@ -796,7 +796,7 @@ class SoruLabRepository(
                 )
             )
             val raw = userScoped
-                ?: LocalQuestionCacheIO.verifiedUserFallback(globalFallback, userId)
+                ?: globalFallback
                 ?: return emptyList()
             val isOwnedCache = userScoped != null
             val arr = JSONArray(raw)

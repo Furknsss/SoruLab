@@ -1291,6 +1291,11 @@ class AiSolverViewModel : ViewModel() {
                 }
 
                 val warnings = buildList {
+                    add("İçe aktarma raporu: $totalPdfPages sayfa • ${allExtractedQuestions.size} soru • " +
+                        "${allExtractedQuestions.map { it.sourceTestId }.filter(String::isNotBlank).distinct().size} kaynak test • " +
+                        "$detectedAnswerPages olası cevap sayfası • ${scopedAnswers.answerCount} okunan cevap • " +
+                        "${allExtractedQuestions.count { it.answerKeyMatched }} doğrulanmış soru • " +
+                        "${allExtractedQuestions.count { !it.answerKeyMatched }} inceleme gerekiyor.")
                     if (scopedAnswers.answerCount == 0) {
                         add("$detectedAnswerPages olası cevap anahtarı sayfası tarandı ancak " +
                             "geçerli test-cevap eşleşmesi bulunamadı. Hiçbir cevap tahmin edilmedi.")

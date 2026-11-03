@@ -84,4 +84,11 @@ class TestSnapshotCodecTest {
         assertEquals(6, result.totalQuestions)
         assertEquals(50, result.accuracyPercent)
     }
+    @Test
+    fun legacySnapshotWithoutVerificationRemainsUngraded() {
+        val snapshot = """{"id":"legacy","questions":[{"id":"q1","number":1,"correctOption":"C"}]}"""
+        val restored = TestSnapshotCodec.decode(snapshot)
+        assertTrue(restored != null)
+        assertEquals(false, restored!!.questions.single().answerKeyVerified)
+    }
 }

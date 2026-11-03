@@ -39,6 +39,9 @@ jobs:
           bash ./gradlew :app:testDebugUnitTest
           --tests com.example.util.PdfAdaptiveAnswerRowsTest
           --tests com.example.util.PdfScopedAnswerKeysTest
+          --tests com.example.util.PdfTextFooterKeysTest
+          --tests com.example.util.TestAnswerAnalyticsEngineTest
+          --tests com.example.data.TestSnapshotCodecTest
           --no-daemon --no-configuration-cache --max-workers=2
       - name: Upload answer-key test reports
         if: always()
@@ -53,6 +56,6 @@ jobs:
       - run: bash ./gradlew :app:assembleDebug --no-daemon --no-configuration-cache --max-workers=2
       - uses: actions/upload-artifact@v4
         with:
-          name: SoruLab-1.2.5-rc3-debug
+          name: SoruLab-1.2.5-rc4-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

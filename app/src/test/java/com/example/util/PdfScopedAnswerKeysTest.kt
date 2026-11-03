@@ -8,27 +8,23 @@ import org.junit.Test
 
 class PdfScopedAnswerKeysTest {
     @Test
-    fun `real biology book test one answer row is matched in the correct test`() {
+    fun `Biyotik AYT Sinir Sistemi Analiz 1 and 2 printed answer keys are matched`() {
         val index = PdfScopedAnswerKeys()
         index.addOcrRows(listOf(
             "SİNİR SİSTEMİ",
-            "Test 1 1.E 2.B 3.A 4.A 5.E 6.D 7.B 8.A 9.D 10.C",
-            "Test 2 1.B 2.E 3.C 4.D 5.C 6.E 7.B 8.A 9.B 10.E",
-            "ÖSYM Test 6 1.E 2.D 3.A 4.C"
+            "ANALİZ 1 1.E 2.B 3.E 4.B 5.E 6.C 7.A 8.E 9.D 10.C",
+            "ANALİZ 2 1.B 2.E 3.A 4.D 5.C 6.E 7.C 8.C 9.E 10.B 11.C"
         ))
         val firstTest = PdfScopedAnswerKeys.scopeFromQuestionHeader(
-            "TEST 1\nSinir Sistemi 1", "Sinir Sistemi"
+            "ANALİZ 1\nSinir Sistemi", "Sinir Sistemi"
         )
         val secondTest = PdfScopedAnswerKeys.scopeFromQuestionHeader(
-            "TEST 2\nSinir Sistemi 2", "Sinir Sistemi"
+            "ANALİZ 2\nSinir Sistemi", "Sinir Sistemi"
         )
-        val osymTest = PdfScopedAnswerKeys.scopeFromQuestionHeader(
-            "ÖSYM TADINDA\nTEST 6\nSinir Sistemi", "Sinir Sistemi"
-        )
-        assertEquals(listOf("E", "B", "A", "A", "E", "D", "B", "A", "D", "C"),
+        assertEquals(listOf("E", "B", "E", "B", "E", "C", "A", "E", "D", "C"),
             (1..10).map { index.get(firstTest, it) })
-        assertEquals("B", index.get(secondTest, 1))
-        assertEquals("E", index.get(osymTest, 1))
+        assertEquals(listOf("B", "E", "A", "D", "C", "E", "C", "C", "E", "B", "C"),
+            (1..11).map { index.get(secondTest, it) })
         assertNull(index.get(secondTest, 12))
     }
 

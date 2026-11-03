@@ -101,7 +101,11 @@ internal data class TwoColumnQuestionPage(
     val questions: List<YksQuestion> get() = left + right
 }
 
-internal fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>, columnCapacity: Float = 2.1f): List<TwoColumnQuestionPage> {
+internal fun packQuestionsIntoTwoColumnPages(
+    questions: List<YksQuestion>,
+    columnCapacity: Float = 2.1f,
+    maxQuestionsPerColumn: Int = 2
+): List<TwoColumnQuestionPage> {
     if (questions.isEmpty()) return listOf(TwoColumnQuestionPage(emptyList(), emptyList()))
     val pages = mutableListOf<TwoColumnQuestionPage>()
     var index = 0
@@ -113,7 +117,7 @@ internal fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>, colum
             var columnCount = 0
             // Fixed-height tablet sheets need room: at most two questions
             // per column; a full page flips instead of scrolling vertically.
-            while (index < questions.size && columnCount < 2) {
+            while (index < questions.size && columnCount < maxQuestionsPerColumn.coerceIn(1, 2)) {
                 val question = questions[index]
                 val normalizedWidth = (question.normRight - question.normLeft).coerceAtLeast(0.08f)
                 val normalizedHeight = (question.normBottom - question.normTop).coerceAtLeast(0.04f)
@@ -199,8 +203,11 @@ fun LiveSolvingBoardScreen(
     val configuration = LocalConfiguration.current
     val columnWidth = ((configuration.screenWidthDp - 64f) / 2f - 88f).coerceAtLeast(100f)
     val columnCapacity = ((configuration.screenHeightDp - 230f) / columnWidth).coerceIn(2.1f, 6f)
-    val packedBookPages = remember(questions, columnCapacity) {
-        packQuestionsIntoTwoColumnPages(questions, columnCapacity)
+    // Landscape is wider but shorter; show a maximum of 1 question per
+    // column so graphics and answer choices remain fully legible.
+    val maxPerColumn = if (configuration.screenWidthDp > configuration.screenHeightDp) 1 else 2
+    val packedBookPages = remember(questions, columnCapacity, maxPerColumn) {
+        packQuestionsIntoTwoColumnPages(questions, columnCapacity, maxPerColumn)
     }
     val totalBookPages = packedBookPages.size.coerceAtLeast(1)
     val currentQuestionId = questions.getOrNull(session.currentQuestionIndex)?.id
@@ -1559,7 +1566,7 @@ private fun RealTwoColumnBookPageSurface(
                 .fillMaxSize()
                 .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
                 .padding(horizontal = 28.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // ÇİFT SÜTUNLU (SOL SÜTUN & SAĞ SÜTUN) VE ORTADAN İNCE DİKEY ÇİZGİLİ TAM SAYFA DÜZENİ
             Row(
@@ -1577,7 +1584,7 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isLeftPopoverOpen) 60f else 1f)
                         .padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = Arrangement.SpaceBetween
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     leftColumnQuestions.forEachIndexed { idx, q ->
                         BookPageQuestionItem345(
@@ -1594,9 +1601,6 @@ private fun RealTwoColumnBookPageSurface(
                             onOpenTwinScreen = { onOpenTwinScreen(q) },
                             onAddToKumbara = { onAddToKumbara(q) }
                         )
-                        if (idx < leftColumnQuestions.lastIndex) {
-                            Spacer(modifier = Modifier.height(24.dp))
-                        }
                     }
                 }
 
@@ -1616,7 +1620,7 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isRightPopoverOpen) 60f else 1f)
                         .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = Arrangement.SpaceBetween
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     if (rightColumnQuestions.isEmpty()) {
                         Spacer(modifier = Modifier.height(80.dp))
@@ -1636,9 +1640,6 @@ private fun RealTwoColumnBookPageSurface(
                                 onOpenTwinScreen = { onOpenTwinScreen(q) },
                                 onAddToKumbara = { onAddToKumbara(q) }
                             )
-                            if (idx < rightColumnQuestions.lastIndex) {
-                                Spacer(modifier = Modifier.height(24.dp))
-                            }
                         }
                     }
                 }

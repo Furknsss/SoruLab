@@ -2675,11 +2675,14 @@ private fun BottomDarkNavyDrawingBar345(
     onToggleZoom: () -> Unit,
     onSelectStrokeSize: (Int) -> Unit,
     onSelectPenColor: (Long) -> Unit,
-    onClearCanvas: () -> Unit
+    onClearCanvas: () -> Unit,
+    isImmersive: Boolean = false,
+    showImmersiveToggle: Boolean = false,
+    onToggleImmersive: () -> Unit = {}
 ) {
     var showColorPalettePopup by remember { mutableStateOf(false) }
     val penColors = listOf(
-        0xFF25215DL to "Siyah",
+        0xFF111111L to "Siyah",
         0xFF1D4ED8L to "Mavi",
         0xFFDC2626L to "Kırmızı",
         0xFF16A34AL to "Yeşil",
@@ -2725,81 +2728,50 @@ private fun BottomDarkNavyDrawingBar345(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Galaxy Tab S9 FE+: clear input routing. Smart mode protects
-                    // handwriting from palm/finger touches; Draw mode also inks
-                    // with one finger, while two fingers always navigate.
-                    Surface(
-                        onClick = { onChangeFingerDrawing(false) },
-                        shape = RoundedCornerShape(50),
-                        color = if (!fingerDrawingEnabled) Color(0xFF3475F5) else Color.White.copy(alpha = 0.10f),
-                        border = BorderStroke(
-                            1.dp,
-                            if (!fingerDrawingEnabled) Color(0xFF93C5FD) else Color.White.copy(alpha = 0.22f)
-                        ),
-                        modifier = Modifier.height(38.dp).testTag("smart_spen_mode")
-                    ) {
-                        Text(
-                            "Akıllı Mod · S Pen",
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                            color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold
-                        )
-                    }
+                    // Premium compact controls: icons only. Smart mode inks
+                    // with the S Pen; hand-writing mode also accepts fingers.
+                    val isSmartSelected = !fingerDrawingEnabled &&
+                        activeTool == DrawingTool.PEN
                     Surface(
                         onClick = {
-                            onChangeFingerDrawing(true)
-                            if (activeTool == DrawingTool.HAND_PAN) onSelectTool(DrawingTool.PEN)
-                        },
-                        shape = RoundedCornerShape(50),
-                        color = if (fingerDrawingEnabled) Color(0xFF3475F5) else Color.White.copy(alpha = 0.10f),
-                        border = BorderStroke(
-                            1.dp,
-                            if (fingerDrawingEnabled) Color(0xFF93C5FD) else Color.White.copy(alpha = 0.22f)
-                        ),
-                        modifier = Modifier.height(38.dp).testTag("finger_draw_mode")
-                    ) {
-                        Text(
-                            "Çizim Modu · Parmak",
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                            color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    // Kalem (Tıklandığında Kalemi Seçer VE Renk Seçici Paleti Açar/Kapatır — Varsayılan Renk: Siyah)
-                    val isPenActive = activeTool == DrawingTool.PEN && !isZoomMagnifierEnabled
-                    Surface(
-                        onClick = {
+                            showColorPalettePopup = false
+                            onChangeFingerDrawing(false)
                             onSelectTool(DrawingTool.PEN)
-                            showColorPalettePopup = !showColorPalettePopup
                         },
-                        shape = RoundedCornerShape(50),
-                        color = if (isPenActive) Color(0xFF3475F5) else Color.White.copy(alpha = 0.12f),
-                        border = BorderStroke(
-                            1.5.dp,
-                            if (showColorPalettePopup) Color(0xFF38BDF8) else Color.White.copy(alpha = 0.3f)
-                        ),
-                        modifier = Modifier
-                            .height(40.dp)
-                            .testTag("tool_pen_btn")
+                        shape = CircleShape,
+                        color = if (isSmartSelected) Color(0xFF3475F5)
+                            else Color.White.copy(alpha = 0.10f),
+                        border = BorderStroke(1.dp,
+                            if (isSmartSelected) Color(0xFF93C5FD)
+                            else Color.White.copy(alpha = 0.22f)),
+                        modifier = Modifier.size(42.dp).testTag("smart_spen_mode")
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 11.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Kalem ve Renk Seçimi",
-                                tint = Color.White,
-                                modifier = Modifier.size(19.dp)
-                            )
-                            // Kalem üzerindeki aktif renk göstergesi (Varsayılan: Siyah)
-                            Box(
-                                modifier = Modifier
-                                    .size(14.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(selectedPenColorHex))
-                                    .border(1.5.dp, Color.White, CircleShape)
-                            )
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Edit,
+                                contentDescription = "Akıllı Mod: yalnızca S Pen ile yaz",
+                                tint = Color.White, modifier = Modifier.size(22.dp))
+                        }
+                    }
+                    val isFingerSelected = fingerDrawingEnabled &&
+                        activeTool == DrawingTool.PEN
+                    Surface(
+                        onClick = {
+                            showColorPalettePopup = false
+                            onChangeFingerDrawing(true)
+                            onSelectTool(DrawingTool.PEN)
+                        },
+                        shape = CircleShape,
+                        color = if (isFingerSelected) Color(0xFF3475F5)
+                            else Color.White.copy(alpha = 0.10f),
+                        border = BorderStroke(1.dp,
+                            if (isFingerSelected) Color(0xFF93C5FD)
+                            else Color.White.copy(alpha = 0.22f)),
+                        modifier = Modifier.size(42.dp).testTag("finger_draw_mode")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.BorderColor,
+                                contentDescription = "Parmakla yazma modu",
+                                tint = Color.White, modifier = Modifier.size(21.dp))
                         }
                     }
 
@@ -2892,40 +2864,26 @@ private fun BottomDarkNavyDrawingBar345(
                         }
                     }
 
-                    // Silgi (Net İkon + "Silgi" Etiketi — BlendMode.Clear / destination-out)
-                    val isEraserActive = activeTool == DrawingTool.ERASER && !isZoomMagnifierEnabled
+                    // Compact, icon-only eraser matching the other tools.
+                    val isEraserActive = activeTool == DrawingTool.ERASER &&
+                        !isZoomMagnifierEnabled
                     Surface(
                         onClick = {
                             showColorPalettePopup = false
                             onSelectTool(DrawingTool.ERASER)
                         },
-                        shape = RoundedCornerShape(50),
-                        color = if (isEraserActive) Color(0xFF3475F5) else Color.White.copy(alpha = 0.12f),
-                        border = BorderStroke(
-                            1.dp,
-                            if (isEraserActive) Color(0xFF60A5FA) else Color.White.copy(alpha = 0.25f)
-                        ),
-                        modifier = Modifier
-                            .height(38.dp)
-                            .testTag("tool_eraser_btn")
+                        shape = CircleShape,
+                        color = if (isEraserActive) Color(0xFF3475F5)
+                            else Color.White.copy(alpha = 0.10f),
+                        border = BorderStroke(1.dp,
+                            if (isEraserActive) Color(0xFF93C5FD)
+                            else Color.White.copy(alpha = 0.20f)),
+                        modifier = Modifier.size(42.dp).testTag("tool_eraser_btn")
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CleaningServices,
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.CleaningServices,
                                 contentDescription = "Silgi",
-                                tint = Color.White,
-                                modifier = Modifier.size(17.dp)
-                            )
-                            Text(
-                                text = "Silgi",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.5.sp
-                            )
+                                tint = Color.White, modifier = Modifier.size(22.dp))
                         }
                     }
 
@@ -2996,8 +2954,24 @@ private fun BottomDarkNavyDrawingBar345(
                         color = Color(0xFF1E293B),
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
+                }
+                if (showImmersiveToggle) {
+                    IconButton(
+                        onClick = onToggleImmersive,
+                        modifier = Modifier.size(42.dp)
+                            .testTag("immersive_fullscreen_toggle")
+                    ) {
+                        Icon(
+                            imageVector = if (isImmersive) Icons.Default.FullscreenExit
+                                else Icons.Default.Fullscreen,
+                            contentDescription = if (isImmersive)
+                                "Tam ekrandan çık" else "Tam ekran çalışma",
+                            tint = Color.White,
+                            modifier = Modifier.size(23.dp)
+                        )
+                    }
                 }
             }
         }

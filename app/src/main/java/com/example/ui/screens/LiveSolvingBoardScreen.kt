@@ -1,10 +1,14 @@
 package com.example.ui.screens
 
+import android.app.Activity
+import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import android.util.Log
 import androidx.activity.compose.BackHandler
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -277,6 +281,33 @@ fun LiveSolvingBoardScreen(
     // 1. Full-Screen Report Card ("▸ Başarı Durumuna Git" / Karne)
     var showFullReportCardScreen by remember(session.testItem.id) { mutableStateOf(false) }
     var showFinishConfirmation by remember(session.testItem.id) { mutableStateOf(false) }
+    var isImmersive by rememberSaveable(session.testItem.id) { mutableStateOf(false) }
+    val screenContext = LocalContext.current
+    DisposableEffect(isImmersive, screenContext) {
+        var context: android.content.Context? = screenContext
+        var activity: Activity? = null
+        while (context != null) {
+            if (context is Activity) {
+                activity = context
+                break
+            }
+            context = (context as? ContextWrapper)?.baseContext
+        }
+        val window = activity?.window
+        if (window != null && isImmersive) {
+            WindowInsetsControllerCompat(window, window.decorView).apply {
+                systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                hide(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+        onDispose {
+            if (window != null && isImmersive) {
+                WindowInsetsControllerCompat(window, window.decorView)
+                    .show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
 
     var wasReviewMode by remember(session.testItem.id) { mutableStateOf(session.isReviewMode) }
     LaunchedEffect(session.isReviewMode) {
@@ -314,6 +345,9 @@ fun LiveSolvingBoardScreen(
             }
             openThreeDotQuestionNumber != null -> {
                 openThreeDotQuestionNumber = null
+            }
+            isImmersive -> {
+                isImmersive = false
             }
             else -> onExitSession()
         }
@@ -417,16 +451,18 @@ fun LiveSolvingBoardScreen(
             .testTag("live_solving_board")
     ) {
         // 1. ÜST BEYAZ BAR: Solda Geri Oku, Ortada Test Başlığı, Sağda Mavi Hap Buton
-        BookPageTopBar345(
-            testTitle = session.testItem.fullTitle.ifBlank { "${session.topicName} - Test 1" },
-            isReviewMode = session.isReviewMode,
-            onBack = onExitSession,
-            onFinishTest = { showFinishConfirmation = true },
-            onOpenReportCard = {
-                openThreeDotQuestionNumber = null
-                showFullReportCardScreen = true
-            }
-        )
+        if (!isImmersive) {
+            BookPageTopBar345(
+                testTitle = session.testItem.fullTitle.ifBlank { "${session.topicName} - Test 1" },
+                isReviewMode = session.isReviewMode,
+                onBack = onExitSession,
+                onFinishTest = { showFinishConfirmation = true },
+                onOpenReportCard = {
+                    openThreeDotQuestionNumber = null
+                    showFullReportCardScreen = true
+                }
+            )
+        }
 
         // 2. ÜST KOYU LACİVERT (`#1E295B`) ÇİZİM VE ARAÇ BARI (Üst Beyaz Barın Hemen Altında!)
         Box(modifier = Modifier.zIndex(40f)) {
@@ -455,7 +491,10 @@ fun LiveSolvingBoardScreen(
                 },
                 onSelectStrokeSize = onSelectStrokeSize,
                 onSelectPenColor = onSelectPenColor,
-                onClearCanvas = { onClearCanvas(displayedCanvasKey) }
+                onClearCanvas = { onClearCanvas(displayedCanvasKey) },
+                isImmersive = isImmersive,
+                showImmersiveToggle = true,
+                onToggleImmersive = { isImmersive = !isImmersive }
             )
         }
 

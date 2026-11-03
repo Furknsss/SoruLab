@@ -60,34 +60,55 @@ internal object PdfVectorQuestionAnchors {
                 clusters.add(mutableListOf(token))
             }
         }
-        fun ordered(cluster: List<PdfSourceQuestionAnchor>) =
-            cluster.sortedBy { it.y }
+        // Margin page numbers and graph labels can sit on the exact same X
+        // alignment as a real question run. Find the best ordered subsequence
+        // instead of requiring EVERY number in the X cluster to be consecutive.
+        fun candidateRuns(cluster: List<PdfSourceQuestionAnchor>):
+            List<List<PdfSourceQuestionAnchor>> {
+            val ordered = cluster.sortedBy { it.y }
+            if (ordered.isEmpty()) return emptyList()
+            val minGap = max(6f, pageHeight * .025f)
+            val paths = ordered.indices.map { i ->
+                mutableListOf(ordered[i])
+            }.toMutableList()
+            for (i in ordered.indices) {
+                for (j in 0 until i) {
+                    if (ordered[i].number == ordered[j].number + 1 &&
+                        ordered[i].y - ordered[j].y >= minGap &&
+                        paths[j].size + 1 > paths[i].size
+                    ) {
+                        paths[i] = (paths[j] + ordered[i]).toMutableList()
+                    }
+                }
+            }
+            // A singleton is still useful for an asymmetric 1+2 column page.
+            return paths.distinctBy { path ->
+                path.joinToString("|") { "${it.number}@${it.y.toInt()}" }
+            }.sortedWith(
+                compareByDescending<List<PdfSourceQuestionAnchor>> { it.size }
+                    .thenByDescending { it.last().y - it.first().y }
+            ).take(3)
+        }
         fun contiguous(items: List<PdfSourceQuestionAnchor>): Boolean =
-            items.isNotEmpty() && items.zipWithNext().all { (a, b) -> b.number == a.number + 1 }
-        // A page may have 1 question in one column and 3+ in the other.
-        // A two-column run MUST be globally consecutive across the gutter.
+            items.isNotEmpty() && items.zipWithNext().all { (a, b) ->
+                b.number == a.number + 1
+            }
+        val runsByCluster = clusters.map(::candidateRuns)
+        // A two-column run must increase through the left column and then
+        // continue through the right column; labels within a chart cannot
+        // override a stronger printed sequence.
         val choices = mutableListOf<List<PdfSourceQuestionAnchor>>()
         for (i in clusters.indices) {
-            val left = ordered(clusters[i])
-            if (!contiguous(left)) continue
-            if (left.size >= 3 || (
-                    left.size == 2 &&
-                        // Short columns need stronger margin + separation evidence;
-                        // graph axes inside a figure are not question starts.
-                        ((left.first().x < pageWidth * .18f) ||
-                            (left.first().x in pageWidth * .48f..pageWidth * .63f)) &&
-                        (left[1].y - left[0].y > pageHeight * .085f)
-                    )
-                ) choices.add(left)
-            for (j in i + 1 until clusters.size) {
-                val right = ordered(clusters[j])
-                if (!contiguous(right)) continue
-                if (abs(left.first().x - right.first().x) < pageWidth * .20f) continue
-                val sequence = left + right
-                // Sparse mixed layouts can have only three questions (1+2).
-                // Detect printed numbering regardless of publisher or page proportions.
-                if (sequence.size >= 3 && contiguous(sequence)) {
-                    choices.add(sequence)
+            for (left in runsByCluster[i]) {
+                if (left.size >= 2) choices.add(left)
+                for (j in i + 1 until clusters.size) {
+                    for (right in runsByCluster[j]) {
+                        if (abs(left.first().x - right.first().x) < pageWidth * .20f) continue
+                        val sequence = left + right
+                        if (sequence.size >= 3 && contiguous(sequence)) {
+                            choices.add(sequence)
+                        }
+                    }
                 }
             }
         }

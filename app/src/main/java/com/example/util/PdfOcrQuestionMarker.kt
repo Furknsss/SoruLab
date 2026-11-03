@@ -23,5 +23,5 @@ internal object PdfOcrQuestionMarker {
 
     fun isStandaloneNumberElement(text: String): Boolean =
         standalone.matches(text) && (text.trim().takeWhile(Char::isDigit)
-            .toIntOrNull() in 1..200)
+            .toIntOrNull()?.let { it in 1..200 } == true)
 }

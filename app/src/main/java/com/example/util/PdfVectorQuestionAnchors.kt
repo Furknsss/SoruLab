@@ -97,25 +97,38 @@ internal object PdfVectorQuestionAnchors {
         // A two-column run must increase through the left column and then
         // continue through the right column; labels within a chart cannot
         // override a stronger printed sequence.
-        val choices = mutableListOf<List<PdfSourceQuestionAnchor>>()
+        data class Candidate(
+            val anchors: List<PdfSourceQuestionAnchor>,
+            val columnEvidence: Int
+        )
+        val choices = mutableListOf<Candidate>()
         for (i in clusters.indices) {
             for (left in runsByCluster[i]) {
-                if (left.size >= 2) choices.add(left)
+                if (left.size >= 2) choices += Candidate(left, 0)
                 for (j in i + 1 until clusters.size) {
                     for (right in runsByCluster[j]) {
                         if (abs(left.first().x - right.first().x) < pageWidth * .20f) continue
                         val sequence = left + right
                         if (sequence.size >= 3 && contiguous(sequence)) {
-                            choices.add(sequence)
+                            // Prefer a geometrically coherent left/right page
+                            // over a longer 1..7 sequence printed INSIDE a
+                            // graph on a real four-question page.
+                            val support = if (left.size >= 2 && right.size >= 2) 4 else 2
+                            choices += Candidate(sequence, support)
                         }
                     }
                 }
             }
         }
+        val outermostPrintedX = tokens.minOf { it.x }
         return choices.maxWithOrNull(
-            compareBy<List<PdfSourceQuestionAnchor>> { it.size }
-                .thenBy { it.map(PdfSourceQuestionAnchor::number).distinct().size }
-        ).orEmpty()
+            compareBy<Candidate> { candidate ->
+                candidate.anchors.size + candidate.columnEvidence +
+                    if (candidate.anchors.first().x <= outermostPrintedX +
+                        pageWidth * .025f) 1 else 0
+            }.thenBy { it.anchors.size }
+                .thenBy { it.anchors.map(PdfSourceQuestionAnchor::number).distinct().size }
+        )?.anchors.orEmpty()
     }
 
     private fun tokenize(glyphs: List<PdfSourceGlyph>): List<PdfSourceQuestionAnchor> {

@@ -7,6 +7,11 @@ on:
     branches: ['feat/premium-pdf-v5', 'feat/pdf-v5-biyotik-premium-review', 'feat/s-pen-s9feplus-ink-gestures', 'fix/rc7-auth-universal-pdf-layout-ink']
 permissions:
   contents: read
+# A new commit supersedes old RC8 test runs, preventing dozens of outdated
+# Android builds from blocking the current acceptance suite.
+concurrency:
+  group: pdf-preview-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   preview:
     runs-on: ubuntu-latest

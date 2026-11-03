@@ -113,4 +113,19 @@ class PdfVectorQuestionAnchorsTest {
         )
     }
 
+    @Test
+    fun figureNumberingOneThroughSevenCannotOutvoteRealTwoColumnQuestions() {
+        val glyphs = listOf(
+            PdfSourceGlyph("1.", 57f, 82f, 12f, 10f),
+            PdfSourceGlyph("2.", 57f, 192f, 12f, 10f),
+            PdfSourceGlyph("3.", 315f, 82f, 12f, 10f),
+            PdfSourceGlyph("4.", 315f, 464f, 12f, 10f)
+        ) + (1..7).map { n ->
+            PdfSourceGlyph("$n.", 91f, 299f + (n - 1) * 30f, 12f, 10f)
+        }
+        val numbers = PdfVectorQuestionAnchors.find(glyphs, 623f, 807f)
+            .map { it.number }
+        assertEquals(listOf(1, 2, 3, 4), numbers)
+    }
+
 }

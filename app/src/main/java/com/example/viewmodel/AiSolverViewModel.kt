@@ -585,7 +585,7 @@ class AiSolverViewModel : ViewModel() {
 
         // Use this PDF's actual OCR geometry. Independent answer-key
         // columns must not share cells just because they have the same Y.
-        val answerRegions = PdfAdaptiveAnswerRows.regions(
+        var answerRegions = PdfAdaptiveAnswerRows.regions(
             cells = lines.mapNotNull { line ->
                 line.boundingBox?.let {
                     PdfOcrTextCell(
@@ -597,6 +597,29 @@ class AiSolverViewModel : ViewModel() {
             },
             pageWidth = bitmap.width
         )
+        // Dense answer-key pages are frequently fully rasterized. A normal
+        // full-page OCR pass can skip tiny 1.A / 2.C answer cells. Retry two
+        // overlapping half-page views at higher resolution only when multiple
+        // test headers or an explicit answer-key heading are visible.
+        val sourceTestHeadings = Regex(
+            """(?i)\b(?:[ÖO]SYM\s+)?TEST\s*[-.:]?\s*[0-9]{1,3}\b"""
+        ).findAll(recognized.text).count()
+        if (StudioImageAndPdfEngine.hasAnswerKeyMarker(recognized.text) ||
+            sourceTestHeadings >= 3
+        ) {
+            val detailedCells = recognizeDenseAnswerPage(bitmap)
+            val detailedRegions = PdfAdaptiveAnswerRows.regions(
+                cells = detailedCells, pageWidth = bitmap.width
+            )
+            fun recognizedAnswers(regions: List<List<String>>): Int {
+                val index = PdfScopedAnswerKeys()
+                regions.forEach(index::addOcrRows)
+                return index.answerCount
+            }
+            if (recognizedAnswers(detailedRegions) > recognizedAnswers(answerRegions)) {
+                answerRegions = detailedRegions
+            }
+        }
         val answerRows = answerRegions.flatten()
         var answerGrids = PdfHorizontalAnswerGridReader.find(
             cells = lines.flatMap { line ->
@@ -746,6 +769,58 @@ class AiSolverViewModel : ViewModel() {
             recognizer.close()
         }
         return results
+    }
+
+    /** High-resolution, on-device fallback for dense scanned answer tables. */
+    private suspend fun recognizeDenseAnswerPage(bitmap: Bitmap): List<PdfOcrTextCell> {
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val cells = mutableListOf<PdfOcrTextCell>()
+        try {
+            // Overlap preserves test headers located exactly on a tile edge.
+            for ((from, to) in listOf(0f to .53f, .47f to 1f)) {
+                val top = (bitmap.height * from).toInt().coerceIn(0, bitmap.height - 1)
+                val end = (bitmap.height * to).toInt().coerceIn(top + 1, bitmap.height)
+                val cropped = Bitmap.createBitmap(
+                    bitmap, 0, top, bitmap.width, end - top
+                )
+                val scale = minOf(1.65f, 2950f / cropped.width,
+                    2600f / cropped.height).coerceAtLeast(1f)
+                val enlarged = if (scale > 1.01f) Bitmap.createScaledBitmap(
+                    cropped, (cropped.width * scale).toInt().coerceAtLeast(1),
+                    (cropped.height * scale).toInt().coerceAtLeast(1), true
+                ) else cropped
+                try {
+                    val recognized = recognizer.process(
+                        InputImage.fromBitmap(enlarged, 0)
+                    ).await()
+                    for (line in recognized.textBlocks.flatMap { it.lines }) {
+                        val bounds = line.boundingBox ?: continue
+                        val left = (bounds.left / scale).toInt()
+                        val right = (bounds.right / scale).toInt()
+                        val mappedTop = top + (bounds.top / scale).toInt()
+                        val mappedBottom = top + (bounds.bottom / scale).toInt()
+                        if (line.text.isNotBlank()) cells.add(
+                            PdfOcrTextCell(line.text, left, mappedTop, right, mappedBottom)
+                        )
+                    }
+                } finally {
+                    if (enlarged !== cropped) enlarged.recycle()
+                    cropped.recycle()
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (oom: OutOfMemoryError) {
+            android.util.Log.w("SoruLabPdfOCR", "Dense answer page exceeds memory budget")
+        } catch (error: Exception) {
+            android.util.Log.w("SoruLabPdfOCR",
+                "Dense answer OCR fallback unavailable", error)
+        } finally {
+            recognizer.close()
+        }
+        return cells.distinctBy { cell ->
+            Triple(cell.text, cell.left / 9, cell.top / 9)
+        }
     }
 
     private suspend fun recognizeAnswerFooter(bitmap: Bitmap): List<PdfOcrTextCell> {

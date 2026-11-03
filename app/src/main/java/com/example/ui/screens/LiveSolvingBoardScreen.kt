@@ -1864,80 +1864,73 @@ private fun HandDrawnBrushMark345(
     isUngraded: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    Canvas(modifier = modifier) {
+    var appeared by remember { mutableStateOf(false) }
+    LaunchedEffect(isEmpty, isCorrect, isUngraded) { appeared = true }
+    val entrance by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (appeared) 1f else 0.70f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
+        ), label = "hand_drawn_answer_mark"
+    )
+    Canvas(modifier.graphicsLayer {
+        alpha = entrance.coerceIn(0.15f, 1f)
+        scaleX = entrance
+        scaleY = entrance
+    }) {
         val w = size.width
         val h = size.height
         when {
             isCorrect -> {
-                // Organik El Yapımı / Fırça Darbesi Büyük Yeşil Tik (`✓`, #16A34A)
-                val checkPath = Path().apply {
-                    moveTo(w * 0.12f, h * 0.54f)
-                    cubicTo(
-                        w * 0.22f, h * 0.66f,
-                        w * 0.30f, h * 0.78f,
-                        w * 0.38f, h * 0.86f
-                    )
-                    cubicTo(
-                        w * 0.54f, h * 0.52f,
-                        w * 0.72f, h * 0.26f,
-                        w * 0.92f, h * 0.10f
-                    )
+                // Imperfect hand-painted ink, with a translucent second pigment
+                // layer instead of a flat Material icon.
+                val ink = Color(0xFF189551)
+                val check = Path().apply {
+                    moveTo(w * .09f, h * .55f)
+                    quadraticTo(w * .23f, h * .60f, w * .38f, h * .85f)
+                    cubicTo(w * .53f, h * .53f, w * .69f, h * .31f, w * .94f, h * .13f)
                 }
-                drawPath(
-                    path = checkPath,
-                    color = Color(0xFF16A34A),
-                    style = Stroke(
-                        width = w * 0.125f,
-                        cap = StrokeCap.Round,
-                        join = StrokeJoin.Round
-                    )
-                )
+                drawPath(check, ink.copy(alpha = .20f),
+                    style = Stroke(width = w * .20f, cap = StrokeCap.Round,
+                        join = StrokeJoin.Round))
+                drawPath(check, ink,
+                    style = Stroke(width = w * .105f, cap = StrokeCap.Round,
+                        join = StrokeJoin.Round))
+                drawLine(ink.copy(alpha = .54f),
+                    Offset(w * .34f, h * .82f), Offset(w * .91f, h * .14f),
+                    strokeWidth = w * .035f, cap = StrokeCap.Round)
             }
-            isUngraded -> {
-                drawCircle(
-                    color = Color(0xFF94A3B8),
-                    radius = min(w, h) * 0.33f,
-                    center = Offset(w * 0.46f, h * 0.46f),
-                    style = Stroke(width = w * 0.10f)
-                )
-            }
-            isEmpty -> {
-                // Boş Bırakılan Soru: İçinde hiçbir çizgi olmayan temiz, içi boş gri çember (`○`, #94A3B8)
-                val center = Offset(w * 0.46f, h * 0.46f)
-                val radius = min(w, h) * 0.33f
-                drawCircle(
-                    color = Color(0xFF94A3B8),
-                    radius = radius,
-                    center = center,
-                    style = Stroke(width = w * 0.10f)
-                )
+            isEmpty || isUngraded -> {
+                val ring = Path().apply {
+                    moveTo(w * .80f, h * .28f)
+                    cubicTo(w * .55f, h * .02f, w * .16f, h * .16f, w * .13f, h * .48f)
+                    cubicTo(w * .06f, h * .77f, w * .47f, h * .98f, w * .74f, h * .80f)
+                    cubicTo(w * .92f, h * .69f, w * .91f, h * .40f, w * .80f, h * .28f)
+                }
+                drawPath(ring, Color(0xFF95A0B2).copy(alpha = .2f),
+                    style = Stroke(width = w * .16f, cap = StrokeCap.Round))
+                drawPath(ring, Color(0xFF9AA4B5),
+                    style = Stroke(width = w * .07f, cap = StrokeCap.Round))
             }
             else -> {
-                // Yanlış İşaretlenen Soru: Organik Fırça Darbesi Büyük Kırmızı Çarpı (`✗`, #DC2626)
-                val stroke1 = Path().apply {
-                    moveTo(w * 0.16f, h * 0.15f)
-                    quadraticTo(w * 0.50f, h * 0.48f, w * 0.84f, h * 0.85f)
+                val redInk = Color(0xFFE03145)
+                val first = Path().apply {
+                    moveTo(w * .16f, h * .12f)
+                    cubicTo(w * .36f, h * .33f, w * .54f, h * .61f, w * .85f, h * .90f)
                 }
-                val stroke2 = Path().apply {
-                    moveTo(w * 0.82f, h * 0.15f)
-                    quadraticTo(w * 0.48f, h * 0.48f, w * 0.16f, h * 0.85f)
+                val second = Path().apply {
+                    moveTo(w * .88f, h * .13f)
+                    cubicTo(w * .70f, h * .35f, w * .37f, h * .61f, w * .14f, h * .87f)
                 }
-                drawPath(
-                    path = stroke1,
-                    color = Color(0xFFDC2626),
-                    style = Stroke(
-                        width = w * 0.115f,
-                        cap = StrokeCap.Round
-                    )
-                )
-                drawPath(
-                    path = stroke2,
-                    color = Color(0xFFDC2626),
-                    style = Stroke(
-                        width = w * 0.115f,
-                        cap = StrokeCap.Round
-                    )
-                )
+                listOf(first, second).forEach { stroke ->
+                    drawPath(stroke, redInk.copy(alpha = .16f),
+                        style = Stroke(width = w * .22f, cap = StrokeCap.Round))
+                    drawPath(stroke, redInk,
+                        style = Stroke(width = w * .105f, cap = StrokeCap.Round))
+                }
+                drawLine(redInk.copy(alpha = .55f),
+                    Offset(w * .21f, h * .17f), Offset(w * .81f, h * .86f),
+                    strokeWidth = w * .025f, cap = StrokeCap.Round)
             }
         }
     }

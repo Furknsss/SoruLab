@@ -1,20 +1,19 @@
 package com.example.util
 
 import kotlin.math.min
-import kotlin.math.max
 import kotlin.math.roundToInt
 
 /** Pixel rectangle for one page column, in actual rendered bitmap coordinates. */
 internal data class PdfCropColumn(val left: Int, val right: Int, val index: Int)
 
 /**
- * A textbook's right printed question number often sits immediately beside
- * the center dividing line. A gutter guessed from pixels may therefore start
- * AFTER the number, silently discarding every question in that column.
+ * Builds column crop bounds from this page's printed question numbers and
+ * measured whitespace gutter. No publisher/title-specific X coordinates.
  *
- * Recover the column start from printed-number geometry whenever possible.
- * Neither page number nor publisher name is used; image-only scans retain the
- * conservative pixel-gutter fallback.
+ * A number may start slightly to the LEFT of a pixel-based gutter. Recover
+ * the entire question number first, then keep the two crop areas disjoint.
+ * For scans where there are no validated vector/OCR runs, fall back to the
+ * measured gutter; do not create imaginary question numbers.
  */
 internal object PdfColumnGeometry {
     fun columns(
@@ -30,30 +29,26 @@ internal object PdfColumnGeometry {
         if (width < 300) return emptyList()
         val outside = outerMargin.coerceIn(0, width / 8)
         if (!isDualColumn) return listOf(PdfCropColumn(outside, width - outside, 0))
-        val safeGutter = gutterX.coerceIn((width * .44f).roundToInt(),
-            (width * .56f).roundToInt())
-        val margin = gutterMargin.coerceIn(2, width / 12)
-        val leftEnd = (safeGutter - margin).coerceAtLeast(outside + 120)
 
-        val rightPrintedNumbers = anchors.filter { anchor ->
-            anchor.top in bodyTop until bodyBottom &&
-                anchor.number in 1..200 &&
-                anchor.left in (width * .46f).roundToInt()..
-                    (width * .74f).roundToInt()
-        }
-        val nearestPrintedRight = rightPrintedNumbers
-            .minByOrNull { it.left }?.left
-        val startFromNumbers = nearestPrintedRight?.minus(
-            (width * .012f).roundToInt().coerceAtLeast(6)
+        val safeGutter = gutterX.coerceIn(outside + 120, width - outside - 120)
+        val margin = gutterMargin.coerceIn(2, width / 12)
+        val validatedColumns = PdfColumnLayoutEvidence.findTwoPrintedColumnStarts(
+            anchors, width, bodyTop, bodyBottom
         )
+        val validatedRightStart = validatedColumns?.second
+        val edgePadding = (width * .012f).roundToInt().coerceAtLeast(6)
+        val inkAwareRight = validatedRightStart?.minus(edgePadding)
         val rightStart = min(
             safeGutter + margin,
-            startFromNumbers ?: (safeGutter + margin)
-        ).coerceAtLeast(leftEnd + 4)
-            .coerceAtMost(width - outside - 120)
+            inkAwareRight ?: (safeGutter + margin)
+        ).coerceIn(outside + 120, width - outside - 120)
+        val leftEnd = min(
+            safeGutter - margin,
+            rightStart - 6
+        ).coerceIn(outside + 120, rightStart - 4)
 
         return listOf(
-            PdfCropColumn(outside, min(leftEnd, rightStart - 4), 0),
+            PdfCropColumn(outside, leftEnd, 0),
             PdfCropColumn(rightStart, width - outside, 1)
         )
     }

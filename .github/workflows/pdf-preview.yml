@@ -2,7 +2,7 @@ name: PDF preview APK
 on:
   workflow_dispatch:
   push:
-    branches: ['feat/premium-pdf-v5', 'fix/pdf-rc5-patternsyntax-regression', 'fix/rc7-auth-universal-pdf-layout-ink']
+    branches: ['feat/premium-pdf-v5', 'fix/pdf-rc5-patternsyntax-regression', 'fix/rc7-auth-universal-pdf-layout-ink', 'fix/rc8-pdf-completeness-spen-layout']
   pull_request:
     branches: ['feat/premium-pdf-v5', 'feat/pdf-v5-biyotik-premium-review', 'feat/s-pen-s9feplus-ink-gestures']
 permissions:
@@ -36,6 +36,7 @@ jobs:
           --tests com.example.util.PdfVectorAnswerStripTest
           --tests com.example.util.PdfVectorQuestionAnchorsTest
           --tests com.example.util.PdfColumnLayoutEvidenceTest
+          --tests com.example.util.PdfColumnGeometryTest
           --tests com.example.util.PdfSourceHeaderExtractorTest
           --tests com.example.util.PdfLibraryAccountTest
           --tests com.example.data.LocalQuestionCacheIOTest

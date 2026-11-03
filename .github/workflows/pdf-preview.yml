@@ -2,9 +2,9 @@ name: PDF preview APK
 on:
   workflow_dispatch:
   push:
-    branches: ['feat/premium-pdf-v5']
+    branches: ['feat/premium-pdf-v5', 'fix/pdf-rc5-patternsyntax-regression']
   pull_request:
-    branches: ['feat/premium-pdf-v5']
+    branches: ['feat/premium-pdf-v5', 'feat/pdf-v5-biyotik-premium-review']
 permissions:
   contents: read
 jobs:
@@ -34,9 +34,12 @@ jobs:
           else
             keytool -genkeypair -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -validity 10000
           fi
+      - name: Preflight all literal Kotlin regular expressions
+        run: python3 scripts/validate_kotlin_raw_regex.py
       - name: Run answer-key matching regression tests
         run: >-
           bash ./gradlew :app:testDebugUnitTest
+          --tests com.example.util.PdfOptionEvidenceTest
           --tests com.example.util.PdfAdaptiveAnswerRowsTest
           --tests com.example.util.PdfScopedAnswerKeysTest
           --tests com.example.util.PdfTextFooterKeysTest
@@ -58,6 +61,6 @@ jobs:
       - run: bash ./gradlew :app:assembleDebug --no-daemon --no-configuration-cache --max-workers=2
       - uses: actions/upload-artifact@v4
         with:
-          name: SoruLab-1.2.5-rc4-debug
+          name: SoruLab-1.2.5-rc5-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

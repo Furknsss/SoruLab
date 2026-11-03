@@ -796,6 +796,7 @@ class AiSolverViewModel : ViewModel() {
 
     private fun describePdfFailure(error: Exception): String {
         return when (error) {
+            is java.util.regex.PatternSyntaxException -> "PDF işleme motorunda düzenli ifade hatası oluştu (PatternSyntaxException). Bu dosyanızın hatası değil; uygulamanın güncellenmesi gerekiyor."
             is SecurityException -> "PDF dosyasına erişim izni alınamadı. Dosyayı yeniden seçip tekrar deneyin."
             is java.io.FileNotFoundException -> "Seçilen PDF artık bulunamıyor. Dosyayı yeniden seçin."
             is java.io.IOException -> "PDF okunamadı. Dosyanın bozuk veya parola korumalı olmadığını kontrol edin."
@@ -1460,6 +1461,7 @@ class AiSolverViewModel : ViewModel() {
                 completeOnce(allExtractedQuestions, coverPath, finalBookTitle)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException && e !is TimeoutCancellationException) throw e
+                android.util.Log.e("SoruLabPdfImport", "PDF aktarımı başarısız; hata kaynağı için yığın izi", e)
                 _batchErrorText.value = describePdfFailure(e)
                 completeOnce(emptyList(), "", "")
             } finally {

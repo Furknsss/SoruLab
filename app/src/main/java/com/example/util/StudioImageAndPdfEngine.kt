@@ -1356,8 +1356,7 @@ object StudioImageAndPdfEngine {
             }
         }.toMap()
         val pageVectorOptionEvidence = sourcePages.mapIndexedNotNull { index, page ->
-            val letters = Regex("""[A-E]\\)""").findAll(page.text.uppercase(Locale.ROOT))
-                .map { it.value.take(1) }.toSet()
+            val letters = PdfOptionEvidence.letters(page.text)
             index.takeIf { letters.size >= 3 && page.anchors.size >= 4 }
         }.toSet()
         // Key strips may live on every other page instead of in a separate

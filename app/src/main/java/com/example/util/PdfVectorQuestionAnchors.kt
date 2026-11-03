@@ -18,6 +18,11 @@ internal data class PdfSourceQuestionAnchor(
     val width: Float,
     val height: Float
 )
+internal data class PdfSourcePageAnchors(
+    val pageWidth: Float,
+    val pageHeight: Float,
+    val anchors: List<PdfSourceQuestionAnchor>
+)
 
 /**
  * Recover REAL printed question numbers from a PDF's own selectable text.

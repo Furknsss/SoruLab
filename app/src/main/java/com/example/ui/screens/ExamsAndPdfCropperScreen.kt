@@ -2051,14 +2051,21 @@ private fun PdfCropReviewDialog(
     var excludedIndices by remember(review) { mutableStateOf(emptySet<Int>()) }
     if (!visible || review.items.isEmpty()) return
     var answerOverrides by remember(review) { mutableStateOf(emptyMap<Int, String>()) }
-    val original = review.items[currentIndex]
+    var cropOverrides by remember(review) { mutableStateOf(emptyMap<Int, ExtractedPdfQuestionItem>()) }
+    var correctingCrop by remember { mutableStateOf(false) }
+    val original = cropOverrides[currentIndex] ?: review.items[currentIndex]
     val current = answerOverrides[currentIndex]?.let { answer ->
         original.copy(correctOption = answer, answerKeyMatched = answer.isNotBlank(), solutionSummary = original.solutionSummary + " • Kullanıcı tarafından doğrulandı")
     } ?: original
     val preview = StudioImageAndPdfEngine.rememberCachedBitmap(current.croppedImagePath)
     val included = currentIndex !in excludedIndices
     val selectedCount = review.items.size - excludedIndices.size
-    val verifiedCount = review.items.count { it.answerKeyMatched }
+    val verifiedCount = review.items.indices.count { index ->
+        answerOverrides[index]?.isNotBlank() ?: review.items[index].answerKeyMatched
+    }
+    if (correctingCrop) PdfCropCorrectionDialog(original,
+        onDismiss = { correctingCrop = false },
+        onApply = { cropOverrides = cropOverrides + (currentIndex to it); correctingCrop = false })
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
             color = Color(0xFFF0EFF7),
@@ -2107,6 +2114,9 @@ private fun PdfCropReviewDialog(
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Sonraki kırpma")
                     }
                 }
+                TextButton(onClick = { correctingCrop = true }, enabled = current.pdfFilePath.isNotBlank()) {
+                    Text("Kaynak sayfayı aç ve kırpmayı düzelt")
+                }
                 Text("Cevabı yalnızca kaynak cevap anahtarıyla karşılaştırdıktan sonra doğrula.", color = Color(0xFF77738F), fontSize = 12.sp)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     listOf("A", "B", "C", "D", "E", "").forEach { answer ->
@@ -2123,7 +2133,8 @@ private fun PdfCropReviewDialog(
                     }
                 }
                 Button(
-                    onClick = { onSave(review.items.mapIndexed { index, item ->
+                    onClick = { onSave(review.items.mapIndexed { index, source ->
+                        val item = cropOverrides[index] ?: source
                         answerOverrides[index]?.let { answer -> item.copy(correctOption = answer, answerKeyMatched = answer.isNotBlank(), solutionSummary = item.solutionSummary + " • Kullanıcı tarafından doğrulandı") } ?: item
                     }.filterIndexed { index, _ -> index !in excludedIndices }) },
                     enabled = selectedCount > 0,

@@ -2288,9 +2288,13 @@ class SoruLabViewModel(
 
             val newRecords = ArrayList<CustomQuestionRecord>(cleanItems.size)
             var imageRekeyFailureCount = 0
+            val existingBySource = com.example.util.indexPdfQuestionsForRepair(_userCustomQuestions.value)
             for ((idx, item) in cleanItems.withIndex()) {
+                // Reprocessing improves geometry and source headings; neither is an
+                // immutable identity. Reuse an unambiguous printed question's ID.
+                val previous = existingBySource[Triple(item.bookId, item.pageIndex, item.questionNumberInTest)]
                 val identity = "${item.bookId}|${item.sourceTestId}|${item.pageIndex}|${item.questionNumberInTest}|${item.boxNormalized}"
-                val recordId = if (item.bookId.isNotBlank()) "cq_" + java.util.UUID.nameUUIDFromBytes(identity.toByteArray(Charsets.UTF_8)) else "cq_${batchTimestamp}_${idx}_${(100..999).random()}"
+                val recordId = previous?.id ?: if (item.bookId.isNotBlank()) "cq_" + java.util.UUID.nameUUIDFromBytes(identity.toByteArray(Charsets.UTF_8)) else "cq_${batchTimestamp}_${idx}_${(100..999).random()}"
                 val canonicalImagePath = if (item.croppedImagePath.isNotBlank()) {
                     withContext(Dispatchers.IO) {
                         repository.rekeyLocalQuestionImage(item.croppedImagePath, "custom_$recordId")
@@ -2321,7 +2325,7 @@ class SoruLabViewModel(
                     PdfScopedAnswerKeys.normalize(topic.name) ==
                         PdfScopedAnswerKeys.normalize(sourceSection)
                 }
-                val explicitTopicName = if (sourceSection.isBlank()) {
+                val explicitTopicName = if (sourceTopic == null) {
                     StudioImageAndPdfEngine.detectTopicNameFromText(
                         examType = item.examType,
                         subjectName = requestedSubject?.name ?: item.subjectName,
@@ -2336,9 +2340,7 @@ class SoruLabViewModel(
                             }?.let { topic -> subject to topic }
                         }
                     }
-                val classifiedTopic = explicitTopic ?: if (sourceSection.isNotBlank()) {
-                    null // Unknown printed section must be reviewed, never guessed.
-                } else requestedSubject?.let { subject ->
+                val classifiedTopic = explicitTopic ?: requestedSubject?.let { subject ->
                     SoruLabCatalog.classifyQuestionTopicFromText(
                         examTypeHint = item.examType,
                         subjectNameHint = subject.name,
@@ -2357,9 +2359,7 @@ class SoruLabViewModel(
                     subjectMemo[subKey] = matchedSubject
                 }
 
-                val matchedTopic = classifiedTopic?.second ?: if (sourceSection.isNotBlank()) {
-                    null
-                } else matchedSubject?.topics?.firstOrNull {
+                val matchedTopic = classifiedTopic?.second ?: matchedSubject?.topics?.firstOrNull {
                     item.topicName.isNotBlank() && (
                         it.name.equals(item.topicName, ignoreCase = true) ||
                         item.topicName.contains(it.name, ignoreCase = true) ||
@@ -2397,6 +2397,7 @@ class SoruLabViewModel(
                     CustomQuestionRecord(
                         id = recordId,
                         userId = uid,
+                        createdAt = previous?.createdAt,
                         examType = resolvedExamType,
                         subjectId = subjectId,
                         subjectName = resolvedSubjectName,

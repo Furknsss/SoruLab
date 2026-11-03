@@ -1745,7 +1745,8 @@ object StudioImageAndPdfEngine {
         box2d: List<Int>,
         pageIndex: Int,
         questionOrder: Int,
-        difficulty: String
+        difficulty: String,
+        addPadding: Boolean = true
     ): LocalCroppedBoxResult? {
         if (box2d.size != 4) return null
         val height = pageBitmap.height
@@ -1754,8 +1755,8 @@ object StudioImageAndPdfEngine {
         val left = box2d[1].coerceIn(0, 1000) * width / 1000
         val bottom = box2d[2].coerceIn(0, 1000) * height / 1000
         val right = box2d[3].coerceIn(0, 1000) * width / 1000
-        val padX = (width * 0.008f).roundToInt()
-        val padY = (height * 0.008f).roundToInt()
+        val padX = if (addPadding) (width * 0.008f).roundToInt() else 0
+        val padY = if (addPadding) (height * 0.008f).roundToInt() else 0
         val cropLeft = (left - padX).coerceIn(0, (width - 1).coerceAtLeast(0))
         val cropTop = (top - padY).coerceIn(0, (height - 1).coerceAtLeast(0))
         val cropRight = (right + padX).coerceIn(cropLeft + 1, width)
@@ -2186,8 +2187,13 @@ object StudioImageAndPdfEngine {
                     val firstEndingE = optionsForQuestion.firstOrNull {
                         it.option.equals("E", ignoreCase = true)
                     }
-                    val optionBottom = firstEndingE?.bottom
-                        ?: optionsForQuestion.maxOfOrNull { it.bottom }
+                    // An incomplete OCR option list is not an end boundary: a graph
+                    // label or only the first A/B row used to truncate the stem.
+                    val optionBottom = firstEndingE?.takeIf {
+                        optionsForQuestion.filter { option -> option.top <= it.top }
+                            .map { option -> option.option.uppercase() }.toSet()
+                            .containsAll(listOf("A", "B", "C", "D", "E"))
+                    }?.bottom
                     // The OCR printed number marks the question START, not a
                     // projection band that might also contain earlier questions.
                     // A hard next-number boundary is more important than the
@@ -2280,7 +2286,7 @@ object StudioImageAndPdfEngine {
                 }
                 val finalLeft = (minContentX - 16).coerceAtLeast(colLeft)
                     .coerceIn(colLeft, colRight - 120)
-                val finalRight = (maxContentX + 16).coerceAtMost(colRight - padX)
+                val finalRight = (maxContentX + 16).coerceAtMost(colRight - 1)
                     .coerceAtLeast(finalLeft + 119)
                 val finalTop = (rawTop - padY)
                     .coerceAtLeast(if (cropAnchor != null) band.first else bodyTop)

@@ -48,3 +48,16 @@ zero failures/skips). The snapshot suite was rerun after the final change and al
 four passed. assembleDebug completed successfully for the final source. lintDebug
 completed with 0 errors and 72 warnings before the final status-report text and
 legacy-snapshot default adjustment. Existing deprecation warnings remain.
+
+## RC3: screenshot-reported import defects
+
+- Require a full A–E sequence before using options as a crop end; partial OCR must not truncate a graph question. Detect horizontal option elements as well as whole text lines.
+- Read compact numbered footer keys and ANALİZ/DENEME/UYGULAMA/ETKİNLİK keys; bind page keys after resolving the current test. Retry unread small footer text with enlarged local ML Kit OCR. Page-local key identity is used only for a footer covering all printed question numbers on that page.
+- Preserve detected topics when a source heading is not an exact catalog label. Prefer explicit current-page topic evidence over inherited hints.
+- Use viewport height for page packing; distribute spare writing space between questions. Difficulty remains an estimate, now labelled as such.
+- Add source-page crop correction before import. Exact manual selection avoids automatic padding. Answer override count now reflects review edits.
+- Re-import matches unique (book hash, PDF page, printed question number) identities, retaining existing record IDs and creation dates while replacing crops/metadata. Ambiguous identities are not overwritten.
+
+The user's 272-page Biyotik PDF is not present in the workspace. The reported 121/750 answer match rate, 239 unknown topics, publisher-margin cleanup, and complete real-book crops cannot be acceptance-tested from screenshots. No universal OCR accuracy or complete remediation is claimed. Existing imported images require reprocessing the source PDF; this update cannot recover missing pixels from an old crop alone. No hosted OCR service was introduced or document upload to a third party enabled.
+
+RC3 local verification: 93 tests passed, zero failures/errors/skips; `assembleDebug` passed. Source-page manual correction still needs a device-level check with the actual book.

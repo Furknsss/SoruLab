@@ -36,7 +36,8 @@ internal object PdfHorizontalAnswerGridReader {
             .filter { it.text.trim().trim('.', ')', ':', '-').toIntOrNull() in 1..200 }
             .sortedWith(compareBy({ it.middleY }, { it.middleX }))
         val letters = tokens.filter { optionToken.matches(it.text.trim()) }
-        if (numbers.size < 4 || letters.size < 4) return emptyList()
+        val inlineGrids = findInlineRows(cells, pageHeight)
+        if (numbers.size < 4 || letters.size < 4) return inlineGrids
 
         val bands = mutableListOf<MutableList<PdfOcrTextCell>>()
         for (number in numbers) {
@@ -122,7 +123,29 @@ internal object PdfHorizontalAnswerGridReader {
                 }
             }
         }
-        return grids.distinctBy { grid -> grid.top / 8 to grid.answers }
+        return (grids + inlineGrids).distinctBy { grid -> grid.top / 8 to grid.answers }
+    }
+
+    /** Compact footer keys: 1-A 2.C 3 B. Reject all prose and isolated choices. */
+    private fun findInlineRows(cells: List<PdfOcrTextCell>, pageHeight: Int): List<PdfHorizontalAnswerGrid> {
+        val pair = Regex("""([0-9]{1,3})\s*[.:()\-]?\s*([A-E])(?:\))?""", RegexOption.IGNORE_CASE)
+        val rows = mutableListOf<MutableList<PdfOcrTextCell>>()
+        for (cell in cells.filter { it.top >= pageHeight * 0.65f }.sortedBy { it.middleY }) {
+            val row = rows.lastOrNull()
+            if (row != null && abs(cell.middleY - row.map { it.middleY }.average()) <=
+                max(5.0, row.map { it.height }.average() * 0.6)) row.add(cell)
+            else rows.add(mutableListOf(cell))
+        }
+        return rows.mapNotNull { row ->
+            val text = row.sortedBy { it.left }.joinToString(" ") { it.text }
+            val matches = pair.findAll(text).toList()
+            val remainder = pair.replace(text, "").replace(Regex("""[\s|,;./-]+"""), "")
+            if (remainder.isNotEmpty() || matches.size < 4) return@mapNotNull null
+            val pairs = matches.map { it.groupValues[1].toInt() to it.groupValues[2].uppercase() }
+            if (pairs.any { it.first !in 1..200 } ||
+                pairs.zipWithNext().any { (a, b) -> b.first != a.first + 1 }) return@mapNotNull null
+            PdfHorizontalAnswerGrid(pairs.toMap(), row.minOf { it.top }, row.maxOf { it.bottom })
+        }
     }
 
     private fun parseNumber(cell: PdfOcrTextCell): Int =

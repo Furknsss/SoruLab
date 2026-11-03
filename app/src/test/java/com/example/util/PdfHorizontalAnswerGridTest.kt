@@ -6,6 +6,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PdfHorizontalAnswerGridTest {
+    @Test
+    fun `compact footer pairs require a complete sequential row without prose`() {
+        val footer = PdfOcrTextCell("1-A 2.C 3 B 4-D 5)E", 100, 1400, 800, 1420)
+        val grids = PdfHorizontalAnswerGridReader.find(listOf(footer), 1000, 1500)
+        assertEquals(mapOf(1 to "A", 2 to "C", 3 to "B", 4 to "D", 5 to "E"), grids.single().answers)
+        assertTrue(PdfHorizontalAnswerGridReader.find(listOf(footer.copy(text = "Soru 1-A 2-C 3-B 4-D")), 1000, 1500).isEmpty())
+        assertTrue(PdfHorizontalAnswerGridReader.find(listOf(footer.copy(text = "1-A 2-C 2-B 4-D")), 1000, 1500).isEmpty())
+    }
+
+    @Test
+    fun `analysis and regular tests with same number do not share keys`() {
+        val keys = PdfScopedAnswerKeys(setOf("sinir sistemi"))
+        keys.addOcrRows(listOf("Sinir Sistemi", "ANALİZ 1 1-A 2-B 3-C", "TEST 1 1-D 2-E 3-A"))
+        assertEquals("A", keys.get(PdfAnswerScope("sinir sistemi", 1, false, "analiz"), 1))
+        assertEquals("D", keys.get(PdfAnswerScope("sinir sistemi", 1, false), 1))
+    }
+
     private fun grid(
         options: String,
         numberTop: Int = 1370,

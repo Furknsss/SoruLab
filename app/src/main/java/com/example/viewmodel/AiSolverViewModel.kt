@@ -598,7 +598,7 @@ class AiSolverViewModel : ViewModel() {
             pageWidth = bitmap.width
         )
         val answerRows = answerRegions.flatten()
-        val answerGrids = PdfHorizontalAnswerGridReader.find(
+        var answerGrids = PdfHorizontalAnswerGridReader.find(
             cells = lines.flatMap { line ->
                 line.elements.mapNotNull { element ->
                     element.boundingBox?.let {
@@ -609,6 +609,12 @@ class AiSolverViewModel : ViewModel() {
             pageWidth = bitmap.width,
             pageHeight = bitmap.height
         )
+        // Small footer text loses accuracy in whole-page OCR. Retry only this
+        // region at a larger scale, mapping every box back to source coordinates.
+        if (answerGrids.isEmpty() && Regex("""[A-E]\s*[).]""").containsMatchIn(recognized.text)) {
+            val footerCells = recognizeAnswerFooter(bitmap)
+            answerGrids = PdfHorizontalAnswerGridReader.find(footerCells, bitmap.width, bitmap.height)
+        }
         val anchorRegex = Regex("""^\s*([1-9]|[1-3][0-9])[\.\-\)]\s*""")
         val numberRegex = Regex("""^\s*(?:[1-9]|[1-3][0-9])[\.\-\)]?$""")
         val optionRegex = Regex("""^\s*([A-E])\s*[).:]\s*""", RegexOption.IGNORE_CASE)
@@ -635,16 +641,22 @@ class AiSolverViewModel : ViewModel() {
                     anchor.top >= grid.top - 4 && anchor.bottom <= grid.bottom + 5
                 }
             }
-        val options = lines.mapNotNull { line ->
-            val match = optionRegex.find(line.text) ?: return@mapNotNull null
-            val bounds = line.boundingBox ?: return@mapNotNull null
-            QuestionOptionAnchor(
-                option = match.groupValues.getOrNull(1)?.uppercase().orEmpty(),
-                left = bounds.left,
-                top = bounds.top,
-                right = bounds.right,
-                bottom = bounds.bottom
-            )
+        // Horizontal choices often share one OCR line. Inspect elements too,
+        // otherwise only A is found and the E end boundary is lost.
+        val options = lines.flatMap { line ->
+            val candidates = line.elements.mapNotNull { element ->
+                val match = optionRegex.find(element.text) ?: return@mapNotNull null
+                val bounds = element.boundingBox ?: return@mapNotNull null
+                QuestionOptionAnchor(match.groupValues[1].uppercase(), bounds.left,
+                    bounds.top, bounds.right, bounds.bottom)
+            }
+            val lineMatch = optionRegex.find(line.text)
+            val bounds = line.boundingBox
+            // Keep full wrapped line bounds for vertical choices.
+            if (candidates.size <= 1 && lineMatch != null && bounds != null) {
+                listOf(QuestionOptionAnchor(lineMatch.groupValues[1].uppercase(),
+                    bounds.left, bounds.top, bounds.right, bounds.bottom))
+            } else candidates
         }.filterNot { option ->
             answerGrids.any { grid ->
                 option.top >= grid.top - 4 && option.bottom <= grid.bottom + 5
@@ -660,6 +672,32 @@ class AiSolverViewModel : ViewModel() {
             questionNumberAnchors = anchors,
             optionAnchors = options
         )
+    }
+
+    private suspend fun recognizeAnswerFooter(bitmap: Bitmap): List<PdfOcrTextCell> {
+        val top = (bitmap.height * 0.7f).toInt()
+        val crop = Bitmap.createBitmap(bitmap, 0, top, bitmap.width, bitmap.height - top)
+        val targetWidth = (bitmap.width * 2).coerceAtMost(3600)
+        val scale = targetWidth.toFloat() / crop.width
+        val enlarged = Bitmap.createScaledBitmap(crop, targetWidth, (crop.height * scale).toInt(), true)
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        return try {
+            val result = recognizer.process(InputImage.fromBitmap(enlarged, 0)).await()
+            result.textBlocks.flatMap { it.lines }.flatMap { it.elements }.mapNotNull { element ->
+                element.boundingBox?.let { box ->
+                    PdfOcrTextCell(element.text, (box.left / scale).toInt(), top + (box.top / scale).toInt(),
+                        (box.right / scale).toInt(), top + (box.bottom / scale).toInt())
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyList()
+        } finally {
+            recognizer.close()
+            if (enlarged !== crop) enlarged.recycle()
+            crop.recycle()
+        }
     }
 
     private suspend fun recognizeQuestionText(bitmap: Bitmap): String =
@@ -1030,13 +1068,8 @@ class AiSolverViewModel : ViewModel() {
                                 val gridHeaderScope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
                                     pageLayout.scopeHeaderText, pageInfo.topicName
                                 )
-                                if (pageLayout.answerGrids.isNotEmpty()) {
-                                    val gridScope = gridHeaderScope ?: pageQuestionScope
-                                    if (gridScope != null) {
-                                        pageLayout.answerGrids.forEach { grid ->
-                                            pendingHorizontalGrids += gridScope to grid
-                                        }
-                                    }
+                                if (pageLayout.answerGrids.isNotEmpty() && !hasAnswerKeyMarker && !isAnswerTablePage) {
+                                    detectedAnswerPages++
                                 }
                                 val skipPage = StudioImageAndPdfEngine.shouldSkipQuestionPage(
                                     text = pageLayout.text,
@@ -1055,7 +1088,13 @@ class AiSolverViewModel : ViewModel() {
                                         pageLayout.questionNumberAnchors.isNotEmpty() &&
                                             pageLayout.optionAnchors.map { it.option }
                                                 .distinct().size >= 3
-                                    if (!hasQuestionEvidence) continue
+                                    if (!hasQuestionEvidence) {
+                                        // A separate key page needs its own explicit heading.
+                                        if (gridHeaderScope != null) pageLayout.answerGrids.forEach {
+                                            pendingHorizontalGrids += gridHeaderScope to it
+                                        }
+                                        continue
+                                    }
                                 }
                                 if (skipPage) continue
                                 // A scanned foreword, contents page or advertisement
@@ -1090,7 +1129,12 @@ class AiSolverViewModel : ViewModel() {
                                 }
                                 val subjectForPage = lockedBookSubject ?: pageInfo.subjectName
                                 val subjectKey = "$examTypeForPage|$subjectForPage"
-                                val detectedTopic = StudioImageAndPdfEngine.detectTopicNameFromText(
+                                val explicitHeaderTopic = StudioImageAndPdfEngine.detectTopicNameFromText(
+                                    examType = examTypeForPage,
+                                    subjectName = subjectForPage,
+                                    text = pageLayout.scopeHeaderText
+                                )
+                                val detectedTopic = explicitHeaderTopic ?: StudioImageAndPdfEngine.detectTopicNameFromText(
                                     examType = examTypeForPage,
                                     subjectName = subjectForPage,
                                     text = pageLayout.headerText
@@ -1129,7 +1173,23 @@ class AiSolverViewModel : ViewModel() {
                                 val beginsNewTest = pageLayout.questionNumberAnchors.any { it.number == 1 }
                                 val pageAnswerScope = detectedScope
                                     ?: pageQuestionScope.takeUnless { beginsNewTest }
-                                pageQuestionScope = pageAnswerScope
+                                    ?: pageLayout.answerGrids.takeIf { grids ->
+                                        grids.isNotEmpty() && grids.all { grid ->
+                                            grid.top > (pageLayout.questionNumberAnchors.maxOfOrNull { it.bottom } ?: Int.MAX_VALUE)
+                                        } && pageLayout.questionNumberAnchors.all { anchor ->
+                                            grids.any { anchor.number in it.answers }
+                                        }
+                                    }?.let {
+                                        // A footer printed on this question page is direct evidence
+                                        // even when OCR missed its test title. Keep identity page-local.
+                                        PdfAnswerScope("pdf-page-${pageIdx + 1}", pageIdx + 1, false, "local")
+                                    }
+                                pageQuestionScope = pageAnswerScope?.takeUnless { it.testKind == "local" }
+                                // Resolve the CURRENT page before binding its key. Previously
+                                // this happened above topic detection, using the previous test.
+                                if (pageAnswerScope != null) pageLayout.answerGrids.forEach { grid ->
+                                    pendingHorizontalGrids += pageAnswerScope to grid
+                                }
 
                                 val croppedBoxes = try {
                                     StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
@@ -1181,7 +1241,12 @@ class AiSolverViewModel : ViewModel() {
                                         }.awaitAll()
                                     }
                                     croppedBoxes.mapIndexed { index, cropBox ->
-                                        val classification = classifications[index]
+                                        val recognized = classifications[index]
+                                        // Only an explicit current-page heading may fill a missing
+                                        // topic. A previous chapter or filename is not evidence.
+                                        val classification = if (recognized.topicName.isBlank() && explicitHeaderTopic != null) {
+                                            recognized.copy(topicName = explicitHeaderTopic)
+                                        } else recognized
                                         PageQuestionCandidate(
                                             cropBox = cropBox,
                                             classification = classification,

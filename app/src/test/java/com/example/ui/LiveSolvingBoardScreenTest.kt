@@ -30,6 +30,17 @@ class LiveSolvingBoardScreenTest {
     val compose = createComposeRule()
 
     @Test
+    fun tallerViewportPacksMoreQuestionsWithoutLosingTheirOrder() {
+        val template = fixtureSession().testItem.questions.first()
+        val questions = (1..12).map { number -> template.copy(id = "packed_$number", number = number,
+            croppedImagePath = "fixture.png", normLeft = 0f, normRight = 0.45f, normTop = 0f, normBottom = 0.25f) }
+        val compact = com.example.ui.screens.packQuestionsIntoTwoColumnPages(questions, 2.1f)
+        val tall = com.example.ui.screens.packQuestionsIntoTwoColumnPages(questions, 4.2f)
+        org.junit.Assert.assertTrue(tall.size < compact.size)
+        assertEquals(questions.map { it.id }, tall.flatMap { it.questions }.map { it.id })
+    }
+
+    @Test
     fun cancelFinishKeepsTheSessionActive() {
         var finishCount = 0
         showBoard(onFinish = { finishCount++ })

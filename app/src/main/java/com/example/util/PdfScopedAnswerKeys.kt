@@ -67,7 +67,8 @@ internal class PdfScopedAnswerKeys(
                 n to match.groupValues[2].uppercase(Locale.ROOT)
             }.toList()
             if (pairs.size < 2) continue // Avoid hallucinated single-character OCR matches.
-            addPairs(PdfAnswerScope(section, testNum, isOsym), pairs)
+            val kind = questionScopeNumber.find(normalize(test.value))?.groupValues?.get(1) ?: "test"
+            addPairs(PdfAnswerScope(section, testNum, isOsym, kind), pairs)
 
         }
     }
@@ -110,7 +111,7 @@ internal class PdfScopedAnswerKeys(
 
     companion object {
         private val testLabel = Regex(
-            "(?i)(?:^|\\s)((?:ÖSYM|OSYM|O[SŞ]YM)(?:\\s+TADINDA)?\\s*)?TEST\\s*[-.:–]?\\s*([0-9]{1,2})(?=\\s|$|[.:])"
+            "(?i)(?:^|\\s)((?:ÖSYM|OSYM|O[SŞ]YM)(?:\\s+TADINDA)?\\s*)?(?:TEST|ANAL[İI]Z|DENEME|UYGULAMA|ETK[İI]NL[İI]K)\\s*[-.:–]?\\s*([0-9]{1,2})(?=\\s|$|[.:])"
         )
         private val questionAnswer = Regex("(?<![0-9])([0-9]{1,3})\\s*[.\\-:)]?\\s*([A-E])(?=\\s|$|[,;|.]|[0-9])", RegexOption.IGNORE_CASE)
         private val questionScopeNumber = Regex(

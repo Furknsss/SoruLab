@@ -82,14 +82,14 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-private data class TwoColumnQuestionPage(
+internal data class TwoColumnQuestionPage(
     val left: List<YksQuestion>,
     val right: List<YksQuestion>
 ) {
     val questions: List<YksQuestion> get() = left + right
 }
 
-private fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>): List<TwoColumnQuestionPage> {
+internal fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>, columnCapacity: Float = 2.1f): List<TwoColumnQuestionPage> {
     if (questions.isEmpty()) return listOf(TwoColumnQuestionPage(emptyList(), emptyList()))
     val pages = mutableListOf<TwoColumnQuestionPage>()
     var index = 0
@@ -99,7 +99,7 @@ private fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>): List<
         repeat(2) {
             var columnHeight = 0f
             var columnCount = 0
-            while (index < questions.size && columnCount < 4) {
+            while (index < questions.size && columnCount < 8) {
                 val question = questions[index]
                 val normalizedWidth = (question.normRight - question.normLeft).coerceAtLeast(0.08f)
                 val normalizedHeight = (question.normBottom - question.normTop).coerceAtLeast(0.04f)
@@ -116,7 +116,7 @@ private fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>): List<
                     (normalizedHeight / normalizedWidth * 1.45f).coerceIn(0.16f, 1.3f)
                 }
                 val spacing = if (columnCount == 0) 0f else 0.13f
-                if (columnCount > 0 && columnHeight + spacing + estimatedHeight > 2.1f) break
+                if (columnCount > 0 && columnHeight + spacing + estimatedHeight > columnCapacity) break
                 columns[it] += question
                 columnHeight += spacing + estimatedHeight
                 columnCount++
@@ -180,7 +180,12 @@ fun LiveSolvingBoardScreen(
 ) {
     val questions = session.testItem.questions
     val totalQuestions = questions.size.coerceAtLeast(1)
-    val packedBookPages = remember(questions) { packQuestionsIntoTwoColumnPages(questions) }
+    val configuration = LocalConfiguration.current
+    val columnWidth = ((configuration.screenWidthDp - 64f) / 2f - 88f).coerceAtLeast(100f)
+    val columnCapacity = ((configuration.screenHeightDp - 230f) / columnWidth).coerceIn(2.1f, 6f)
+    val packedBookPages = remember(questions, columnCapacity) {
+        packQuestionsIntoTwoColumnPages(questions, columnCapacity)
+    }
     val totalBookPages = packedBookPages.size.coerceAtLeast(1)
     val currentQuestionId = questions.getOrNull(session.currentQuestionIndex)?.id
     val initialBookPage = packedBookPages.indexOfFirst { page ->
@@ -1361,7 +1366,7 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isLeftPopoverOpen) 60f else 1f)
                         .padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = Arrangement.Top
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     leftColumnQuestions.forEachIndexed { idx, q ->
                         BookPageQuestionItem345(
@@ -1399,7 +1404,7 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isRightPopoverOpen) 60f else 1f)
                         .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = Arrangement.Top
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     if (rightColumnQuestions.isEmpty()) {
                         Spacer(modifier = Modifier.height(80.dp))
@@ -3438,7 +3443,7 @@ private fun FullScreenSuccessReportCardView(
                                 }
                             }
                             Text(
-                                text = "Test Zorluğu: ${testDiff.label} ($testStarsFilled/5 ★)",
+                                text = "Tahmini zorluk: ${testDiff.label} ($testStarsFilled/5 ★)",
                                 color = Color(0xFF1E3A8A),
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 12.sp
@@ -3568,7 +3573,7 @@ private fun FullScreenSuccessReportCardView(
                             modifier = Modifier.weight(1.1f)
                         )
                         Text(
-                            text = "Zorluk",
+                            text = "Tahmini zorluk",
                             color = Color(0xFF64748B),
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 12.5.sp,

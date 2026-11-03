@@ -466,13 +466,14 @@ private fun DenemelerTabHost(
             onAddCustomPublisher = { name, shortCode, logoPath ->
                 mainViewModel.addCustomPublisher(name, shortCode, logoPath)
             },
-            onSaveExtractedPdfBatch = { extractedItems, publisherName, publisherLogoUri, bookTitle, coverPath ->
+            onSaveExtractedPdfBatch = { extractedItems, publisherName, publisherLogoUri, bookTitle, coverPath, onSaved ->
                 mainViewModel.saveExtractedPdfQuestionsBatch(
                     extractedItems = extractedItems,
                     publisherName = publisherName,
                     publisherLogoUri = publisherLogoUri,
                     bookOrTestName = bookTitle,
-                    bookCoverPath = coverPath
+                    bookCoverPath = coverPath,
+                    onSaved = onSaved
                 )
             },
             onDismissError = {

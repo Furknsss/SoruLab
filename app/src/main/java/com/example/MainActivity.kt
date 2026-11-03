@@ -263,6 +263,7 @@ private fun ActiveSolvingSessionHost(
         LiveSolvingBoardScreen(
             session = curSession.copy(elapsedSeconds = elapsedSeconds),
             strokes = strokesForCurrent,
+            currentCanvasKey = canvasKey,
             activeTool = activeTool,
             selectedStrokeSizeIndex = selectedStrokeSizeIndex,
             selectedPenColorHex = selectedPenColorHex,
@@ -271,11 +272,11 @@ private fun ActiveSolvingSessionHost(
             onSelectTool = { mainViewModel.selectDrawingTool(it) },
             onSelectStrokeSize = { mainViewModel.selectStrokeSize(it) },
             onSelectPenColor = { mainViewModel.selectPenColor(it) },
-            onAddStroke = { points, pressures ->
-                mainViewModel.addStrokeToCurrentCanvas(points, pressures)
+            onAddStroke = { canvas, points, pressures ->
+                mainViewModel.addStrokeToCanvas(canvas, points, pressures)
             },
             onBookPageChanged = { mainViewModel.selectBookPageIndex(it) },
-            onClearCanvas = { mainViewModel.clearCurrentCanvasStrokes() },
+            onClearCanvas = { canvas -> mainViewModel.clearCanvasStrokes(canvas) },
             onSelectQuestionIndex = { mainViewModel.selectQuestionIndex(it) },
             onSelectOption = { qNum, opt -> mainViewModel.selectOptionForQuestion(qNum, opt) },
             onToggleOpticalForm = { mainViewModel.toggleOpticalFormDrawer() },

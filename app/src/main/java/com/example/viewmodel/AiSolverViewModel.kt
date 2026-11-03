@@ -1082,7 +1082,8 @@ class AiSolverViewModel : ViewModel() {
                                             pageBitmap.height).toInt().coerceIn(1, pageBitmap.height)
                                     )
                                 }.orEmpty()
-                                val sourceBackedPage = nativeAnchors.size >= 4 &&
+                                val sourceBackedPage = nativeAnchors.size >= 2 &&
+                                    nativeAnchors.size >= ocrPageLayout.questionNumberAnchors.size &&
                                     pageIdx in localBlueprint.pageVectorOptionEvidence
                                 val pageLayout = if (sourceBackedPage) {
                                     ocrPageLayout.copy(questionNumberAnchors = nativeAnchors)

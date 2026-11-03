@@ -19,4 +19,23 @@ class PdfOptionEvidenceTest {
         assertTrue(PdfOptionEvidence.letters("A. B. C. D. E.").isEmpty())
         assertTrue(PdfOptionEvidence.letters("").isEmpty())
     }
+    @Test
+    fun `different publishers may print dotted colon or parenthesized choices`() {
+        val source = listOf(
+            "A. Doğru seçenek",
+            "B: Açıklama",
+            "(C) Grafik yorumlama",
+            "D ) Şekildeki değer",
+            "E) Sonuç"
+        ).joinToString("\n")
+        assertEquals(setOf("A", "B", "C", "D", "E"), PdfOptionEvidence.letters(source))
+    }
+
+    @Test
+    fun `inline abbreviations and empty option labels are not evidence`() {
+        assertTrue(PdfOptionEvidence.letters("DNA RNA ATP").isEmpty())
+        assertTrue(PdfOptionEvidence.letters("A. B. C. D. E.").isEmpty())
+        assertTrue(PdfOptionEvidence.letters("A: B: C: D: E:").isEmpty())
+    }
+
 }

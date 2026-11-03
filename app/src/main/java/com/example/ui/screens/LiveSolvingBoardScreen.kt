@@ -66,6 +66,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -106,7 +107,9 @@ internal fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>, colum
         repeat(2) {
             var columnHeight = 0f
             var columnCount = 0
-            while (index < questions.size && columnCount < 8) {
+            // Fixed-height tablet sheets need room: at most two questions
+            // per column; a full page flips instead of scrolling vertically.
+            while (index < questions.size && columnCount < 2) {
                 val question = questions[index]
                 val normalizedWidth = (question.normRight - question.normLeft).coerceAtLeast(0.08f)
                 val normalizedHeight = (question.normBottom - question.normTop).coerceAtLeast(0.04f)
@@ -1490,6 +1493,13 @@ private fun RealTwoColumnBookPageSurface(
             .background(Color.White)
     ) {
         val pageMinHeight = maxHeight
+        val perColumnCount = maxOf(
+            leftColumnQuestions.size, rightColumnQuestions.size, 1
+        )
+        val maxQuestionImageHeight = (
+            (pageMinHeight - 104.dp).coerceAtLeast(220.dp) /
+                perColumnCount.toFloat() - 42.dp
+        ).coerceAtLeast(120.dp)
 
         // Dışarı tıklandığında açık olan `⋮` Popover menüsünü kapatan şeffaf arka plan katmanı
         if (openThreeDotQuestionNumber != null) {
@@ -1509,17 +1519,14 @@ private fun RealTwoColumnBookPageSurface(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
-                .heightIn(min = pageMinHeight)
-                .verticalScroll(scrollState)
-                .padding(horizontal = 12.dp, vertical = 4.dp),
+                .padding(horizontal = 28.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // ÇİFT SÜTUNLU (SOL SÜTUN & SAĞ SÜTUN) VE ORTADAN İNCE DİKEY ÇİZGİLİ TAM SAYFA DÜZENİ
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = (pageMinHeight - 76.dp).coerceAtLeast(360.dp))
-                    .height(IntrinsicSize.Min),
+                    .weight(1f, fill = true),
                 horizontalArrangement = Arrangement.spacedBy(0.dp),
                 verticalAlignment = Alignment.Top
             ) {
@@ -1536,6 +1543,7 @@ private fun RealTwoColumnBookPageSurface(
                     leftColumnQuestions.forEachIndexed { idx, q ->
                         BookPageQuestionItem345(
                             question = q,
+                            maxImageHeight = maxQuestionImageHeight,
                             isReviewMode = session.isReviewMode,
                             selectedOption = session.selectedAnswers[q.number],
                             isThreeDotMenuOpen = openThreeDotQuestionNumber == q.number,
@@ -1577,6 +1585,7 @@ private fun RealTwoColumnBookPageSurface(
                         rightColumnQuestions.forEachIndexed { idx, q ->
                             BookPageQuestionItem345(
                                 question = q,
+                                maxImageHeight = maxQuestionImageHeight,
                                 isReviewMode = session.isReviewMode,
                                 selectedOption = session.selectedAnswers[q.number],
                                 isThreeDotMenuOpen = openThreeDotQuestionNumber == q.number,
@@ -1645,6 +1654,7 @@ private fun RealTwoColumnBookPageSurface(
 @Composable
 private fun BookPageQuestionItem345(
     question: YksQuestion,
+    maxImageHeight: Dp = 560.dp,
     isReviewMode: Boolean,
     selectedOption: String?,
     isThreeDotMenuOpen: Boolean,
@@ -1824,6 +1834,7 @@ private fun BookPageQuestionItem345(
                         alignment = Alignment.TopStart,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(max = maxImageHeight)
                             .aspectRatio(bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1))
                             .background(Color.White)
                     )

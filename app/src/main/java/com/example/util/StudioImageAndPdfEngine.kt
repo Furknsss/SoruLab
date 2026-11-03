@@ -1711,7 +1711,8 @@ object StudioImageAndPdfEngine {
         totalPages: Int,
         reusablePixelsRef: Array<IntArray?>,
         questionNumberAnchors: List<QuestionNumberAnchor> = emptyList(),
-        optionAnchors: List<QuestionOptionAnchor> = emptyList()
+        optionAnchors: List<QuestionOptionAnchor> = emptyList(),
+        maxQuestionBottomY: Int? = null
     ): List<LocalCroppedBoxResult> {
         if (pageBitmap.isRecycled) return emptyList()
         val width = pageBitmap.width
@@ -1733,7 +1734,8 @@ object StudioImageAndPdfEngine {
             pageIndex = pageIndex,
             totalPages = totalPages,
             questionNumberAnchors = questionNumberAnchors,
-            optionAnchors = optionAnchors
+            optionAnchors = optionAnchors,
+            maxQuestionBottomY = maxQuestionBottomY
         )
     }
 
@@ -1814,7 +1816,8 @@ object StudioImageAndPdfEngine {
         pageIndex: Int,
         totalPages: Int,
         questionNumberAnchors: List<QuestionNumberAnchor>,
-        optionAnchors: List<QuestionOptionAnchor>
+        optionAnchors: List<QuestionOptionAnchor>,
+        maxQuestionBottomY: Int?
     ): List<LocalCroppedBoxResult> {
         // 1. Estimate background paper luminance so off-white / gray / yellow backgrounds are ignored
         var highLumSum = 0L

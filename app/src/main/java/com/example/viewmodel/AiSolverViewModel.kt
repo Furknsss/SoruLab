@@ -1121,7 +1121,12 @@ class AiSolverViewModel : ViewModel() {
                                         totalPages = rendererTotal,
                                         reusablePixelsRef = reusablePixelsRef,
                                         questionNumberAnchors = pageLayout.questionNumberAnchors,
-                                        optionAnchors = pageLayout.optionAnchors
+                                        optionAnchors = pageLayout.optionAnchors,
+                                        maxQuestionBottomY = pageLayout.answerGrids
+                                            .filter { grid ->
+                                                grid.top > (pageLayout.questionNumberAnchors
+                                                    .maxOfOrNull { it.top } ?: Int.MAX_VALUE)
+                                            }.minOfOrNull { it.top }
                                     )
                                 } catch (e: CancellationException) {
                                     throw e
@@ -1209,7 +1214,7 @@ class AiSolverViewModel : ViewModel() {
                                             questionNumberInTest = candidate.answerKeyQuestionNumber
                                                 ?: cropBox.questionOrderInPage,
                                             sourceTestId = pageAnswerScope?.let { scope ->
-                                                "${scope.section}~${if (scope.isOsymTest) "osym" else "normal"}~${scope.testNumber}"
+                                                "${scope.section}~${if (scope.isOsymTest) "osym" else scope.testKind}~${scope.testNumber}"
                                             }.orEmpty()
                                         )
                                     )

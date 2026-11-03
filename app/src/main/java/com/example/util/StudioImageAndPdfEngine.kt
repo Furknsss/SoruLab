@@ -2189,7 +2189,14 @@ object StudioImageAndPdfEngine {
         val hasRightNumberAnchor = questionNumberAnchors.any {
             it.left in (width * 0.56f).roundToInt() until width
         }
-        val isDualColumn = (hasLeftNumberAnchor && hasRightNumberAnchor) ||
+        val strongPrintedColumns = PdfColumnLayoutEvidence.hasTwoPrintedColumns(
+            questionNumberAnchors, width, bodyTop, bodyBottom
+        )
+        // Fixed 56%-width right-column threshold misses many textbook
+        // layouts whose right question numbers start around 52–54%.
+        // Strong consecutive printed numbers override a faint pixel gutter.
+        val isDualColumn = strongPrintedColumns ||
+            (hasLeftNumberAnchor && hasRightNumberAnchor) ||
             (avgGutterRowInk < 0.048f &&
                 leftHalfInk >= minHalfInkThreshold &&
                 rightHalfInk >= minHalfInkThreshold)

@@ -1057,6 +1057,8 @@ class AiSolverViewModel : ViewModel() {
 
                 val allExtractedQuestions = mutableListOf<ExtractedPdfQuestionItem>()
                 val expectedScopeByQuestionId = mutableMapOf<String, PdfAnswerScope>()
+                val unsafeCropQuestionIds = mutableSetOf<String>()
+                var mergedOrMisnumberedCropCount = 0
                 val pendingHorizontalGrids = mutableListOf<Pair<PdfAnswerScope, PdfHorizontalAnswerGrid>>()
                 val pendingVectorFooterKeys = mutableListOf<Pair<PdfAnswerScope, Map<Int, String>>>()
                 var detectedAnswerPages = 0
@@ -1447,6 +1449,23 @@ class AiSolverViewModel : ViewModel() {
                                     }
                                 }
 
+                                // A successful image save is NOT proof that
+                                // exactly one source question was cropped.
+                                // Validate rectangles against native printed
+                                // question coordinates when available.
+                                val unsafeCropIndexes = if (nativeAnchors.size >= 2) {
+                                    croppedBoxes.indices.filter { cropIndex ->
+                                        val box = croppedBoxes[cropIndex]
+                                        com.example.util.PdfCropGeometryAudit.issues(
+                                            com.example.util.PdfQuestionCropEvidence(
+                                                box.questionOrderInPage, box.boxNormalized
+                                            ),
+                                            nativeAnchors, pageBitmap.width, pageBitmap.height
+                                        ).isNotEmpty()
+                                    }.toSet()
+                                } else emptySet()
+                                mergedOrMisnumberedCropCount += unsafeCropIndexes.size
+
                                 val pageCandidates = if (croppedBoxes.isEmpty()) {
                                     emptyList()
                                 } else {
@@ -1497,6 +1516,12 @@ class AiSolverViewModel : ViewModel() {
                                         "local_q_${System.currentTimeMillis()}_p${pageIdx + 1}_${boxIdx + 1}_$globalQuestionNum"
                                     if (pageAnswerScope != null) {
                                         expectedScopeByQuestionId[extractedId] = pageAnswerScope
+                                    }
+                                    if (boxIdx in unsafeCropIndexes) {
+                                        // Keep for manual correction, but NEVER
+                                        // grade this visually inconsistent crop
+                                        // as a verified answer.
+                                        unsafeCropQuestionIds.add(extractedId)
                                     }
 
                                     allExtractedQuestions.add(
@@ -1566,7 +1591,7 @@ class AiSolverViewModel : ViewModel() {
                     val original = allExtractedQuestions[idx]
                     val scope = expectedScopeByQuestionId[original.id]
                     val correct = scopedAnswers.get(scope, original.questionNumberInTest)
-                    if (correct != null) {
+                    if (correct != null && original.id !in unsafeCropQuestionIds) {
                         allExtractedQuestions[idx] = original.copy(
                             correctOption = correct,
                             answerKeyMatched = true,
@@ -1613,6 +1638,11 @@ class AiSolverViewModel : ViewModel() {
                             (printed - detected).takeIf { it.isNotEmpty() }
                                 ?.let { pageIndex to it }
                         }
+                    if (mergedOrMisnumberedCropCount > 0) {
+                        add("KIRPMA BÜTÜNLÜĞÜ: $mergedOrMisnumberedCropCount görüntüde birden " +
+                            "fazla basılı soru numarası veya yanlış soru başlangıcı saptandı. " +
+                            "Bu görüntüler cevapları bulunsa bile doğrulanmış sayılmadı.")
+                    }
                     val missedPrintedCount = vectorMissingByPage.sumOf { it.second.size }
                     if (missedPrintedCount > 0) {
                         val preview = vectorMissingByPage.take(8).joinToString(", ") {

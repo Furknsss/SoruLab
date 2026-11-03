@@ -100,4 +100,17 @@ class PdfVectorQuestionAnchorsTest {
         )
     }
 
+    @Test
+    fun sourcePdfMarkersBeyondQuestionNinetyNineAreKept() {
+        val glyphs = listOf(
+            PdfSourceGlyph("118.", 53f, 90f, 20f, 9f),
+            PdfSourceGlyph("119)", 53f, 320f, 20f, 9f),
+            PdfSourceGlyph("120:", 53f, 540f, 20f, 9f)
+        )
+        assertEquals(
+            listOf(118, 119, 120),
+            PdfVectorQuestionAnchors.find(glyphs, 623f, 807f).map { it.number }
+        )
+    }
+
 }

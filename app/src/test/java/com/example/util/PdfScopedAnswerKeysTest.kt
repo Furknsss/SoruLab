@@ -212,4 +212,19 @@ class PdfScopedAnswerKeysTest {
         assertEquals("D", keys.get(photo, 2))
     }
 
+
+    @Test
+    fun `unrecognized chapter between fused test labels invalidates inherited scope`() {
+        val keys = PdfScopedAnswerKeys(setOf("sinir sistemi"))
+        keys.addOcrRows(listOf(
+            "SİNİR SİSTEMİ TEST 1 1.A 2.B UNKNOWN CHAPTER TEST 2 1.C 2.D TEST 3 1.E 2.A"
+        ))
+        val first = PdfAnswerScope("sinir sistemi", 1, false)
+        val second = PdfAnswerScope("sinir sistemi", 2, false)
+        val third = PdfAnswerScope("sinir sistemi", 3, false)
+        assertEquals("A", keys.get(first, 1))
+        assertNull(keys.get(second, 1))
+        assertNull(keys.get(third, 1))
+    }
+
 }

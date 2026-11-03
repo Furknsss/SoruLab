@@ -2205,14 +2205,16 @@ object StudioImageAndPdfEngine {
         val gutterMargin = (width * 0.012f).roundToInt().coerceAtLeast(10)
         val outerMargin = (width * 0.02f).roundToInt().coerceAtLeast(8)
 
-        val columns: List<Triple<Int, Int, Int>> = if (isDualColumn) {
-            listOf(
-                Triple(outerMargin, (midX - gutterMargin).coerceAtLeast(outerMargin + 120), 0),
-                Triple((midX + gutterMargin).coerceAtMost(width - outerMargin - 120), width - outerMargin, 1)
-            )
-        } else {
-            listOf(Triple(outerMargin, width - outerMargin, 0))
-        }
+        val columns = PdfColumnGeometry.columns(
+            width = width,
+            gutterX = midX,
+            gutterMargin = gutterMargin,
+            outerMargin = outerMargin,
+            isDualColumn = isDualColumn,
+            anchors = questionNumberAnchors,
+            bodyTop = bodyTop,
+            bodyBottom = bodyBottom
+        )
 
         val results = mutableListOf<LocalCroppedBoxResult>()
 

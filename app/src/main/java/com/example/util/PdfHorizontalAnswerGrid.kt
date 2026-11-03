@@ -123,7 +123,7 @@ internal object PdfHorizontalAnswerGridReader {
     // If ML Kit grouped an entire numbered row or answer row as one element,
     // recover the individual horizontal cell centers from the row bounds.
     private fun expandSimpleRow(cell: PdfOcrTextCell): List<PdfOcrTextCell> {
-        val tokens = cell.text.trim().split(Regex("""\\s+"""))
+        val tokens = cell.text.trim().split(Regex("""\s+"""))
         if (tokens.size < 4 ||
             !(tokens.all { numberToken.matches(it) } ||
                 tokens.all { optionToken.matches(it) })

@@ -159,4 +159,72 @@ class PdfScopedAnswerKeysTest {
         assertEquals("B", index.get(test2, 1))
     }
 
+
+    @Test
+    fun `missing scope and contradictory OCR cells are reported separately`() {
+        val keys = PdfScopedAnswerKeys()
+        keys.addOcrRows(listOf(
+            "SİNİR SİSTEMİ",
+            "Test 1 1.A 2.B 3.C",
+            "Test 1 1.E 2.B 3.C"
+        ))
+        val nerve = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 1\nSinir Sistemi", "Sinir Sistemi"
+        )
+        val unrelated = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 2\nSinir Sistemi", "Sinir Sistemi"
+        )
+        assertTrue(keys.hasRecognizedScope(nerve))
+        assertFalse(keys.hasRecognizedScope(unrelated))
+        assertTrue(keys.hasConflictingAnswer(nerve, 1))
+        assertFalse(keys.hasConflictingAnswer(nerve, 2))
+        assertNull(keys.get(nerve, 1))
+        assertEquals("B", keys.get(nerve, 2))
+    }
+
+
+    @Test
+    fun `two test labels inside one OCR row do not swallow the next test`() {
+        val keys = PdfScopedAnswerKeys()
+        keys.addOcrRows(listOf(
+            "SİNİR SİSTEMİ",
+            "Test 1 1.A 2.B Test 2 1.C 2.D"
+        ))
+        val first = PdfAnswerScope("sinir sistemi", 1, false)
+        val second = PdfAnswerScope("sinir sistemi", 2, false)
+        assertEquals("A", keys.get(first, 1))
+        assertEquals("B", keys.get(first, 2))
+        assertEquals("C", keys.get(second, 1))
+        assertEquals("D", keys.get(second, 2))
+    }
+
+    @Test
+    fun `visible chapter change inside one OCR row changes the answer scope`() {
+        val keys = PdfScopedAnswerKeys(setOf("sinir sistemi", "fotosentez"))
+        keys.addOcrRows(listOf(
+            "SİNİR SİSTEMİ TEST 1 1.A 2.B FOTOSENTEZ TEST 1 1.E 2.D"
+        ))
+        val nerve = PdfAnswerScope("sinir sistemi", 1, false)
+        val photo = PdfAnswerScope("fotosentez", 1, false)
+        assertEquals("A", keys.get(nerve, 1))
+        assertEquals("B", keys.get(nerve, 2))
+        assertEquals("E", keys.get(photo, 1))
+        assertEquals("D", keys.get(photo, 2))
+    }
+
+
+    @Test
+    fun `unrecognized chapter between fused test labels invalidates inherited scope`() {
+        val keys = PdfScopedAnswerKeys(setOf("sinir sistemi"))
+        keys.addOcrRows(listOf(
+            "SİNİR SİSTEMİ TEST 1 1.A 2.B UNKNOWN CHAPTER TEST 2 1.C 2.D TEST 3 1.E 2.A"
+        ))
+        val first = PdfAnswerScope("sinir sistemi", 1, false)
+        val second = PdfAnswerScope("sinir sistemi", 2, false)
+        val third = PdfAnswerScope("sinir sistemi", 3, false)
+        assertEquals("A", keys.get(first, 1))
+        assertNull(keys.get(second, 1))
+        assertNull(keys.get(third, 1))
+    }
+
 }

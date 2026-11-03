@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
   push:
     branches: ['feat/premium-pdf-v5']
+  pull_request:
+    branches: ['feat/premium-pdf-v5']
 permissions:
   contents: read
 jobs:
@@ -32,6 +34,22 @@ jobs:
           else
             keytool -genkeypair -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -validity 10000
           fi
+      - name: Run answer-key matching regression tests
+        run: >-
+          bash ./gradlew :app:testDebugUnitTest
+          --tests com.example.util.PdfAdaptiveAnswerRowsTest
+          --tests com.example.util.PdfScopedAnswerKeysTest
+          --no-daemon --no-configuration-cache --max-workers=2
+      - name: Upload answer-key test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoruLab-answer-key-test-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: ignore
+          retention-days: 7
       - run: bash ./gradlew :app:assembleDebug --no-daemon --no-configuration-cache --max-workers=2
       - uses: actions/upload-artifact@v4
         with:

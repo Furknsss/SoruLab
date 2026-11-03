@@ -31,45 +31,73 @@ internal class PdfScopedAnswerKeys(
         for ((rowIndex, row) in rows.withIndex()) {
             val clean = row.trim().replace(Regex("\\s+"), " ")
             if (clean.isEmpty()) continue
-            val test = testLabel.find(clean)
-            val sectionHeading = if (test != null) {
-                identifySection(clean.substring(0, test.range.first))
+            // ML Kit may merge several horizontally printed tests into a single
+            // line. The first label alone must not consume the next test's cells.
+            val tests = testLabel.findAll(clean).toList()
+            val firstTest = tests.firstOrNull()
+            val sectionHeading = if (firstTest != null) {
+                identifySection(clean.substring(0, firstTest.range.first))
             } else identifySection(clean)
             if (sectionHeading != null) {
                 currentSection = sectionHeading
                 lastRecognizedSection = sectionHeading
             }
-            // A heading and its first test may share a printed table row.
-            // In that case process both, never skip the test after the heading.
-            if (test == null) continue
-            // Some publishers print the chapter and test on one line:
-            // "Sinir Sistemi  TEST-1  1.B 2.C". Resolve against the
-            // actual headings discovered in THIS PDF, not a brand preset.
-            val section = currentSection ?: continue // Never guess the section.
-            val testNum = test.groupValues[2].toIntOrNull() ?: continue
-            val isOsym = normalize(test.groupValues[1]).contains("osym")
-            val tail = clean.substring(test.range.last + 1)
-            // ML Kit often places the dark-purple 'Test 1' label and the
-            // adjacent pale answer cells on DIFFERENT text rows. Allow a
-            // strictly adjacent row of answer cells; never borrow answers
-            // from the next test or the next chapter.
-            val adjacent = rows.getOrNull(rowIndex + 1).orEmpty().trim()
-            val continuation = adjacent.takeIf { next ->
-                !testLabel.containsMatchIn(next) &&
-                    detectSectionHeading(next) == null &&
-                    questionAnswer.findAll(next).count() >= 2
-            }.orEmpty()
-            val answerCells = if (questionAnswer.findAll(tail).count() >= 2) tail
-                else "$tail $continuation"
-            val pairs = questionAnswer.findAll(answerCells).mapNotNull { match ->
-                val n = match.groupValues[1].toIntOrNull() ?: return@mapNotNull null
-                if (n !in 1..200) return@mapNotNull null
-                n to match.groupValues[2].uppercase(Locale.ROOT)
-            }.toList()
-            if (pairs.size < 2) continue // Avoid hallucinated single-character OCR matches.
-            val kind = questionScopeNumber.find(normalize(test.value))?.groupValues?.get(1) ?: "test"
-            addPairs(PdfAnswerScope(section, testNum, isOsym, kind), pairs)
+            if (tests.isEmpty()) continue
 
+            for ((labelIndex, test) in tests.withIndex()) {
+                if (labelIndex > 0) {
+                    // The same OCR line may also cross a chapter boundary.
+                    // If text other than answer cells precedes this test label,
+                    // require an independently recognized new section; otherwise
+                    // never attribute those cells to the prior chapter.
+                    val between = clean.substring(
+                        tests[labelIndex - 1].range.last + 1, test.range.first
+                    )
+                    val remainder = questionAnswer.replace(between, " ").trim()
+                    if (normalize(remainder).isNotBlank()) {
+                        val newSection = identifySection(remainder)
+                        if (newSection == null) {
+                            // Unknown chapter text must invalidate the prior
+                            // section even for subsequent tests on this row.
+                            currentSection = null
+                            lastRecognizedSection = null
+                            continue
+                        }
+                        currentSection = newSection
+                        lastRecognizedSection = newSection
+                    }
+                }
+                val section = currentSection ?: continue
+                val testNum = test.groupValues[2].toIntOrNull() ?: continue
+                val isOsym = normalize(test.groupValues[1]).contains("osym")
+                val nextTest = tests.getOrNull(labelIndex + 1)
+                val tail = clean.substring(
+                    test.range.last + 1, nextTest?.range?.first ?: clean.length
+                )
+
+                // A label and its cells can occupy adjacent OCR lines. Only
+                // the LAST test on this line may borrow that next line.
+                val adjacent = if (nextTest == null) {
+                    rows.getOrNull(rowIndex + 1).orEmpty().trim()
+                } else ""
+                val continuation = adjacent.takeIf { next ->
+                    !testLabel.containsMatchIn(next) &&
+                        detectSectionHeading(next) == null &&
+                        questionAnswer.findAll(next).count() >= 2
+                }.orEmpty()
+                val answerCells = if (questionAnswer.findAll(tail).count() >= 2) {
+                    tail
+                } else "$tail $continuation"
+                val pairs = questionAnswer.findAll(answerCells).mapNotNull { match ->
+                    val n = match.groupValues[1].toIntOrNull() ?: return@mapNotNull null
+                    if (n !in 1..200) return@mapNotNull null
+                    n to match.groupValues[2].uppercase(Locale.ROOT)
+                }.toList()
+                if (pairs.size < 2) continue // Reject isolated OCR fragments.
+                val kind = questionScopeNumber.find(normalize(test.value))
+                    ?.groupValues?.get(1) ?: "test"
+                addPairs(PdfAnswerScope(section, testNum, isOsym, kind), pairs)
+            }
         }
     }
 
@@ -108,6 +136,16 @@ internal class PdfScopedAnswerKeys(
         if (scope == null || questionNumber == null || questionNumber <= 0) return null
         return answers[PdfAnswerId(scope, questionNumber)]
     }
+
+    /** Distinguish unread answer-key scopes from missing cells inside a known scope. */
+    fun hasRecognizedScope(scope: PdfAnswerScope?): Boolean =
+        scope != null && (answers.keys.any { it.scope == scope } ||
+            ambiguous.any { it.scope == scope })
+
+    /** Conflicting OCR/key evidence cannot be graded but can be reported. */
+    fun hasConflictingAnswer(scope: PdfAnswerScope?, questionNumber: Int?): Boolean =
+        scope != null && questionNumber != null &&
+            PdfAnswerId(scope, questionNumber) in ambiguous
 
     companion object {
         private val testLabel = Regex(

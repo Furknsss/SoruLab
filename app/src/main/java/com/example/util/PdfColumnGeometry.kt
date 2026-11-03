@@ -30,7 +30,12 @@ internal object PdfColumnGeometry {
         val outside = outerMargin.coerceIn(0, width / 8)
         if (!isDualColumn) return listOf(PdfCropColumn(outside, width - outside, 0))
 
-        val safeGutter = gutterX.coerceIn(outside + 120, width - outside - 120)
+        // The cropper requires at least 120 pixels per column; on unusually
+        // narrow pages do not manufacture two invalid overlapping crops.
+        if (width - 2 * outside < 244) {
+            return listOf(PdfCropColumn(outside, width - outside, 0))
+        }
+        val safeGutter = gutterX.coerceIn(outside + 124, width - outside - 120)
         val margin = gutterMargin.coerceIn(2, width / 12)
         val validatedColumns = PdfColumnLayoutEvidence.findTwoPrintedColumnStarts(
             anchors, width, bodyTop, bodyBottom
@@ -41,7 +46,7 @@ internal object PdfColumnGeometry {
         val rightStart = min(
             safeGutter + margin,
             inkAwareRight ?: (safeGutter + margin)
-        ).coerceIn(outside + 120, width - outside - 120)
+        ).coerceIn(outside + 124, width - outside - 120)
         val leftEnd = min(
             safeGutter - margin,
             rightStart - 6

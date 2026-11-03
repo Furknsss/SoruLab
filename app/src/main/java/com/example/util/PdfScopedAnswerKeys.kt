@@ -204,7 +204,7 @@ internal class PdfScopedAnswerKeys(
             // short heading area supplied by the page reader, never question
             // body text, and never guess a number when none was printed.
             val splitHeaderTest = if (matchedTest == null) {
-                Regex("""\\b(analiz|sentez)\\b(?:\\s+[a-z]{2,}(?:\\s+[a-z]{2,}){0,8})?\\s+([0-9]{1,2})(?=\\s|$)""")
+                Regex("""\b(analiz|sentez)\b(?:\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,8})?\s+([0-9]{1,2})(?=\s|$)""")
                     .find(normalizedHeader)
             } else null
             val match = matchedTest ?: splitHeaderTest ?: return null

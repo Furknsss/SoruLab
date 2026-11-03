@@ -630,6 +630,11 @@ class AiSolverViewModel : ViewModel() {
                 bottom = bounds.bottom
             )
         }.distinctBy { Triple(it.number, it.left, it.top) }
+            .filterNot { anchor ->
+                answerGrids.any { grid ->
+                    anchor.top >= grid.top - 4 && anchor.bottom <= grid.bottom + 5
+                }
+            }
         val options = lines.mapNotNull { line ->
             val match = optionRegex.find(line.text) ?: return@mapNotNull null
             val bounds = line.boundingBox ?: return@mapNotNull null
@@ -640,6 +645,10 @@ class AiSolverViewModel : ViewModel() {
                 right = bounds.right,
                 bottom = bounds.bottom
             )
+        }.filterNot { option ->
+            answerGrids.any { grid ->
+                option.top >= grid.top - 4 && option.bottom <= grid.bottom + 5
+            }
         }
         return PdfPageOcrLayout(
             text = recognized.text,

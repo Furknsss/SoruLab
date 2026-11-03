@@ -1049,7 +1049,7 @@ class AiSolverViewModel : ViewModel() {
                                 }
                                 if (pageBitmap == null) continue
 
-                                val pageLayout = try {
+                                val ocrPageLayout = try {
                                     recognizePdfPageLayout(pageBitmap)
                                 } catch (e: CancellationException) {
                                     throw e
@@ -1061,6 +1061,33 @@ class AiSolverViewModel : ViewModel() {
                                     processingStatus.ocrFailureCount++
                                     PdfPageOcrLayout()
                                 }
+                                // Prefer a geometrically validated native text-layer
+                                // question run when OCR lost printed numbers. The
+                                // detector requires a consecutive aligned sequence;
+                                // scanned/image-only pages keep their ML Kit anchors.
+                                val source = localBlueprint.pageVectorQuestionAnchors[pageIdx]
+                                val nativeAnchors = source?.takeIf {
+                                    it.pageWidth > 0f && it.pageHeight > 0f
+                                }?.anchors?.map { anchor ->
+                                    QuestionNumberAnchor(
+                                        number = anchor.number,
+                                        left = (anchor.x / source.pageWidth * pageBitmap.width).toInt()
+                                            .coerceIn(0, pageBitmap.width - 1),
+                                        top = (anchor.y / source.pageHeight * pageBitmap.height).toInt()
+                                            .coerceIn(0, pageBitmap.height - 1),
+                                        right = ((anchor.x + anchor.width) / source.pageWidth *
+                                            pageBitmap.width).toInt().coerceIn(1, pageBitmap.width),
+                                        bottom = ((anchor.y + anchor.height) / source.pageHeight *
+                                            pageBitmap.height).toInt().coerceIn(1, pageBitmap.height)
+                                    )
+                                }.orEmpty()
+                                val sourceBackedPage = nativeAnchors.size >= 4 &&
+                                    pageIdx in localBlueprint.pageVectorOptionEvidence
+                                val pageLayout = if (sourceBackedPage) {
+                                    ocrPageLayout.copy(questionNumberAnchors = nativeAnchors)
+                                } else ocrPageLayout
+                                val hasQuestionOptions = sourceBackedPage ||
+                                    pageLayout.optionAnchors.map { it.option }.distinct().size >= 3
                                 val hasAnswerKeyMarker =
                                     StudioImageAndPdfEngine.hasAnswerKeyMarker(pageLayout.text)
                                 val isAnswerTablePage =
@@ -1098,8 +1125,7 @@ class AiSolverViewModel : ViewModel() {
                                     // multiple-choice question evidence.
                                     val hasQuestionEvidence =
                                         pageLayout.questionNumberAnchors.isNotEmpty() &&
-                                            pageLayout.optionAnchors.map { it.option }
-                                                .distinct().size >= 3
+                                            hasQuestionOptions
                                     if (!hasQuestionEvidence) {
                                         // A separate key page needs its own explicit heading.
                                         if (gridHeaderScope != null) pageLayout.answerGrids.forEach {
@@ -1108,12 +1134,12 @@ class AiSolverViewModel : ViewModel() {
                                         continue
                                     }
                                 }
-                                if (skipPage) continue
+                                if (skipPage && !sourceBackedPage) continue
                                 // A scanned foreword, contents page or advertisement
                                 // can have numbered paragraphs that look like 1./2.
                                 // Require A-E evidence before creating YKS questions.
                                 if (pageLayout.questionNumberAnchors.isEmpty() ||
-                                    pageLayout.optionAnchors.map { it.option }.distinct().size < 3) {
+                                    !hasQuestionOptions) {
                                     continue
                                 }
 
@@ -1379,6 +1405,13 @@ class AiSolverViewModel : ViewModel() {
                         "$detectedAnswerPages olası cevap sayfası • ${scopedAnswers.answerCount} okunan cevap • " +
                         "${allExtractedQuestions.count { it.answerKeyMatched }} doğrulanmış soru • " +
                         "${allExtractedQuestions.count { !it.answerKeyMatched }} inceleme gerekiyor.")
+                    val vectorExpected = localBlueprint.pageTextFooterKeys.values.sumOf { it.size }
+                    if (vectorExpected > 0 && allExtractedQuestions.size != vectorExpected) {
+                        add("ÖNEMLİ: PDF metin katmanındaki $vectorExpected cevap hücresine karşılık " +
+                            "yalnızca ${allExtractedQuestions.size} soru kesildi. Eksik veya fazla " +
+                            "kırpmalar için sayfa önizlemesini kontrol edin; eksik kitabı tam " +
+                            "aktarılmış saymayın.")
+                    }
                     if (scopedAnswers.answerCount == 0) {
                         add("$detectedAnswerPages olası cevap anahtarı sayfası tarandı ancak " +
                             "geçerli test-cevap eşleşmesi bulunamadı. Hiçbir cevap tahmin edilmedi.")

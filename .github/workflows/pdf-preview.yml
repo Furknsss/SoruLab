@@ -4,7 +4,7 @@ on:
   push:
     branches: ['feat/premium-pdf-v5', 'fix/pdf-rc5-patternsyntax-regression', 'fix/rc7-auth-universal-pdf-layout-ink', 'fix/rc8-pdf-completeness-spen-layout', 'fix/rc9-universal-pdf-ocr-crop-quality']
   pull_request:
-    branches: ['feat/premium-pdf-v5', 'feat/pdf-v5-biyotik-premium-review', 'feat/s-pen-s9feplus-ink-gestures', 'fix/rc7-auth-universal-pdf-layout-ink']
+    branches: ['feat/premium-pdf-v5', 'feat/pdf-v5-biyotik-premium-review', 'feat/s-pen-s9feplus-ink-gestures', 'fix/rc7-auth-universal-pdf-layout-ink', 'fix/rc8-pdf-completeness-spen-layout']
 permissions:
   contents: read
 # A new commit supersedes old RC8 test runs, preventing dozens of outdated

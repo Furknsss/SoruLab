@@ -114,6 +114,7 @@ class LiveSolvingBoardScreenTest {
                 LiveSolvingBoardScreen(
                     session = session,
                     strokes = emptyList(),
+                    currentCanvasKey = "full_page_fixture",
                     activeTool = DrawingTool.HAND_PAN,
                     selectedStrokeSizeIndex = 1,
                     selectedPenColorHex = 0xFF1D4ED8,
@@ -122,9 +123,9 @@ class LiveSolvingBoardScreenTest {
                     onSelectTool = {},
                     onSelectStrokeSize = {},
                     onSelectPenColor = {},
-                    onAddStroke = { _, _ -> },
+                    onAddStroke = { _, _, _ -> },
                     onBookPageChanged = {},
-                    onClearCanvas = {},
+                    onClearCanvas = { _ -> },
                     onSelectQuestionIndex = { session = session.copy(currentQuestionIndex = it) },
                     onSelectOption = { question, answer ->
                         val answers = session.selectedAnswers + (question to answer)

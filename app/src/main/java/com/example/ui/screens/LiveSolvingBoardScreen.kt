@@ -1695,6 +1695,7 @@ private fun RealTwoColumnBookPageSurface(
 private fun BookPageQuestionItem345(
     question: YksQuestion,
     maxImageHeight: Dp = 560.dp,
+    singleQuestionLayout: Boolean = false,
     isReviewMode: Boolean,
     selectedOption: String?,
     isThreeDotMenuOpen: Boolean,
@@ -1814,9 +1815,28 @@ private fun BookPageQuestionItem345(
             .zIndex(if (isThreeDotMenuOpen) 55f else 1f)
             .testTag("book_question_${question.number}")
     ) {
+        // A single focused question carries its publisher mark at upper right.
+        if (singleQuestionLayout && !isReviewMode) {
+            Box(
+                modifier = Modifier.align(Alignment.TopEnd)
+                    .size(42.dp).zIndex(5f)
+                    .testTag("single_question_top_right_logo")
+                    .clickable { sourceDetailsVisible = true },
+                contentAlignment = Alignment.Center
+            ) {
+                PublisherLogoEmblem(
+                    publisher = sourcePublisher,
+                    size = 38.dp,
+                    overrideLogoPath = question.publisherLogoUri
+                )
+            }
+        }
+
         // 1. SORU İÇERİĞİ: Sol başta soru numarası, sağında saf soru görseli
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(
+                end = if (singleQuestionLayout && !isReviewMode) 50.dp else 0.dp
+            ),
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
@@ -1825,19 +1845,21 @@ private fun BookPageQuestionItem345(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.width(42.dp)
             ) {
-                Box(
-                    modifier = Modifier.size(36.dp)
-                        .testTag("question_source_logo_${question.number}")
-                        .clickable { sourceDetailsVisible = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    PublisherLogoEmblem(
-                        publisher = sourcePublisher,
-                        size = 34.dp,
-                        overrideLogoPath = question.publisherLogoUri
-                    )
+                if (!singleQuestionLayout || isReviewMode) {
+                    Box(
+                        modifier = Modifier.size(36.dp)
+                            .testTag("question_source_logo_${question.number}")
+                            .clickable { sourceDetailsVisible = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        PublisherLogoEmblem(
+                            publisher = sourcePublisher,
+                            size = 34.dp,
+                            overrideLogoPath = question.publisherLogoUri
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
                 }
-                Spacer(Modifier.height(4.dp))
                 Box(
                     modifier = Modifier.size(32.dp),
                     contentAlignment = Alignment.Center
@@ -2021,12 +2043,13 @@ private fun SingleQuestionFocusedPageSurface(
     onOpenTwinScreen: (YksQuestion) -> Unit,
     onAddToKumbara: (YksQuestion) -> Unit
 ) {
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.White)
-            .padding(horizontal = 32.dp, vertical = 20.dp)
+            .padding(horizontal = 24.dp, vertical = 12.dp)
     ) {
+        val fitQuestionHeight = (maxHeight - 90.dp).coerceIn(190.dp, 760.dp)
         if (openThreeDotQuestionNumber != null) {
             Box(
                 modifier = Modifier
@@ -2042,7 +2065,8 @@ private fun SingleQuestionFocusedPageSurface(
 
         Column(
             modifier = Modifier
-                .widthIn(max = 680.dp)
+                .widthIn(max = 840.dp)
+                .fillMaxWidth()
                 .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
                 .align(Alignment.TopCenter)
                 .verticalScroll(rememberScrollState()),
@@ -2050,6 +2074,8 @@ private fun SingleQuestionFocusedPageSurface(
         ) {
             BookPageQuestionItem345(
                 question = question,
+                maxImageHeight = fitQuestionHeight,
+                singleQuestionLayout = true,
                 isReviewMode = session.isReviewMode,
                 selectedOption = session.selectedAnswers[question.number],
                 isThreeDotMenuOpen = openThreeDotQuestionNumber == question.number,

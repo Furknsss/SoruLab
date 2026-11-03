@@ -46,4 +46,31 @@ class PdfTextFooterKeysTest {
             A B C D E F
         """.trimIndent()).isEmpty())
     }
+    @Test
+    fun verticalizedNumberThenLetterGridIsRecoveredAnywhereOnPage() {
+        val answers = listOf("E","B","E","B","E","C","A","E","D","C")
+        val source = listOf("42", "B", "İ", "Y", "O", "L", "O", "J", "İ",
+            "Sinir Sistemi", "ANALİZ") +
+            (1..answers.size).map(Int::toString) + answers +
+            listOf("TEST 1", "6.", "Aşağıdaki soruyu çözünüz", "A) Yanlış", "B) Yanlış")
+        val actual = PdfTextFooterKeys.read(source.joinToString("\n"))
+        assertEquals(10, actual.size)
+        assertEquals("E", actual[1])
+        assertEquals("C", actual[6])
+        assertEquals("C", actual[10])
+    }
+
+    @Test
+    fun questionOptionListCannotImpersonateNumberAndAnswerGrid() {
+        val invalid = listOf("1", "2", "3", "4", "A", "B", "C",
+            "Çözümü açıklayınız", "D")
+        assertTrue(PdfTextFooterKeys.read(invalid.joinToString("\n")).isEmpty())
+    }
+
+    @Test
+    fun unrelatedNumbersOrAmbiguousCellsDoNotProduceGuessedAnswers() {
+        val wrong = listOf("1", "2", "4", "5", "A", "C", "E", "D")
+        assertTrue(PdfTextFooterKeys.read(wrong.joinToString("\n")).isEmpty())
+    }
+
 }

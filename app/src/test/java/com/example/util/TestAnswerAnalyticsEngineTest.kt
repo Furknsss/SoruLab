@@ -70,4 +70,23 @@ class TestAnswerAnalyticsEngineTest {
         assertTrue(report.hierarchy.any { it.label == "Biyoloji" })
         assertTrue(report.inferredMetadataCount > 0)
     }
+
+    @Test
+    fun croppedPdfQuestionUsesHiddenOcrTextForSkillWithoutRenderingItTwice() {
+        val imageQuestion = q(
+            1, "Biyoloji", "Sinir Sistemi", "A",
+            body = ""
+        ).copy(
+            croppedImagePath = "/test/image.png",
+            analyticsText = "Sinaps bölgesinde nörotransmitter salgılanmasını gösteren şekil"
+        )
+        val report = TestAnswerAnalyticsEngine.calculate(
+            listOf(imageQuestion), mapOf(1 to "B"), "Biyoloji", "Sinir Sistemi"
+        )
+        val outcome = report.hierarchy.single().children.single().children.single()
+        assertEquals("Sinaps ve kimyasal iletim", outcome.label)
+        assertEquals(1, outcome.wrong)
+        assertTrue(report.inferredMetadataCount > 0)
+    }
+
 }

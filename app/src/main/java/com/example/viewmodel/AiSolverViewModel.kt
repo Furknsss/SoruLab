@@ -1082,8 +1082,16 @@ class AiSolverViewModel : ViewModel() {
                                             pageBitmap.height).toInt().coerceIn(1, pageBitmap.height)
                                     )
                                 }.orEmpty()
+                                // OCR can misread graph labels as extra question
+                                // numbers. Trust a coherent two-column vector
+                                // sequence even when OCR reports more candidates.
+                                val vectorHasPrintedColumns =
+                                    com.example.util.PdfColumnLayoutEvidence.hasTwoPrintedColumns(
+                                        nativeAnchors, pageBitmap.width, 0, pageBitmap.height
+                                    )
                                 val sourceBackedPage = nativeAnchors.size >= 2 &&
-                                    nativeAnchors.size >= ocrPageLayout.questionNumberAnchors.size &&
+                                    (vectorHasPrintedColumns ||
+                                        nativeAnchors.size >= ocrPageLayout.questionNumberAnchors.size) &&
                                     pageIdx in localBlueprint.pageVectorOptionEvidence
                                 val pageLayout = if (sourceBackedPage) {
                                     ocrPageLayout.copy(questionNumberAnchors = nativeAnchors)

@@ -4,7 +4,7 @@ import kotlin.math.abs
 import kotlin.math.max
 
 /** Page-local printed test identity, obtained from glyph positions, not OCR text order. */
-internal data class PdfPrintedTestMarker(
+data class PdfPrintedTestMarker(
     val testKind: String,
     val testNumber: Int,
     val isOsymTest: Boolean

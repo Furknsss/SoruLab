@@ -101,4 +101,19 @@ class PdfHorizontalAnswerGridTest {
         assertNull(keys.get(scope, 1))
         assertEquals("B", keys.get(scope, 2))
     }
+
+    @Test
+    fun `small OCR bounding box jitter does not split the answer letter row`() {
+        val cells = grid("EBEBECAEDC").mapIndexed { index, cell ->
+            if (index % 2 == 1) cell.copy(
+                top = cell.top + (index % 5) * 2,
+                bottom = cell.bottom + (index % 5) * 2
+            ) else cell
+        }
+        val detected = PdfHorizontalAnswerGridReader.find(cells, 1000, 1500)
+        assertEquals(1, detected.size)
+        assertEquals(10, detected.single().answers.size)
+        assertEquals("C", detected.single().answers[10])
+    }
+
 }

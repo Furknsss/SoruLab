@@ -45,6 +45,8 @@ class TestSnapshotCodecTest {
                     pdfFilePath = "/data/books/book_123.pdf",
                     pageIndex = 7,
                     questionNumberInTest = 13,
+                    learningOutcome = "Nöronun yapısı",
+                    questionType = "Görsel yorumlama",
                     normLeft = 0.1f,
                     normTop = 0.2f,
                     normRight = 0.8f,

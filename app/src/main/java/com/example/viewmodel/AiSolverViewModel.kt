@@ -1453,14 +1453,25 @@ class AiSolverViewModel : ViewModel() {
                                 // exactly one source question was cropped.
                                 // Validate rectangles against native printed
                                 // question coordinates when available.
-                                val unsafeCropIndexes = if (nativeAnchors.size >= 2) {
+                                val auditSourceNumbers = when {
+                                    sourceBackedPage -> nativeAnchors
+                                    pageLayout.questionNumberAnchors.size >= 3 &&
+                                        com.example.util.PdfColumnLayoutEvidence
+                                            .hasTwoPrintedColumns(
+                                                pageLayout.questionNumberAnchors,
+                                                pageBitmap.width, 0, pageBitmap.height
+                                            ) -> pageLayout.questionNumberAnchors
+                                    else -> emptyList()
+                                }
+                                val unsafeCropIndexes = if (auditSourceNumbers.isNotEmpty()) {
                                     croppedBoxes.indices.filter { cropIndex ->
                                         val box = croppedBoxes[cropIndex]
                                         com.example.util.PdfCropGeometryAudit.issues(
                                             com.example.util.PdfQuestionCropEvidence(
                                                 box.questionOrderInPage, box.boxNormalized
                                             ),
-                                            nativeAnchors, pageBitmap.width, pageBitmap.height
+                                            auditSourceNumbers, pageBitmap.width,
+                                            pageBitmap.height
                                         ).isNotEmpty()
                                     }.toSet()
                                 } else emptySet()

@@ -15,7 +15,7 @@ class PdfOptionEvidenceTest {
 
     @Test
     fun `case and missing PDF choice markers are handled safely`() {
-        assertEquals(setOf("A", "C", "E"), PdfOptionEvidence.letters("a) B. c) D. e)"))
+        assertEquals(setOf("A", "C", "E"), PdfOptionEvidence.letters("a) İlk açıklama B. c) İkinci açıklama D. e) Son açıklama"))
         assertTrue(PdfOptionEvidence.letters("A. B. C. D. E.").isEmpty())
         assertTrue(PdfOptionEvidence.letters("").isEmpty())
     }

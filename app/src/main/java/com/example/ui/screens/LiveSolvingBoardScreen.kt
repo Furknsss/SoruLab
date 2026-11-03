@@ -700,11 +700,9 @@ fun LiveSolvingBoardScreen(
                 }
 
                 // 2. SIFIR GECİKMELİ S-PEN ÇİZİMİ VE BLENDMODE.CLEAR SİLGİ
-                // KATI KURAL:
-                // - PointerType.Stylus -> Doğrudan çizer veya siler.
-                // - PointerType.Touch (Parmak) -> Kesinlikle çizim yapmaz (`return`), parmakla yatay sayfa çevirme (swipe) ve dikey scroll çalışır!
-                // - PointerType.Mouse (Emülatör) -> Sayfa kenarlarından/alt şeridinden yapılan yatay sayfa çevirme hareketlerini engellemez,
-                //   soru üzerinde yapılan çizimleri sıfır gecikmeyle çizer.
+                // Akıllı Mod: stylus draws; a palm or single finger never inks.
+                // Çizim Modu: stylus or one finger inks; two fingers cancel
+                // the finger stroke and navigate without ink damage.
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
@@ -840,10 +838,20 @@ fun LiveSolvingBoardScreen(
                                 ),
                                 blendMode = BlendMode.Clear
                             )
+                        } else if (!isHigh &&
+                            liveRawPressures.size == liveRawPoints.size
+                        ) {
+                            drawPressureInkSegments(
+                                liveRawPoints,
+                                liveRawPressures,
+                                Color(selectedPenColorHex),
+                                currentStrokePx
+                            )
                         } else {
                             drawPath(
                                 path = liveRawPath,
-                                color = if (isHigh) Color(selectedPenColorHex).copy(alpha = 0.36f) else Color(selectedPenColorHex),
+                                color = if (isHigh) Color(selectedPenColorHex).copy(alpha = 0.36f)
+                                    else Color(selectedPenColorHex),
                                 style = Stroke(
                                     width = if (isHigh) currentStrokePx * 2.6f else currentStrokePx,
                                     cap = StrokeCap.Round,
@@ -3994,6 +4002,32 @@ private fun FullScreenSuccessReportCardView(
 }
 
 /**
+ * Natural S Pen pressure. Each segment retains the hardware sample pressure;
+ * old cached strokes without samples continue to draw with the legacy path.
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPressureInkSegments(
+    points: List<Offset>,
+    pressureSamples: List<Float>,
+    color: Color,
+    baseWidth: Float
+) {
+    if (points.size < 2 || points.size != pressureSamples.size) return
+    for (index in 1 until points.size) {
+        val factor = (
+            StylusInputPolicy.pressureWidthFactor(pressureSamples[index - 1]) +
+                StylusInputPolicy.pressureWidthFactor(pressureSamples[index])
+            ) / 2f
+        drawLine(
+            color = color,
+            start = points[index - 1],
+            end = points[index],
+            strokeWidth = baseWidth * factor,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+/**
  * Vektörel çizim motoru (Kalem, Akıllı Şekil ve `BlendMode.Clear` / `destination-out` Silgi)
  */
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSmoothStroke(stroke: DrawStroke) {
@@ -4006,6 +4040,13 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSmoothStroke(st
         else -> Color(stroke.colorHex)
     }
     val blendMode = if (isEraser) BlendMode.Clear else BlendMode.SrcOver
+
+    if (!isEraser && !stroke.isSmartShape &&
+        stroke.pressureSamples.size == pts.size && !stroke.isHighlighter
+    ) {
+        drawPressureInkSegments(pts, stroke.pressureSamples, strokeColor, stroke.strokeWidthPx)
+        return
+    }
 
     if (!isEraser && stroke.isSmartShape && pts.size >= 4) {
         val first = pts.first()

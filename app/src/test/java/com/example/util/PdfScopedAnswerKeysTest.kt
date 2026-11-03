@@ -265,4 +265,32 @@ class PdfScopedAnswerKeysTest {
         ))
     }
 
+    @Test
+    fun `test chapter heading is found without a catalog topic hint`() {
+        val source = listOf(
+            "1. ÜNİTE: İNSAN FİZYOLOJİSİ",
+            "ANALİZ", "1", "Sinir Sistemi", "1.", "A) Seçenek"
+        ).joinToString("\n")
+        val result = PdfScopedAnswerKeys.scopeFromQuestionHeader(source, "")
+        assertEquals("sinir sistemi", result?.section)
+        assertEquals(1, result?.testNumber)
+        assertEquals("analiz", result?.testKind)
+    }
+
+    @Test
+    fun `unrelated footer publisher and unit headings cannot replace visible test topic`() {
+        val source = "DR BIYOLOJI\n1. UNITE: FIZYOLOJI\nTEST\n12\nEndokrin Sistem Homeostazi12"
+        val result = PdfScopedAnswerKeys.scopeFromQuestionHeader(source, "")
+        assertEquals("endokrin sistem homeostazi", result?.section)
+        assertEquals(12, result?.testNumber)
+    }
+
+    @Test
+    fun `explicit topic before printed test marker is respected when no heading follows`() {
+        val source = "ÜREME SİSTEMİ\nTEST 8"
+        val result = PdfScopedAnswerKeys.scopeFromQuestionHeader(source, "")
+        assertEquals("ureme sistemi", result?.section)
+        assertEquals(8, result?.testNumber)
+    }
+
 }

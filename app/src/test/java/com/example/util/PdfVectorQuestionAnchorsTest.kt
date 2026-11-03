@@ -53,4 +53,16 @@ class PdfVectorQuestionAnchorsTest {
         assertEquals(listOf(1, 2, 3), anchors.map { it.number })
     }
 
+    @Test
+    fun multiplePrintedNumberStylesWorkWithoutPublisherSpecificTemplates() {
+        val glyphs = listOf(
+            PdfSourceGlyph("1:", 42f, 95f, 13f, 9f),
+            PdfSourceGlyph("2-", 42f, 312f, 13f, 9f),
+            PdfSourceGlyph("3)", 247f, 90f, 13f, 9f),
+            PdfSourceGlyph("4.", 247f, 301f, 13f, 9f)
+        )
+        val result = PdfVectorQuestionAnchors.find(glyphs, 460f, 600f)
+        assertEquals(listOf(1, 2, 3, 4), result.map { it.number })
+    }
+
 }

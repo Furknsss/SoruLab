@@ -31,8 +31,8 @@ data class PdfSourcePageAnchors(
  * For image-only PDFs this returns empty and the ML Kit OCR path is unchanged.
  */
 internal object PdfVectorQuestionAnchors {
-    private val printed = Regex("""^[1-9][0-9]?[.)]$""")
-    private val glyphLetters = Regex("""^[0-9.)]+$""")
+    private val printed = Regex("""^[1-9][0-9]?[.):\-]$""")
+    private val glyphLetters = Regex("""^[0-9.):\-]+$""")
 
     fun find(
         glyphs: List<PdfSourceGlyph>,
@@ -85,7 +85,7 @@ internal object PdfVectorQuestionAnchors {
                 if (abs(left.first().x - right.first().x) < pageWidth * .20f) continue
                 val sequence = left + right
                 // Sparse mixed layouts can have only three questions (1+2).
-                // Do not require a publisher-specific four-question page.
+                // Detect printed numbering regardless of publisher or page proportions.
                 if (sequence.size >= 3 && contiguous(sequence)) {
                     choices.add(sequence)
                 }

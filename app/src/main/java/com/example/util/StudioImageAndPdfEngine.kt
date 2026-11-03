@@ -127,6 +127,7 @@ object StudioImageAndPdfEngine {
         if (source.canonicalFile == destination.canonicalFile) return destination.absolutePath
         return try {
             source.copyTo(destination, overwrite = true)
+            invalidateCachedBitmap(destination.absolutePath)
             invalidateCachedBitmap(path)
             invalidateCachedBitmap(source.absolutePath)
             source.delete()
@@ -2043,8 +2044,11 @@ object StudioImageAndPdfEngine {
                     (firstQuestionTop - (height * 0.012f).roundToInt()).coerceAtLeast(0)
                 )
             }
-        bodyBottom = min(bodyBottom, (height * 0.945f).roundToInt())
-            .coerceIn(bodyTop + 1, height)
+        // Printed choices are stronger evidence than a fixed footer percentage.
+        // Long questions regularly extend below 94.5% of a scanned page.
+        val lastChoiceBottom = optionAnchors.maxOfOrNull { it.bottom }
+        bodyBottom = maxOf(bodyBottom, lastChoiceBottom?.plus((height * 0.01f).roundToInt()) ?: 0)
+            .coerceIn(bodyTop + 1, height - 1)
         // If this PDF prints the answer grid directly under the final
         // multiple-choice question, do not include that key in the crop.
         // The limit is derived from OCR geometry, never a fixed page fraction.
@@ -2193,7 +2197,10 @@ object StudioImageAndPdfEngine {
                         optionsForQuestion.filter { option -> option.top <= it.top }
                             .map { option -> option.option.uppercase() }.toSet()
                             .containsAll(listOf("A", "B", "C", "D", "E"))
-                    }?.bottom
+                    }?.let { end ->
+                        optionsForQuestion.filter { it.top <= end.top }
+                            .maxOf { it.bottom }
+                    }
                     // The OCR printed number marks the question START, not a
                     // projection band that might also contain earlier questions.
                     // A hard next-number boundary is more important than the
@@ -2205,7 +2212,9 @@ object StudioImageAndPdfEngine {
                     val hardEnd = nextAnchorTop?.minus(anchorPadding)
                         ?.coerceIn(startY + 1, bodyBottom - 1)
                         ?: (bodyBottom - 1)
-                    val withinQuestionOptions = optionBottom?.takeIf { it < hardEnd }
+                    // With a known next question, preserve all projected content,
+                    // including wrapped E-choice lines that OCR split into rows.
+                    val withinQuestionOptions = optionBottom?.takeIf { nextAnchorTop == null && it < hardEnd }
                     val lastQuestionInk = projectedBands
                         .filter { it.second >= anchor.bottom && it.first < hardEnd }
                         .maxOfOrNull { it.second.coerceAtMost(hardEnd) }
@@ -2250,13 +2259,12 @@ object StudioImageAndPdfEngine {
                     isInkPixel = ::isInkPixel
                 )
                 val anchor = anchors.getOrNull(qIdx)
-                val padX = (colWidth * 0.022f).roundToInt().coerceIn(8, 22)
-                val padY = (height * 0.008f).roundToInt().coerceIn(8, 20)
+                        val padY = (height * 0.008f).roundToInt().coerceIn(8, 20)
                 val edgeArtifactColumns = BooleanArray(colWidth)
                 val edgeWidth = (colWidth * 0.07f).roundToInt().coerceAtLeast(1)
                 for (scanX in colLeft until colRight) {
                     val nearColumnEdge = scanX < colLeft + edgeWidth || scanX >= colRight - edgeWidth
-                    val nearPageGutter = scanX in (width * 0.44f).roundToInt()..(width * 0.56f).roundToInt()
+                    val nearPageGutter = abs(scanX - midX) <= (width * 0.004f).roundToInt()
                     if (!nearColumnEdge && !nearPageGutter) continue
                     var longestRun = 0
                     var currentRun = 0

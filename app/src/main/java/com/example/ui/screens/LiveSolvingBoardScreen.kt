@@ -1382,9 +1382,7 @@ private fun RealTwoColumnBookPageSurface(
                             onOpenTwinScreen = { onOpenTwinScreen(q) },
                             onAddToKumbara = { onAddToKumbara(q) }
                         )
-                        if (idx < leftColumnQuestions.lastIndex) {
-                            Spacer(modifier = Modifier.height(24.dp))
-                        }
+
                     }
                 }
 
@@ -1423,9 +1421,7 @@ private fun RealTwoColumnBookPageSurface(
                                 onOpenTwinScreen = { onOpenTwinScreen(q) },
                                 onAddToKumbara = { onAddToKumbara(q) }
                             )
-                            if (idx < rightColumnQuestions.lastIndex) {
-                                Spacer(modifier = Modifier.height(24.dp))
-                            }
+
                         }
                     }
                 }

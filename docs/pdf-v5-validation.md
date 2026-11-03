@@ -61,3 +61,5 @@ legacy-snapshot default adjustment. Existing deprecation warnings remain.
 The user's 272-page Biyotik PDF is not present in the workspace. The reported 121/750 answer match rate, 239 unknown topics, publisher-margin cleanup, and complete real-book crops cannot be acceptance-tested from screenshots. No universal OCR accuracy or complete remediation is claimed. Existing imported images require reprocessing the source PDF; this update cannot recover missing pixels from an old crop alone. No hosted OCR service was introduced or document upload to a third party enabled.
 
 RC3 local verification: 93 tests passed, zero failures/errors/skips; `assembleDebug` passed. Source-page manual correction still needs a device-level check with the actual book.
+
+Follow-up screenshot repair: preserve wrapped option lines when a next number is known, retain choices below the footer heuristic, restrict gutter cleanup, and invalidate replaced destination image cache. 22 targeted tests passed and debug APK rebuilt. Real-book completeness remains pending the source PDF.

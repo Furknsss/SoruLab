@@ -293,4 +293,20 @@ class PdfScopedAnswerKeysTest {
         assertEquals(8, result?.testNumber)
     }
 
+    @Test
+    fun `three-digit test numbers map to their own answer scope`() {
+        val keys = PdfScopedAnswerKeys()
+        keys.addOcrRows(listOf(
+            "GENEL TEKRAR",
+            "Test 120 1.A 2.B 3.C",
+            "Test 121 1.D 2.E 3.A"
+        ))
+        val a = PdfScopedAnswerKeys.scopeFromQuestionHeader("TEST 120\nGenel Tekrar", "")
+        val b = PdfScopedAnswerKeys.scopeFromQuestionHeader("TEST 121\nGenel Tekrar", "")
+        assertEquals(120, a?.testNumber)
+        assertEquals("A", keys.get(a, 1))
+        assertEquals("D", keys.get(b, 1))
+        assertNull(PdfScopedAnswerKeys.scopeFromQuestionHeader("TEST 2026\nGenel Tekrar", ""))
+    }
+
 }

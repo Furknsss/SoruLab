@@ -2566,6 +2566,45 @@ private fun BottomDarkNavyDrawingBar345(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Galaxy Tab S9 FE+: clear input routing. Smart mode protects
+                    // handwriting from palm/finger touches; Draw mode also inks
+                    // with one finger, while two fingers always navigate.
+                    Surface(
+                        onClick = { onChangeFingerDrawing(false) },
+                        shape = RoundedCornerShape(50),
+                        color = if (!fingerDrawingEnabled) Color(0xFF3475F5) else Color.White.copy(alpha = 0.10f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (!fingerDrawingEnabled) Color(0xFF93C5FD) else Color.White.copy(alpha = 0.22f)
+                        ),
+                        modifier = Modifier.height(38.dp).testTag("smart_spen_mode")
+                    ) {
+                        Text(
+                            "Akıllı Mod · S Pen",
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                            color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Surface(
+                        onClick = {
+                            onChangeFingerDrawing(true)
+                            if (activeTool == DrawingTool.HAND_PAN) onSelectTool(DrawingTool.PEN)
+                        },
+                        shape = RoundedCornerShape(50),
+                        color = if (fingerDrawingEnabled) Color(0xFF3475F5) else Color.White.copy(alpha = 0.10f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (fingerDrawingEnabled) Color(0xFF93C5FD) else Color.White.copy(alpha = 0.22f)
+                        ),
+                        modifier = Modifier.height(38.dp).testTag("finger_draw_mode")
+                    ) {
+                        Text(
+                            "Çizim Modu · Parmak",
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                            color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
                     // Kalem (Tıklandığında Kalemi Seçer VE Renk Seçici Paleti Açar/Kapatır — Varsayılan Renk: Siyah)
                     val isPenActive = activeTool == DrawingTool.PEN && !isZoomMagnifierEnabled
                     Surface(

@@ -1315,7 +1315,9 @@ object StudioImageAndPdfEngine {
         val extractedTextSampleForAi: String,
         val answerKeyMap: Map<Int, String>,
         val ambiguousAnswerNumbers: Set<Int>,
-        val pageMap: Map<Int, LocalPageMapEntry>
+        val pageMap: Map<Int, LocalPageMapEntry>,
+        val pageTextFooterKeys: Map<Int, Map<Int, String>> = emptyMap(),
+        val pageSourceHeaders: Map<Int, String> = emptyMap()
     )
 
     data class LocalCroppedBoxResult(
@@ -1344,6 +1346,15 @@ object StudioImageAndPdfEngine {
         val rawTextBuilder = StringBuilder()
         val decodedStreamChunks = mutableListOf<String>()
         val vectorPageText = extractPdfPageTextLayer(context, pdfFile, totalPages)
+        // Key strips may live on every other page instead of in a separate
+        // answer-key chapter. Preserve the exact PDF page association.
+        val pageTextFooterKeys = vectorPageText.mapIndexedNotNull { index, text ->
+            PdfTextFooterKeys.read(text).takeIf { it.isNotEmpty() }?.let { index to it }
+        }.toMap()
+        val pageSourceHeaders = vectorPageText.mapIndexedNotNull { index, text ->
+            text.lines().filter(String::isNotBlank).take(8).joinToString("\\n")
+                .takeIf(String::isNotBlank)?.let { index to it }
+        }.toMap()
         vectorPageText.forEachIndexed { pageIndex, text ->
             if (text.isNotBlank()) {
                 rawTextBuilder.append("\n--- PDF METİN SAYFA ").append(pageIndex + 1).appendLine(" ---")
@@ -1494,7 +1505,9 @@ object StudioImageAndPdfEngine {
             extractedTextSampleForAi = rawTextBuilder.toString().take(5500),
             answerKeyMap = answerKeyMap,
             ambiguousAnswerNumbers = ambiguousAnswerNumbers,
-            pageMap = pageMap
+            pageMap = pageMap,
+            pageTextFooterKeys = pageTextFooterKeys,
+            pageSourceHeaders = pageSourceHeaders
         )
     }
 

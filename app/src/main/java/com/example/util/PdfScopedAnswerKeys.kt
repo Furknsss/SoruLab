@@ -237,8 +237,15 @@ internal class PdfScopedAnswerKeys(
                 ) heading = heading.dropLast(suffix.length)
                 val chapterHeading = Regex("""(?:^|\s)(?:unite|bolum|chapter|sinif)(?:\s|$)""")
                     .containsMatchIn(heading)
+                // "1. ÜNİTE: ..." is a running chapter banner, but a
+                // standalone "Ünite Değerlendirme" is a legitimate source
+                // test section in many books. Never discard that topic.
+                val assessmentSection = Regex(
+                    """^(?:unite|bolum|chapter)\s+(?:degerlendirme|genel tekrar|tekrari|review)(?:\s|$)"""
+                ).containsMatchIn(heading)
                 if (heading.length !in 5..65 || !heading.any(Char::isLetter) ||
-                    chapterHeading || containsNonSectionWord(heading) ||
+                    (chapterHeading && !assessmentSection) ||
+                    containsNonSectionWord(heading) ||
                     heading.startsWith("www") ||
                     heading in listOf(
                         "biyoloji", "matematik", "fizik", "kimya",

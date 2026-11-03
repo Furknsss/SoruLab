@@ -153,7 +153,8 @@ data class DrawStroke(
     val strokeWidthPx: Float,
     val isSmartShape: Boolean = false,
     val isEraser: Boolean = false,
-    val isHighlighter: Boolean = false
+    val isHighlighter: Boolean = false,
+    val pressureSamples: List<Float> = emptyList()
 )
 
 @Immutable
@@ -226,6 +227,9 @@ class SoruLabViewModel(
 
     private val _boardStrokes = MutableStateFlow<Map<String, List<DrawStroke>>>(emptyMap())
     val boardStrokes: StateFlow<Map<String, List<DrawStroke>>> = _boardStrokes.asStateFlow()
+
+    private val _currentBookPageIndex = MutableStateFlow(0)
+    val currentBookPageIndex: StateFlow<Int> = _currentBookPageIndex.asStateFlow()
 
     private val _activeTool = MutableStateFlow(DrawingTool.PEN)
     val activeTool: StateFlow<DrawingTool> = _activeTool.asStateFlow()
@@ -1514,6 +1518,7 @@ class SoruLabViewModel(
             (resolvedTestItem.questions.size - 1).coerceAtLeast(0)
         )
 
+        _currentBookPageIndex.value = 0
         _activeSession.value = ActiveSolvingSession(
             testItem = resolvedTestItem,
             examType = examType,
@@ -1832,6 +1837,10 @@ class SoruLabViewModel(
         )
     }
 
+    fun selectBookPageIndex(index: Int) {
+        _currentBookPageIndex.value = index.coerceAtLeast(0)
+    }
+
     fun selectQuestionIndex(index: Int) {
         val cur = _activeSession.value ?: return
         if (cur.testItem.questions.isEmpty()) return
@@ -1986,14 +1995,19 @@ class SoruLabViewModel(
     fun currentCanvasKey(): String {
         val cur = _activeSession.value ?: return "default"
         return if (cur.viewMode == BoardViewMode.FULL_PAGE) {
-            "full_page_${cur.testItem.id}"
+            com.example.util.StylusInputPolicy.canvasKey(
+                cur.testItem.id, _currentBookPageIndex.value
+            )
         } else {
             val q = cur.testItem.questions.getOrNull(cur.currentQuestionIndex)
             "q_${q?.id ?: cur.currentQuestionIndex}"
         }
     }
 
-    fun addStrokeToCurrentCanvas(points: List<Offset>) {
+    fun addStrokeToCurrentCanvas(
+        points: List<Offset>,
+        pressureSamples: List<Float> = emptyList()
+    ) {
         if (points.size < 2) return
         val key = currentCanvasKey()
         val tool = _activeTool.value
@@ -2060,7 +2074,12 @@ class SoruLabViewModel(
             strokeWidthPx = widthPx,
             isSmartShape = tool == DrawingTool.SMART_SHAPE,
             isEraser = false,
-            isHighlighter = isHighlighterTool
+            isHighlighter = isHighlighterTool,
+            pressureSamples = if (finalPoints.size == points.size &&
+                pressureSamples.size == points.size
+            ) {
+                pressureSamples.map { if (it.isFinite()) it.coerceIn(0f, 1.5f) else 1f }
+            } else emptyList()
         )
         val updatedStrokes = _boardStrokes.value + (key to (currentList + newStroke))
         _boardStrokes.value = updatedStrokes

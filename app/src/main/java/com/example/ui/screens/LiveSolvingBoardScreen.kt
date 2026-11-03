@@ -746,7 +746,8 @@ fun LiveSolvingBoardScreen(
                     onSelectOption = onSelectOption,
                     onFinishTest = { showFinishConfirmation = true },
                     modifier = Modifier
-                        .align(Alignment.CenterEnd)
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 8.dp, bottom = 42.dp)
                         .zIndex(35f)
                 )
             } else {
@@ -1739,6 +1740,7 @@ private fun BookPageQuestionItem345(
                 }
             }
 
+            if (isReviewMode) {
             Box(
                 modifier = Modifier.width(36.dp),
                 contentAlignment = Alignment.TopCenter
@@ -1782,6 +1784,7 @@ private fun BookPageQuestionItem345(
                         )
                     }
                 }
+            }
             }
         }
     }
@@ -2181,13 +2184,16 @@ private fun RightSlidingOpticalFormDrawer345(
             exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
         ) {
             Surface(
-                shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp),
+                shape = RoundedCornerShape(24.dp),
                 color = Color.White,
-                shadowElevation = 12.dp,
+                shadowElevation = 18.dp,
                 border = BorderStroke(1.dp, Color(0xFFE7E5F0)),
                 modifier = Modifier
-                    .width((configuration.screenWidthDp.dp - 48.dp).coerceAtMost(380.dp))
-                    .heightIn(max = (configuration.screenHeightDp.dp - 160.dp).coerceIn(180.dp, 580.dp))
+                    .width((configuration.screenWidthDp.dp - 36.dp).coerceAtMost(440.dp))
+                    .heightIn(
+                        min = 300.dp,
+                        max = (configuration.screenHeightDp.dp - 180.dp).coerceIn(300.dp, 610.dp)
+                    )
                     .testTag("optical_form_drawer")
             ) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {

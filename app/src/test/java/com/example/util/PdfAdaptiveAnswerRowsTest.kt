@@ -94,4 +94,32 @@ class PdfAdaptiveAnswerRowsTest {
         ))
     }
 
+
+    @Test
+    fun `parallel analiz and deneme answer columns stay separate`() {
+        val cells = listOf(
+            PdfOcrTextCell("NÖRONLAR", 20, 15, 165, 38),
+            PdfOcrTextCell("FOTOSENTEZ", 600, 15, 790, 38),
+            PdfOcrTextCell("ANALİZ 2", 25, 95, 125, 115),
+            PdfOcrTextCell("1.A 2.B 3.C 4.D", 150, 95, 400, 115),
+            PdfOcrTextCell("DENEME 2", 605, 95, 705, 115),
+            PdfOcrTextCell("1.E 2.D 3.C 4.B", 720, 95, 970, 115)
+        )
+        val regions = PdfAdaptiveAnswerRows.regions(cells, pageWidth = 1000)
+        assertEquals(2, regions.size)
+
+        val keys = PdfScopedAnswerKeys()
+        for (region in regions) keys.addOcrRows(region)
+        val left = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "ANALİZ 2\\nNöronlar", "Nöronlar"
+        )
+        val right = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "DENEME 2\\nFotosentez", "Fotosentez"
+        )
+        assertEquals("A", keys.get(left, 1))
+        assertEquals("D", keys.get(left, 4))
+        assertEquals("E", keys.get(right, 1))
+        assertEquals("B", keys.get(right, 4))
+    }
+
 }

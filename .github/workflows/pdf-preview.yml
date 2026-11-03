@@ -32,3 +32,4 @@ jobs:
         with:
           name: SoruLab-1.2.5-rc2-debug
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

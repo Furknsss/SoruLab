@@ -12,7 +12,6 @@ import com.example.util.StudioImageAndPdfEngine
 import com.example.viewmodel.DrawStroke
 import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
-import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.channels.awaitClose
@@ -709,12 +708,14 @@ class SoruLabRepository(
         // An owner-scoped query can safely return an empty result for a new ID. A direct
         // read of a missing document is denied by the ownership rules.
         records.groupBy { it.userId }.forEach { (uid, ownedRecords) ->
-            ownedRecords.map { it.id.take(120) }.distinct().chunked(30).forEach { ids ->
-                val snapshot = customQuestionsCollection.whereEqualTo("userId", uid)
-                    .whereIn(FieldPath.documentId(), ids).get().await()
-                snapshot.documents.forEach { document ->
-                    document.getTimestamp("createdAt")?.let { dates[document.id] = it }
-                }
+            val ids = ownedRecords.mapTo(hashSetOf()) { it.id.take(120) }
+            // Do not constrain __name__ to IDs that may not exist yet. The emulator
+            // evaluates those missing targets without resource data, rejecting the
+            // entire list query under the owner-only rule. Query actual owner
+            // records, then retain only the requested timestamps locally.
+            val snapshot = customQuestionsCollection.whereEqualTo("userId", uid).get().await()
+            snapshot.documents.filter { it.id in ids }.forEach { document ->
+                document.getTimestamp("createdAt")?.let { dates[document.id] = it }
             }
         }
         return dates

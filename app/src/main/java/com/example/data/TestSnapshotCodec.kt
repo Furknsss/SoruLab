@@ -34,6 +34,8 @@ object TestSnapshotCodec {
                     .put("bookId", question.bookId)
                     .put("sourceQuestionId", question.sourceQuestionId)
                     .put("subject", question.subject)
+                    .put("learningOutcome", question.learningOutcome)
+                    .put("questionType", question.questionType)
                     .put("imageBase64", question.imageBase64.takeIf { includeImageFallback }.orEmpty())
                     .put("pdfFilePath", question.pdfFilePath.takeIf { includeImageFallback }.orEmpty())
                     .put("pageIndex", question.pageIndex.takeIf { includeImageFallback } ?: -1)
@@ -99,6 +101,8 @@ object TestSnapshotCodec {
                 bookId = item.optString("bookId"),
                 sourceQuestionId = item.optString("sourceQuestionId"),
                 subject = item.optString("subject"),
+                learningOutcome = item.optString("learningOutcome"),
+                questionType = item.optString("questionType"),
                 imageBase64 = item.optString("imageBase64"),
                 pdfFilePath = item.optString("pdfFilePath"),
                 pageIndex = item.optInt("pageIndex", -1),

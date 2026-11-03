@@ -2007,9 +2007,15 @@ class SoruLabViewModel(
     fun addStrokeToCurrentCanvas(
         points: List<Offset>,
         pressureSamples: List<Float> = emptyList()
+    ) = addStrokeToCanvas(currentCanvasKey(), points, pressureSamples)
+
+    fun addStrokeToCanvas(
+        canvasKey: String,
+        points: List<Offset>,
+        pressureSamples: List<Float> = emptyList()
     ) {
-        if (points.size < 2) return
-        val key = currentCanvasKey()
+        if (points.size < 2 || canvasKey.isBlank()) return
+        val key = canvasKey
         val tool = _activeTool.value
         val currentList = _boardStrokes.value[key].orEmpty()
 
@@ -2086,9 +2092,11 @@ class SoruLabViewModel(
         repository.saveCachedBoardStrokes(effectiveUserId() ?: "device_yks_student_tr", updatedStrokes)
     }
 
-    fun clearCurrentCanvasStrokes() {
-        val key = currentCanvasKey()
-        val updatedStrokes = _boardStrokes.value - key
+    fun clearCurrentCanvasStrokes() = clearCanvasStrokes(currentCanvasKey())
+
+    fun clearCanvasStrokes(canvasKey: String) {
+        if (canvasKey.isBlank()) return
+        val updatedStrokes = _boardStrokes.value - canvasKey
         _boardStrokes.value = updatedStrokes
         repository.saveCachedBoardStrokes(effectiveUserId() ?: "device_yks_student_tr", updatedStrokes)
     }

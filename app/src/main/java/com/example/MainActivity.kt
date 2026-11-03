@@ -590,10 +590,12 @@ private fun getDefaultWebClientId(context: android.content.Context): String {
 
 private suspend fun performInteractiveGoogleSignIn(
     context: Context,
-    webClientId: String
+    webClientId: String,
+    onStage: (String) -> Unit = {}
 ) {
     ensureFirebaseInitialized(context)
-    val activityContext = context.findActivity() ?: context
+    val activityContext = context.findActivity()
+        ?: error("Google ile giriş için açık bir Android Activity gerekli.")
     val credentialManager = CredentialManager.create(activityContext)
 
     // Attempt 1: Standard GetSignInWithGoogleOption button flow
@@ -603,7 +605,9 @@ private suspend fun performInteractiveGoogleSignIn(
             .addCredentialOption(signInOption)
             .build()
         val result = credentialManager.getCredential(activityContext, request)
+        onStage("Google hesabı seçildi; Firebase doğrulanıyor...")
         signInWithGoogleCredential(result.credential)
+        onStage("Oturum açıldı.")
         return
     } catch (cancel: GetCredentialCancellationException) {
         throw cancel
@@ -621,7 +625,9 @@ private suspend fun performInteractiveGoogleSignIn(
         .addCredentialOption(googleIdOption)
         .build()
     val fallbackResult = credentialManager.getCredential(activityContext, fallbackRequest)
+    onStage("Google hesabı seçildi; Firebase doğrulanıyor...")
     signInWithGoogleCredential(fallbackResult.credential)
+    onStage("Oturum açıldı.")
 }
 
 private suspend fun trySilentGoogleAutoSignIn(context: android.content.Context): Boolean {
@@ -680,6 +686,7 @@ private fun SoruLabSignInGate(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(false) }
+    var signInStage by remember { mutableStateOf<String?>(null) }
 
     Box(
         modifier = Modifier
@@ -819,6 +826,7 @@ private fun SoruLabSignInGate(
                 onClick = {
                     scope.launch {
                         isLoading = true
+                        signInStage = "Google hesabı seçiliyor..."
                         onErrorMessage(null)
                         try {
                             val webClientId = getDefaultWebClientId(context)
@@ -828,9 +836,26 @@ private fun SoruLabSignInGate(
                                 )
                                 return@launch
                             }
-                            performInteractiveGoogleSignIn(context, webClientId)
+                            kotlinx.coroutines.withTimeout(35_000L) {
+                                performInteractiveGoogleSignIn(context, webClientId) {
+                                    signInStage = it
+                                }
+                            }
+                            // Do not silently dismiss the dialog if the auth state
+                            // listener has not delivered a signed-in Firebase user.
+                            if (Firebase.auth.currentUser == null) {
+                                onErrorMessage("Google hesabı seçildi fakat Firebase oturumu oluşmadı. Giriş yapılandırmasını kontrol edin.")
+                            }
                         } catch (_: GetCredentialCancellationException) {
-                            onErrorMessage(null)
+                            onErrorMessage("Google hesap seçimi tamamlanmadı. Hesabı seçip yeniden deneyebilirsiniz.")
+                        } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+                            onErrorMessage("Google hesabı seçildi ancak 35 saniyede doğrulanamadı. İnternetinizi ve Firebase/OAuth yapılandırmasını kontrol edin.")
+                        } catch (e: com.google.firebase.auth.FirebaseAuthException) {
+                            Log.e("SoruLabAuth", "Firebase rejected Google credential: ${e.errorCode}", e)
+                            onErrorMessage(
+                                "Firebase Google oturumunu reddetti (${e.errorCode}). " +
+                                    "Uygulamanın imza SHA-1/SHA-256 değeri ve Google OAuth istemcisi Firebase Console'da eşleşmeli."
+                            )
                         } catch (e: NoCredentialException) {
                             Log.w("SoruLabAuth", "No Google account on device", e)
                             onErrorMessage(
@@ -846,6 +871,7 @@ private fun SoruLabSignInGate(
                             onErrorMessage("Google ile giriş yapılamadı: ${e.localizedMessage ?: "Bağlantı hatası"}")
                         } finally {
                             isLoading = false
+                            signInStage = null
                         }
                     }
                 },
@@ -867,7 +893,7 @@ private fun SoruLabSignInGate(
                         modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text("Google Hesabı Bağlanıyor...", fontWeight = FontWeight.Bold)
+                    Text(signInStage ?: "Google Hesabı Bağlanıyor...", fontWeight = FontWeight.Bold)
                 } else {
                     Text(
                         text = "Google ile Giriş Yap (Cihazı Tanı)",

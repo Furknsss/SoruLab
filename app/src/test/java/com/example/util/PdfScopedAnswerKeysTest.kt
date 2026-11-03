@@ -309,4 +309,25 @@ class PdfScopedAnswerKeysTest {
         assertNull(PdfScopedAnswerKeys.scopeFromQuestionHeader("TEST 2026\nGenel Tekrar", ""))
     }
 
+    @Test
+    fun genuineUnitAssessmentTopicIsNotDroppedAsRunningUnitBanner() {
+        val identity = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "SENTEZ 18\nÜnite Değerlendirme", ""
+        )
+        assertEquals("unite degerlendirme", identity?.section)
+        assertEquals(18, identity?.testNumber)
+        val source = PdfScopedAnswerKeys()
+        source.addOcrRows(listOf("ÜNİTE DEĞERLENDİRME", "SENTEZ 18 1.A 2.C 3.D"))
+        assertEquals("A", source.get(identity, 1))
+    }
+
+    @Test
+    fun pageRunningUnitHeadingCannotOverrideRealPrintedTopic() {
+        val identity = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "ANALİZ 16\n1. ÜNİTE: İNSAN FİZYOLOJİSİ\nEndokrin Sistem Genel Tekrar", ""
+        )
+        assertEquals("endokrin sistem genel tekrar", identity?.section)
+        assertEquals(16, identity?.testNumber)
+    }
+
 }

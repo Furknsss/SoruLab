@@ -56,4 +56,28 @@ class PdfColumnGeometryTest {
         assertEquals(1, columns.size)
         assertEquals(13, columns[0].left)
     }
+    @Test
+    fun `off-center right column in a wide book keeps the first question number`() {
+        val anchors = listOf(q(11, 110, 100), q(12, 110, 390),
+            q(13, 720, 110), q(14, 720, 465))
+        val columns = PdfColumnGeometry.columns(
+            1200, gutterX = 705, gutterMargin = 19, outerMargin = 20,
+            isDualColumn = true, anchors = anchors, bodyTop = 55, bodyBottom = 790
+        )
+        assertEquals(2, columns.size)
+        assertTrue(columns[1].left <= 720)
+        assertTrue(columns[1].left > 600)
+        assertTrue(columns[0].right < columns[1].left)
+    }
+
+    @Test
+    fun `very narrow paper does not create overlapping columns`() {
+        val columns = PdfColumnGeometry.columns(
+            300, gutterX = 155, gutterMargin = 8, outerMargin = 35,
+            isDualColumn = true, anchors = emptyList(), bodyTop = 20, bodyBottom = 450
+        )
+        assertEquals(1, columns.size)
+        assertTrue(columns.single().right > columns.single().left)
+    }
+
 }

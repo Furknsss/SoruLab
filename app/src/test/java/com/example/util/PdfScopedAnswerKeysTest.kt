@@ -227,4 +227,42 @@ class PdfScopedAnswerKeysTest {
         assertNull(keys.get(third, 1))
     }
 
+
+    @Test
+    fun `sentez chapter and numbered test header bind to distinct answer keys`() {
+        val keys = PdfScopedAnswerKeys()
+        keys.addOcrRows(listOf(
+            "SİNİR SİSTEMİ GENEL TEKRAR",
+            "SENTEZ 9 1.A 2.B 3.C 4.D",
+            "SENTEZ 10 1.E 2.D 3.B 4.A"
+        ))
+        val ninth = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "SENTEZ\\n9\\nSinir Sistemi Genel Tekrar",
+            "Sinir Sistemi Genel Tekrar"
+        )
+        val tenth = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "SENTEZ\\nSinir Sistemi Genel Tekrar\\n10",
+            "Sinir Sistemi Genel Tekrar"
+        )
+        assertEquals("sentez", ninth?.testKind)
+        assertEquals(9, ninth?.testNumber)
+        assertEquals("A", keys.get(ninth, 1))
+        assertEquals("E", keys.get(tenth, 1))
+        assertEquals("A", keys.get(tenth, 4))
+    }
+
+    @Test
+    fun `analiz heading with number after topic is not mistaken for a question`() {
+        val scope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "ANALİZ\\nSinir Sistemi\\n1",
+            "Sinir Sistemi"
+        )
+        assertEquals("sinir sistemi", scope?.section)
+        assertEquals("analiz", scope?.testKind)
+        assertEquals(1, scope?.testNumber)
+        assertNull(PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "ANALİZ\\nSinir Sistemi", "Sinir Sistemi"
+        ))
+    }
+
 }

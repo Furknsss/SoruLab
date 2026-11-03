@@ -163,6 +163,13 @@ internal class PdfScopedAnswerKeys(
             "analiz", "sentez", "deneme", "uygulama", "etkinlik"
         )
 
+        // Reject layout words only as complete words/phrases: "sentez" is
+        // NOT a standalone label inside a legitimate chapter "fotosentez".
+        private fun containsNonSectionWord(normalized: String): Boolean {
+            val padded = " $normalized "
+            return nonSectionWords.any { word -> " $word " in padded }
+        }
+
         fun normalize(text: String): String = text.lowercase(Locale.forLanguageTag("tr-TR"))
             .replace('ı', 'i').replace('ş', 's').replace('ğ', 'g')
             .replace('ü', 'u').replace('ö', 'o').replace('ç', 'c')
@@ -175,7 +182,7 @@ internal class PdfScopedAnswerKeys(
             val letters = stripped.filter(Char::isLetter)
             if (letters.length < 5 || letters.count(Char::isUpperCase) < letters.length * 0.75) return null
             val normalized = normalize(stripped)
-            if (nonSectionWords.any { it in normalized }) return null
+            if (containsNonSectionWord(normalized)) return null
             return normalized.takeIf { it.length >= 5 }
         }
 
@@ -222,7 +229,7 @@ internal class PdfScopedAnswerKeys(
                 .map { normalize(it.replace(trailingPageNumber, "")) }
                 .filter { line ->
                     line.length in 5..65 && line.any(Char::isLetter) &&
-                        nonSectionWords.none { it in line } &&
+                        !containsNonSectionWord(line) &&
                         !line.startsWith("www") &&
                         line !in listOf(
                             "biyoloji", "matematik", "fizik", "kimya",

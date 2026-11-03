@@ -1108,8 +1108,33 @@ class AiSolverViewModel : ViewModel() {
                                 // The PDF's embedded text layer can preserve tiny
                                 // table titles which whole-page device OCR misses.
                                 // Resolve only from THIS page's printed heading.
-                                val vectorHeaderScope = localBlueprint.pageSourceHeaders[pageIdx]?.let {
-                                    PdfScopedAnswerKeys.scopeFromQuestionHeader(it, pageInfo.topicName)
+                                val printedTestMarker =
+                                    localBlueprint.pageVectorTestMarkers[pageIdx]
+                                val pageSourceHeader = localBlueprint.pageSourceHeaders[pageIdx]
+                                // PDF text order is not page geometry. For example:
+                                // an embedded answer table may emit 1..12 *before*
+                                // the actual printed "ANALİZ 12" test identity.
+                                // Prefix the source header with the independently
+                                // verified spatial identity so the textual section
+                                // still comes from this page, never from a guessed
+                                // global numbering map or the previous test.
+                                val spatialHeader = if (printedTestMarker != null) {
+                                    val kind = printedTestMarker.testKind.uppercase()
+                                    val prefix = if (printedTestMarker.isOsymTest)
+                                        "ÖSYM " else ""
+                                    "$prefix$kind ${printedTestMarker.testNumber}\n" +
+                                        pageSourceHeader.orEmpty()
+                                } else pageSourceHeader
+                                val vectorHeaderScope = spatialHeader?.let {
+                                    PdfScopedAnswerKeys.scopeFromQuestionHeader(
+                                        it, pageInfo.topicName
+                                    )
+                                }?.let { scoped ->
+                                    if (printedTestMarker != null) scoped.copy(
+                                        testNumber = printedTestMarker.testNumber,
+                                        testKind = printedTestMarker.testKind,
+                                        isOsymTest = printedTestMarker.isOsymTest
+                                    ) else scoped
                                 }
                                 val footerFromTextLayer = localBlueprint.pageTextFooterKeys[pageIdx]
                                 if (footerFromTextLayer != null && vectorHeaderScope != null) {

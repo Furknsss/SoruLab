@@ -323,7 +323,7 @@ class SoruLabViewModel(
                 resetUserScopedData()
                 // A student can import PDFs before Google sign-in. Those
                 // books were written to the guest cache and MUST be reopened.
-                hydrateLocalSessionData("device_yks_student_tr")
+                hydrateLocalSessionData(com.example.util.PdfLibraryAccount.GUEST_CACHE_UID)
             }
         }
     }
@@ -335,9 +335,9 @@ class SoruLabViewModel(
         if (current != null) {
             startFirestoreListeners(current.uid)
         } else {
-            hydrateLocalSessionData(
-                _recognizedDeviceAccount.value?.uid ?: "device_yks_student_tr"
-            )
+            hydrateLocalSessionData(com.example.util.PdfLibraryAccount.cacheUid(
+                _currentUser.value?.uid, _recognizedDeviceAccount.value?.uid
+            ))
         }
     }
 
@@ -378,7 +378,9 @@ class SoruLabViewModel(
             val cachedStrokes = repository.loadCachedBoardStrokes(uid)
 
             withContext(Dispatchers.Main) {
-                if ((effectiveUserId() ?: "device_yks_student_tr") != uid) return@withContext
+                if (com.example.util.PdfLibraryAccount.cacheUid(
+                        _currentUser.value?.uid, _recognizedDeviceAccount.value?.uid
+                    ) != uid) return@withContext
                 _deletedTestIds.value = delIds
                 _customPublishers.value = (customPubs + _customPublishers.value).distinctBy { it.id }
                 if (_userCustomQuestions.value.isEmpty() || cachedCustomQuestions.size >= _userCustomQuestions.value.size) {

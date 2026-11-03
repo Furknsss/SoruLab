@@ -109,6 +109,16 @@ internal class PdfScopedAnswerKeys(
         return answers[PdfAnswerId(scope, questionNumber)]
     }
 
+    /** Distinguish unread answer-key scopes from missing cells inside a known scope. */
+    fun hasRecognizedScope(scope: PdfAnswerScope?): Boolean =
+        scope != null && (answers.keys.any { it.scope == scope } ||
+            ambiguous.any { it.scope == scope })
+
+    /** Conflicting OCR/key evidence cannot be graded but can be reported. */
+    fun hasConflictingAnswer(scope: PdfAnswerScope?, questionNumber: Int?): Boolean =
+        scope != null && questionNumber != null &&
+            PdfAnswerId(scope, questionNumber) in ambiguous
+
     companion object {
         private val testLabel = Regex(
             "(?i)(?:^|\\s)((?:ÖSYM|OSYM|O[SŞ]YM)(?:\\s+TADINDA)?\\s*)?(?:TEST|ANAL[İI]Z|DENEME|UYGULAMA|ETK[İI]NL[İI]K)\\s*[-.:–]?\\s*([0-9]{1,2})(?=\\s|$|[.:])"

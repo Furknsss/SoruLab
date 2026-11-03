@@ -571,9 +571,8 @@ class AiSolverViewModel : ViewModel() {
         // Publisher layouts vary: the title/test may start at 8%, 20% or
         // much lower on an illustrated page. Read until the first actual
         // numbered QUESTION instead of using a fixed 17%-of-page cutoff.
-        val printedQuestionLine = Regex("""^\s*(?:[1-9]|[1-3][0-9])[.)-](?:\s|$)""")
         val firstQuestionTop = lines.filter {
-            printedQuestionLine.containsMatchIn(it.text)
+            com.example.util.PdfOcrQuestionMarker.numberAtStart(it.text) != null
         }.mapNotNull { it.boundingBox?.top }.minOrNull()
         val headerLimit = firstQuestionTop?.let { firstTop ->
             (firstTop - bitmap.height * 0.006f).toInt()
@@ -616,14 +615,12 @@ class AiSolverViewModel : ViewModel() {
             val footerCells = recognizeAnswerFooter(bitmap)
             answerGrids = PdfHorizontalAnswerGridReader.find(footerCells, bitmap.width, bitmap.height)
         }
-        val anchorRegex = Regex("""^\s*([1-9]|[1-3][0-9])[\.\-\)]\s*""")
-        val numberRegex = Regex("""^\s*(?:[1-9]|[1-3][0-9])[\.\-\)]?$""")
         val optionRegex = Regex("""^\s*([A-E])\s*[).:]\s*""", RegexOption.IGNORE_CASE)
         val anchors = lines.mapNotNull { line ->
-            val match = anchorRegex.find(line.text) ?: return@mapNotNull null
-            val number = match.groupValues.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
+            val number = com.example.util.PdfOcrQuestionMarker
+                .numberAtStart(line.text) ?: return@mapNotNull null
             val numberElement = line.elements.firstOrNull {
-                numberRegex.matches(it.text.trim())
+                com.example.util.PdfOcrQuestionMarker.isStandaloneNumberElement(it.text)
             }
             val bounds = numberElement?.boundingBox
                 ?: line.elements.firstOrNull()?.boundingBox

@@ -219,31 +219,47 @@ internal class PdfScopedAnswerKeys(
             val kind = match.groupValues[1].lowercase(Locale.ROOT)
             val isOsym = "osym" in normalizedHeader
             val hint = normalize(topicHint)
-            val headings = headerText.lines().map { it.trim() }
-                .filter { original ->
-                    original.isNotBlank() &&
-                        !original.contains('@') &&
-                        !original.contains("http", ignoreCase = true) &&
-                        !normalize(original).contains("test")
-                }
-                .map { normalize(it.replace(trailingPageNumber, "")) }
-                .filter { line ->
-                    line.length in 5..65 && line.any(Char::isLetter) &&
-                        !containsNonSectionWord(line) &&
-                        !line.startsWith("www") &&
-                        line !in listOf(
-                            "biyoloji", "matematik", "fizik", "kimya",
-                            "geometri", "turkce", "tarih", "cografya"
-                        )
-                }
-            // Scanners sometimes recognize "Sinir Sistemi1" without the space
-            // separating the printed unit suffix. Use the recognized topic only
-            // when the visible heading matches it (with an optional 1-2 digit suffix).
-            val matchedHint = hint.takeIf { it.isNotBlank() && headings.any { heading ->
-                heading == it || heading.removePrefix(it).matches(Regex("[0-9]{1,2}"))
-                    && heading.startsWith(it)
+            val headerLines = headerText.lines()
+            val testLineIndex = headerLines.indexOfFirst { line ->
+                Regex("""\b(test|analiz|sentez|deneme|uygulama|etkinlik)\b""")
+                    .containsMatchIn(normalize(line))
+            }
+            val headings = headerLines.mapIndexedNotNull { index, raw ->
+                if (raw.isBlank() || raw.contains('@') ||
+                    raw.contains("http", ignoreCase = true)
+                ) return@mapIndexedNotNull null
+                var heading = normalize(raw.replace(trailingPageNumber, ""))
+                // OCR may join the printed test number to the topic:
+                // "Sinir Sistemi1" and "Sinir Sistemi 1" are the same heading.
+                val suffix = testNum.toString()
+                if (heading.length > suffix.length + 4 && heading.endsWith(suffix) &&
+                    heading[heading.length - suffix.length - 1].isLetter()
+                ) heading = heading.dropLast(suffix.length)
+                val chapterHeading = Regex("""(?:^|\s)(?:unite|bolum|chapter|sinif)(?:\s|$)""")
+                    .containsMatchIn(heading)
+                if (heading.length !in 5..65 || !heading.any(Char::isLetter) ||
+                    chapterHeading || containsNonSectionWord(heading) ||
+                    heading.startsWith("www") ||
+                    heading in listOf(
+                        "biyoloji", "matematik", "fizik", "kimya",
+                        "geometri", "turkce", "tarih", "cografya"
+                    )
+                ) null else index to heading
+            }
+            // Only accept a topic hint when the heading visibly supports it.
+            val matchedHint = hint.takeIf { it.isNotBlank() && headings.any { (_, text) ->
+                text == it || text.startsWith(it) &&
+                    text.removePrefix(it).matches(Regex("""\s*[0-9]{1,2}"""))
             } }
-            val section = matchedHint ?: headings.firstOrNull() ?: hint.takeIf(String::isNotBlank)
+            // When a test number is printed beside its chapter label, prefer
+            // the specific topic following that label; running unit headings
+            // and publisher headers must never replace the actual chapter.
+            val nearestAfter = headings.filter { it.first > testLineIndex }
+                .minByOrNull { it.first }?.second
+            val nearestBefore = headings.filter { it.first < testLineIndex }
+                .maxByOrNull { it.first }?.second
+            val section = matchedHint ?: nearestAfter ?: nearestBefore
+                ?: headings.lastOrNull()?.second ?: hint.takeIf(String::isNotBlank)
             if (section.isNullOrBlank()) return null
             return PdfAnswerScope(section, testNum, isOsym, kind)
         }

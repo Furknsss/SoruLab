@@ -20,6 +20,7 @@ import com.example.util.PdfHorizontalAnswerGrid
 import com.example.util.PdfHorizontalAnswerGridReader
 import com.example.util.PdfAdaptiveAnswerRows
 import com.example.util.PdfOcrTextCell
+import com.example.util.verifiedPrintedQuestionNumber
 import com.example.util.PdfScopedAnswerKeys
 import com.example.util.StudioImageAndPdfEngine
 import com.google.firebase.Firebase
@@ -1294,8 +1295,11 @@ class AiSolverViewModel : ViewModel() {
                                             imageBase64 = cropBox.imageBase64,
                                             pdfFilePath = archivedPdfPath,
                                             pageIndex = pageIdx,
-                                            questionNumberInTest = candidate.answerKeyQuestionNumber
-                                                ?: cropBox.questionOrderInPage,
+                                            // Never substitute the page-local crop order for a
+                                            // printed question number; it can silently
+                                            // assign another question's correct answer.
+                                            questionNumberInTest =
+                                                verifiedPrintedQuestionNumber(candidate.answerKeyQuestionNumber),
                                             sourceTestId = pageAnswerScope?.let { scope ->
                                                 "${scope.section}~${if (scope.isOsymTest) "osym" else scope.testKind}~${scope.testNumber}"
                                             }.orEmpty()
@@ -1365,16 +1369,36 @@ class AiSolverViewModel : ViewModel() {
                         add("$detectedAnswerPages olası cevap anahtarı sayfası tarandı ancak " +
                             "geçerli test-cevap eşleşmesi bulunamadı. Hiçbir cevap tahmin edilmedi.")
                     }
-                    val missingScope = allExtractedQuestions.count {
-                        it.sourceTestId.isBlank()
-                    }
-                    if (missingScope > 0) {
-                        add("$missingScope sorunun kaynak test başlığı okunamadı.")
-                    }
-                    val unresolved = allExtractedQuestions.count { !it.answerKeyMatched }
-                    if (unresolved > 0) {
-                        add("$unresolved soru cevabı güvenle eşleştirilemedi; " +
-                            "eşleşmeyen soru ve cevap anahtarlarını kontrol edin.")
+                    val unresolved = allExtractedQuestions.filterNot { it.answerKeyMatched }
+                    if (unresolved.isNotEmpty()) {
+                        // Explain WHY a key was not matched, without silently filling
+                        // missing answers or presenting every OCR failure as identical.
+                        val missingNumber = unresolved.count { it.questionNumberInTest !in 1..200 }
+                        val missingScope = unresolved.count {
+                            it.questionNumberInTest in 1..200 &&
+                                expectedScopeByQuestionId[it.id] == null
+                        }
+                        val unreadTestKey = unresolved.count { question ->
+                            question.questionNumberInTest in 1..200 &&
+                                expectedScopeByQuestionId[question.id]?.let { scope ->
+                                    !scopedAnswers.hasRecognizedScope(scope)
+                                } == true
+                        }
+                        val conflictingKeys = unresolved.count { question ->
+                            scopedAnswers.hasConflictingAnswer(
+                                expectedScopeByQuestionId[question.id],
+                                question.questionNumberInTest
+                            )
+                        }
+                        val absentKeyCells = unresolved.size -
+                            missingNumber - missingScope - unreadTestKey - conflictingKeys
+                        add("${unresolved.size} soru güvenle eşleştirilemedi. Ayrıntı: " +
+                            "$missingNumber basılı numara okunamadı • " +
+                            "$missingScope test başlığı eşleşmedi • " +
+                            "$unreadTestKey kaynak testin cevapları okunamadı • " +
+                            "$conflictingKeys çelişkili cevap • " +
+                            "$absentKeyCells testte eksik cevap hücresi. " +
+                            "Yanlış cevap tahmini yapılmadı.")
                     }
                     if (processingStatus.ocrFailureCount > 0) {
                         add("Cihaz içi OCR ${processingStatus.ocrFailureCount} soruda tamamlanamadı; kırpılmış görseller yine aktarıldı.")

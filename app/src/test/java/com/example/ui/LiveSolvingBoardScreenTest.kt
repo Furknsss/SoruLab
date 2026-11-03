@@ -12,6 +12,7 @@ import com.example.data.ExamType
 import com.example.data.YksQuestion
 import com.example.data.YksTestItem
 import com.example.ui.screens.LiveSolvingBoardScreen
+import com.example.ui.screens.scoreReportHeadline
 import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.ActiveSolvingSession
 import com.example.viewmodel.DrawingTool
@@ -28,6 +29,13 @@ import org.robolectric.annotation.Config
 class LiveSolvingBoardScreenTest {
     @get:Rule
     val compose = createComposeRule()
+
+    @Test
+    fun ungradedTestNeverClaimsStudentFailedOrSucceeded() {
+        assertEquals("Cevap anahtarı doğrulanmadı", scoreReportHeadline(0, 0))
+        assertEquals("Pes etmek yok!", scoreReportHeadline(0, 5))
+        assertEquals("Harika iş çıkardın!", scoreReportHeadline(4, 5))
+    }
 
     @Test
     fun tallerViewportPacksMoreQuestionsWithoutLosingTheirOrder() {

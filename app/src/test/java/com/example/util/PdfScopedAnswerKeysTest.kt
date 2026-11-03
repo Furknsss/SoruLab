@@ -237,11 +237,11 @@ class PdfScopedAnswerKeysTest {
             "SENTEZ 10 1.E 2.D 3.B 4.A"
         ))
         val ninth = PdfScopedAnswerKeys.scopeFromQuestionHeader(
-            "SENTEZ\\n9\\nSinir Sistemi Genel Tekrar",
+            "SENTEZ\n9\nSinir Sistemi Genel Tekrar",
             "Sinir Sistemi Genel Tekrar"
         )
         val tenth = PdfScopedAnswerKeys.scopeFromQuestionHeader(
-            "SENTEZ\\nSinir Sistemi Genel Tekrar\\n10",
+            "SENTEZ\nSinir Sistemi Genel Tekrar\n10",
             "Sinir Sistemi Genel Tekrar"
         )
         assertEquals("sentez", ninth?.testKind)
@@ -254,14 +254,14 @@ class PdfScopedAnswerKeysTest {
     @Test
     fun `analiz heading with number after topic is not mistaken for a question`() {
         val scope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
-            "ANALİZ\\nSinir Sistemi\\n1",
+            "ANALİZ\nSinir Sistemi\n1",
             "Sinir Sistemi"
         )
         assertEquals("sinir sistemi", scope?.section)
         assertEquals("analiz", scope?.testKind)
         assertEquals(1, scope?.testNumber)
         assertNull(PdfScopedAnswerKeys.scopeFromQuestionHeader(
-            "ANALİZ\\nSinir Sistemi", "Sinir Sistemi"
+            "ANALİZ\nSinir Sistemi", "Sinir Sistemi"
         ))
     }
 

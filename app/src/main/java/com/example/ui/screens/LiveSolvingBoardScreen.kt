@@ -467,20 +467,71 @@ fun LiveSolvingBoardScreen(
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.White)
                     .shadow(2.dp, RoundedCornerShape(8.dp))
-                    .pointerInput(isZoomMagnifierEnabled, zoomScale) {
-                        if (isZoomMagnifierEnabled || zoomScale > 1.02f) {
-                            detectTransformGestures { _, pan, zoom, _ ->
-                                val newScale = (zoomScale * zoom).coerceIn(1f, 3.0f)
-                                zoomScale = newScale
-                                panOffset = if (newScale > 1.01f) {
-                                    Offset(
-                                        x = (panOffset.x + pan.x).coerceIn(-900f, 900f),
-                                        y = (panOffset.y + pan.y).coerceIn(-900f, 900f)
-                                    )
-                                } else {
-                                    Offset.Zero
+                    // Initial pass wins two-finger gestures before the pager
+                    // can mistake a pinch for a page change. Single-finger
+                    // touches at normal zoom remain available to page swipe.
+                    .pointerInput(
+                        activeTool, fingerDrawingEnabled, isZoomMagnifierEnabled,
+                        currentBookPageIndex, session.viewMode
+                    ) {
+                        awaitEachGesture {
+                            var hadNavigationGesture = false
+                            do {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val fingers = event.changes.filter {
+                                    it.pressed && it.type == PointerType.Touch
                                 }
-                            }
+                                val stylusPressed = event.changes.any {
+                                    it.pressed && it.type == PointerType.Stylus
+                                }
+                                val pinch = StylusInputPolicy.usePinch(
+                                    fingers.size, stylusPressed
+                                )
+                                val oneFingerPan = !pinch && fingers.size == 1 &&
+                                    !stylusPressed && zoomScale > 1.02f &&
+                                    (!fingerDrawingEnabled ||
+                                        activeTool == DrawingTool.HAND_PAN ||
+                                        isZoomMagnifierEnabled)
+                                if (pinch || oneFingerPan) {
+                                    val pan = event.calculatePan()
+                                    val scaleChange = if (pinch) {
+                                        event.calculateZoom().takeIf {
+                                            it.isFinite() && it > 0f
+                                        } ?: 1f
+                                    } else 1f
+                                    val nextScale = (zoomScale * scaleChange)
+                                        .coerceIn(1f, 4f)
+                                    val focus = if (pinch) {
+                                        event.calculateCentroid(useCurrent = false)
+                                    } else {
+                                        Offset(size.width / 2f, size.height / 2f)
+                                    }
+                                    val viewportCenter = Offset(
+                                        size.width / 2f, size.height / 2f
+                                    )
+                                    val factor = nextScale / zoomScale.coerceAtLeast(1f)
+                                    val proposed = panOffset + pan +
+                                        (focus - viewportCenter - panOffset) *
+                                        (1f - factor)
+                                    val maxX = (size.width * (nextScale - 1f) / 2f)
+                                        .coerceAtLeast(0f)
+                                    val maxY = (size.height * (nextScale - 1f) / 2f)
+                                        .coerceAtLeast(0f)
+                                    zoomScale = nextScale
+                                    panOffset = if (nextScale <= 1.02f) Offset.Zero else {
+                                        Offset(
+                                            proposed.x.coerceIn(-maxX, maxX),
+                                            proposed.y.coerceIn(-maxY, maxY)
+                                        )
+                                    }
+                                    hadNavigationGesture = true
+                                }
+                                if (hadNavigationGesture && !stylusPressed) {
+                                    event.changes.filter {
+                                        it.type == PointerType.Touch
+                                    }.forEach { it.consume() }
+                                }
+                            } while (event.changes.any { it.pressed })
                         }
                     }
                     .graphicsLayer {

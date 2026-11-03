@@ -2294,7 +2294,8 @@ class SoruLabViewModel(
         publisherName: String,
         publisherLogoUri: String,
         bookOrTestName: String,
-        bookCoverPath: String
+        bookCoverPath: String,
+        onSaved: (Boolean, String) -> Unit = { _, _ -> }
     ) {
         val cleanItems = extractedItems
             .filter { item ->
@@ -2303,8 +2304,11 @@ class SoruLabViewModel(
                     item.questionText.trim().length >= 12
             }
 
-        if (cleanItems.isEmpty()) {
-            showBanner("PDF içinde aktarılabilecek soru bulunamadı.")
+        if (cleanItems.isEmpty() || cleanItems.size != extractedItems.size) {
+            val msg = if (cleanItems.isEmpty()) "PDF içinde aktarılabilecek soru bulunamadı."
+                else "${extractedItems.size - cleanItems.size} soru görsel veya metin içermiyor. Eksik kitabı kaydedilmiş göstermemek için aktarım durduruldu."
+            showBanner(msg)
+            onSaved(false, msg)
             return
         }
 
@@ -2314,6 +2318,7 @@ class SoruLabViewModel(
         val finalLogoUri = publisherLogoUri.ifBlank { resolvedPublisher.customLogoPath }
 
         viewModelScope.launch(Dispatchers.Default) {
+            try {
             val subjectMemo = HashMap<String, com.example.data.YksSubject>(32)
             val batchTimestamp = System.currentTimeMillis()
 
@@ -2443,7 +2448,11 @@ class SoruLabViewModel(
                         aiSolutionSummary = packedSolution,
                         cropAspectRatio = item.cropAspectRatio.coerceIn(0.3, 4.5),
                         bookId = item.bookId,
-                        imageBase64 = item.imageBase64,
+                        // Use the persisted crop rather than duplicating every
+                        // JPEG as a base64 string in the local JSON and cloud.
+                        imageBase64 = if (canonicalImagePath.isNotBlank() &&
+                            java.io.File(canonicalImagePath).isFile
+                        ) "" else item.imageBase64,
                         pdfFilePath = item.pdfFilePath,
                         pageIndex = item.pageIndex,
                         questionNumberInTest = item.questionNumberInTest,
@@ -2459,30 +2468,37 @@ class SoruLabViewModel(
             updatedList.addAll(newRecords)
             updatedList.addAll(_userCustomQuestions.value.filterNot { old -> newRecords.any { it.id == old.id } })
 
-            var localCacheSaved = true
+            // A successful scan is not a successful import until an atomic
+            // file write and read-back both succeed.
             try {
                 withContext(Dispatchers.IO) {
                     repository.saveCachedCustomQuestions(uid, updatedList)
+                    val restored = repository.loadCachedCustomQuestions(uid)
+                    val ids = restored.mapTo(HashSet(restored.size)) { it.id }
+                    check(newRecords.all { it.id in ids }) {
+                        "Yerel kitaplık yazıldı fakat doğrulanamadı."
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
-                localCacheSaved = false
+            } catch (e: Exception) {
+                android.util.Log.e("SoruLabPdfImport", "Local PDF book commit failed", e)
+                val msg = "Sorular bulundu fakat kalıcı kaydetme tamamlanamadı. " +
+                    "Depolama alanını kontrol edip tekrar deneyin. Önizleme korunuyor."
+                withContext(Dispatchers.Main) {
+                    showBanner(msg)
+                    onSaved(false, msg)
+                }
+                return@launch
             }
 
             withContext(Dispatchers.Main) {
                 _userCustomQuestions.value = updatedList
-                showBanner(
-                    if (localCacheSaved) {
-                        if (imageRekeyFailureCount == 0) {
-                            "'$bookOrTestName' kaynağından ${newRecords.size} soru cihazınıza eklendi."
-                        } else {
-                            "${newRecords.size} soru eklendi; $imageRekeyFailureCount görseli dosya adıyla eşleştirilemedi."
-                        }
-                    } else {
-                        "Sorular oturumda açıldı ancak cihaz depolamasına yazılamadı; uygulamayı kapatmayın ve depolama alanını kontrol edin."
-                    }
-                )
+                val msg = "'$bookOrTestName' kitaplığa eklendi: ${newRecords.size} soru. " +
+                    if (imageRekeyFailureCount == 0) "Yerel kayıt doğrulandı."
+                    else "$imageRekeyFailureCount görselin dosya adı kontrol edilmeli."
+                showBanner(msg)
+                onSaved(true, msg)
             }
 
             syncPdfPoolToPracticeTests(updatedList)
@@ -2495,11 +2511,7 @@ class SoruLabViewModel(
                         repository.saveCustomQuestionsBatch(cloudBatch)
                         withContext(Dispatchers.Main) {
                             showBanner(
-                                if (localCacheSaved) {
-                                    "'$bookOrTestName' soruları bulut hesabınızla eşitlendi."
-                                } else {
-                                    "Bulut eşitlemesi tamamlandı; cihaz önbelleği yazılamadı."
-                                }
+                                "'$bookOrTestName' soruları bulut hesabınızla eşitlendi."
                             )
                         }
                     } catch (e: CancellationException) {
@@ -2507,15 +2519,25 @@ class SoruLabViewModel(
                     } catch (e: Exception) {
                         withContext(Dispatchers.Main) {
                             showBanner(
-                                "Sorular cihazda ${if (localCacheSaved) "kaydedildi" else "oturumda tutuluyor"}; buluta eşitlenemedi. " +
+                                "Sorular cihazda kaydedildi; buluta eşitlenemedi. " +
                                     cloudSaveProblem(e)
                             )
                         }
                     }
                 }
-            } else if (localCacheSaved) {
+            } else {
                 withContext(Dispatchers.Main) {
                     showBanner("Sorular cihazınıza kaydedildi. Bulut eşitlemesi için hesabınızla giriş yapın.")
+                }
+            }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.e("SoruLabPdfImport", "Unexpected PDF import commit failure", e)
+                val msg = "Kitaplık kaydı tamamlanamadı: ${e.javaClass.simpleName}. Önizleme korunuyor."
+                withContext(Dispatchers.Main) {
+                    showBanner(msg)
+                    onSaved(false, msg)
                 }
             }
         }

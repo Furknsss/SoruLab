@@ -34,4 +34,15 @@ class PdfSourceHeaderExtractorTest {
         assertTrue(!header.contains("Soru başlangıcı"))
         assertEquals(2, PdfScopedAnswerKeys.scopeFromQuestionHeader(header, "Sinir Sistemi")?.testNumber)
     }
+
+    @Test
+    fun `bare answer row numbers never masquerade as a test number`() {
+        val source = listOf(
+            "Konu Başlığı", "TEST", "1", "2", "3", "4", "5", "6.",
+            "Gerçek soru metni"
+        ).joinToString("\n")
+        val header = PdfSourceHeaderExtractor.extract(source)
+        val scope = PdfScopedAnswerKeys.scopeFromQuestionHeader(header, "Konu Başlığı")
+        org.junit.Assert.assertNull(scope)
+    }
 }

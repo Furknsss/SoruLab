@@ -149,18 +149,18 @@ internal class PdfScopedAnswerKeys(
 
     companion object {
         private val testLabel = Regex(
-            "(?i)(?:^|\\s)((?:ÖSYM|OSYM|O[SŞ]YM)(?:\\s+TADINDA)?\\s*)?(?:TEST|ANAL[İI]Z|DENEME|UYGULAMA|ETK[İI]NL[İI]K)\\s*[-.:–]?\\s*([0-9]{1,2})(?=\\s|$|[.:])"
+            "(?i)(?:^|\\s)((?:ÖSYM|OSYM|O[SŞ]YM)(?:\\s+TADINDA)?\\s*)?(?:TEST|ANAL[İI]Z|SENTEZ|DENEME|UYGULAMA|ETK[İI]NL[İI]K)\\s*[-.:–]?\\s*([0-9]{1,2})(?=\\s|$|[.:])"
         )
         private val questionAnswer = Regex("(?<![0-9])([0-9]{1,3})\\s*[.\\-:)]?\\s*([A-E])(?=\\s|$|[,;|.]|[0-9])", RegexOption.IGNORE_CASE)
         private val questionScopeNumber = Regex(
-            "(?i)\\b(TEST|ANALIZ|DENEME|UYGULAMA|ETKINLIK)\\s*[-.:–]?\\s*([0-9]{1,2})\\b"
+            "(?i)\\b(TEST|ANALIZ|SENTEZ|DENEME|UYGULAMA|ETKINLIK)\\s*[-.:–]?\\s*([0-9]{1,2})\\b"
         )
         private val trailingPageNumber = Regex("\\s+[0-9]{1,2}\\s*$")
         // Generic document/branding words, not a list of known publishers.
         private val nonSectionWords = listOf(
             "cevap", "anahtar", "soru bankasi", "test", "osym",
             "tadinda", "yayin", "kitap", "www", "pdf", "instagram",
-            "analiz", "deneme", "uygulama", "etkinlik"
+            "analiz", "sentez", "deneme", "uygulama", "etkinlik"
         )
 
         fun normalize(text: String): String = text.lowercase(Locale.forLanguageTag("tr-TR"))
@@ -196,11 +196,20 @@ internal class PdfScopedAnswerKeys(
 
         /** Missing test/section evidence is deliberately left unmatched. */
         fun scopeFromQuestionHeader(headerText: String, topicHint: String): PdfAnswerScope? {
-            val matchedTest = questionScopeNumber.find(normalize(headerText))
-                ?: return null
-            val testNum = matchedTest.groupValues[2].toIntOrNull() ?: return null
-            val kind = matchedTest.groupValues[1].lowercase(Locale.ROOT)
             val normalizedHeader = normalize(headerText)
+            val matchedTest = questionScopeNumber.find(normalizedHeader)
+            // Some books print ANALİZ/SENTEZ above the chapter and a small
+            // test number at the far edge. ML Kit can read those out of order:
+            // "ANALİZ\\nSinir Sistemi\\n1". Accept this only from the
+            // short heading area supplied by the page reader, never question
+            // body text, and never guess a number when none was printed.
+            val splitHeaderTest = if (matchedTest == null) {
+                Regex("""\\b(analiz|sentez)\\b(?:\\s+[a-z]{2,}(?:\\s+[a-z]{2,}){0,8})?\\s+([0-9]{1,2})(?=\\s|$)""")
+                    .find(normalizedHeader)
+            } else null
+            val match = matchedTest ?: splitHeaderTest ?: return null
+            val testNum = match.groupValues[2].toIntOrNull() ?: return null
+            val kind = match.groupValues[1].lowercase(Locale.ROOT)
             val isOsym = "osym" in normalizedHeader
             val hint = normalize(topicHint)
             val headings = headerText.lines().map { it.trim() }

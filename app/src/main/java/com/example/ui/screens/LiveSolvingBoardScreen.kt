@@ -3287,6 +3287,13 @@ private fun FullScreenTwinQuestionComparisonView(
  *   * Her soru satırı (`1. Soru`, `2. Soru`...): Doğru cevap harfi, Öğrenci cevabı (`-` veya harf),
  *     sağda 5 yıldız üzerinden mavi yıldızlı zorluk gösterimi (`★★☆☆☆`) ve aşağı açılır ok (`⌄`).
  */
+/** Do not label a test as failed when none of its source answers were verified. */
+internal fun scoreReportHeadline(correctCount: Int, gradedQuestionCount: Int): String = when {
+    gradedQuestionCount == 0 -> "Cevap anahtarı doğrulanmadı"
+    correctCount.toFloat() / gradedQuestionCount >= 0.7f -> "Harika iş çıkardın!"
+    else -> "Pes etmek yok!"
+}
+
 @Composable
 private fun FullScreenSuccessReportCardView(
     session: ActiveSolvingSession,
@@ -3305,12 +3312,7 @@ private fun FullScreenSuccessReportCardView(
 
     val gradedQuestionCount = questions.count { it.answerKeyVerified }
     val headlineText = remember(correctCount, gradedQuestionCount) {
-        val ratio = correctCount.toFloat() / gradedQuestionCount.coerceAtLeast(1).toFloat()
-        when {
-            gradedQuestionCount == 0 -> "Cevap anahtarı doğrulanmadı"
-            ratio >= 0.7f -> "Harika iş çıkardın!"
-            else -> "Pes etmek yok!"
-        }
+        scoreReportHeadline(correctCount, gradedQuestionCount)
     }
 
     Column(

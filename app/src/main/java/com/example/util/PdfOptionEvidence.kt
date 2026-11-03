@@ -3,17 +3,21 @@ package com.example.util
 import java.util.Locale
 
 /**
- * Read A)-E) evidence from the PDF's own text layer.
- *
- * Keep this regex in one pure, unit-testable place: a previous raw-string
- * expression accidentally contained a double backslash before ')', causing
- * PatternSyntaxException on every book import reaching this step.
+ * Recognize multiple-choice option labels, not publisher-specific typography.
+ * Supports A), A., A:, (A) and spacing variants. Only standalone option
+ * markers with following content count: a bare list "A. B. C." must not
+ * make an advertisement or answer key look like a question page.
  */
 internal object PdfOptionEvidence {
-    private val optionToken = Regex("""[A-E]\)""")
+    private val optionToken = Regex(
+        """(?<![A-Z0-9])(?:\(([A-E])\)|([A-E])[ \t]*[).:])(?=[ \t]*\S)(?![ \t]*[A-E][ \t]*[).:](?:[ \t]|$))"""
+    )
 
     fun letters(pageText: String): Set<String> =
         optionToken.findAll(pageText.uppercase(Locale.ROOT))
-            .map { it.value.take(1) }
+            .map { match ->
+                match.groupValues[1].ifBlank { match.groupValues[2] }
+            }
+            .filter(String::isNotBlank)
             .toSet()
 }

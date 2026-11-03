@@ -11,14 +11,14 @@ internal data class PdfSourceGlyph(
     val width: Float,
     val height: Float
 )
-internal data class PdfSourceQuestionAnchor(
+data class PdfSourceQuestionAnchor(
     val number: Int,
     val x: Float,
     val y: Float,
     val width: Float,
     val height: Float
 )
-internal data class PdfSourcePageAnchors(
+data class PdfSourcePageAnchors(
     val pageWidth: Float,
     val pageHeight: Float,
     val anchors: List<PdfSourceQuestionAnchor>

@@ -20,7 +20,7 @@ internal data class PdfOcrTextCell(
 
 internal object PdfAdaptiveAnswerRows {
     private val testHeading = Regex(
-        "(?i)\\b(?:osym\\s+(?:tadinda\\s+)?)?(?:test|analiz|deneme|uygulama|etkinlik)\\s*[-.:]?\\s*[0-9]{0,2}\\b"
+        "(?i)\\b(?:osym\\s+(?:tadinda\\s+)?)?(?:test|analiz|sentez|deneme|uygulama|etkinlik)\\s*[-.:]?\\s*[0-9]{0,2}\\b"
     )
 
     /**

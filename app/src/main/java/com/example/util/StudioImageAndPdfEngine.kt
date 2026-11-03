@@ -1362,8 +1362,14 @@ object StudioImageAndPdfEngine {
         }.toSet()
         // Key strips may live on every other page instead of in a separate
         // answer-key chapter. Preserve the exact PDF page association.
-        val pageTextFooterKeys = vectorPageText.mapIndexedNotNull { index, text ->
-            PdfTextFooterKeys.read(text).takeIf { it.isNotEmpty() }?.let { index to it }
+        val pageTextFooterKeys = sourcePages.mapIndexedNotNull { index, page ->
+            // PDFBox often emits tiny table CELLS as isolated text lines and
+            // even puts the footer BEFORE the question text. Geometry is
+            // authoritative; only fall back to linear text for simpler PDFs.
+            val keys = page.vectorFooterKeys.ifEmpty {
+                PdfTextFooterKeys.read(page.text)
+            }
+            keys.takeIf { it.isNotEmpty() }?.let { index to it }
         }.toMap()
         val pageSourceHeaders = vectorPageText.mapIndexedNotNull { index, text ->
             text.lines().filter(String::isNotBlank).take(8).joinToString("\n")
@@ -1531,7 +1537,8 @@ object StudioImageAndPdfEngine {
         val text: String,
         val pageWidth: Float,
         val pageHeight: Float,
-        val anchors: List<PdfSourceQuestionAnchor>
+        val anchors: List<PdfSourceQuestionAnchor>,
+        val vectorFooterKeys: Map<Int, String>
     )
 
     private class PdfGeometryTextStripper : PDFTextStripper() {
@@ -1568,7 +1575,8 @@ object StudioImageAndPdfEngine {
                     text = text,
                     pageWidth = width,
                     pageHeight = height,
-                    anchors = PdfVectorQuestionAnchors.find(stripper.glyphs, width, height)
+                    anchors = PdfVectorQuestionAnchors.find(stripper.glyphs, width, height),
+                    vectorFooterKeys = PdfVectorAnswerStrip.read(stripper.glyphs, width, height)
                 )
             }
         }

@@ -61,8 +61,8 @@ android {
     applicationId = "com.aistudio.sorulab.ykslab"
     minSdk = 24
     targetSdk = 36
-    versionCode = 23
-    versionName = "1.2.4"
+    versionCode = 26
+    versionName = "1.2.5-rc3"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -276,7 +276,9 @@ dependencies {
 
 tasks.withType<Test> {
   failFast = true
-  timeout.set(Duration.ofMinutes(2))
+  // Robolectric SDK sandboxes must not share the native font ZIP filesystem.
+  forkEvery = 1
+  timeout.set(Duration.ofMinutes(10))
   testLogging {
     events("passed", "failed", "skipped")
     exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

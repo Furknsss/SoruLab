@@ -11,6 +11,31 @@ import org.robolectric.RobolectricTestRunner
 class StudioImageAndPdfEngineTest {
 
     @Test
+    fun `replacing an imported crop invalidates the old destination bitmap`() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        val directory = java.io.File(context.filesDir, "questions").apply { mkdirs() }
+        val destination = java.io.File(directory, "q_reimport_test.jpg")
+        val replacement = java.io.File(directory, "replacement.jpg")
+        fun write(file: java.io.File, width: Int) {
+            val bitmap = android.graphics.Bitmap.createBitmap(width, 100, android.graphics.Bitmap.Config.ARGB_8888)
+            file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+        try {
+            write(destination, 120)
+            write(replacement, 240)
+            assertEquals(120, StudioImageAndPdfEngine.getCachedBitmap(destination.absolutePath)?.width)
+            assertEquals(destination.absolutePath, StudioImageAndPdfEngine.rekeyQuestionImage(context, replacement.absolutePath, "reimport_test"))
+            org.junit.Assert.assertNull(StudioImageAndPdfEngine.peekCachedBitmap(destination.absolutePath))
+            assertEquals(240, StudioImageAndPdfEngine.getCachedBitmap(destination.absolutePath)?.width)
+        } finally {
+            StudioImageAndPdfEngine.invalidateCachedBitmap(destination.absolutePath)
+            destination.delete()
+            replacement.delete()
+        }
+    }
+
+    @Test
     fun `normalizes inverted and out of range crop coordinates`() {
         val bounds = normalizeCropBounds(
             ymin = 980,

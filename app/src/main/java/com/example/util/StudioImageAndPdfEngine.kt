@@ -127,6 +127,7 @@ object StudioImageAndPdfEngine {
         if (source.canonicalFile == destination.canonicalFile) return destination.absolutePath
         return try {
             source.copyTo(destination, overwrite = true)
+            invalidateCachedBitmap(destination.absolutePath)
             invalidateCachedBitmap(path)
             invalidateCachedBitmap(source.absolutePath)
             source.delete()
@@ -1711,7 +1712,8 @@ object StudioImageAndPdfEngine {
         totalPages: Int,
         reusablePixelsRef: Array<IntArray?>,
         questionNumberAnchors: List<QuestionNumberAnchor> = emptyList(),
-        optionAnchors: List<QuestionOptionAnchor> = emptyList()
+        optionAnchors: List<QuestionOptionAnchor> = emptyList(),
+        maxQuestionBottomY: Int? = null
     ): List<LocalCroppedBoxResult> {
         if (pageBitmap.isRecycled) return emptyList()
         val width = pageBitmap.width
@@ -1733,7 +1735,8 @@ object StudioImageAndPdfEngine {
             pageIndex = pageIndex,
             totalPages = totalPages,
             questionNumberAnchors = questionNumberAnchors,
-            optionAnchors = optionAnchors
+            optionAnchors = optionAnchors,
+            maxQuestionBottomY = maxQuestionBottomY
         )
     }
 
@@ -1743,7 +1746,8 @@ object StudioImageAndPdfEngine {
         box2d: List<Int>,
         pageIndex: Int,
         questionOrder: Int,
-        difficulty: String
+        difficulty: String,
+        addPadding: Boolean = true
     ): LocalCroppedBoxResult? {
         if (box2d.size != 4) return null
         val height = pageBitmap.height
@@ -1752,8 +1756,8 @@ object StudioImageAndPdfEngine {
         val left = box2d[1].coerceIn(0, 1000) * width / 1000
         val bottom = box2d[2].coerceIn(0, 1000) * height / 1000
         val right = box2d[3].coerceIn(0, 1000) * width / 1000
-        val padX = (width * 0.008f).roundToInt()
-        val padY = (height * 0.008f).roundToInt()
+        val padX = if (addPadding) (width * 0.008f).roundToInt() else 0
+        val padY = if (addPadding) (height * 0.008f).roundToInt() else 0
         val cropLeft = (left - padX).coerceIn(0, (width - 1).coerceAtLeast(0))
         val cropTop = (top - padY).coerceIn(0, (height - 1).coerceAtLeast(0))
         val cropRight = (right + padX).coerceIn(cropLeft + 1, width)
@@ -1814,7 +1818,8 @@ object StudioImageAndPdfEngine {
         pageIndex: Int,
         totalPages: Int,
         questionNumberAnchors: List<QuestionNumberAnchor>,
-        optionAnchors: List<QuestionOptionAnchor>
+        optionAnchors: List<QuestionOptionAnchor>,
+        maxQuestionBottomY: Int?
     ): List<LocalCroppedBoxResult> {
         // 1. Estimate background paper luminance so off-white / gray / yellow backgrounds are ignored
         var highLumSum = 0L
@@ -2039,8 +2044,19 @@ object StudioImageAndPdfEngine {
                     (firstQuestionTop - (height * 0.012f).roundToInt()).coerceAtLeast(0)
                 )
             }
-        bodyBottom = min(bodyBottom, (height * 0.945f).roundToInt())
-            .coerceIn(bodyTop + 1, height)
+        // Printed choices are stronger evidence than a fixed footer percentage.
+        // Long questions regularly extend below 94.5% of a scanned page.
+        val lastChoiceBottom = optionAnchors.maxOfOrNull { it.bottom }
+        bodyBottom = maxOf(bodyBottom, lastChoiceBottom?.plus((height * 0.01f).roundToInt()) ?: 0)
+            .coerceIn(bodyTop + 1, height - 1)
+        // If this PDF prints the answer grid directly under the final
+        // multiple-choice question, do not include that key in the crop.
+        // The limit is derived from OCR geometry, never a fixed page fraction.
+        maxQuestionBottomY?.takeIf { gridTop ->
+            gridTop > bodyTop + 80 && gridTop < bodyBottom
+        }?.let { gridTop ->
+            bodyBottom = min(bodyBottom, gridTop - 7)
+        }
         val bodyH = (bodyBottom - bodyTop).coerceAtLeast(1)
 
         // 2. Detect Center Vertical Gutter or Divider Line (`midX`)
@@ -2158,54 +2174,58 @@ object StudioImageAndPdfEngine {
                     option.left >= colLeft &&
                     option.left < colRight
             }
-            val questionBands = if (anchors.isEmpty()) {
-                projectedBands.flatMap { band ->
-                    splitOversizedProjectionBand(
-                        pixels = pixels,
-                        pageWidth = width,
-                        colLeft = colLeft,
-                        colRight = colRight,
-                        band = band,
-                        bodyHeight = bodyH,
-                        isInkPixel = ::isInkPixel
-                    )
-                }
-            } else {
-                anchors.mapIndexed { anchorIndex, anchor ->
-                    val previousAnchorTop = anchors.getOrNull(anchorIndex - 1)?.top
+            // Fail closed. Pixel projection alone repeatedly produced merged
+            // 7+8 crops and completely unrelated snippets from scanned books.
+            // Without a recognized printed number we cannot reliably locate
+            // a question or attach its printed answer-key identity.
+            if (anchors.isEmpty()) continue
+            val questionBands = anchors.mapIndexed { anchorIndex, anchor ->
                     val nextAnchorTop = anchors.getOrNull(anchorIndex + 1)?.top
                     val optionsForQuestion = columnOptions.filter {
                         it.top >= anchor.top && (nextAnchorTop == null || it.top < nextAnchorTop)
+                    }.sortedBy { it.top }
+                    // When the next printed number is missing from OCR, all
+                    // following A-E rows would otherwise be absorbed into this
+                    // one crop. The FIRST complete sequence ending with E is a
+                    // conservative alternative end marker.
+                    val firstEndingE = optionsForQuestion.firstOrNull {
+                        it.option.equals("E", ignoreCase = true)
                     }
-                    val optionBottom = optionsForQuestion.maxOfOrNull { it.bottom }
-                    val previousOptionsBottom = columnOptions
-                        .asSequence()
-                        .filter { it.top < anchor.top && (previousAnchorTop == null || it.top >= previousAnchorTop) }
-                        .maxOfOrNull { it.bottom }
-                    val precedingInkTop = projectedBands
-                        .lastOrNull { it.first <= anchor.top && it.second >= anchor.bottom }
-                        ?.first
-                        ?: (if (anchorIndex == 0) {
-                            projectedBands.firstOrNull { it.second < anchor.top }?.first
-                        } else {
-                            null
-                        })
-                        ?: projectedBands.lastOrNull {
-                            it.second < anchor.top && anchor.top - it.second <= (bodyH * 0.12f).roundToInt()
-                        }?.first
-                    val startY = (previousOptionsBottom?.plus(8) ?: (precedingInkTop ?: anchor.top) - 16)
+                    // An incomplete OCR option list is not an end boundary: a graph
+                    // label or only the first A/B row used to truncate the stem.
+                    val optionBottom = firstEndingE?.takeIf {
+                        optionsForQuestion.filter { option -> option.top <= it.top }
+                            .map { option -> option.option.uppercase() }.toSet()
+                            .containsAll(listOf("A", "B", "C", "D", "E"))
+                    }?.let { end ->
+                        optionsForQuestion.filter { it.top <= end.top }
+                            .maxOf { it.bottom }
+                    }
+                    // The OCR printed number marks the question START, not a
+                    // projection band that might also contain earlier questions.
+                    // A hard next-number boundary is more important than the
+                    // current option's OCR box (which can accidentally include
+                    // the following question or a publisher watermark).
+                    val anchorPadding = (height * 0.008f).roundToInt().coerceIn(9, 22)
+                    val startY = (anchor.top - anchorPadding)
                         .coerceIn(bodyTop, bodyBottom - 1)
-                    val endY = (optionBottom?.plus(16)
-                        ?: nextAnchorTop?.minus(16)
-                        ?: projectedBands.lastOrNull { it.second >= anchor.bottom }?.second
-                        ?: (bodyBottom - 1))
-                        .coerceIn(startY + 1, bodyBottom - 1)
+                    val hardEnd = nextAnchorTop?.minus(anchorPadding)
+                        ?.coerceIn(startY + 1, bodyBottom - 1)
+                        ?: (bodyBottom - 1)
+                    // With a known next question, preserve all projected content,
+                    // including wrapped E-choice lines that OCR split into rows.
+                    val withinQuestionOptions = optionBottom?.takeIf { nextAnchorTop == null && it < hardEnd }
+                    val lastQuestionInk = projectedBands
+                        .filter { it.second >= anchor.bottom && it.first < hardEnd }
+                        .maxOfOrNull { it.second.coerceAtMost(hardEnd) }
+                    val endY = (withinQuestionOptions?.plus(anchorPadding)
+                        ?: lastQuestionInk?.plus(anchorPadding)
+                        ?: hardEnd).coerceIn(startY + 1, hardEnd)
                     startY to endY
                 }
-            }
 
             for ((qIdx, band) in questionBands.withIndex()) {
-                val (rawTop, rawBottom) = expandBandToConnectedInkIslands(
+                val (expandedTop, expandedBottom) = expandBandToConnectedInkIslands(
                     pixels = pixels,
                     pageWidth = width,
                     pageHeight = height,
@@ -2216,6 +2236,15 @@ object StudioImageAndPdfEngine {
                     maxExpansion = (bodyH * 0.025f).roundToInt().coerceAtLeast(12),
                     isInkPixel = ::isInkPixel
                 )
+                val cropAnchor = anchors.getOrNull(qIdx)
+                val nextNumberTop = anchors.getOrNull(qIdx + 1)?.top
+                // Expansion must never pull the next printed question into this
+                // image; nor may it pull remnants of the previous question.
+                val rawTop = if (cropAnchor != null) maxOf(expandedTop, band.first) else expandedTop
+                val rawBottom = if (nextNumberTop != null) {
+                    minOf(expandedBottom, nextNumberTop - 8)
+                } else expandedBottom
+                if (rawBottom <= rawTop) continue
                 val bandH = rawBottom - rawTop
                 if (bandH < 80) continue
 
@@ -2230,13 +2259,12 @@ object StudioImageAndPdfEngine {
                     isInkPixel = ::isInkPixel
                 )
                 val anchor = anchors.getOrNull(qIdx)
-                val padX = (colWidth * 0.022f).roundToInt().coerceIn(8, 22)
-                val padY = (height * 0.008f).roundToInt().coerceIn(8, 20)
+                        val padY = (height * 0.008f).roundToInt().coerceIn(8, 20)
                 val edgeArtifactColumns = BooleanArray(colWidth)
                 val edgeWidth = (colWidth * 0.07f).roundToInt().coerceAtLeast(1)
                 for (scanX in colLeft until colRight) {
                     val nearColumnEdge = scanX < colLeft + edgeWidth || scanX >= colRight - edgeWidth
-                    val nearPageGutter = scanX in (width * 0.44f).roundToInt()..(width * 0.56f).roundToInt()
+                    val nearPageGutter = abs(scanX - midX) <= (width * 0.004f).roundToInt()
                     if (!nearColumnEdge && !nearPageGutter) continue
                     var longestRun = 0
                     var currentRun = 0
@@ -2266,10 +2294,12 @@ object StudioImageAndPdfEngine {
                 }
                 val finalLeft = (minContentX - 16).coerceAtLeast(colLeft)
                     .coerceIn(colLeft, colRight - 120)
-                val finalRight = (maxContentX + 16).coerceAtMost(colRight - padX)
+                val finalRight = (maxContentX + 16).coerceAtMost(colRight - 1)
                     .coerceAtLeast(finalLeft + 119)
-                val finalTop = (rawTop - padY).coerceAtLeast(bodyTop)
-                val finalBottom = (rawBottom + padY).coerceAtMost(bodyBottom)
+                val finalTop = (rawTop - padY)
+                    .coerceAtLeast(if (cropAnchor != null) band.first else bodyTop)
+                val finalBottom = (rawBottom + padY)
+                    .coerceAtMost(nextNumberTop?.minus(4) ?: bodyBottom)
 
                 val safeLeft = finalLeft.coerceIn(0, width - 1)
                 val safeTop = finalTop.coerceIn(0, height - 1)

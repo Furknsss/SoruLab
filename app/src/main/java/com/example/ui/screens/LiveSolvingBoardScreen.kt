@@ -12,6 +12,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -48,10 +49,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -60,6 +65,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
@@ -76,14 +82,14 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-private data class TwoColumnQuestionPage(
+internal data class TwoColumnQuestionPage(
     val left: List<YksQuestion>,
     val right: List<YksQuestion>
 ) {
     val questions: List<YksQuestion> get() = left + right
 }
 
-private fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>): List<TwoColumnQuestionPage> {
+internal fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>, columnCapacity: Float = 2.1f): List<TwoColumnQuestionPage> {
     if (questions.isEmpty()) return listOf(TwoColumnQuestionPage(emptyList(), emptyList()))
     val pages = mutableListOf<TwoColumnQuestionPage>()
     var index = 0
@@ -93,7 +99,7 @@ private fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>): List<
         repeat(2) {
             var columnHeight = 0f
             var columnCount = 0
-            while (index < questions.size && columnCount < 4) {
+            while (index < questions.size && columnCount < 8) {
                 val question = questions[index]
                 val normalizedWidth = (question.normRight - question.normLeft).coerceAtLeast(0.08f)
                 val normalizedHeight = (question.normBottom - question.normTop).coerceAtLeast(0.04f)
@@ -110,7 +116,7 @@ private fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>): List<
                     (normalizedHeight / normalizedWidth * 1.45f).coerceIn(0.16f, 1.3f)
                 }
                 val spacing = if (columnCount == 0) 0f else 0.13f
-                if (columnCount > 0 && columnHeight + spacing + estimatedHeight > 2.1f) break
+                if (columnCount > 0 && columnHeight + spacing + estimatedHeight > columnCapacity) break
                 columns[it] += question
                 columnHeight += spacing + estimatedHeight
                 columnCount++
@@ -174,7 +180,12 @@ fun LiveSolvingBoardScreen(
 ) {
     val questions = session.testItem.questions
     val totalQuestions = questions.size.coerceAtLeast(1)
-    val packedBookPages = remember(questions) { packQuestionsIntoTwoColumnPages(questions) }
+    val configuration = LocalConfiguration.current
+    val columnWidth = ((configuration.screenWidthDp - 64f) / 2f - 88f).coerceAtLeast(100f)
+    val columnCapacity = ((configuration.screenHeightDp - 230f) / columnWidth).coerceIn(2.1f, 6f)
+    val packedBookPages = remember(questions, columnCapacity) {
+        packQuestionsIntoTwoColumnPages(questions, columnCapacity)
+    }
     val totalBookPages = packedBookPages.size.coerceAtLeast(1)
     val currentQuestionId = questions.getOrNull(session.currentQuestionIndex)?.id
     val initialBookPage = packedBookPages.indexOfFirst { page ->
@@ -238,6 +249,12 @@ fun LiveSolvingBoardScreen(
     // 1. Full-Screen Report Card ("▸ Başarı Durumuna Git" / Karne)
     var showFullReportCardScreen by remember(session.testItem.id) { mutableStateOf(false) }
     var showFinishConfirmation by remember(session.testItem.id) { mutableStateOf(false) }
+
+    var wasReviewMode by remember(session.testItem.id) { mutableStateOf(session.isReviewMode) }
+    LaunchedEffect(session.isReviewMode) {
+        if (session.isReviewMode && !wasReviewMode) showFullReportCardScreen = true
+        wasReviewMode = session.isReviewMode
+    }
 
     // 2. Full-Screen Side-by-Side "İkiz Soru" Comparison Screen
     var activeTwinScreenQuestion by remember { mutableStateOf<YksQuestion?>(null) }
@@ -368,7 +385,7 @@ fun LiveSolvingBoardScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFE2E8F0))
+            .background(Color(0xFFEFEEF6))
             .testTag("live_solving_board")
     ) {
         // 1. ÜST BEYAZ BAR: Solda Geri Oku, Ortada Test Başlığı, Sağda Mavi Hap Buton
@@ -430,9 +447,9 @@ fun LiveSolvingBoardScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFFCBD5E1))
+                    .background(Color.White)
                     .shadow(2.dp, RoundedCornerShape(8.dp))
                     .pointerInput(isZoomMagnifierEnabled, zoomScale) {
                         if (isZoomMagnifierEnabled || zoomScale > 1.02f) {
@@ -751,21 +768,24 @@ fun LiveSolvingBoardScreen(
     }
 
     if (showFinishConfirmation) {
-        Dialog(onDismissRequest = { showFinishConfirmation = false }) {
+        Dialog(
+            onDismissRequest = { showFinishConfirmation = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
             Surface(
                 shape = RoundedCornerShape(24.dp),
                 color = Color.White,
                 shadowElevation = 16.dp,
-                modifier = Modifier.fillMaxWidth().widthIn(max = 420.dp)
+                modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(20.dp).testTag("finish_confirmation_dialog")
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 26.dp, vertical = 28.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 26.dp, vertical = 32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text(
-                        text = "Dikkat!",
-                        color = Color(0xFF0F172A),
+                        text = "Testi bitirelim mi?",
+                        color = Color(0xFF25215D),
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 21.sp,
                         textAlign = TextAlign.Center
@@ -776,6 +796,13 @@ fun LiveSolvingBoardScreen(
                         fontSize = 14.sp,
                         textAlign = TextAlign.Center
                     )
+                    val answeredCount = questions.count { !session.selectedAnswers[it.number].isNullOrBlank() }
+                    Text(
+                        text = "$answeredCount / ${questions.size} soru işaretlendi • ${questions.size - answeredCount} boş",
+                        color = Color(0xFF74708F),
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
+                    )
                     Button(
                         onClick = {
                             showFinishConfirmation = false
@@ -783,12 +810,14 @@ fun LiveSolvingBoardScreen(
                             onFinishTest()
                         },
                         shape = RoundedCornerShape(50),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
-                        modifier = Modifier.fillMaxWidth()
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3475F5)),
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("confirm_finish_test_btn")
                     ) {
+                        Icon(Icons.Default.Flag, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
                         Text("Evet, Testi Bitir.", fontWeight = FontWeight.Bold)
                     }
-                    TextButton(onClick = { showFinishConfirmation = false }) {
+                    TextButton(onClick = { showFinishConfirmation = false }, modifier = Modifier.testTag("cancel_finish_test_btn")) {
                         Text("Vazgeç", color = Color(0xFF64748B), fontWeight = FontWeight.SemiBold)
                     }
                 }
@@ -827,7 +856,7 @@ fun LiveSolvingBoardScreen(
                         ) {
                             Surface(
                                 shape = CircleShape,
-                                color = Color(0xFF3B82F6),
+                                color = Color(0xFF3475F5),
                                 modifier = Modifier.size(38.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -842,7 +871,7 @@ fun LiveSolvingBoardScreen(
                             Column {
                                 Text(
                                     text = "${solutionQ.number}. Soru • Adım Adım Çözüm",
-                                    color = Color(0xFF0F172A),
+                                    color = Color(0xFF25215D),
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 17.sp
                                 )
@@ -870,7 +899,7 @@ fun LiveSolvingBoardScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            CircularProgressIndicator(color = Color(0xFF2563EB))
+                            CircularProgressIndicator(color = Color(0xFF3475F5))
                             Text(
                                 text = "Soru görseli inceleniyor ve 3 aşamalı adım adım çözüm hazırlanıyor...",
                                 color = Color(0xFF475569),
@@ -1015,7 +1044,7 @@ fun LiveSolvingBoardScreen(
                         Button(
                             onClick = { activeSolutionModalQuestion = null },
                             shape = RoundedCornerShape(50),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3475F5))
                         ) {
                             Text("Anladım, Kapat", fontWeight = FontWeight.ExtraBold)
                         }
@@ -1063,7 +1092,7 @@ fun LiveSolvingBoardScreen(
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.MenuBook,
                                         contentDescription = null,
-                                        tint = Color(0xFF2563EB),
+                                        tint = Color(0xFF3475F5),
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -1071,13 +1100,13 @@ fun LiveSolvingBoardScreen(
                             Column {
                                 Text(
                                     text = "${lectureQ.topicHeader} • Konu Özeti",
-                                    color = Color(0xFF0F172A),
+                                    color = Color(0xFF25215D),
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 16.5.sp
                                 )
                                 Text(
                                     text = "${session.examType.name} ${session.subjectName} Kritik Kazanım Notları",
-                                    color = Color(0xFF2563EB),
+                                    color = Color(0xFF3475F5),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp
                                 )
@@ -1092,7 +1121,7 @@ fun LiveSolvingBoardScreen(
 
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFFF8FAFC),
+                        color = Color(0xFFF5F4FA),
                         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -1135,7 +1164,7 @@ fun LiveSolvingBoardScreen(
                         Button(
                             onClick = { activeTopicLectureQuestion = null },
                             shape = RoundedCornerShape(50),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3475F5))
                         ) {
                             Text("Kapat", fontWeight = FontWeight.ExtraBold)
                         }
@@ -1185,13 +1214,13 @@ private fun BookPageTopBar345(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Geri",
-                    tint = Color(0xFF0F172A)
+                    tint = Color(0xFF25215D)
                 )
             }
 
             Text(
                 text = testTitle,
-                color = Color(0xFF0F172A),
+                color = Color(0xFF25215D),
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.5.sp,
                 maxLines = 1,
@@ -1206,9 +1235,9 @@ private fun BookPageTopBar345(
                 Surface(
                     onClick = onFinishTest,
                     shape = RoundedCornerShape(50),
-                    color = Color(0xFF3B82F6),
+                    color = Color(0xFF3475F5),
                     shadowElevation = 2.dp,
-                    modifier = Modifier.testTag("top_finish_test_btn")
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("top_finish_test_btn")
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -1233,9 +1262,9 @@ private fun BookPageTopBar345(
                 Surface(
                     onClick = onOpenReportCard,
                     shape = RoundedCornerShape(50),
-                    color = Color(0xFF3B82F6),
+                    color = Color(0xFF3475F5),
                     shadowElevation = 2.dp,
-                    modifier = Modifier.testTag("go_to_report_card_btn")
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("go_to_report_card_btn")
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -1249,7 +1278,7 @@ private fun BookPageTopBar345(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = "Başarı Durumuna Git",
+                            text = "Sonuçlar",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp
@@ -1337,7 +1366,7 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isLeftPopoverOpen) 60f else 1f)
                         .padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = Arrangement.Top
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     leftColumnQuestions.forEachIndexed { idx, q ->
                         BookPageQuestionItem345(
@@ -1353,9 +1382,7 @@ private fun RealTwoColumnBookPageSurface(
                             onOpenTwinScreen = { onOpenTwinScreen(q) },
                             onAddToKumbara = { onAddToKumbara(q) }
                         )
-                        if (idx < leftColumnQuestions.lastIndex) {
-                            Spacer(modifier = Modifier.height(24.dp))
-                        }
+
                     }
                 }
 
@@ -1375,7 +1402,7 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isRightPopoverOpen) 60f else 1f)
                         .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = Arrangement.Top
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     if (rightColumnQuestions.isEmpty()) {
                         Spacer(modifier = Modifier.height(80.dp))
@@ -1394,43 +1421,41 @@ private fun RealTwoColumnBookPageSurface(
                                 onOpenTwinScreen = { onOpenTwinScreen(q) },
                                 onAddToKumbara = { onAddToKumbara(q) }
                             )
-                            if (idx < rightColumnQuestions.lastIndex) {
-                                Spacer(modifier = Modifier.height(24.dp))
-                            }
+
                         }
                     }
                 }
             }
 
-            // Alt Kitap Sayfası Bilgisi (Eski ← ve → sayfa geçiş okları tamamen kaldırıldı; geçiş sadece HorizontalPager swipe ile yapılır)
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = Color(0xFFF8FAFC),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 2.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+                FilledIconButton(
+                    onClick = onPrevBookPage,
+                    enabled = currentBookPageIndex > 0,
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF24205E)),
+                    modifier = Modifier.testTag("previous_book_page")
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                        contentDescription = null,
-                        tint = Color(0xFF475569),
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Sayfa ${currentBookPageIndex + 1} / $totalBookPages  •  Parmakla Sağa/Sola Kaydırın",
-                        color = Color(0xFF475569),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp
-                    )
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Önceki sayfa")
+                }
+                Text(
+                    text = "${session.topicName}  •  ${currentBookPageIndex + 1} / $totalBookPages",
+                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = Color(0xFF74708F),
+                    fontSize = 12.sp
+                )
+                FilledIconButton(
+                    onClick = onNextBookPage,
+                    enabled = currentBookPageIndex < totalBookPages - 1,
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF24205E)),
+                    modifier = Modifier.testTag("next_book_page")
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Sonraki sayfa")
                 }
             }
         }
@@ -1630,7 +1655,7 @@ private fun BookPageQuestionItem345(
                         alignment = Alignment.TopStart,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .wrapContentHeight()
+                            .aspectRatio(bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1))
                             .background(Color.White)
                     )
                 } else {
@@ -1667,7 +1692,7 @@ private fun BookPageQuestionItem345(
                     if (question.stemBottom.isNotBlank()) {
                         Text(
                             text = question.stemBottom,
-                            color = Color(0xFF0F172A),
+                            color = Color(0xFF25215D),
                             fontSize = 13.5.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -1716,7 +1741,7 @@ private fun BookPageQuestionItem345(
                 Surface(
                     onClick = onToggleThreeDotMenu,
                     shape = CircleShape,
-                    color = if (isThreeDotMenuOpen) Color(0xFF2563EB) else Color(0xFF60A5FA),
+                    color = if (isThreeDotMenuOpen) Color(0xFF3475F5) else Color(0xFF60A5FA),
                     shadowElevation = 4.dp,
                     modifier = Modifier
                         .size(28.dp)
@@ -1970,7 +1995,7 @@ private fun ThreeDotQuestionPopoverCard345(
             ) {
                 Text(
                     text = "${question.number}. Soru",
-                    color = Color(0xFF0F172A),
+                    color = Color(0xFF25215D),
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 16.sp
                 )
@@ -2035,7 +2060,7 @@ private fun ThreeDotQuestionPopoverCard345(
                         lineTo(triX, barTop - 1.dp.toPx())
                         close()
                     }
-                    drawPath(path = triPath, color = Color(0xFF0F172A))
+                    drawPath(path = triPath, color = Color(0xFF25215D))
                 }
 
                 Row(
@@ -2072,19 +2097,19 @@ private fun ThreeDotQuestionPopoverCard345(
             PopoverPillButton345(
                 label = "Konu Anlatımı",
                 backgroundColor = Color(0xFFE2E8F0),
-                textColor = Color(0xFF2563EB),
+                textColor = Color(0xFF3475F5),
                 onClick = onOpenTopicLecture
             )
             PopoverPillButton345(
                 label = "Çözüm İzle",
-                backgroundColor = Color(0xFF3B82F6),
+                backgroundColor = Color(0xFF3475F5),
                 textColor = Color.White,
                 onClick = onOpenSolutionModal
             )
             PopoverPillButton345(
                 label = "İkiz Soru",
                 backgroundColor = Color(0xFFE2E8F0),
-                textColor = Color(0xFF2563EB),
+                textColor = Color(0xFF3475F5),
                 onClick = onOpenTwinScreen
             )
             PopoverPillButton345(
@@ -2141,135 +2166,86 @@ private fun RightSlidingOpticalFormDrawer345(
     onFinishTest: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Sol dış kenara yapışık kompakt dikey mavi "⠿ Optik" kulakçığı
-        VerticalBlueSideTab345(
-            title = "Optik Form",
-            isStatsIcon = false,
-            onClick = onToggleDrawer,
-            testTag = "optical_form_tab"
-        )
-
+    val configuration = LocalConfiguration.current
+    val answered = questions.count { !selectedAnswers[it.number].isNullOrBlank() }
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        VerticalBlueSideTab345("Optik Form", false, onToggleDrawer, "optical_form_tab")
         AnimatedVisibility(
             visible = isOpen,
             enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
             exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
         ) {
             Surface(
-                shape = RoundedCornerShape(topStart = 26.dp, bottomStart = 26.dp),
+                shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp),
                 color = Color.White,
-                shadowElevation = 16.dp,
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                shadowElevation = 12.dp,
+                border = BorderStroke(1.dp, Color(0xFFE7E5F0)),
                 modifier = Modifier
-                    .width(330.dp)
-                    .heightIn(min = 380.dp, max = 560.dp)
+                    .width((configuration.screenWidthDp.dp - 48.dp).coerceAtMost(380.dp))
+                    .heightIn(max = (configuration.screenHeightDp.dp - 160.dp).coerceIn(180.dp, 580.dp))
                     .testTag("optical_form_drawer")
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Optik Form",
-                        color = Color(0xFF0F172A),
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 18.sp,
-                        modifier = Modifier.padding(bottom = 12.dp)
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Optik Form", color = Color(0xFF25215D), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "$answered / ${questions.size} yanıtlandı",
+                                color = Color(0xFF74708F), fontSize = 12.sp,
+                                modifier = Modifier.testTag("optical_answer_progress")
+                            )
+                        }
+                        IconButton(onClick = onToggleDrawer) {
+                            Icon(Icons.Default.Close, contentDescription = "Optik formu kapat", tint = Color(0xFF74708F))
+                        }
+                    }
+                    LinearProgressIndicator(
+                        progress = { answered.toFloat() / questions.size.coerceAtLeast(1) },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp).height(3.dp).clip(CircleShape),
+                        color = Color(0xFF3475F5), trackColor = Color(0xFFEFEEF6)
                     )
-
                     LazyColumn(
-                        modifier = Modifier
-                            .weight(1f, fill = true)
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                         contentPadding = PaddingValues(vertical = 8.dp)
                     ) {
                         items(questions, key = { it.number }) { q ->
-                            val chosenOpt = selectedAnswers[q.number]
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "${q.number}.",
-                                    color = Color(0xFF334155),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    modifier = Modifier.width(30.dp)
-                                )
-
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    listOf("A", "B", "C", "D", "E").forEach { opt ->
-                                        val isSelected = chosenOpt == opt
-                                        Surface(
-                                            onClick = { onSelectOption(q.number, opt) },
-                                            shape = CircleShape,
-                                            color = if (isSelected) Color(0xFF3B82F6) else Color.White,
-                                            border = BorderStroke(
-                                                width = 1.2.dp,
-                                                color = if (isSelected) Color(0xFF3B82F6) else Color(0xFFCBD5E1)
-                                            ),
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .testTag("optic_q${q.number}_$opt")
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Text(
-                                                    text = opt,
-                                                    color = if (isSelected) Color.White else Color(0xFF94A3B8),
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 14.sp
-                                                )
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("${q.number}.", modifier = Modifier.width(28.dp), color = Color(0xFF25215D), fontSize = 14.sp)
+                                listOf("A", "B", "C", "D", "E").forEach { option ->
+                                    val checked = selectedAnswers[q.number] == option
+                                    Box(
+                                        modifier = Modifier.weight(1f).height(48.dp)
+                                            .semantics {
+                                                selected = checked
+                                                contentDescription = "${q.number}. soru, $option seçeneği"
                                             }
+                                            .clickable { onSelectOption(q.number, option) }
+                                            .testTag("optic_q${q.number}_$option"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Box(
+                                            modifier = Modifier.size(34.dp).clip(CircleShape)
+                                                .background(if (checked) Color(0xFF3475F5) else Color.White)
+                                                .border(1.dp, if (checked) Color(0xFF3475F5) else Color(0xFFD6D3E5), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(option, color = if (checked) Color.White else Color(0xFF74708F), fontSize = 14.sp)
                                         }
                                     }
                                 }
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Tam genişlikli mavi hap "⚑ Testi Bitir" butonu
-                    Surface(
+                    Button(
                         onClick = onFinishTest,
-                        shape = RoundedCornerShape(50),
-                        color = Color(0xFF3B82F6),
-                        shadowElevation = 4.dp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .testTag("drawer_finish_test_btn")
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("drawer_finish_test_btn"),
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3475F5))
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Flag,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Testi Bitir",
-                                color = Color.White,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 15.sp
-                            )
-                        }
+                        Icon(Icons.Default.Flag, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Testi Bitir")
                     }
                 }
             }
@@ -2321,19 +2297,21 @@ private fun RightSlidingStatsDrawer345(
                 shadowElevation = 16.dp,
                 border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                 modifier = Modifier
-                    .width(340.dp)
+                    .width((LocalConfiguration.current.screenWidthDp.dp - 48.dp).coerceAtMost(360.dp))
+                    .heightIn(max = (LocalConfiguration.current.screenHeightDp.dp - 160.dp).coerceAtLeast(180.dp))
                     .testTag("stats_drawer_panel")
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 26.dp),
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 18.dp, vertical = 22.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(22.dp)
                 ) {
                     Text(
                         text = testTitle,
-                        color = Color(0xFF0F172A),
+                        color = Color(0xFF25215D),
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 16.5.sp,
                         textAlign = TextAlign.Center
@@ -2370,7 +2348,7 @@ private fun RightSlidingStatsDrawer345(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(Color(0xFFF8FAFC), RoundedCornerShape(12.dp))
+                                    .background(Color(0xFFF5F4FA), RoundedCornerShape(12.dp))
                                     .padding(horizontal = 12.dp, vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -2425,82 +2403,21 @@ private fun ThreeStatCirclesRow345(
     emptyCount: Int,
     circleSizeDp: Int = 86
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // 1. Mavi Daire: Doğru
-        Surface(
-            shape = CircleShape,
-            color = Color(0xFF3B82F6),
-            modifier = Modifier.size(circleSizeDp.dp)
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "$correctCount",
-                    color = Color.White,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = (circleSizeDp * 0.25f).sp
-                )
-                Text(
-                    text = "Doğru",
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = (circleSizeDp * 0.15f).sp
-                )
-            }
-        }
-
-        // 2. Kırmızı Daire: Yanlış
-        Surface(
-            shape = CircleShape,
-            color = Color(0xFFEF4444),
-            modifier = Modifier.size(circleSizeDp.dp)
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "$wrongCount",
-                    color = Color.White,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = (circleSizeDp * 0.25f).sp
-                )
-                Text(
-                    text = "Yanlış",
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = (circleSizeDp * 0.15f).sp
-                )
-            }
-        }
-
-        // 3. Açık Gri Daire: Boş
-        Surface(
-            shape = CircleShape,
-            color = Color(0xFFCBD5E1),
-            modifier = Modifier.size(circleSizeDp.dp)
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "$emptyCount",
-                    color = Color(0xFF1E293B),
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = (circleSizeDp * 0.25f).sp
-                )
-                Text(
-                    text = "Boş",
-                    color = Color(0xFF334155),
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = (circleSizeDp * 0.15f).sp
-                )
+    BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val diameter = ((maxWidth - 24.dp) / 3).coerceAtMost(circleSizeDp.dp)
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            listOf(
+                Triple(correctCount, "Doğru", Color(0xFF3475F5)),
+                Triple(wrongCount, "Yanlış", Color(0xFFEF4363)),
+                Triple(emptyCount, "Boş", Color(0xFFE5E2EF))
+            ).forEach { (count, label, background) ->
+                val ink = if (label == "Boş") Color(0xFF605B7B) else Color.White
+                Surface(shape = CircleShape, color = background, modifier = Modifier.size(diameter)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Text("$count", color = ink, fontWeight = FontWeight.SemiBold, fontSize = (diameter.value * .26f).sp)
+                        Text(label, color = ink, fontSize = (diameter.value * .16f).sp)
+                    }
+                }
             }
         }
     }
@@ -2521,7 +2438,7 @@ private fun VerticalBlueSideTab345(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp),
-        color = Color(0xFF2563EB),
+        color = Color(0xFF3475F5),
         shadowElevation = 6.dp,
         modifier = Modifier
             .width(36.dp)
@@ -2582,7 +2499,7 @@ private fun BottomDarkNavyDrawingBar345(
 ) {
     var showColorPalettePopup by remember { mutableStateOf(false) }
     val penColors = listOf(
-        0xFF0F172AL to "Siyah",
+        0xFF25215DL to "Siyah",
         0xFF1D4ED8L to "Mavi",
         0xFFDC2626L to "Kırmızı",
         0xFF16A34AL to "Yeşil",
@@ -2592,7 +2509,7 @@ private fun BottomDarkNavyDrawingBar345(
 
     Box(modifier = Modifier.fillMaxWidth()) {
         Surface(
-            color = Color(0xFF1E295B),
+            color = Color(0xFF24205E),
             shadowElevation = 8.dp,
             modifier = Modifier
                 .fillMaxWidth()
@@ -2601,7 +2518,7 @@ private fun BottomDarkNavyDrawingBar345(
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -2624,8 +2541,9 @@ private fun BottomDarkNavyDrawingBar345(
 
                 // ORTA: Çizim Araçları (Kalem [Tıklayınca Renk Değiştirir], Büyüteç, El, Silgi, 3 Kalınlık Noktası, Renk, Çöp Kutusu)
                 Row(
+                    modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     // Kalem (Tıklandığında Kalemi Seçer VE Renk Seçici Paleti Açar/Kapatır — Varsayılan Renk: Siyah)
                     val isPenActive = activeTool == DrawingTool.PEN && !isZoomMagnifierEnabled
@@ -2635,7 +2553,7 @@ private fun BottomDarkNavyDrawingBar345(
                             showColorPalettePopup = !showColorPalettePopup
                         },
                         shape = RoundedCornerShape(50),
-                        color = if (isPenActive) Color(0xFF2563EB) else Color.White.copy(alpha = 0.12f),
+                        color = if (isPenActive) Color(0xFF3475F5) else Color.White.copy(alpha = 0.12f),
                         border = BorderStroke(
                             1.5.dp,
                             if (showColorPalettePopup) Color(0xFF38BDF8) else Color.White.copy(alpha = 0.3f)
@@ -2674,7 +2592,7 @@ private fun BottomDarkNavyDrawingBar345(
                             onSelectTool(DrawingTool.HIGHLIGHTER)
                         },
                         shape = CircleShape,
-                        color = if (isHighlighterActive) Color(0xFF2563EB) else Color.Transparent,
+                        color = if (isHighlighterActive) Color(0xFF3475F5) else Color.Transparent,
                         modifier = Modifier
                             .size(38.dp)
                             .testTag("tool_highlighter_btn")
@@ -2697,7 +2615,7 @@ private fun BottomDarkNavyDrawingBar345(
                             onSelectTool(DrawingTool.SMART_SHAPE)
                         },
                         shape = CircleShape,
-                        color = if (isSmartShapeActive) Color(0xFF2563EB) else Color.Transparent,
+                        color = if (isSmartShapeActive) Color(0xFF3475F5) else Color.Transparent,
                         modifier = Modifier
                             .size(38.dp)
                             .testTag("tool_smart_shape_btn")
@@ -2719,7 +2637,7 @@ private fun BottomDarkNavyDrawingBar345(
                             onToggleZoom()
                         },
                         shape = CircleShape,
-                        color = if (isZoomMagnifierEnabled) Color(0xFF2563EB) else Color.Transparent,
+                        color = if (isZoomMagnifierEnabled) Color(0xFF3475F5) else Color.Transparent,
                         modifier = Modifier.size(40.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -2740,7 +2658,7 @@ private fun BottomDarkNavyDrawingBar345(
                             onSelectTool(DrawingTool.HAND_PAN)
                         },
                         shape = CircleShape,
-                        color = if (isPanActive) Color(0xFF2563EB) else Color.Transparent,
+                        color = if (isPanActive) Color(0xFF3475F5) else Color.Transparent,
                         modifier = Modifier
                             .size(40.dp)
                             .testTag("tool_hand_pan_btn")
@@ -2763,7 +2681,7 @@ private fun BottomDarkNavyDrawingBar345(
                             onSelectTool(DrawingTool.ERASER)
                         },
                         shape = RoundedCornerShape(50),
-                        color = if (isEraserActive) Color(0xFF2563EB) else Color.White.copy(alpha = 0.12f),
+                        color = if (isEraserActive) Color(0xFF3475F5) else Color.White.copy(alpha = 0.12f),
                         border = BorderStroke(
                             1.dp,
                             if (isEraserActive) Color(0xFF60A5FA) else Color.White.copy(alpha = 0.25f)
@@ -2806,7 +2724,7 @@ private fun BottomDarkNavyDrawingBar345(
                         val isSelectedSize = selectedStrokeSizeIndex == idx
                         Box(
                             modifier = Modifier
-                                .size(26.dp)
+                                .size(40.dp)
                                 .clip(CircleShape)
                                 .clickable { onSelectStrokeSize(idx) },
                             contentAlignment = Alignment.Center
@@ -2869,7 +2787,7 @@ private fun BottomDarkNavyDrawingBar345(
         if (showColorPalettePopup) {
             Surface(
                 shape = RoundedCornerShape(50),
-                color = Color(0xFF0F172A),
+                color = Color(0xFF25215D),
                 border = BorderStroke(1.5.dp, Color(0xFF38BDF8)),
                 shadowElevation = 12.dp,
                 modifier = Modifier
@@ -2879,7 +2797,7 @@ private fun BottomDarkNavyDrawingBar345(
                     .testTag("pen_color_palette_popup")
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                    modifier = Modifier.widthIn(max = 560.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 9.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -2960,7 +2878,7 @@ private fun FullScreenTwinQuestionComparisonView(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFC))
+            .background(Color(0xFFF5F4FA))
             .testTag("full_screen_twin_comparison")
     ) {
         // 1. Üst Beyaz Bar: Solda Geri Oku, Ortada Test Başlığı, Sağda "▸ Başarı Durumuna Git"
@@ -3108,7 +3026,7 @@ private fun FullScreenTwinQuestionComparisonView(
                                                 border = if (isSelected || isCorrectOpt) {
                                                     BorderStroke(
                                                         1.dp,
-                                                        if (isCorrectOpt) Color(0xFF16A34A) else Color(0xFF2563EB)
+                                                        if (isCorrectOpt) Color(0xFF16A34A) else Color(0xFF3475F5)
                                                     )
                                                 } else null
                                             ) {
@@ -3163,7 +3081,7 @@ private fun FullScreenTwinQuestionComparisonView(
                                     Surface(
                                         onClick = { isTwinAnswerRevealed = !isTwinAnswerRevealed },
                                         shape = RoundedCornerShape(50),
-                                        color = Color(0xFF3B82F6),
+                                        color = Color(0xFF3475F5),
                                         shadowElevation = 3.dp
                                     ) {
                                         Text(
@@ -3365,6 +3283,13 @@ private fun FullScreenTwinQuestionComparisonView(
  *   * Her soru satırı (`1. Soru`, `2. Soru`...): Doğru cevap harfi, Öğrenci cevabı (`-` veya harf),
  *     sağda 5 yıldız üzerinden mavi yıldızlı zorluk gösterimi (`★★☆☆☆`) ve aşağı açılır ok (`⌄`).
  */
+/** Do not label a test as failed when none of its source answers were verified. */
+internal fun scoreReportHeadline(correctCount: Int, gradedQuestionCount: Int): String = when {
+    gradedQuestionCount == 0 -> "Cevap anahtarı doğrulanmadı"
+    correctCount.toFloat() / gradedQuestionCount >= 0.7f -> "Harika iş çıkardın!"
+    else -> "Pes etmek yok!"
+}
+
 @Composable
 private fun FullScreenSuccessReportCardView(
     session: ActiveSolvingSession,
@@ -3383,8 +3308,7 @@ private fun FullScreenSuccessReportCardView(
 
     val gradedQuestionCount = questions.count { it.answerKeyVerified }
     val headlineText = remember(correctCount, gradedQuestionCount) {
-        val ratio = correctCount.toFloat() / gradedQuestionCount.coerceAtLeast(1).toFloat()
-        if (ratio >= 0.7f) "Harika iş çıkardın!" else "Çok yaklaştın!"
+        scoreReportHeadline(correctCount, gradedQuestionCount)
     }
 
     Column(
@@ -3412,23 +3336,24 @@ private fun FullScreenSuccessReportCardView(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Geri",
-                        tint = Color(0xFF0F172A)
+                        tint = Color(0xFF25215D)
                     )
                 }
 
                 Text(
                     text = session.testItem.fullTitle.ifBlank { "${session.topicName} - Test 1" },
-                    color = Color(0xFF0F172A),
+                    color = Color(0xFF25215D),
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.5.sp,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
                 )
 
                 Surface(
                     onClick = onBackToBookPage,
                     shape = RoundedCornerShape(50),
-                    color = Color(0xFF3B82F6),
+                    color = Color(0xFF3475F5),
                     shadowElevation = 2.dp,
                     modifier = Modifier.testTag("show_in_book_btn")
                 ) {
@@ -3457,7 +3382,9 @@ private fun FullScreenSuccessReportCardView(
         // KAYDIRILABİLİR KARNE GÖVDESİ
         LazyColumn(
             modifier = Modifier
+                .widthIn(max = 900.dp)
                 .fillMaxSize()
+                .align(Alignment.CenterHorizontally)
                 .background(Color.White),
             contentPadding = PaddingValues(horizontal = 28.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -3472,17 +3399,22 @@ private fun FullScreenSuccessReportCardView(
                 ) {
                     // Konfeti İllüstrasyonu
                     Text(
-                        text = "🎉",
+                        text = if (gradedQuestionCount == 0) "📋" else "🎉",
                         fontSize = 54.sp
                     )
                     Text(
                         text = headlineText,
-                        color = Color(0xFF0F172A),
+                        color = Color(0xFF25215D),
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 21.sp
                     )
                     Text(
-                        text = "Bu testi tamamladın, şimdi birlikte sonuçlara yakından bakalım.",
+                        text = if (gradedQuestionCount == 0) {
+                            "Testi tamamladın ancak kaynak cevapları doğrulanmadığı için " +
+                                "doğru, yanlış ve boş sayıları hesaplanamadı."
+                        } else {
+                            "Bu testi tamamladın, şimdi birlikte sonuçlara yakından bakalım."
+                        },
                         color = Color(0xFF475569),
                         fontSize = 13.5.sp,
                         textAlign = TextAlign.Center
@@ -3512,13 +3444,13 @@ private fun FullScreenSuccessReportCardView(
                                     Icon(
                                         imageVector = if (s <= testStarsFilled) Icons.Default.Star else Icons.Default.StarBorder,
                                         contentDescription = null,
-                                        tint = Color(0xFF2563EB),
+                                        tint = Color(0xFF3475F5),
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
                             Text(
-                                text = "Test Zorluğu: ${testDiff.label} ($testStarsFilled/5 ★)",
+                                text = "Tahmini zorluk: ${testDiff.label} ($testStarsFilled/5 ★)",
                                 color = Color(0xFF1E3A8A),
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 12.sp
@@ -3528,12 +3460,29 @@ private fun FullScreenSuccessReportCardView(
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    ThreeStatCirclesRow345(
-                        correctCount = correctCount,
-                        wrongCount = wrongCount,
-                        emptyCount = emptyCount,
-                        circleSizeDp = 92
-                    )
+                    if (gradedQuestionCount > 0) {
+                        ThreeStatCirclesRow345(
+                            correctCount = correctCount,
+                            wrongCount = wrongCount,
+                            emptyCount = emptyCount,
+                            circleSizeDp = 92
+                        )
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFFFFF7ED),
+                            border = BorderStroke(1.dp, Color(0xFFFED7AA))
+                        ) {
+                            Text(
+                                text = "Bu testte puanlanabilen soru bulunamadı. " +
+                                    "Öğrenci cevapların korunuyor; kaynak cevap anahtarının " +
+                                    "eşleşmesi düzeltilince sonuçlar değerlendirilebilir.",
+                                modifier = Modifier.padding(16.dp),
+                                color = Color(0xFF9A3412),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
                     if (ungradedCount > 0) {
                         Text(
                             text = "$ungradedCount soru cevap anahtarı doğrulanmadığı için puanlanmadı",
@@ -3573,7 +3522,7 @@ private fun FullScreenSuccessReportCardView(
                         Surface(
                             onClick = onSolveTwinTestForWrongQuestions,
                             shape = RoundedCornerShape(50),
-                            color = Color(0xFF3B82F6),
+                            color = Color(0xFF3475F5),
                             shadowElevation = 2.dp
                         ) {
                             Text(
@@ -3597,8 +3546,8 @@ private fun FullScreenSuccessReportCardView(
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text(
-                        text = "Çözüm Videoları",
-                        color = Color(0xFF0F172A),
+                        text = "Soru Analizi ve Çözümler",
+                        color = Color(0xFF25215D),
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 17.sp
                     )
@@ -3606,7 +3555,7 @@ private fun FullScreenSuccessReportCardView(
                     // Yeşil Hap Etiket (Örn: "AYT Fizik", "AYT Matematik")
                     Surface(
                         shape = RoundedCornerShape(50),
-                        color = Color(0xFF84CC16)
+                        color = Color(0xFFF28B45)
                     ) {
                         Text(
                             text = "${session.examType.name} ${session.subjectName}",
@@ -3632,7 +3581,7 @@ private fun FullScreenSuccessReportCardView(
                             modifier = Modifier.weight(1.1f)
                         )
                         Text(
-                            text = "Doğru Cevap",
+                            text = "Cevap",
                             color = Color(0xFF64748B),
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 12.5.sp,
@@ -3640,7 +3589,7 @@ private fun FullScreenSuccessReportCardView(
                             modifier = Modifier.weight(1.1f)
                         )
                         Text(
-                            text = "Öğrenci Cevabı",
+                            text = "Yanıtın",
                             color = Color(0xFF64748B),
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 12.5.sp,
@@ -3648,7 +3597,7 @@ private fun FullScreenSuccessReportCardView(
                             modifier = Modifier.weight(1.1f)
                         )
                         Text(
-                            text = "Zorluk Seviyesi",
+                            text = "Tahmini zorluk",
                             color = Color(0xFF64748B),
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 12.5.sp,
@@ -3686,7 +3635,7 @@ private fun FullScreenSuccessReportCardView(
                     ) {
                         Text(
                             text = "${q.number}. Soru",
-                            color = Color(0xFF0F172A),
+                            color = Color(0xFF25215D),
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
                             modifier = Modifier.weight(1.1f)
@@ -3695,7 +3644,7 @@ private fun FullScreenSuccessReportCardView(
                             text = q.correctOption.takeIf {
                                 q.answerKeyVerified && it in listOf("A", "B", "C", "D", "E")
                             } ?: "—",
-                            color = if (q.answerKeyVerified) Color(0xFF0F172A) else Color(0xFF64748B),
+                            color = if (q.answerKeyVerified) Color(0xFF25215D) else Color(0xFF64748B),
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
                             textAlign = TextAlign.Center,
@@ -3721,25 +3670,12 @@ private fun FullScreenSuccessReportCardView(
                             horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color(q.difficulty.colorHex).copy(alpha = 0.14f)
-                            ) {
-                                Text(
-                                    text = q.difficulty.label,
-                                    color = Color(q.difficulty.colorHex),
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 10.5.sp,
-                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
                             for (s in 1..5) {
                                 Icon(
                                     imageVector = if (s <= starsFilled) Icons.Default.Star else Icons.Default.StarBorder,
                                     contentDescription = null,
-                                    tint = Color(0xFF3B82F6),
-                                    modifier = Modifier.size(17.dp)
+                                    tint = Color(0xFF3475F5),
+                                    modifier = Modifier.size(13.dp)
                                 )
                             }
                         }
@@ -3761,7 +3697,7 @@ private fun FullScreenSuccessReportCardView(
                     AnimatedVisibility(visible = isExpanded) {
                         Surface(
                             shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFFF8FAFC),
+                            color = Color(0xFFF5F4FA),
                             border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -3810,7 +3746,7 @@ private fun FullScreenSuccessReportCardView(
                                     ) {
                                         Text(
                                             text = "İkiz Soru",
-                                            color = Color(0xFF2563EB),
+                                            color = Color(0xFF3475F5),
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 12.5.sp,
                                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp)
@@ -3819,7 +3755,7 @@ private fun FullScreenSuccessReportCardView(
                                     Surface(
                                         onClick = { onWatchQuestionSolution(q) },
                                         shape = RoundedCornerShape(50),
-                                        color = Color(0xFF3B82F6)
+                                        color = Color(0xFF3475F5)
                                     ) {
                                         Text(
                                             text = "Çözüm İzle",

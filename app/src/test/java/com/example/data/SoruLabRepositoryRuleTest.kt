@@ -148,6 +148,52 @@ class SoruLabRepositoryRuleTest : FirestoreEmulatorTestBase() {
     }
 
     @Test
+    fun updatingAndRetryingCustomQuestionsPreservesCreationTimestamp() {
+        val uid = signInTestUser("question-updates@sorulab.com").user!!.uid
+        val original = CustomQuestionRecord(
+            id = "stable-question", userId = uid, examType = "AYT",
+            subjectId = "ayt_mat", subjectName = "Matematik",
+            topicId = "fonksiyonlar", topicName = "Fonksiyonlar",
+            questionText = "f(x) = x + 2 için f(3) kaçtır?", publisherTag = "Test Yayınları"
+        )
+        runRepoCall { repository.saveCustomQuestion(original) }
+        val first = runRepoCall { repository.getCustomQuestion(original.id) }!!
+        // Local caches from old versions do not have createdAt; resolve it from the owner-scoped query.
+        runRepoCall { repository.saveCustomQuestion(original.copy(topicName = "Güncellenmiş konu")) }
+        val updated = runRepoCall { repository.getCustomQuestion(original.id) }!!
+        assertEquals(first.createdAt, updated.createdAt)
+        assertEquals("Güncellenmiş konu", updated.topicName)
+        val batch = listOf(original.copy(questionText = "Toplu güncellenmiş soru"))
+        runRepoCall { repository.saveCustomQuestionsBatch(batch) }
+        runRepoCall { repository.saveCustomQuestionsBatch(batch) }
+        val retried = runRepoCall { repository.getCustomQuestion(original.id) }!!
+        assertEquals(first.createdAt, retried.createdAt)
+        assertEquals("Toplu güncellenmiş soru", retried.questionText)
+    }
+
+    @Test
+    fun mixedNewAndExistingQuestionBatchUsesOwnerScopedLookup() {
+        val uid = signInTestUser("mixed-question-batch@sorulab.com").user!!.uid
+        val original = CustomQuestionRecord(
+            id = "existing-question", userId = uid, examType = "AYT",
+            subjectId = "ayt_mat", subjectName = "Matematik",
+            topicId = "fonksiyonlar", topicName = "Fonksiyonlar",
+            questionText = "f(x) = x + 2 için f(3) kaçtır?", publisherTag = "Test Yayınları"
+        )
+        assertTrue(runRepoCall { repository.getUserCustomQuestionsList(uid) }.isEmpty())
+        runRepoCall { repository.saveCustomQuestionsBatch(listOf(original)) }
+        val createdAt = runRepoCall { repository.getCustomQuestion(original.id) }!!.createdAt
+        runRepoCall { repository.saveCustomQuestionsBatch(listOf(
+            original.copy(questionText = "Güncellenen soru"),
+            original.copy(id = "new-question")
+        )) }
+        val records = runRepoCall { repository.getUserCustomQuestionsList(uid) }
+        assertEquals(setOf("existing-question", "new-question"), records.map { it.id }.toSet())
+        assertEquals(createdAt, records.single { it.id == original.id }.createdAt)
+        assertEquals("Güncellenen soru", records.single { it.id == original.id }.questionText)
+    }
+
+    @Test
     fun customPublisherLogo_isCloudBackedAndPrivateToOwner() {
         val aliceUid = signInTestUser("alice-publishers@sorulab.com").user!!.uid
         val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()

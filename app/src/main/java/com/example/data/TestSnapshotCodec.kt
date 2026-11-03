@@ -83,7 +83,7 @@ object TestSnapshotCodec {
                 publisherLogoUri = item.optString("publisherLogoUri"),
                 croppedImagePath = item.optString("imagePath")
                     .ifBlank { item.optString("croppedImagePath") },
-                answerKeyVerified = item.optBoolean("answerKeyVerified", true),
+                answerKeyVerified = item.optBoolean("answerKeyVerified", false),
                 stemTop = item.optString("stemTop"),
                 bulletsOrSteps = bullets,
                 stemBottom = item.optString("stemBottom"),

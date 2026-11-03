@@ -1,0 +1,58 @@
+name: PDF preview APK
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feat/premium-pdf-v5']
+  pull_request:
+    branches: ['feat/premium-pdf-v5']
+permissions:
+  contents: read
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Set up Android platform tools
+        uses: android-actions/setup-android@v3
+        with:
+          # setup-android defaults to the removed "tools" SDK package.
+          # Match the existing release workflow instead of installing that default.
+          packages: platform-tools
+      - run: sdkmanager 'platforms;android-36.1' 'build-tools;36.0.0'
+      - name: Restore development signing key
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
+            printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > debug.keystore
+          elif [ -f debug.keystore.base64 ]; then
+            base64 --decode debug.keystore.base64 > debug.keystore
+          else
+            keytool -genkeypair -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -validity 10000
+          fi
+      - name: Run answer-key matching regression tests
+        run: >-
+          bash ./gradlew :app:testDebugUnitTest
+          --tests com.example.util.PdfAdaptiveAnswerRowsTest
+          --tests com.example.util.PdfScopedAnswerKeysTest
+          --no-daemon --no-configuration-cache --max-workers=2
+      - name: Upload answer-key test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoruLab-answer-key-test-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: ignore
+          retention-days: 7
+      - run: bash ./gradlew :app:assembleDebug --no-daemon --no-configuration-cache --max-workers=2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SoruLab-1.2.5-rc3-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

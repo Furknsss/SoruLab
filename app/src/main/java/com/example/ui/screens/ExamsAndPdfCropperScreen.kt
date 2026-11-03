@@ -23,6 +23,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Dialog
 import com.example.data.*
 import com.example.util.StudioImageAndPdfEngine
@@ -574,8 +576,12 @@ fun SoruHavuzuAndPdfStudioView(
     var selectedPdfUri by remember { mutableStateOf<Uri?>(null) }
     var selectedPdfFileName by remember { mutableStateOf("") }
     var totalPdfPages by remember { mutableIntStateOf(0) }
-    var pendingPdfImport by remember { mutableStateOf<PendingPdfQuestionImport?>(null) }
-    var excludedPdfCropIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var isReadingPdf by remember { mutableStateOf(false) }
+    var pdfSelectionError by remember { mutableStateOf<String?>(null) }
+    var pendingCropReview by remember { mutableStateOf<PendingCropReview?>(null) }
+    var showCropReview by remember { mutableStateOf(false) }
+    var showClearConfirmation by remember { mutableStateOf(false) }
+    var pendingDeleteBook by remember { mutableStateOf<LibraryBookCardModel?>(null) }
 
     var showAddPublisherModal by remember { mutableStateOf(false) }
     var newPubName by remember { mutableStateOf("") }
@@ -632,19 +638,28 @@ fun SoruHavuzuAndPdfStudioView(
         if (uri != null) {
             onDismissError()
             selectedPdfUri = uri
+            selectedPdfFileName = "PDF okunuyor…"
+            totalPdfPages = 0
+            pdfSelectionError = null
+            isReadingPdf = true
             scope.launch {
-                val resolvedName = withContext(Dispatchers.IO) {
-                    StudioImageAndPdfEngine.resolvePdfDisplayName(context, uri)
+                try {
+                    val (resolvedName, count) = withContext(Dispatchers.IO) {
+                        StudioImageAndPdfEngine.resolvePdfDisplayName(context, uri) to
+                            StudioImageAndPdfEngine.getPdfPageCount(context, uri)
+                    }
+                    if (selectedPdfUri == uri) {
+                        selectedPdfFileName = if (resolvedName.endsWith(".pdf", ignoreCase = true)) resolvedName else "$resolvedName.pdf"
+                        totalPdfPages = count
+                        if (count <= 0) pdfSelectionError = "Bu PDF açılamadı. Şifre korumasını kontrol edin veya başka bir dosya seçin."
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    if (selectedPdfUri == uri) pdfSelectionError = "PDF okunamadı. Dosyayı yeniden seçip deneyin."
+                } finally {
+                    if (selectedPdfUri == uri) isReadingPdf = false
                 }
-                selectedPdfFileName = if (resolvedName.endsWith(".pdf", ignoreCase = true)) {
-                    resolvedName
-                } else {
-                    "$resolvedName.pdf"
-                }
-                val count = withContext(Dispatchers.IO) {
-                    StudioImageAndPdfEngine.getPdfPageCount(context, uri)
-                }
-                totalPdfPages = count
             }
         }
     }
@@ -719,119 +734,42 @@ fun SoruHavuzuAndPdfStudioView(
         label = "pdf_upload_progress"
     )
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFF8FAFC))
-            .testTag("pdf_cropper_studio"),
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize().background(Color(0xFFF0EFF7)).testTag("pdf_cropper_studio"),
         contentAlignment = Alignment.TopCenter
     ) {
+        val compact = maxWidth < 600.dp
+        val libraryColumns = when { maxWidth < 600.dp -> 1; maxWidth < 900.dp -> 2; else -> 3 }
+        val pageInset = if (compact) 16.dp else 28.dp
         LazyColumn(
-            modifier = Modifier
-                .widthIn(max = 1024.dp)
-                .fillMaxSize(),
-            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 140.dp),
+            modifier = Modifier.widthIn(max = 1024.dp).fillMaxSize(),
+            contentPadding = PaddingValues(start = pageInset, end = pageInset, top = 16.dp, bottom = 140.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // ÜST BAR: KURUMSAL BAŞLIK + "Sistemdeki Toplam Aktif Soru: [X]" SAYACI
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Surface(
-                            onClick = onBack,
-                            shape = CircleShape,
-                            color = Color.White,
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                            shadowElevation = 2.dp,
-                            modifier = Modifier.size(44.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Geri Dön",
-                                    tint = Color(0xFF0F172A),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FilledTonalIconButton(onClick = onBack, colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = Color.White)) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kitaplıktan geri dön", tint = Color(0xFF25205E))
                         }
-
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = "Kitaplığım & Akıllı PDF Stüdyosu",
-                                color = Color(0xFF0F172A),
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 20.sp
-                            )
-                            Text(
-                                text = "Yayınevini ve PDF dosyasını seçip başlatın; kitap adı, ders ve konular otomatik tespit edilir.",
-                                color = Color(0xFF64748B),
-                                fontSize = 12.5.sp
-                            )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("PDF Stüdyosu", color = Color(0xFF25205E), fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                            Text("Kitabını seç. Sorularını hazırla.", color = Color(0xFF77738F), fontSize = 13.sp)
+                        }
+                        if (customQuestions.isNotEmpty()) {
+                            IconButton(onClick = { showClearConfirmation = true }, enabled = !batchCropState.isAnalyzing) {
+                                Icon(Icons.Default.DeleteSweep, contentDescription = "Kitaplık verilerini temizle", tint = Color(0xFF77738F))
+                            }
                         }
                     }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFFEFF6FF),
-                            border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
-                            modifier = Modifier.testTag("total_active_questions_counter")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Verified,
-                                    contentDescription = null,
-                                    tint = Color(0xFF1E3A8A),
-                                    modifier = Modifier.size(17.dp)
-                                )
-                                Text(
-                                    text = "Sistemdeki Toplam Aktif Soru: ${customQuestions.size}",
-                                    color = Color(0xFF1E3A8A),
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 12.5.sp
-                                )
+                    Surface(color = Color(0xFF25205E), shape = RoundedCornerShape(24.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFFACA7F5), modifier = Modifier.size(28.dp))
+                                Text("Kendi soru kütüphanen", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
                             }
-                        }
-
-                        if (customQuestions.isNotEmpty()) {
-                            OutlinedButton(
-                                onClick = onClearAllData,
-                                shape = RoundedCornerShape(12.dp),
-                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = Color.White,
-                                    contentColor = Color(0xFF64748B)
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.DeleteSweep,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Temizle",
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp
-                                )
-                            }
+                            Text("PDF sayfalarını sorulara ayır, kırpmaları incele ve seçtiklerini kitaplığına ekle.", color = Color(0xFFD3D0EB), fontSize = 13.sp, lineHeight = 20.sp)
+                            Text("${libraryBooks.size} kitap   ·   ${customQuestions.size} soru", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.testTag("total_active_questions_counter"))
                         }
                     }
                 }
@@ -844,21 +782,21 @@ fun SoruHavuzuAndPdfStudioView(
                 Surface(
                     shape = RoundedCornerShape(24.dp),
                     color = Color.White,
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    shadowElevation = 4.dp,
+                    border = BorderStroke(1.dp, Color(0xFFE5E2F0)),
+                    shadowElevation = 0.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(24.dp),
+                            .padding(if (compact) 16.dp else 24.dp),
                         verticalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
                         // 1. YAYINEVİ / LOGO SEÇİMİ
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                text = "1. Yayınevi & Logo Seçimi",
-                                color = Color(0xFF0F172A),
+                                text = "01  Yayınını seç",
+                                color = Color(0xFF25205E),
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 14.sp
                             )
@@ -881,11 +819,12 @@ fun SoruHavuzuAndPdfStudioView(
                                     val isSelected = selectedPublisher?.id == pub.id
                                     Surface(
                                         onClick = { selectedPublisher = pub },
+                                        enabled = !batchCropState.isAnalyzing,
                                         shape = RoundedCornerShape(14.dp),
-                                        color = if (isSelected) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
+                                        color = if (isSelected) Color(0xFFEFF6FF) else Color(0xFFF7F6FB),
                                         border = BorderStroke(
                                             width = if (isSelected) 2.dp else 1.dp,
-                                            color = if (isSelected) Color(0xFF1E3A8A) else Color(0xFFE2E8F0)
+                                            color = if (isSelected) Color(0xFF346CFA) else Color(0xFFE5E2F0)
                                         ),
                                         modifier = Modifier.height(52.dp)
                                     ) {
@@ -900,7 +839,7 @@ fun SoruHavuzuAndPdfStudioView(
                                             )
                                             Text(
                                                 text = pub.name,
-                                                color = if (isSelected) Color(0xFF1E3A8A) else Color(0xFF334155),
+                                                color = if (isSelected) Color(0xFF346CFA) else Color(0xFF334155),
                                                 fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
                                                 fontSize = 13.sp
                                             )
@@ -930,12 +869,12 @@ fun SoruHavuzuAndPdfStudioView(
                                         Icon(
                                             imageVector = Icons.Default.AddPhotoAlternate,
                                             contentDescription = null,
-                                            tint = Color(0xFF1E3A8A),
+                                            tint = Color(0xFF346CFA),
                                             modifier = Modifier.size(18.dp)
                                         )
                                         Text(
                                             text = "+ Yeni Yayın & Logo Ekle",
-                                            color = Color(0xFF1E3A8A),
+                                            color = Color(0xFF346CFA),
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 12.sp
                                         )
@@ -947,29 +886,30 @@ fun SoruHavuzuAndPdfStudioView(
                         // 2. PDF DOSYASI SEÇİCİ VE TEK TIK "BAŞLAT VE SİSTEME AKTAR" BUTONU
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                text = "2. PDF Dosyası Seçimi (Kitap Adı, Ders ve Konu PDF'ten Otomatik Okunur)",
-                                color = Color(0xFF0F172A),
+                                text = "02  PDF dosyanı ekle",
+                                color = Color(0xFF25205E),
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 14.sp
                             )
 
                             Surface(
                                 onClick = { pdfPickerLauncher.launch("application/pdf") },
+                                enabled = !batchCropState.isAnalyzing && pendingCropReview == null,
                                 shape = RoundedCornerShape(16.dp),
-                                color = if (selectedPdfUri != null) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
+                                color = if (selectedPdfUri != null) Color(0xFFEFF6FF) else Color(0xFFF7F6FB),
                                 border = BorderStroke(
                                     width = 1.5.dp,
-                                    color = if (selectedPdfUri != null) Color(0xFF1E3A8A) else Color(0xFFCBD5E1)
+                                    color = if (selectedPdfUri != null) Color(0xFF346CFA) else Color(0xFFCBD5E1)
                                 ),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(60.dp)
+                                    .heightIn(min = 88.dp)
                                     .testTag("select_pdf_button")
                             ) {
                                 Row(
                                     modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(horizontal = 18.dp),
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 16.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
@@ -981,7 +921,7 @@ fun SoruHavuzuAndPdfStudioView(
                                         Icon(
                                             imageVector = if (selectedPdfUri != null) Icons.Default.PictureAsPdf else Icons.Default.UploadFile,
                                             contentDescription = null,
-                                            tint = if (selectedPdfUri != null) Color(0xFF1E3A8A) else Color(0xFF475569),
+                                            tint = if (selectedPdfUri != null) Color(0xFF346CFA) else Color(0xFF475569),
                                             modifier = Modifier.size(22.dp)
                                         )
                                         Column {
@@ -989,9 +929,9 @@ fun SoruHavuzuAndPdfStudioView(
                                                 text = if (selectedPdfUri != null) {
                                                     selectedPdfFileName
                                                 } else {
-                                                    "PDF Dosyası Seçmek İçin Dokunun"
+                                                    "PDF seçmek için dokun"
                                                 },
-                                                color = if (selectedPdfUri != null) Color(0xFF1E3A8A) else Color(0xFF334155),
+                                                color = if (selectedPdfUri != null) Color(0xFF346CFA) else Color(0xFF334155),
                                                 fontWeight = FontWeight.ExtraBold,
                                                 fontSize = 14.sp,
                                                 maxLines = 1,
@@ -999,7 +939,7 @@ fun SoruHavuzuAndPdfStudioView(
                                             )
                                             if (selectedPdfUri != null && totalPdfPages > 0) {
                                                 Text(
-                                                    text = "PDF Açıldı: Toplam $totalPdfPages Sayfa • Hazır",
+                                                    text = "$totalPdfPages sayfa · Kırpmaya hazır",
                                                     color = Color(0xFF1D4ED8),
                                                     fontWeight = FontWeight.SemiBold,
                                                     fontSize = 11.5.sp
@@ -1010,11 +950,11 @@ fun SoruHavuzuAndPdfStudioView(
 
                                     Surface(
                                         shape = RoundedCornerShape(10.dp),
-                                        color = if (selectedPdfUri != null) Color(0xFFDBEAFE) else Color(0xFFE2E8F0)
+                                        color = if (selectedPdfUri != null) Color(0xFFDBEAFE) else Color(0xFFE5E2F0)
                                     ) {
                                         Text(
                                             text = if (selectedPdfUri != null) "PDF Değiştir" else "PDF Seç",
-                                            color = if (selectedPdfUri != null) Color(0xFF1E3A8A) else Color(0xFF334155),
+                                            color = if (selectedPdfUri != null) Color(0xFF346CFA) else Color(0xFF334155),
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 12.sp,
                                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
@@ -1023,6 +963,17 @@ fun SoruHavuzuAndPdfStudioView(
                                 }
                             }
 
+                            if (isReadingPdf) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = Color(0xFF346CFA))
+                            }
+                            pdfSelectionError?.let { message ->
+                                Text(message, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                            }
+                            pendingCropReview?.let { review ->
+                                OutlinedButton(onClick = { showCropReview = true }, modifier = Modifier.fillMaxWidth()) {
+                                    Text("${review.items.size} kırpma hazır · İncelemeye devam et")
+                                }
+                            }
                             Spacer(modifier = Modifier.height(4.dp))
 
                             // TAM GENİŞLİKLİ FERAH "BAŞLAT VE SİSTEME AKTAR" BUTONU (ASLA EZİLMEZ)
@@ -1036,26 +987,17 @@ fun SoruHavuzuAndPdfStudioView(
                                         publisher
                                     ) { extractedItems, coverPath, autoDetectedBookTitle ->
                                         if (extractedItems.isNotEmpty()) {
-                                            // Never write automatically: even OCR-complete pages can
-                                            // contain clipped choices, stray diagrams, or merged questions.
-                                            pendingPdfImport = PendingPdfQuestionImport(
-                                                items = extractedItems,
-                                                publisherName = publisher.name,
-                                                publisherLogoUri = publisher.customLogoPath,
-                                                bookTitle = autoDetectedBookTitle,
-                                                bookCoverPath = coverPath
-                                            )
-                                            excludedPdfCropIds = emptySet()
+                                            pendingCropReview = PendingCropReview(extractedItems, publisher, autoDetectedBookTitle, coverPath)
+                                            showCropReview = true
                                         }
                                     }
                                 },
                                 enabled = selectedPdfUri != null &&
-                                    selectedPublisher != null &&
-                                    !batchCropState.isAnalyzing &&
-                                    pendingPdfImport == null,
+                                    selectedPublisher != null && totalPdfPages > 0 && !isReadingPdf &&
+                                    pendingCropReview == null && !batchCropState.isAnalyzing,
                                 shape = RoundedCornerShape(16.dp),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF1E3A8A),
+                                    containerColor = Color(0xFF346CFA),
                                     contentColor = Color.White,
                                     disabledContainerColor = Color(0xFFCBD5E1),
                                     disabledContentColor = Color(0xFF64748B)
@@ -1073,9 +1015,9 @@ fun SoruHavuzuAndPdfStudioView(
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
                                     text = if (batchCropState.isAnalyzing) {
-                                        "PDF Sayfaları Taranıyor ve Kırpılıyor..."
+                                        "Sorular hazırlanıyor…"
                                     } else {
-                                        "Başlat ve Sisteme Aktar"
+                                        "Soruları kırp ve incele"
                                     },
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 15.sp
@@ -1113,9 +1055,9 @@ fun SoruHavuzuAndPdfStudioView(
                                     ) {
                                         Text(
                                             text = batchCropState.progressMessage.ifBlank {
-                                                "Sayfa 1 / ${totalPdfPages.coerceAtLeast(1)} işleniyor • Aktarılan Soru: 0 • Cevap Anahtarı Eşleştirildi"
+                                                "PDF hazırlanıyor; sayfalar ve cevap anahtarı incelenecek."
                                             },
-                                            color = Color(0xFF1E3A8A),
+                                            color = Color(0xFF346CFA),
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 13.sp,
                                             modifier = Modifier.weight(1f)
@@ -1123,7 +1065,7 @@ fun SoruHavuzuAndPdfStudioView(
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Surface(
                                             shape = RoundedCornerShape(50),
-                                            color = Color(0xFF1E3A8A)
+                                            color = Color(0xFF346CFA)
                                         ) {
                                             Text(
                                                 text = "%$pct",
@@ -1137,7 +1079,7 @@ fun SoruHavuzuAndPdfStudioView(
 
                                     LinearProgressIndicator(
                                         progress = { animatedProgress },
-                                        color = Color(0xFF1E3A8A),
+                                        color = Color(0xFF346CFA),
                                         trackColor = Color(0xFFDBEAFE),
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -1198,7 +1140,8 @@ fun SoruHavuzuAndPdfStudioView(
                                     }
                                 }
                             }
-                            AnimatedVisibility(
+                        }
+                        AnimatedVisibility(
                                 visible = !batchCropState.warningMessage.isNullOrBlank(),
                                 enter = fadeIn() + expandVertically(),
                                 exit = fadeOut() + shrinkVertically()
@@ -1233,7 +1176,6 @@ fun SoruHavuzuAndPdfStudioView(
                                     }
                                 }
                             }
-                        }
                     }
                 }
             }
@@ -1243,10 +1185,9 @@ fun SoruHavuzuAndPdfStudioView(
             // ====================================================================
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -1255,12 +1196,12 @@ fun SoruHavuzuAndPdfStudioView(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.MenuBook,
                                 contentDescription = null,
-                                tint = Color(0xFF1E3A8A),
+                                tint = Color(0xFF346CFA),
                                 modifier = Modifier.size(22.dp)
                             )
                             Text(
-                                text = "KİTAPLIĞIM",
-                                color = Color(0xFF0F172A),
+                                text = "Kitaplığım",
+                                color = Color(0xFF25205E),
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 19.sp
                             )
@@ -1270,8 +1211,8 @@ fun SoruHavuzuAndPdfStudioView(
                                 border = BorderStroke(1.dp, Color(0xFFBFDBFE))
                             ) {
                                 Text(
-                                    text = "${libraryBooks.size} Kaynak Kitap • ${customQuestions.size} Soru",
-                                    color = Color(0xFF1E3A8A),
+                                    text = "${libraryBooks.size} kitap",
+                                    color = Color(0xFF346CFA),
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 12.sp,
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
@@ -1307,8 +1248,8 @@ fun SoruHavuzuAndPdfStudioView(
                                 },
                                 shape = RoundedCornerShape(14.dp),
                                 modifier = Modifier
-                                    .widthIn(min = 220.dp, max = 320.dp)
-                                    .height(48.dp)
+                                    .fillMaxWidth()
+                                    .heightIn(min = 56.dp)
                             )
                         }
                     }
@@ -1320,7 +1261,7 @@ fun SoruHavuzuAndPdfStudioView(
                     Surface(
                         shape = RoundedCornerShape(20.dp),
                         color = Color.White,
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        border = BorderStroke(1.dp, Color(0xFFE5E2F0)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -1339,7 +1280,7 @@ fun SoruHavuzuAndPdfStudioView(
                                     Icon(
                                         imageVector = Icons.Default.AutoStories,
                                         contentDescription = null,
-                                        tint = Color(0xFF1E3A8A),
+                                        tint = Color(0xFF346CFA),
                                         modifier = Modifier.size(24.dp)
                                     )
                                 }
@@ -1347,12 +1288,12 @@ fun SoruHavuzuAndPdfStudioView(
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(
                                     text = if (libraryBooks.isEmpty()) "Kitaplığınızda Henüz Kaynak Bulunmuyor" else "Aramaya Uygun Kitap Bulunamadı",
-                                    color = Color(0xFF0F172A),
+                                    color = Color(0xFF25205E),
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 15.sp
                                 )
                                 Text(
-                                    text = "Üstten yayınevini ve PDF dosyanızı seçip 'Başlat ve Sisteme Aktar' butonuna bastığınızda kaynağınız kapağıyla birlikte anında burada listelenir.",
+                                    text = "Yayınını ve PDF dosyanı seç. Kırpmaları inceleyip kaydettiğinde soruların burada görünecek.",
                                     color = Color(0xFF64748B),
                                     fontSize = 12.5.sp
                                 )
@@ -1361,7 +1302,7 @@ fun SoruHavuzuAndPdfStudioView(
                     }
                 }
             } else {
-                val bookRows = filteredLibraryBooks.chunked(3)
+                val bookRows = filteredLibraryBooks.chunked(libraryColumns)
                 items(
                     items = bookRows,
                     key = { row -> row.joinToString("|") { it.key } },
@@ -1381,18 +1322,56 @@ fun SoruHavuzuAndPdfStudioView(
                                         selectedBookForTestPanel = book
                                     },
                                     onDeleteBook = {
-                                        onDeleteLibraryBook(book.questions.map { it.id })
+                                        pendingDeleteBook = book
                                     }
                                 )
                             }
                         }
-                        repeat(3 - rowBooks.size) {
+                        repeat(libraryColumns - rowBooks.size) {
                             Spacer(modifier = Modifier.weight(1f))
                         }
                     }
                 }
             }
         }
+    }
+
+    pendingCropReview?.let { review ->
+        PdfCropReviewDialog(
+            review = review,
+            visible = showCropReview,
+            onClose = { showCropReview = false },
+            onSave = { selectedItems ->
+                onSaveExtractedPdfBatch(selectedItems, review.publisher.name, review.publisher.customLogoPath, review.bookTitle, review.coverPath)
+                showCropReview = false
+                pendingCropReview = null
+                selectedPdfUri = null
+                selectedPdfFileName = ""
+                totalPdfPages = 0
+            }
+        )
+    }
+    if (showClearConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirmation = false },
+            title = { Text("Kitaplık verileri temizlensin mi?") },
+            text = { Text("Kitaplar, sorular ve test geçmişi kaldırılacak. Bu işlem geri alınamaz.") },
+            confirmButton = { TextButton(onClick = { showClearConfirmation = false; onClearAllData() }) { Text("Verileri temizle", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { showClearConfirmation = false }) { Text("Vazgeç") } }
+        )
+    }
+    pendingDeleteBook?.let { book ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteBook = null },
+            title = { Text("Kitap kaldırılsın mı?") },
+            text = { Text("“${book.bookTitle}” ve içindeki ${book.questions.size} soru kitaplığından kaldırılacak.") },
+            confirmButton = { TextButton(onClick = {
+                pendingDeleteBook = null
+                selectedBookForTestPanel = null
+                onDeleteLibraryBook(book.questions.map { it.id })
+            }) { Text("Kitabı kaldır", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { pendingDeleteBook = null }) { Text("Vazgeç") } }
+        )
     }
 
     // =======================================================================
@@ -1434,11 +1413,11 @@ fun SoruHavuzuAndPdfStudioView(
             Surface(
                 shape = RoundedCornerShape(24.dp),
                 color = Color.White,
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                border = BorderStroke(1.dp, Color(0xFFE5E2F0)),
                 shadowElevation = 12.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .widthIn(min = 420.dp, max = 640.dp)
+                    .widthIn(max = 640.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -1463,7 +1442,7 @@ fun SoruHavuzuAndPdfStudioView(
                             Column {
                                 Text(
                                     text = activeBookPanel.bookTitle,
-                                    color = Color(0xFF0F172A),
+                                    color = Color(0xFF25205E),
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 17.sp,
                                     maxLines = 1,
@@ -1483,9 +1462,7 @@ fun SoruHavuzuAndPdfStudioView(
                         ) {
                             Surface(
                                 onClick = {
-                                    val ids = activeBookPanel.questions.map { it.id }
-                                    selectedBookForTestPanel = null
-                                    onDeleteLibraryBook(ids)
+                                    pendingDeleteBook = activeBookPanel
                                 },
                                 shape = RoundedCornerShape(10.dp),
                                 color = Color(0xFFFEF2F2),
@@ -1522,7 +1499,7 @@ fun SoruHavuzuAndPdfStudioView(
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
                                 text = "Kitaptaki Konular (${topicsInBook.size} Konu)",
-                                color = Color(0xFF0F172A),
+                                color = Color(0xFF25205E),
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 13.5.sp
                             )
@@ -1568,11 +1545,11 @@ fun SoruHavuzuAndPdfStudioView(
                         }
                     }
 
-                    HorizontalDivider(color = Color(0xFFE2E8F0))
+                    HorizontalDivider(color = Color(0xFFE5E2F0))
 
                     Text(
                         text = "${selectedTestLevel.displayTitle} • Otomatik testler (en fazla $AUTOMATIC_TEST_QUESTION_COUNT soru)",
-                        color = Color(0xFF0F172A),
+                        color = Color(0xFF25205E),
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 13.5.sp
                     )
@@ -1608,8 +1585,8 @@ fun SoruHavuzuAndPdfStudioView(
                                     onSolveBookChunkInPractice(chunkQuestions)
                                 },
                                 shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFFF8FAFC),
-                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                color = Color(0xFFF7F6FB),
+                                border = BorderStroke(1.dp, Color(0xFFE5E2F0)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
@@ -1632,7 +1609,7 @@ fun SoruHavuzuAndPdfStudioView(
                                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                         Text(
                                             text = cleanTestName,
-                                            color = Color(0xFF0F172A),
+                                            color = Color(0xFF25205E),
                                             fontWeight = FontWeight.ExtraBold,
                                             fontSize = 14.5.sp
                                         )
@@ -1681,7 +1658,7 @@ fun SoruHavuzuAndPdfStudioView(
             Surface(
                 shape = RoundedCornerShape(24.dp),
                 color = Color.White,
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                border = BorderStroke(1.dp, Color(0xFFE5E2F0)),
                 shadowElevation = 10.dp,
                 modifier = Modifier.widthIn(min = 380.dp, max = 480.dp)
             ) {
@@ -1696,7 +1673,7 @@ fun SoruHavuzuAndPdfStudioView(
                     ) {
                         Text(
                             text = "Yeni Yayın & Logo Ekle",
-                            color = Color(0xFF0F172A),
+                            color = Color(0xFF25205E),
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 18.sp
                         )
@@ -1721,7 +1698,7 @@ fun SoruHavuzuAndPdfStudioView(
                             )
                         },
                         shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFFF8FAFC),
+                        color = Color(0xFFF7F6FB),
                         border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -1737,12 +1714,12 @@ fun SoruHavuzuAndPdfStudioView(
                                     .size(56.dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(Color.White)
-                                    .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(12.dp)),
+                                    .border(1.dp, Color(0xFFE5E2F0), RoundedCornerShape(12.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (isProcessingLogo) {
                                     CircularProgressIndicator(
-                                        color = Color(0xFF1E3A8A),
+                                        color = Color(0xFF346CFA),
                                         strokeWidth = 2.dp,
                                         modifier = Modifier.size(24.dp)
                                     )
@@ -1759,7 +1736,7 @@ fun SoruHavuzuAndPdfStudioView(
                                     Icon(
                                         imageVector = Icons.Default.AddPhotoAlternate,
                                         contentDescription = null,
-                                        tint = Color(0xFF1E3A8A),
+                                        tint = Color(0xFF346CFA),
                                         modifier = Modifier.size(26.dp)
                                     )
                                 }
@@ -1768,7 +1745,7 @@ fun SoruHavuzuAndPdfStudioView(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = if (newPubBitmap != null) "Logo Hazır (Değiştirmek İçin Dokunun)" else "Logo Görseli Seçin",
-                                    color = Color(0xFF0F172A),
+                                    color = Color(0xFF25205E),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp
                                 )
@@ -1808,7 +1785,7 @@ fun SoruHavuzuAndPdfStudioView(
                                 newPubSavedPath.isNotBlank() &&
                                 !isProcessingLogo,
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A))
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF346CFA))
                         ) {
                             Text("Yayını Kaydet", fontWeight = FontWeight.Bold)
                         }
@@ -1818,55 +1795,7 @@ fun SoruHavuzuAndPdfStudioView(
         }
     }
 
-    val pendingImport = pendingPdfImport
-    if (pendingImport != null) {
-        PdfImportCropReviewDialog(
-            items = pendingImport.items,
-            excludedIds = excludedPdfCropIds,
-            onToggleExclude = { id ->
-                excludedPdfCropIds =
-                    if (id in excludedPdfCropIds) excludedPdfCropIds - id
-                    else excludedPdfCropIds + id
-            },
-            onConfirm = {
-                val accepted = pendingImport.items.filterNot { it.id in excludedPdfCropIds }
-                val discarded = pendingImport.items.filter { it.id in excludedPdfCropIds }
-                if (accepted.isNotEmpty()) {
-                    onSaveExtractedPdfBatch(
-                        accepted,
-                        pendingImport.publisherName,
-                        pendingImport.publisherLogoUri,
-                        pendingImport.bookTitle,
-                        pendingImport.bookCoverPath
-                    )
-                }
-                pendingPdfImport = null
-                excludedPdfCropIds = emptySet()
-                if (discarded.isNotEmpty()) {
-                    scope.launch(Dispatchers.IO) {
-                        discarded.forEach { item ->
-                            StudioImageAndPdfEngine.deleteQuestionImage(
-                                context.applicationContext, item.croppedImagePath
-                            )
-                        }
-                    }
-                }
-            },
-            onCancel = {
-                pendingPdfImport = null
-                excludedPdfCropIds = emptySet()
-                // Only the temporary per-crop JPEGs are removed. Keep the original
-                // PDF archive untouched; another import may already reference it.
-                scope.launch(Dispatchers.IO) {
-                    pendingImport.items.forEach { item ->
-                        StudioImageAndPdfEngine.deleteQuestionImage(
-                            context.applicationContext, item.croppedImagePath
-                        )
-                    }
-                }
-            }
-        )
-    }
+
 }
 
 /**
@@ -1887,8 +1816,8 @@ private fun LibraryBookShowcaseCard(
     Surface(
         shape = RoundedCornerShape(22.dp),
         color = Color.White,
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-        shadowElevation = 4.dp,
+        border = BorderStroke(1.dp, Color(0xFFE5E2F0)),
+        shadowElevation = 0.dp,
         modifier = Modifier
             .fillMaxWidth()
             .testTag("library_book_card_${book.key}")
@@ -1910,7 +1839,7 @@ private fun LibraryBookShowcaseCard(
                             colors = listOf(primaryBrand, secondaryBrand)
                         )
                     )
-                    .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(16.dp))
+                    .border(1.dp, Color(0xFFE5E2F0), RoundedCornerShape(16.dp))
                     .clickable(onClick = onOpenBookTest)
             ) {
                 if (coverBitmap != null) {
@@ -1956,7 +1885,7 @@ private fun LibraryBookShowcaseCard(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(50),
-                        color = Color(0xFF1E3A8A),
+                        color = Color(0xFF346CFA),
                         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
                     ) {
                         Text(
@@ -2022,14 +1951,14 @@ private fun LibraryBookShowcaseCard(
             ) {
                 Text(
                     text = book.bookTitle,
-                    color = Color(0xFF0F172A),
+                    color = Color(0xFF25205E),
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 16.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${book.publisherName} • Cevap Anahtarı Eşleşmeli",
+                    text = "${book.questions.count { it.answerKeyVerified }} / ${book.questions.size} cevap doğrulandı",
                     color = Color(0xFF64748B),
                     fontWeight = FontWeight.Medium,
                     fontSize = 12.sp,
@@ -2048,7 +1977,7 @@ private fun LibraryBookShowcaseCard(
                     onClick = onOpenBookTest,
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF1E3A8A),
+                        containerColor = Color(0xFF346CFA),
                         contentColor = Color.White
                     ),
                     modifier = Modifier
@@ -2103,117 +2032,121 @@ private fun LibraryBookShowcaseCard(
     }
 }
 
+private data class PendingCropReview(
+    val items: List<ExtractedPdfQuestionItem>,
+    val publisher: YksPublisherInfo,
+    val bookTitle: String,
+    val coverPath: String
+)
 
-/**
- * One crop at a time: never decode a hundreds-of-pages book's thumbnails together.
- * Users must approve the selected images before any question reaches the pool.
- */
+/** Review the actual extracted crops before they enter the student's library. */
 @Composable
-private fun PdfImportCropReviewDialog(
-    items: List<ExtractedPdfQuestionItem>,
-    excludedIds: Set<String>,
-    onToggleExclude: (String) -> Unit,
-    onConfirm: () -> Unit,
-    onCancel: () -> Unit
+private fun PdfCropReviewDialog(
+    review: PendingCropReview,
+    visible: Boolean,
+    onClose: () -> Unit,
+    onSave: (List<ExtractedPdfQuestionItem>) -> Unit
 ) {
-    var current by remember(items) { mutableIntStateOf(0) }
-    val item = items[current.coerceIn(0, items.lastIndex)]
-    val bitmap = StudioImageAndPdfEngine.rememberCachedBitmap(item.croppedImagePath)
-    val includedCount = items.size - excludedIds.size
-    val isExcluded = item.id in excludedIds
-
-    Dialog(onDismissRequest = {}) {
+    var currentIndex by remember(review) { mutableIntStateOf(0) }
+    var excludedIndices by remember(review) { mutableStateOf(emptySet<Int>()) }
+    if (!visible || review.items.isEmpty()) return
+    var answerOverrides by remember(review) { mutableStateOf(emptyMap<Int, String>()) }
+    var cropOverrides by remember(review) { mutableStateOf(emptyMap<Int, ExtractedPdfQuestionItem>()) }
+    var correctingCrop by remember { mutableStateOf(false) }
+    val original = cropOverrides[currentIndex] ?: review.items[currentIndex]
+    val current = answerOverrides[currentIndex]?.let { answer ->
+        original.copy(correctOption = answer, answerKeyMatched = answer.isNotBlank(), solutionSummary = original.solutionSummary + " • Kullanıcı tarafından doğrulandı")
+    } ?: original
+    val preview = StudioImageAndPdfEngine.rememberCachedBitmap(current.croppedImagePath)
+    val included = currentIndex !in excludedIndices
+    val selectedCount = review.items.size - excludedIndices.size
+    val verifiedCount = review.items.indices.count { index ->
+        answerOverrides[index]?.isNotBlank() ?: review.items[index].answerKeyMatched
+    }
+    if (correctingCrop) PdfCropCorrectionDialog(original,
+        onDismiss = { correctingCrop = false },
+        onApply = { cropOverrides = cropOverrides + (currentIndex to it); correctingCrop = false })
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.90f),
-            shape = RoundedCornerShape(20.dp),
-            color = Color.White,
-            shadowElevation = 10.dp
+            color = Color(0xFFF0EFF7),
+            shape = RoundedCornerShape(28.dp),
+            modifier = Modifier.padding(12.dp).widthIn(max = 880.dp).fillMaxWidth().fillMaxHeight(0.94f)
+                .testTag("pdf_crop_review_dialog")
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text(
-                    "PDF soru kırpma kontrolü",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1E3A8A)
-                )
-                Text(
-                    "Soru ${current + 1} / ${items.size} • Kaydedilecek: $includedCount",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFF475569)
-                )
-                Text(
-                    "PDF sayfası ${item.pageIndex + 1} • Kitap soru no: ${item.questionNumberInTest}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF64748B)
-                )
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFF8FAFC)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (bitmap != null) {
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
-                            contentDescription = "Kırpılan soru önizlemesi",
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize().padding(6.dp)
-                        )
-                    } else {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Kırpmaları incele", color = Color(0xFF25205E), fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                        Text(review.bookTitle, color = Color(0xFF77738F), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp)
+                    }
+                    IconButton(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = "İncelemeyi kapat") }
+                }
+                Text("${review.items.size} soru bulundu · $verifiedCount cevap eşleşti", color = Color(0xFF77738F), fontSize = 12.sp)
+                Surface(color = Color.White, shape = RoundedCornerShape(20.dp), modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Soru ${current.questionNumber.takeIf { it > 0 } ?: currentIndex + 1}", color = Color(0xFF25205E), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            if (current.pageIndex >= 0) Text("Sayfa ${current.pageIndex + 1}", color = Color(0xFF77738F), fontSize = 12.sp)
+                        }
+                        Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(12.dp)).background(Color.White), contentAlignment = Alignment.Center) {
+                            if (preview != null) {
+                                Image(preview.asImageBitmap(), contentDescription = "${currentIndex + 1}. sorunun kırpılmış önizlemesi", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                            } else {
+                                Column(Modifier.verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("Görsel önizleme açılamadı", color = Color(0xFFB45309), fontWeight = FontWeight.SemiBold)
+                                    Text(current.questionText.ifBlank { "Bu kırpmayı seçimden çıkarabilir veya PDF dosyasını yeniden işleyebilirsin." }, color = Color(0xFF25205E), fontSize = 14.sp)
+                                }
+                            }
+                        }
+                        Text(listOf(current.examType, current.subjectName, current.topicName).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "Konu incelemesi gerekiyor" }, color = Color(0xFF77738F), fontSize = 12.sp, maxLines = 2)
                         Text(
-                            "Görsel okunamadı; bu soruyu dışarıda bırakın.",
-                            color = Color(0xFFB91C1C),
-                            modifier = Modifier.padding(18.dp),
-                            textAlign = TextAlign.Center
+                            if (current.answerKeyMatched) "Cevap anahtarı: ${current.correctOption}" else "Cevap anahtarı eşleşmedi · Doğrulanmamış soru",
+                            color = if (current.answerKeyMatched) Color(0xFF15803D) else Color(0xFFB45309), fontSize = 12.sp, fontWeight = FontWeight.Medium
                         )
                     }
                 }
-                Text(
-                    if (item.answerKeyMatched) "Cevap anahtarı: ${item.correctOption} (eşleşti)"
-                    else "Cevap anahtarı doğrulanamadı; cevap tahmin edilmeyecek.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (item.answerKeyMatched) Color(0xFF15803D) else Color(0xFFB45309)
-                )
-                OutlinedButton(
-                    onClick = { onToggleExclude(item.id) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(if (isExcluded) "Soruyu tekrar dahil et" else "Bu hatalı kırpmayı aktarım dışında bırak")
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    IconButton(onClick = { currentIndex-- }, enabled = currentIndex > 0, modifier = Modifier.testTag("crop_review_previous")) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Önceki kırpma")
+                    }
+                    Text("${currentIndex + 1} / ${review.items.size}", color = Color(0xFF25205E), fontWeight = FontWeight.SemiBold)
+                    IconButton(onClick = { currentIndex++ }, enabled = currentIndex < review.items.lastIndex, modifier = Modifier.testTag("crop_review_next")) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Sonraki kırpma")
+                    }
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        enabled = current > 0,
-                        onClick = { current-- },
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Önceki") }
-                    OutlinedButton(
-                        enabled = current < items.lastIndex,
-                        onClick = { current++ },
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Sonraki") }
+                TextButton(onClick = { correctingCrop = true }, enabled = current.pdfFilePath.isNotBlank()) {
+                    Text("Kaynak sayfayı aç ve kırpmayı düzelt")
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Text("Cevabı yalnızca kaynak cevap anahtarıyla karşılaştırdıktan sonra doğrula.", color = Color(0xFF77738F), fontSize = 12.sp)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    listOf("A", "B", "C", "D", "E", "").forEach { answer ->
+                        FilterChip(selected = current.answerKeyMatched && current.correctOption == answer,
+                            onClick = { answerOverrides = answerOverrides + (currentIndex to answer) },
+                            label = { Text(answer.ifBlank { "Belirsiz" }) })
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = included, onCheckedChange = { checked -> excludedIndices = if (checked) excludedIndices - currentIndex else excludedIndices + currentIndex })
+                    Text("Bu soruyu kitaplığıma ekle", modifier = Modifier.weight(1f), color = Color(0xFF25205E), fontSize = 13.sp)
+                    TextButton(onClick = { excludedIndices = if (selectedCount == review.items.size) review.items.indices.toSet() else emptySet() }) {
+                        Text(if (selectedCount == review.items.size) "Seçimi kaldır" else "Tümünü seç", fontSize = 12.sp)
+                    }
+                }
+                Button(
+                    onClick = { onSave(review.items.mapIndexed { index, source ->
+                        val item = cropOverrides[index] ?: source
+                        answerOverrides[index]?.let { answer -> item.copy(correctOption = answer, answerKeyMatched = answer.isNotBlank(), solutionSummary = item.solutionSummary + " • Kullanıcı tarafından doğrulandı") } ?: item
+                    }.filterIndexed { index, _ -> index !in excludedIndices }) },
+                    enabled = selectedCount > 0,
+                    shape = RoundedCornerShape(50), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF346CFA)),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("save_reviewed_crops")
                 ) {
-                    TextButton(
-                        onClick = onCancel,
-                        modifier = Modifier.weight(1f)
-                    ) { Text("İptal") }
-                    Button(
-                        enabled = includedCount > 0,
-                        onClick = onConfirm,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A))
-                    ) { Text("Seçilenleri kaydet") }
+                    Icon(Icons.Default.LibraryAdd, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("$selectedCount soruyu kitaplığıma ekle", fontWeight = FontWeight.SemiBold)
                 }
             }
         }
     }
 }
+

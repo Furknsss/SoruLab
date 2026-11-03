@@ -1162,13 +1162,23 @@ class SoruLabRepository(
                         j += 2
                     }
                     if (points.size >= 2) {
+                        // Missing pressure data belongs to a pre-upgrade drawing.
+                        val pressureArray = sObj.optJSONArray("pressure")
+                        val pressures = if (pressureArray?.length() == points.size) {
+                            (0 until points.size).map { idx ->
+                                pressureArray.optDouble(idx, 1.0).toFloat()
+                                    .takeIf(Float::isFinite)?.coerceIn(0f, 1.5f) ?: 1f
+                            }
+                        } else emptyList()
                         strokeList.add(
                             DrawStroke(
                                 points = points,
                                 colorHex = sObj.optLong("color", 0xFF1D4ED8L),
                                 strokeWidthPx = sObj.optDouble("width", 8.0).toFloat(),
                                 isSmartShape = sObj.optBoolean("smart", false),
-                                isEraser = sObj.optBoolean("eraser", false)
+                                isEraser = sObj.optBoolean("eraser", false),
+                                isHighlighter = sObj.optBoolean("highlighter", false),
+                                pressureSamples = pressures
                             )
                         )
                     }
@@ -1197,6 +1207,14 @@ class SoruLabRepository(
                         sObj.put("width", stroke.strokeWidthPx.toDouble())
                         sObj.put("smart", stroke.isSmartShape)
                         sObj.put("eraser", stroke.isEraser)
+                        sObj.put("highlighter", stroke.isHighlighter)
+                        if (stroke.pressureSamples.size == stroke.points.size) {
+                            val pressureArr = JSONArray()
+                            stroke.pressureSamples.forEach { pressure ->
+                                pressureArr.put(pressure.toDouble())
+                            }
+                            sObj.put("pressure", pressureArr)
+                        }
                         val ptsArr = JSONArray()
                         stroke.points.forEach { pt ->
                             ptsArr.put(pt.x.toDouble())

@@ -161,6 +161,7 @@ internal fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>, colum
 fun LiveSolvingBoardScreen(
     session: ActiveSolvingSession,
     strokes: List<DrawStroke>,
+    currentCanvasKey: String,
     activeTool: DrawingTool,
     selectedStrokeSizeIndex: Int,
     selectedPenColorHex: Long,
@@ -169,9 +170,9 @@ fun LiveSolvingBoardScreen(
     onSelectTool: (DrawingTool) -> Unit,
     onSelectStrokeSize: (Int) -> Unit,
     onSelectPenColor: (Long) -> Unit,
-    onAddStroke: (List<Offset>, List<Float>) -> Unit,
+    onAddStroke: (String, List<Offset>, List<Float>) -> Unit,
     onBookPageChanged: (Int) -> Unit,
-    onClearCanvas: () -> Unit,
+    onClearCanvas: (String) -> Unit,
     onSelectQuestionIndex: (Int) -> Unit,
     onSelectOption: (Int, String) -> Unit,
     onToggleOpticalForm: () -> Unit,
@@ -208,6 +209,15 @@ fun LiveSolvingBoardScreen(
         pageCount = { totalQuestions }
     )
     val currentBookPageIndex = bookPagerState.currentPage
+    val displayedCanvasKey = if (session.viewMode == BoardViewMode.FULL_PAGE) {
+        StylusInputPolicy.canvasKey(session.testItem.id, currentBookPageIndex)
+    } else {
+        val q = questions.getOrNull(singleQuestionPagerState.currentPage)
+        "q_${q?.id ?: singleQuestionPagerState.currentPage}"
+    }
+    // Hide previous-page ink during the frame before the ViewModel receives
+    // the pager's new selected page. Never draw it on the next PDF page.
+    val displayedStrokes = if (currentCanvasKey == displayedCanvasKey) strokes else emptyList()
     val pagerScope = rememberCoroutineScope()
     var fingerDrawingEnabled by rememberSaveable(session.testItem.id) { mutableStateOf(false) }
 
@@ -442,7 +452,7 @@ fun LiveSolvingBoardScreen(
                 },
                 onSelectStrokeSize = onSelectStrokeSize,
                 onSelectPenColor = onSelectPenColor,
-                onClearCanvas = onClearCanvas
+                onClearCanvas = { onClearCanvas(displayedCanvasKey) }
             )
         }
 
@@ -552,7 +562,8 @@ fun LiveSolvingBoardScreen(
                             selectedPenColorHex,
                             fingerDrawingEnabled,
                             currentBookPageIndex,
-                            session.viewMode
+                            session.viewMode,
+                            displayedCanvasKey
                         ) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -633,6 +644,7 @@ fun LiveSolvingBoardScreen(
                                         }
                                         if (liveRawPoints.size >= 2) {
                                             onAddStroke(
+                                                displayedCanvasKey,
                                                 liveRawPoints.toList(),
                                                 liveRawPressures.toList()
                                             )
@@ -829,7 +841,7 @@ fun LiveSolvingBoardScreen(
                     val liveErasing = activeTool == DrawingTool.ERASER &&
                         liveDrawTick.intValue >= 0 && liveRawPoints.isNotEmpty()
                     if (!liveErasing) {
-                        strokes.forEach { stroke -> drawSmoothStroke(stroke) }
+                        displayedStrokes.forEach { stroke -> drawSmoothStroke(stroke) }
                     }
                 }
                 Canvas(
@@ -844,7 +856,7 @@ fun LiveSolvingBoardScreen(
                     if (activeTool == DrawingTool.ERASER &&
                         liveRawPoints.isNotEmpty()
                     ) {
-                        strokes.forEach { stroke -> drawSmoothStroke(stroke) }
+                        displayedStrokes.forEach { stroke -> drawSmoothStroke(stroke) }
                     }
                     if (tick >= 0 && liveRawPoints.size >= 2) {
                         val isEraser = activeTool == DrawingTool.ERASER

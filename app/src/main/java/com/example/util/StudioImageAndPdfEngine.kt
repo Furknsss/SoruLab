@@ -1371,9 +1371,11 @@ object StudioImageAndPdfEngine {
             }
             keys.takeIf { it.isNotEmpty() }?.let { index to it }
         }.toMap()
-        val pageSourceHeaders = vectorPageText.mapIndexedNotNull { index, text ->
-            PdfSourceHeaderExtractor.extract(text)
-                .takeIf(String::isNotBlank)?.let { index to it }
+        val pageSourceHeaders = sourcePages.mapIndexedNotNull { index, page ->
+            val header = page.geometryHeaderText.ifBlank {
+                PdfSourceHeaderExtractor.extract(page.text)
+            }
+            header.takeIf(String::isNotBlank)?.let { index to it }
         }.toMap()
         // Spatially verify printed test identities. A footer answer row can
         // appear before the page-top test number in PDFTextStripper's text.
@@ -1545,17 +1547,24 @@ object StudioImageAndPdfEngine {
         val pageHeight: Float,
         val anchors: List<PdfSourceQuestionAnchor>,
         val vectorFooterKeys: Map<Int, String>,
-        val printedTestMarker: PdfPrintedTestMarker?
+        val printedTestMarker: PdfPrintedTestMarker?,
+        val geometryHeaderText: String
     )
 
     private class PdfGeometryTextStripper : PDFTextStripper() {
         val glyphs = mutableListOf<PdfSourceGlyph>()
+        val headerGlyphs = mutableListOf<PdfSourceGlyph>()
         override fun writeString(text: String, textPositions: MutableList<TextPosition>) {
             for (p in textPositions) {
                 val value = p.unicode.orEmpty()
-                if (value.isNotBlank() && value.length <= 3) {
-                    glyphs.add(PdfSourceGlyph(value, p.xDirAdj, p.yDirAdj,
-                        p.widthDirAdj, p.heightDir))
+                if (value.isNotEmpty() && value.length <= 3) {
+                    val glyph = PdfSourceGlyph(
+                        value, p.xDirAdj, p.yDirAdj, p.widthDirAdj, p.heightDir
+                    )
+                    // Keep literal PDF spaces only in the header lane;
+                    // adding them to numeric/footer tokenizers changes keys.
+                    headerGlyphs.add(glyph)
+                    if (value.isNotBlank()) glyphs.add(glyph)
                 }
             }
             super.writeString(text, textPositions)
@@ -1580,19 +1589,25 @@ object StudioImageAndPdfEngine {
                     stripper.startPage = pageIndex + 1
                     stripper.endPage = pageIndex + 1
                     val text = stripper.getText(document).take(12_000)
+                    val printedAnchors =
+                        PdfVectorQuestionAnchors.find(stripper.glyphs, width, height)
                     SourceTextPage(
                         text = text,
                         pageWidth = width,
                         pageHeight = height,
-                        anchors = PdfVectorQuestionAnchors.find(stripper.glyphs, width, height),
+                        anchors = printedAnchors,
                         vectorFooterKeys = PdfVectorAnswerStrip.read(stripper.glyphs, width, height),
-                        printedTestMarker = PdfVectorTestMarker.find(stripper.glyphs, width, height)
+                        printedTestMarker = PdfVectorTestMarker.find(stripper.glyphs, width, height),
+                        geometryHeaderText = PdfVectorPageHeader.read(
+                            stripper.headerGlyphs,
+                            width, height, printedAnchors.minOfOrNull { it.y }
+                        )
                     )
                 } catch (e: Exception) {
                     android.util.Log.w(
                         "SoruLabPdfText", "PDF text layer failed at page ${pageIndex + 1}; OCR fallback", e
                     )
-                    SourceTextPage("", width, height, emptyList(), emptyMap(), null)
+                    SourceTextPage("", width, height, emptyList(), emptyMap(), null, "")
                 }
             }
         }

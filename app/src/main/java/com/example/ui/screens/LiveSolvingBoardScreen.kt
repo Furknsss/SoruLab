@@ -822,11 +822,18 @@ fun LiveSolvingBoardScreen(
                         .fillMaxSize()
                         .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
                 ) {
-                    // Read liveDrawTick inside draw scope so only the Canvas draw layer invalidates during drag
+                    // Persistent ink is isolated from the 120 Hz live preview:
+                    // the full handwriting history is not rebuilt each time
+                    // a stylus sample arrives.
+                    strokes.forEach { stroke -> drawSmoothStroke(stroke) }
+                }
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                        .testTag("live_spen_preview")
+                ) {
                     val tick = liveDrawTick.intValue
-                    strokes.forEach { stroke ->
-                        drawSmoothStroke(stroke)
-                    }
                     if (tick >= 0 && liveRawPoints.size >= 2) {
                         val isEraser = activeTool == DrawingTool.ERASER
                         val isHigh = activeTool == DrawingTool.HIGHLIGHTER

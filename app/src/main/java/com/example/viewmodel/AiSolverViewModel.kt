@@ -16,6 +16,8 @@ import com.example.data.resolveAnswerKeyOption
 import com.example.util.QuestionNumberAnchor
 import com.example.util.QuestionOptionAnchor
 import com.example.util.PdfAnswerScope
+import com.example.util.PdfHorizontalAnswerGrid
+import com.example.util.PdfHorizontalAnswerGridReader
 import com.example.util.PdfAdaptiveAnswerRows
 import com.example.util.PdfOcrTextCell
 import com.example.util.PdfScopedAnswerKeys
@@ -142,6 +144,7 @@ private data class PdfPageOcrLayout(
     val scopeHeaderText: String = "",
     val answerRows: List<String> = emptyList(),
     val answerRegions: List<List<String>> = emptyList(),
+    val answerGrids: List<PdfHorizontalAnswerGrid> = emptyList(),
     val questionNumberAnchors: List<QuestionNumberAnchor> = emptyList(),
     val optionAnchors: List<QuestionOptionAnchor> = emptyList()
 )
@@ -595,6 +598,17 @@ class AiSolverViewModel : ViewModel() {
             pageWidth = bitmap.width
         )
         val answerRows = answerRegions.flatten()
+        val answerGrids = PdfHorizontalAnswerGridReader.find(
+            cells = lines.flatMap { line ->
+                line.elements.mapNotNull { element ->
+                    element.boundingBox?.let {
+                        PdfOcrTextCell(element.text, it.left, it.top, it.right, it.bottom)
+                    }
+                }
+            },
+            pageWidth = bitmap.width,
+            pageHeight = bitmap.height
+        )
         val anchorRegex = Regex("""^\s*([1-9]|[1-3][0-9])[\.\-\)]\s*""")
         val numberRegex = Regex("""^\s*(?:[1-9]|[1-3][0-9])[\.\-\)]?$""")
         val optionRegex = Regex("""^\s*([A-E])\s*[).:]\s*""", RegexOption.IGNORE_CASE)
@@ -633,6 +647,7 @@ class AiSolverViewModel : ViewModel() {
             scopeHeaderText = scopeHeaderText,
             answerRows = answerRows,
             answerRegions = answerRegions,
+            answerGrids = answerGrids,
             questionNumberAnchors = anchors,
             optionAnchors = options
         )
@@ -911,6 +926,7 @@ class AiSolverViewModel : ViewModel() {
 
                 val allExtractedQuestions = mutableListOf<ExtractedPdfQuestionItem>()
                 val expectedScopeByQuestionId = mutableMapOf<String, PdfAnswerScope>()
+                val pendingHorizontalGrids = mutableListOf<Pair<PdfAnswerScope, PdfHorizontalAnswerGrid>>()
                 var detectedAnswerPages = 0
                 var pageRenderFailureCount = 0
 
@@ -991,6 +1007,19 @@ class AiSolverViewModel : ViewModel() {
                                     StudioImageAndPdfEngine.hasAnswerKeyMarker(pageLayout.text)
                                 val isAnswerTablePage =
                                     PdfScopedAnswerKeys.looksLikeAnswerPage(pageLayout.answerRows)
+                                // Horizontal number/letter answer grids may sit
+                                // directly underneath the last questions of a test.
+                                val gridHeaderScope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+                                    pageLayout.scopeHeaderText, pageInfo.topicName
+                                )
+                                if (pageLayout.answerGrids.isNotEmpty()) {
+                                    val gridScope = gridHeaderScope ?: pageQuestionScope
+                                    if (gridScope != null) {
+                                        pageLayout.answerGrids.forEach { grid ->
+                                            pendingHorizontalGrids += gridScope to grid
+                                        }
+                                    }
+                                }
                                 val skipPage = StudioImageAndPdfEngine.shouldSkipQuestionPage(
                                     text = pageLayout.text,
                                     topHeaderText = pageLayout.headerText,
@@ -1072,9 +1101,10 @@ class AiSolverViewModel : ViewModel() {
                                     topicName = resolvedPageTopic,
                                     isSkipPage = false
                                 )
-                                val detectedScope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
-                                    pageLayout.scopeHeaderText, scanPageInfo.topicName
-                                )
+                                val detectedScope = gridHeaderScope
+                                    ?: PdfScopedAnswerKeys.scopeFromQuestionHeader(
+                                        pageLayout.scopeHeaderText, scanPageInfo.topicName
+                                    )
                                 // Some books print the test name only on the first page.
                                 // Carry that scope onto continuation pages, but not into
                                 // a new "question 1" where a new test may have started.
@@ -1200,6 +1230,9 @@ class AiSolverViewModel : ViewModel() {
                 val scopedAnswers = PdfScopedAnswerKeys(observedSections)
                 for (region in pendingAnswerRegions) {
                     scopedAnswers.addOcrRows(region)
+                }
+                for ((scope, grid) in pendingHorizontalGrids) {
+                    scopedAnswers.addPairs(scope, grid.answers.toList())
                 }
 
                 // Match the completed, per-PDF answer index to the exact

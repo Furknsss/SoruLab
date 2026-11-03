@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
   push:
     branches: ['feat/premium-pdf-v5']
+  pull_request:
+    branches: ['feat/premium-pdf-v5']
 permissions:
   contents: read
 jobs:

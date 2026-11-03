@@ -40,6 +40,8 @@ jobs:
           --tests com.example.util.PdfAdaptiveAnswerRowsTest
           --tests com.example.util.PdfScopedAnswerKeysTest
           --tests com.example.util.PdfTextFooterKeysTest
+          --tests com.example.util.PdfVectorAnswerStripTest
+          --tests com.example.util.PdfVectorQuestionAnchorsTest
           --tests com.example.util.TestAnswerAnalyticsEngineTest
           --tests com.example.data.TestSnapshotCodecTest
           --no-daemon --no-configuration-cache --max-workers=2

@@ -672,6 +672,82 @@ class AiSolverViewModel : ViewModel() {
         )
     }
 
+    /**
+     * Independent OCR for image-only/scanned pages. Whole-page ML Kit often
+     * misses tiny printed numerals because diagrams and all options are
+     * competing in the same recognition image. Read the left margins of both
+     * candidate reading columns with a new high-resolution OCR pass.
+     *
+     * Uses normalized page geometry rather than a publisher-specific layout.
+     * The consensus detector, not this raw OCR output, decides if a recovered
+     * number is trustworthy.
+     */
+    private suspend fun recognizeSupplementalNumberAnchors(bitmap: Bitmap): List<QuestionNumberAnchor> {
+        val w = bitmap.width
+        val h = bitmap.height
+        if (w < 300 || h < 300) return emptyList()
+        val startY = (h * .065f).toInt()
+        val endY = (h * .935f).toInt().coerceAtMost(h)
+        val margins = listOf(.025f to .35f, .435f to .80f)
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val results = mutableListOf<QuestionNumberAnchor>()
+        try {
+            for ((startXFraction, endXFraction) in margins) {
+                val startX = (w * startXFraction).toInt().coerceIn(0, w - 1)
+                val endX = (w * endXFraction).toInt().coerceIn(startX + 1, w)
+                val crop = Bitmap.createBitmap(
+                    bitmap, startX, startY, endX - startX, endY - startY
+                )
+                val scale = minOf(
+                    1.85f, 3400f / crop.height.toFloat(), 1050f / crop.width.toFloat()
+                ).coerceAtLeast(1f)
+                val enlarged = if (scale > 1.01f) Bitmap.createScaledBitmap(
+                    crop, (crop.width * scale).toInt().coerceAtLeast(1),
+                    (crop.height * scale).toInt().coerceAtLeast(1), true
+                ) else crop
+                try {
+                    val recognized = recognizer.process(InputImage.fromBitmap(enlarged, 0)).await()
+                    for (line in recognized.textBlocks.flatMap { it.lines }) {
+                        val printed = com.example.util.PdfOcrQuestionMarker
+                            .numberAtStart(line.text)
+                            ?: line.elements.firstOrNull()?.text?.let {
+                                if (com.example.util.PdfOcrQuestionMarker
+                                        .isStandaloneNumberElement(it)) {
+                                    it.trim().takeWhile(Char::isDigit).toIntOrNull()
+                                } else null
+                            }
+                            ?: continue
+                        val bounds = line.elements.firstOrNull()?.boundingBox
+                            ?: line.boundingBox ?: continue
+                        if (bounds.left > enlarged.width * .80f) continue
+                        val left = (startX + bounds.left / scale).toInt()
+                        val top = (startY + bounds.top / scale).toInt()
+                        val right = (startX + bounds.right / scale).toInt()
+                        val bottom = (startY + bounds.bottom / scale).toInt()
+                        if (top in 0 until h && left in 0 until w && bottom > top) {
+                            results += QuestionNumberAnchor(
+                                printed, left, top, right.coerceAtMost(w),
+                                bottom.coerceAtMost(h)
+                            )
+                        }
+                    }
+                } finally {
+                    if (enlarged !== crop) enlarged.recycle()
+                    crop.recycle()
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (oom: OutOfMemoryError) {
+            android.util.Log.w("SoruLabPdfOCR", "Margin OCR memory limit; primary pass retained")
+        } catch (error: Exception) {
+            android.util.Log.w("SoruLabPdfOCR", "Margin OCR unavailable; primary pass retained", error)
+        } finally {
+            recognizer.close()
+        }
+        return results
+    }
+
     private suspend fun recognizeAnswerFooter(bitmap: Bitmap): List<PdfOcrTextCell> {
         val top = (bitmap.height * 0.7f).toInt()
         val crop = Bitmap.createBitmap(bitmap, 0, top, bitmap.width, bitmap.height - top)
@@ -1091,9 +1167,20 @@ class AiSolverViewModel : ViewModel() {
                                     (vectorHasPrintedColumns ||
                                         nativeAnchors.size >= ocrPageLayout.questionNumberAnchors.size) &&
                                     pageIdx in localBlueprint.pageVectorOptionEvidence
+                                // For a scanned book, native PDF text is
+                                // usually just a watermark. Validate OCR
+                                // numerals a second time at higher resolution,
+                                // using the two printed column margins.
+                                val imageOnlyAnchors = if (!sourceBackedPage) {
+                                    val secondPass = recognizeSupplementalNumberAnchors(pageBitmap)
+                                    com.example.util.PdfPrintedAnchorConsensus.reconcile(
+                                        ocrPageLayout.questionNumberAnchors, secondPass,
+                                        pageBitmap.width, pageBitmap.height
+                                    )
+                                } else emptyList()
                                 val pageLayout = if (sourceBackedPage) {
                                     ocrPageLayout.copy(questionNumberAnchors = nativeAnchors)
-                                } else ocrPageLayout
+                                } else ocrPageLayout.copy(questionNumberAnchors = imageOnlyAnchors)
                                 val hasQuestionOptions = sourceBackedPage ||
                                     pageLayout.optionAnchors.map { it.option }.distinct().size >= 3
                                 val hasAnswerKeyMarker =

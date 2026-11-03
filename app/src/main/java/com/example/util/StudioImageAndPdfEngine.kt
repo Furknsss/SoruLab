@@ -2044,6 +2044,14 @@ object StudioImageAndPdfEngine {
             }
         bodyBottom = min(bodyBottom, (height * 0.945f).roundToInt())
             .coerceIn(bodyTop + 1, height)
+        // If this PDF prints the answer grid directly under the final
+        // multiple-choice question, do not include that key in the crop.
+        // The limit is derived from OCR geometry, never a fixed page fraction.
+        maxQuestionBottomY?.takeIf { gridTop ->
+            gridTop > bodyTop + 80 && gridTop < bodyBottom
+        }?.let { gridTop ->
+            bodyBottom = min(bodyBottom, gridTop - 7)
+        }
         val bodyH = (bodyBottom - bodyTop).coerceAtLeast(1)
 
         // 2. Detect Center Vertical Gutter or Divider Line (`midX`)

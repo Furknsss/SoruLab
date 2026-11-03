@@ -535,6 +535,120 @@ fun LiveSolvingBoardScreen(
                             } while (event.changes.any { it.pressed })
                         }
                     }
+
+                    // Ink input belongs on the shared parent, not the drawing
+                    // Canvas sibling. Smart-mode finger taps/swipes can then
+                    // reach the page pager; S Pen strokes are consumed early.
+                    .then(
+                        if ((activeTool == DrawingTool.PEN ||
+                                    activeTool == DrawingTool.HIGHLIGHTER ||
+                                    activeTool == DrawingTool.SMART_SHAPE ||
+                                    activeTool == DrawingTool.ERASER) &&
+                                openThreeDotQuestionNumber == null) {
+                        Modifier.pointerInput(
+                            activeTool,
+                            selectedStrokeSizeIndex,
+                            selectedPenColorHex,
+                            fingerDrawingEnabled,
+                            currentBookPageIndex,
+                            session.viewMode
+                        ) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                if (!StylusInputPolicy.canInk(
+                                        down.type, fingerDrawingEnabled
+                                    ) || down.isConsumed
+                                ) return@awaitEachGesture
+                                down.consume()
+
+                                val activeId = down.id
+                                liveRawPoints.clear()
+                                liveRawPressures.clear()
+                                liveRawPoints.add(down.position)
+                                liveRawPressures.add(
+                                    if (down.type == PointerType.Stylus) down.pressure else 1f
+                                )
+                                liveRawPath.reset()
+                                liveRawPath.moveTo(down.position.x, down.position.y)
+                                liveDrawTick.intValue++
+
+                                var prevPt = down.position
+                                var cancelled = false
+                                try {
+                                    // Observe every pointer, not just the stylus.
+                                    // A second finger cancels an unfinished
+                                    // finger stroke and becomes a pinch gesture.
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                        val active = event.changes.firstOrNull {
+                                            it.id == activeId
+                                        }
+                                        if (active == null) {
+                                            cancelled = true
+                                            break
+                                        }
+                                        val touchCount = event.changes.count {
+                                            it.pressed && it.type == PointerType.Touch
+                                        }
+                                        if (down.type == PointerType.Touch &&
+                                            (touchCount >= 2 || event.changes.any {
+                                                it.pressed && it.type == PointerType.Stylus
+                                            })
+                                        ) {
+                                            cancelled = true
+                                            break
+                                        }
+                                        if (active.isConsumed && active.pressed) {
+                                            cancelled = true
+                                            break
+                                        }
+                                        val curPt = active.position
+                                        if ((curPt - prevPt).getDistance() >= 0.6f) {
+                                            liveRawPoints.add(curPt)
+                                            liveRawPressures.add(
+                                                if (down.type == PointerType.Stylus) {
+                                                    active.pressure
+                                                } else 1f
+                                            )
+                                            val mid = (prevPt + curPt) * 0.5f
+                                            liveRawPath.quadraticTo(
+                                                prevPt.x, prevPt.y, mid.x, mid.y
+                                            )
+                                            prevPt = curPt
+                                            liveDrawTick.intValue++
+                                        }
+                                        if (!active.pressed) break
+                                        active.consume()
+                                    }
+                                    if (!cancelled) {
+                                        if (liveRawPoints.size == 1) {
+                                            // Tapping the pen should make a dot.
+                                            liveRawPoints.add(
+                                                liveRawPoints.first() + Offset(0.05f, 0.05f)
+                                            )
+                                            liveRawPressures.add(
+                                                liveRawPressures.first()
+                                            )
+                                        }
+                                        if (liveRawPoints.size >= 2) {
+                                            onAddStroke(
+                                                liveRawPoints.toList(),
+                                                liveRawPressures.toList()
+                                            )
+                                        }
+                                    }
+                                } finally {
+                                    liveRawPoints.clear()
+                                    liveRawPressures.clear()
+                                    liveRawPath.reset()
+                                    liveDrawTick.intValue++
+                                }
+                            }
+                        }
+                        } else {
+                            Modifier
+                        }
+                    )
                     .graphicsLayer {
                         scaleX = zoomScale
                         scaleY = zoomScale
@@ -707,117 +821,6 @@ fun LiveSolvingBoardScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-                        .then(
-                            if ((activeTool == DrawingTool.PEN ||
-                                    activeTool == DrawingTool.HIGHLIGHTER ||
-                                    activeTool == DrawingTool.SMART_SHAPE ||
-                                    activeTool == DrawingTool.ERASER) &&
-                                openThreeDotQuestionNumber == null
-                            ) {
-                                Modifier.pointerInput(
-                                    activeTool,
-                                    selectedStrokeSizeIndex,
-                                    selectedPenColorHex,
-                                    fingerDrawingEnabled,
-                                    currentBookPageIndex,
-                                    session.viewMode
-                                ) {
-                                    awaitEachGesture {
-                                        val down = awaitFirstDown(requireUnconsumed = false)
-                                        if (!StylusInputPolicy.canInk(
-                                                down.type, fingerDrawingEnabled
-                                            ) || down.isConsumed
-                                        ) return@awaitEachGesture
-                                        down.consume()
-
-                                        val activeId = down.id
-                                        liveRawPoints.clear()
-                                        liveRawPressures.clear()
-                                        liveRawPoints.add(down.position)
-                                        liveRawPressures.add(
-                                            if (down.type == PointerType.Stylus) down.pressure else 1f
-                                        )
-                                        liveRawPath.reset()
-                                        liveRawPath.moveTo(down.position.x, down.position.y)
-                                        liveDrawTick.intValue++
-
-                                        var prevPt = down.position
-                                        var cancelled = false
-                                        try {
-                                            // Observe every pointer, not just the stylus.
-                                            // A second finger cancels an unfinished
-                                            // finger stroke and becomes a pinch gesture.
-                                            while (true) {
-                                                val event = awaitPointerEvent(PointerEventPass.Main)
-                                                val active = event.changes.firstOrNull {
-                                                    it.id == activeId
-                                                }
-                                                if (active == null) {
-                                                    cancelled = true
-                                                    break
-                                                }
-                                                val touchCount = event.changes.count {
-                                                    it.pressed && it.type == PointerType.Touch
-                                                }
-                                                if (down.type == PointerType.Touch &&
-                                                    (touchCount >= 2 || event.changes.any {
-                                                        it.pressed && it.type == PointerType.Stylus
-                                                    })
-                                                ) {
-                                                    cancelled = true
-                                                    break
-                                                }
-                                                if (active.isConsumed && active.pressed) {
-                                                    cancelled = true
-                                                    break
-                                                }
-                                                val curPt = active.position
-                                                if ((curPt - prevPt).getDistance() >= 0.6f) {
-                                                    liveRawPoints.add(curPt)
-                                                    liveRawPressures.add(
-                                                        if (down.type == PointerType.Stylus) {
-                                                            active.pressure
-                                                        } else 1f
-                                                    )
-                                                    val mid = (prevPt + curPt) * 0.5f
-                                                    liveRawPath.quadraticTo(
-                                                        prevPt.x, prevPt.y, mid.x, mid.y
-                                                    )
-                                                    prevPt = curPt
-                                                    liveDrawTick.intValue++
-                                                }
-                                                if (!active.pressed) break
-                                                active.consume()
-                                            }
-                                            if (!cancelled) {
-                                                if (liveRawPoints.size == 1) {
-                                                    // Tapping the pen should make a dot.
-                                                    liveRawPoints.add(
-                                                        liveRawPoints.first() + Offset(0.05f, 0.05f)
-                                                    )
-                                                    liveRawPressures.add(
-                                                        liveRawPressures.first()
-                                                    )
-                                                }
-                                                if (liveRawPoints.size >= 2) {
-                                                    onAddStroke(
-                                                        liveRawPoints.toList(),
-                                                        liveRawPressures.toList()
-                                                    )
-                                                }
-                                            }
-                                        } finally {
-                                            liveRawPoints.clear()
-                                            liveRawPressures.clear()
-                                            liveRawPath.reset()
-                                            liveDrawTick.intValue++
-                                        }
-                                    }
-                                }
-                            } else {
-                                Modifier
-                            }
-                        )
                 ) {
                     // Read liveDrawTick inside draw scope so only the Canvas draw layer invalidates during drag
                     val tick = liveDrawTick.intValue

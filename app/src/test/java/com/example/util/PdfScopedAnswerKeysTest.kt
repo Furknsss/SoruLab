@@ -159,4 +159,27 @@ class PdfScopedAnswerKeysTest {
         assertEquals("B", index.get(test2, 1))
     }
 
+
+    @Test
+    fun `missing scope and contradictory OCR cells are reported separately`() {
+        val keys = PdfScopedAnswerKeys()
+        keys.addOcrRows(listOf(
+            "SİNİR SİSTEMİ",
+            "Test 1 1.A 2.B 3.C",
+            "Test 1 1.E 2.B 3.C"
+        ))
+        val nerve = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 1\\nSinir Sistemi", "Sinir Sistemi"
+        )
+        val unrelated = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 2\\nSinir Sistemi", "Sinir Sistemi"
+        )
+        assertTrue(keys.hasRecognizedScope(nerve))
+        assertFalse(keys.hasRecognizedScope(unrelated))
+        assertTrue(keys.hasConflictingAnswer(nerve, 1))
+        assertFalse(keys.hasConflictingAnswer(nerve, 2))
+        assertNull(keys.get(nerve, 1))
+        assertEquals("B", keys.get(nerve, 2))
+    }
+
 }

@@ -68,7 +68,15 @@ internal object PdfVectorQuestionAnchors {
         for (i in clusters.indices) {
             val left = ordered(clusters[i])
             if (!contiguous(left)) continue
-            if (left.size >= 3) choices.add(left)
+            if (left.size >= 3 || (
+                    left.size == 2 &&
+                        // Short columns need stronger margin + separation evidence;
+                        // graph axes inside a figure are not question starts.
+                        ((left.first().x < pageWidth * .18f) ||
+                            (left.first().x in pageWidth * .48f..pageWidth * .63f)) &&
+                        (left[1].y - left[0].y > pageHeight * .085f)
+                    )
+                ) choices.add(left)
             for (j in i + 1 until clusters.size) {
                 val right = ordered(clusters[j])
                 if (!contiguous(right)) continue

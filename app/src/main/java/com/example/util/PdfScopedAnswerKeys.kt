@@ -55,7 +55,14 @@ internal class PdfScopedAnswerKeys(
                     )
                     val remainder = questionAnswer.replace(between, " ").trim()
                     if (normalize(remainder).isNotBlank()) {
-                        val newSection = identifySection(remainder) ?: continue
+                        val newSection = identifySection(remainder)
+                        if (newSection == null) {
+                            // Unknown chapter text must invalidate the prior
+                            // section even for subsequent tests on this row.
+                            currentSection = null
+                            lastRecognizedSection = null
+                            continue
+                        }
                         currentSection = newSection
                         lastRecognizedSection = newSection
                     }

@@ -2123,8 +2123,11 @@ object StudioImageAndPdfEngine {
         val bodyH = (bodyBottom - bodyTop).coerceAtLeast(1)
 
         // 2. Detect Center Vertical Gutter or Divider Line (`midX`)
-        val centerStart = (width * 0.45f).roundToInt()
-        val centerEnd = (width * 0.55f).roundToInt()
+        val gutterSearch = PdfAdaptiveGutter.window(
+            width, questionNumberAnchors, bodyTop, bodyBottom
+        )
+        val centerStart = gutterSearch.start
+        val centerEnd = gutterSearch.end
         val colInkCounts = IntArray(centerEnd - centerStart + 1)
 
         for (x in centerStart..centerEnd) {
@@ -2140,14 +2143,14 @@ object StudioImageAndPdfEngine {
         val sampledRows = (bodyH / 2).coerceAtLeast(1)
         // Or find the cleanest vertical whitespace corridor near center
         var minGutterInk = Int.MAX_VALUE
-        var bestGutterX = width / 2
+        var bestGutterX = gutterSearch.preferredX
         val windowRadius = (width * 0.006f).roundToInt().coerceAtLeast(3)
         for (x in (centerStart + windowRadius)..(centerEnd - windowRadius)) {
             var winSum = 0
             for (dx in -windowRadius..windowRadius) {
                 winSum += colInkCounts[x + dx - centerStart]
             }
-            val centerBias = abs(x - width / 2) / 12
+            val centerBias = abs(x - gutterSearch.preferredX) / 12
             val score = winSum + centerBias
             if (score < minGutterInk) {
                 minGutterInk = score

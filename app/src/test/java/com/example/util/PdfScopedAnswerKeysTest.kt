@@ -169,10 +169,10 @@ class PdfScopedAnswerKeysTest {
             "Test 1 1.E 2.B 3.C"
         ))
         val nerve = PdfScopedAnswerKeys.scopeFromQuestionHeader(
-            "TEST 1\\nSinir Sistemi", "Sinir Sistemi"
+            "TEST 1\nSinir Sistemi", "Sinir Sistemi"
         )
         val unrelated = PdfScopedAnswerKeys.scopeFromQuestionHeader(
-            "TEST 2\\nSinir Sistemi", "Sinir Sistemi"
+            "TEST 2\nSinir Sistemi", "Sinir Sistemi"
         )
         assertTrue(keys.hasRecognizedScope(nerve))
         assertFalse(keys.hasRecognizedScope(unrelated))

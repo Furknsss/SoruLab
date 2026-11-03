@@ -239,13 +239,17 @@ private fun ActiveSolvingSessionHost(
     val session by mainViewModel.activeSession.collectAsStateWithLifecycle()
     val elapsedSeconds by mainViewModel.elapsedSeconds.collectAsStateWithLifecycle()
     val boardStrokes by mainViewModel.boardStrokes.collectAsStateWithLifecycle()
+    val currentBookPageIndex by mainViewModel.currentBookPageIndex.collectAsStateWithLifecycle()
     val activeTool by mainViewModel.activeTool.collectAsStateWithLifecycle()
     val selectedStrokeSizeIndex by mainViewModel.selectedStrokeSizeIndex.collectAsStateWithLifecycle()
     val selectedPenColorHex by mainViewModel.selectedPenColorHex.collectAsStateWithLifecycle()
     val customPublishers by mainViewModel.customPublishers.collectAsStateWithLifecycle()
 
     val curSession = session ?: return
-    val canvasKey = remember(curSession.viewMode, curSession.testItem.id, curSession.currentQuestionIndex) {
+    val canvasKey = remember(
+        curSession.viewMode, curSession.testItem.id,
+        curSession.currentQuestionIndex, currentBookPageIndex
+    ) {
         mainViewModel.currentCanvasKey()
     }
     val strokesForCurrent = boardStrokes[canvasKey].orEmpty()
@@ -267,7 +271,10 @@ private fun ActiveSolvingSessionHost(
             onSelectTool = { mainViewModel.selectDrawingTool(it) },
             onSelectStrokeSize = { mainViewModel.selectStrokeSize(it) },
             onSelectPenColor = { mainViewModel.selectPenColor(it) },
-            onAddStroke = { mainViewModel.addStrokeToCurrentCanvas(it) },
+            onAddStroke = { points, pressures ->
+                mainViewModel.addStrokeToCurrentCanvas(points, pressures)
+            },
+            onBookPageChanged = { mainViewModel.selectBookPageIndex(it) },
             onClearCanvas = { mainViewModel.clearCurrentCanvasStrokes() },
             onSelectQuestionIndex = { mainViewModel.selectQuestionIndex(it) },
             onSelectOption = { qNum, opt -> mainViewModel.selectOptionForQuestion(qNum, opt) },

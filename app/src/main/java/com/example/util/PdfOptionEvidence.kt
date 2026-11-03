@@ -13,11 +13,30 @@ internal object PdfOptionEvidence {
         """(?<![A-Z0-9])(?:\(([A-E])\)|([A-E])[ \t]*[).:])(?=[ \t]*\S)(?![ \t]*[A-E][ \t]*[).:](?:[ \t]|$))"""
     )
 
-    fun letters(pageText: String): Set<String> =
-        optionToken.findAll(pageText.uppercase(Locale.ROOT))
+    // Some publishers put the option letter and its text on separate lines.
+    // An isolated A) is evidence only if the next nonempty line contains text
+    // rather than another bare option marker.
+    private val bareOptionLine = Regex(
+        """^[ \t]*(?:\(([A-E])\)|([A-E])[ \t]*[).:])[ \t]*$"""
+    )
+
+    fun letters(pageText: String): Set<String> {
+        val upper = pageText.uppercase(Locale.ROOT)
+        val inlineOptions = optionToken.findAll(upper)
             .map { match ->
                 match.groupValues[1].ifBlank { match.groupValues[2] }
             }
             .filter(String::isNotBlank)
             .toSet()
+        val lines = upper.lines()
+        val splitOptions = lines.indices.mapNotNull { index ->
+            val match = bareOptionLine.matchEntire(lines[index])
+                ?: return@mapNotNull null
+            val next = lines.drop(index + 1).firstOrNull(String::isNotBlank)
+                ?: return@mapNotNull null
+            if (bareOptionLine.matches(next)) return@mapNotNull null
+            match.groupValues[1].ifBlank { match.groupValues[2] }
+        }.filter(String::isNotBlank).toSet()
+        return inlineOptions + splitOptions
+    }
 }

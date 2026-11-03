@@ -71,6 +71,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.example.data.*
 import com.example.util.StudioImageAndPdfEngine
+import com.example.util.TestAnswerAnalyticsEngine
 import com.example.viewmodel.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -3309,6 +3310,23 @@ private fun FullScreenSuccessReportCardView(
 ) {
     val questions = session.testItem.questions
     var expandedQuestionNumber by remember { mutableStateOf<Int?>(null) }
+    var showMistakeAnalysis by remember(session.testItem.id) { mutableStateOf(false) }
+    val mistakeSummary = remember(questions, session.selectedAnswers, session.subjectName, session.topicName) {
+        TestAnswerAnalyticsEngine.calculate(
+            questions = questions,
+            selectedAnswers = session.selectedAnswers,
+            lessonHint = session.subjectName,
+            topicHint = session.topicName
+        )
+    }
+    if (showMistakeAnalysis) {
+        PremiumMistakeAnalysisScreen(
+            title = session.testItem.fullTitle.ifBlank { session.topicName },
+            summary = mistakeSummary,
+            onBack = { showMistakeAnalysis = false }
+        )
+        return
+    }
 
     val gradedQuestionCount = questions.count { it.answerKeyVerified }
     val headlineText = remember(correctCount, gradedQuestionCount) {
@@ -3494,6 +3512,39 @@ private fun FullScreenSuccessReportCardView(
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
                         )
+                    }
+                }
+            }
+
+            // Premium, source-aware analysis entry, visible only after finishing the test.
+            item {
+                Surface(
+                    onClick = { showMistakeAnalysis = true },
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xFFF0F4FF),
+                    border = BorderStroke(1.dp, Color(0xFFDCE6FF)),
+                    modifier = Modifier.fillMaxWidth().widthIn(max = 620.dp)
+                        .testTag("open_frequency_analysis")
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(shape = CircleShape, color = Color.White) {
+                            Icon(Icons.Default.Visibility, contentDescription = null,
+                                tint = Color(0xFF3475F5),
+                                modifier = Modifier.padding(12.dp).size(24.dp))
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Hata Frekansı", fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold, color = Color(0xFF25215D))
+                            Text("Ders, konu, alt kazanım ve soru türlerini incele",
+                                fontSize = 12.sp, color = Color(0xFF607398))
+                        }
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "Hata frekansı ayrıntılarını aç",
+                            tint = Color(0xFF3475F5))
                     }
                 }
             }

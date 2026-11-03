@@ -40,29 +40,47 @@ internal object PdfColumnLayoutEvidence {
             }
         }
 
-        fun coherentRun(items: List<QuestionNumberAnchor>): Boolean {
-            val ordered = items.sortedBy { it.top }
-            return ordered.isNotEmpty() && ordered.zipWithNext().all { (a, b) ->
-                b.number == a.number + 1 && b.top > a.top
+        fun strongestRuns(items: List<QuestionNumberAnchor>): List<List<QuestionNumberAnchor>> {
+            val sorted = items.sortedBy { it.top }
+            if (sorted.isEmpty()) return emptyList()
+            val minGap = max(6, ((bodyBottom - bodyTop) * .025f).toInt())
+            val paths = sorted.indices.map { index ->
+                mutableListOf(sorted[index])
+            }.toMutableList()
+            for (i in sorted.indices) {
+                for (j in 0 until i) {
+                    if (sorted[i].number == sorted[j].number + 1 &&
+                        sorted[i].top - sorted[j].top >= minGap &&
+                        paths[j].size + 1 > paths[i].size
+                    ) paths[i] = (paths[j] + sorted[i]).toMutableList()
+                }
             }
+            return paths.distinctBy { run ->
+                run.joinToString("|") { "${it.number}@${it.top}" }
+            }.sortedWith(
+                compareByDescending<List<QuestionNumberAnchor>> { it.size }
+                    .thenByDescending { it.last().top - it.first().top }
+            ).take(3)
         }
 
+        val runsByGroup = groups.map(::strongestRuns)
         var best: Pair<Int, Int>? = null
         var bestSupport = 0
         for (leftIdx in groups.indices) {
-            val left = groups[leftIdx].sortedBy { it.top }
-            if (!coherentRun(left)) continue
-            for (rightIdx in leftIdx + 1 until groups.size) {
-                val right = groups[rightIdx].sortedBy { it.top }
-                if (!coherentRun(right) || left.size + right.size < 3) continue
-                val leftX = left.map { it.left }.average().toFloat()
-                val rightX = right.map { it.left }.average().toFloat()
-                if (rightX - leftX < pageWidth * .20f) continue
-                if (right.first().number != left.last().number + 1) continue
-                val support = left.size + right.size
-                if (support > bestSupport) {
-                    bestSupport = support
-                    best = left.minOf { it.left } to right.minOf { it.left }
+            for (left in runsByGroup[leftIdx]) {
+                for (rightIdx in leftIdx + 1 until groups.size) {
+                    for (right in runsByGroup[rightIdx]) {
+                        if (left.size + right.size < 3) continue
+                        val leftX = left.map { it.left }.average().toFloat()
+                        val rightX = right.map { it.left }.average().toFloat()
+                        if (rightX - leftX < pageWidth * .20f) continue
+                        if (right.first().number != left.last().number + 1) continue
+                        val support = left.size + right.size
+                        if (support > bestSupport) {
+                            bestSupport = support
+                            best = left.minOf { it.left } to right.minOf { it.left }
+                        }
+                    }
                 }
             }
         }

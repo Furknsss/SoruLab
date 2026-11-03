@@ -21,6 +21,9 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,7 +41,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.saveable.rememberSaveableimport androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -47,6 +50,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -71,6 +75,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.example.data.*
 import com.example.util.StudioImageAndPdfEngine
+import com.example.util.StylusInputPolicy
 import com.example.util.TestAnswerAnalyticsEngine
 import com.example.viewmodel.*
 import kotlinx.coroutines.Dispatchers
@@ -163,7 +168,8 @@ fun LiveSolvingBoardScreen(
     onSelectTool: (DrawingTool) -> Unit,
     onSelectStrokeSize: (Int) -> Unit,
     onSelectPenColor: (Long) -> Unit,
-    onAddStroke: (List<Offset>) -> Unit,
+    onAddStroke: (List<Offset>, List<Float>) -> Unit,
+    onBookPageChanged: (Int) -> Unit,
     onClearCanvas: () -> Unit,
     onSelectQuestionIndex: (Int) -> Unit,
     onSelectOption: (Int, String) -> Unit,
@@ -202,6 +208,13 @@ fun LiveSolvingBoardScreen(
     )
     val currentBookPageIndex = bookPagerState.currentPage
     val pagerScope = rememberCoroutineScope()
+    var fingerDrawingEnabled by rememberSaveable(session.testItem.id) { mutableStateOf(false) }
+
+    LaunchedEffect(bookPagerState.settledPage, session.viewMode) {
+        if (session.viewMode == BoardViewMode.FULL_PAGE) {
+            onBookPageChanged(bookPagerState.settledPage)
+        }
+    }
 
     // Keep HorizontalPager synced when currentQuestionIndex is updated externally
     LaunchedEffect(session.currentQuestionIndex, session.viewMode) {
@@ -407,6 +420,8 @@ fun LiveSolvingBoardScreen(
                 viewMode = session.viewMode,
                 activeTool = activeTool,
                 isZoomMagnifierEnabled = isZoomMagnifierEnabled,
+                fingerDrawingEnabled = fingerDrawingEnabled,
+                onChangeFingerDrawing = { fingerDrawingEnabled = it },
                 selectedStrokeSizeIndex = selectedStrokeSizeIndex,
                 selectedPenColorHex = selectedPenColorHex,
                 elapsedSeconds = session.elapsedSeconds,
@@ -2491,6 +2506,8 @@ private fun BottomDarkNavyDrawingBar345(
     viewMode: BoardViewMode,
     activeTool: DrawingTool,
     isZoomMagnifierEnabled: Boolean,
+    fingerDrawingEnabled: Boolean = false,
+    onChangeFingerDrawing: (Boolean) -> Unit = {},
     selectedStrokeSizeIndex: Int,
     selectedPenColorHex: Long,
     elapsedSeconds: Int,

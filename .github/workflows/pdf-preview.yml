@@ -64,20 +64,29 @@ jobs:
           test -s app/build/outputs/apk/debug/app-debug.apk
           # Never expose a package with a temporary certificate to the user.
           rm -f debug.keystore my-upload-key.jks app/build/outputs/apk/debug/*.apk
-      - name: Restore stable development signing key
+      - name: Restore EXISTING release signing identity
         env:
-          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ -z "$DEBUG_KEYSTORE_BASE64" ]; then
-            echo "::error::DEBUG_KEYSTORE_BASE64 secret is required. Random signing keys break Google OAuth and upgrades."
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Existing release signing secrets (KEYSTORE_BASE64, STORE_PASSWORD, KEY_PASSWORD) must be configured."
             exit 1
           fi
-          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > debug.keystore
-          keytool -list -keystore debug.keystore -storepass android -alias androiddebugkey >/dev/null
-          python3 scripts/check_debug_oauth_signing.py
-      - run: bash ./gradlew :app:clean :app:assembleDebug --no-daemon --no-configuration-cache --max-workers=2
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+          keytool -list -keystore my-upload-key.jks -storepass "$STORE_PASSWORD" -alias upload >/dev/null
+          python3 scripts/check_release_oauth_signing.py
+      - name: Build signed RC7 preview with established release certificate
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          bash ./gradlew :app:assembleRelease --no-daemon --no-configuration-cache --max-workers=2
+          test -s app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: SoruLab-1.2.5-rc7-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: SoruLab-1.2.5-rc7-signed-preview
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error

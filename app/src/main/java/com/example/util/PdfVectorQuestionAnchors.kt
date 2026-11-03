@@ -42,8 +42,10 @@ internal object PdfVectorQuestionAnchors {
         if (pageWidth <= 0f || pageHeight <= 0f) return emptyList()
         val tokens = tokenize(glyphs)
             .filter {
-                it.x > pageWidth * .075f && it.x < pageWidth * .94f &&
-                    it.y > pageHeight * .085f && it.y < pageHeight * .91f
+                // Publisher margin sizes vary; use a wide physical safety
+                // band, then reject false numbers by aligned sequence tests.
+                it.x > pageWidth * .025f && it.x < pageWidth * .975f &&
+                    it.y > pageHeight * .04f && it.y < pageHeight * .965f
             }
         if (tokens.isEmpty()) return emptyList()
         // Align by printed number's LEFT edge, not by the x position of prose.

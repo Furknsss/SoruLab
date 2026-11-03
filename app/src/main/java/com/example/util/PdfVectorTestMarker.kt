@@ -50,7 +50,8 @@ internal object PdfVectorTestMarker {
             PdfScopedAnswerKeys.normalize(it.value) in allowedKinds
         }
         val numbers = tokens.filter {
-            numeric.matches(it.value) && (it.value.toIntOrNull() in 1..200)
+            numeric.matches(it.value) &&
+                (it.value.toIntOrNull()?.let { n -> n in 1..200 } == true)
         }
         var best: PdfPrintedTestMarker? = null
         var bestScore = Float.POSITIVE_INFINITY

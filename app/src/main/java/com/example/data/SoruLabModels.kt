@@ -580,7 +580,8 @@ data class YksQuestion(
     // Optional verified editorial metadata. Missing values are NOT invented;
     // analytics may label keyword-based suggestions separately.
     val learningOutcome: String = "",
-    val questionType: String = ""
+    val questionType: String = "",
+    val analyticsText: String = ""
 ) {
     @get:Exclude
     val imagePath: String

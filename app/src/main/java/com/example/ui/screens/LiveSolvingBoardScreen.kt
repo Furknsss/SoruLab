@@ -745,7 +745,7 @@ fun LiveSolvingBoardScreen(
                     onSelectOption = onSelectOption,
                     onFinishTest = { showFinishConfirmation = true },
                     modifier = Modifier
-                        .align(Alignment.CenterEnd)
+                        .align(Alignment.BottomEnd)
                         .zIndex(35f)
                 )
             } else {
@@ -1636,9 +1636,9 @@ private fun BookPageQuestionItem345(
                     )
                     if (isReviewMode) {
                         HandDrawnBrushMark345(
-                            isEmpty = isEmpty || isUngraded,
+                            isEmpty = isEmpty,
                             isCorrect = isCorrect,
-                            isUngraded = false,
+                            isUngraded = isUngraded,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -1738,7 +1738,7 @@ private fun BookPageQuestionItem345(
                 }
             }
 
-            Box(
+            if (isReviewMode) Box(
                 modifier = Modifier.width(36.dp),
                 contentAlignment = Alignment.TopCenter
             ) {
@@ -1890,12 +1890,15 @@ private fun HandDrawnBrushMark345(
                 )
             }
             isUngraded -> {
+                // A source answer that was not verified is NOT a blank response.
+                val center = Offset(w * 0.48f, h * 0.47f)
                 drawCircle(
-                    color = Color(0xFF94A3B8),
+                    color = Color(0xFFB45309),
                     radius = min(w, h) * 0.33f,
-                    center = Offset(w * 0.46f, h * 0.46f),
-                    style = Stroke(width = w * 0.10f)
+                    center = center,
+                    style = Stroke(width = w * 0.085f)
                 )
+                drawCircle(color = Color(0xFFB45309), radius = w * 0.075f, center = center)
             }
             isEmpty -> {
                 // Boş Bırakılan Soru: İçinde hiçbir çizgi olmayan temiz, içi boş gri çember (`○`, #94A3B8)
@@ -2186,7 +2189,12 @@ private fun RightSlidingOpticalFormDrawer345(
                 border = BorderStroke(1.dp, Color(0xFFE7E5F0)),
                 modifier = Modifier
                     .width((configuration.screenWidthDp.dp - 48.dp).coerceAtMost(380.dp))
-                    .heightIn(max = (configuration.screenHeightDp.dp - 160.dp).coerceIn(180.dp, 580.dp))
+                    .height(
+                        (148 + questions.size * 52).dp.coerceIn(
+                            270.dp,
+                            (configuration.screenHeightDp.dp - 112.dp).coerceIn(270.dp, 520.dp)
+                        )
+                    )
                     .testTag("optical_form_drawer")
             ) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {

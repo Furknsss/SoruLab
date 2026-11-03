@@ -1163,10 +1163,15 @@ class AiSolverViewModel : ViewModel() {
                                     com.example.util.PdfColumnLayoutEvidence.hasTwoPrintedColumns(
                                         nativeAnchors, pageBitmap.width, 0, pageBitmap.height
                                     )
-                                val sourceBackedPage = nativeAnchors.size >= 2 &&
-                                    (vectorHasPrintedColumns ||
-                                        nativeAnchors.size >= ocrPageLayout.questionNumberAnchors.size) &&
-                                    pageIdx in localBlueprint.pageVectorOptionEvidence
+                                val sourceBackedPage =
+                                    com.example.util.PdfNativeQuestionEvidence.trustNativeQuestionStarts(
+                                        nativeAnchorCount = nativeAnchors.size,
+                                        wholePageOcrAnchorCount =
+                                            ocrPageLayout.questionNumberAnchors.size,
+                                        hasTwoPrintedColumns = vectorHasPrintedColumns,
+                                        hasNativeChoiceEvidence =
+                                            pageIdx in localBlueprint.pageVectorOptionEvidence
+                                    )
                                 // For a scanned book, native PDF text is
                                 // usually just a watermark. Validate OCR
                                 // numerals a second time at higher resolution,

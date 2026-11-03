@@ -8,3 +8,14 @@ internal fun indexPdfQuestionsForRepair(records: List<CustomQuestionRecord>): Ma
         .groupBy { Triple(it.bookId, it.pageIndex, it.questionNumberInTest) }
         .mapNotNull { (identity, matches) -> matches.singleOrNull()?.let { identity to it } }
         .toMap()
+
+
+/**
+ * Only an OCR-confirmed printed number may be used to join a PDF crop to
+ * an answer key or to an existing question during re-import.
+ *
+ * The visual order within a page is not necessarily the printed question
+ * number: two-column pages and continuation pages routinely restart counts.
+ */
+internal fun verifiedPrintedQuestionNumber(number: Int?): Int =
+    number?.takeIf { it in 1..200 } ?: 0

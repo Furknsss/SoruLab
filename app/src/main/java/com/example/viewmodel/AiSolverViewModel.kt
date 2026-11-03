@@ -20,6 +20,7 @@ import com.example.util.PdfHorizontalAnswerGrid
 import com.example.util.PdfHorizontalAnswerGridReader
 import com.example.util.PdfAdaptiveAnswerRows
 import com.example.util.PdfOcrTextCell
+import com.example.util.verifiedPrintedQuestionNumber
 import com.example.util.PdfScopedAnswerKeys
 import com.example.util.StudioImageAndPdfEngine
 import com.google.firebase.Firebase
@@ -1294,8 +1295,11 @@ class AiSolverViewModel : ViewModel() {
                                             imageBase64 = cropBox.imageBase64,
                                             pdfFilePath = archivedPdfPath,
                                             pageIndex = pageIdx,
-                                            questionNumberInTest = candidate.answerKeyQuestionNumber
-                                                ?: cropBox.questionOrderInPage,
+                                            // Never substitute the page-local crop order for a
+                                            // printed question number; it can silently
+                                            // assign another question's correct answer.
+                                            questionNumberInTest =
+                                                verifiedPrintedQuestionNumber(candidate.answerKeyQuestionNumber),
                                             sourceTestId = pageAnswerScope?.let { scope ->
                                                 "${scope.section}~${if (scope.isOsymTest) "osym" else scope.testKind}~${scope.testNumber}"
                                             }.orEmpty()

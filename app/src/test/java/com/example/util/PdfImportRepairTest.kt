@@ -18,4 +18,21 @@ class PdfImportRepairTest {
         val index = indexPdfQuestionsForRepair(listOf(first, first.copy(id = "b"), first.copy(id = "missing", questionNumberInTest = 0)))
         assertTrue(index.isEmpty())
     }
+
+    @Test fun missingPrintedNumberMustNotBeReplacedByPagePosition() {
+        assertEquals(0, verifiedPrintedQuestionNumber(null))
+        assertEquals(0, verifiedPrintedQuestionNumber(0))
+        assertEquals(0, verifiedPrintedQuestionNumber(-1))
+        assertEquals(0, verifiedPrintedQuestionNumber(201))
+        assertEquals(7, verifiedPrintedQuestionNumber(7))
+
+        val unresolved = CustomQuestionRecord(
+            id = "crop_page3_order2",
+            bookId = "biologyBook",
+            pageIndex = 3,
+            questionNumberInTest = verifiedPrintedQuestionNumber(null)
+        )
+        assertTrue(indexPdfQuestionsForRepair(listOf(unresolved)).isEmpty())
+    }
+
 }

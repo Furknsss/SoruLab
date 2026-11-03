@@ -23,17 +23,6 @@ jobs:
           # Match the existing release workflow instead of installing that default.
           packages: platform-tools
       - run: sdkmanager 'platforms;android-36.1' 'build-tools;36.0.0'
-      - name: Restore stable development signing key
-        env:
-          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
-        run: |
-          if [ -z "$DEBUG_KEYSTORE_BASE64" ]; then
-            echo "::error::DEBUG_KEYSTORE_BASE64 secret is required. Random signing keys break Google OAuth and upgrades."
-            exit 1
-          fi
-          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > debug.keystore
-          keytool -list -keystore debug.keystore -storepass android -alias androiddebugkey >/dev/null
-          python3 scripts/check_debug_oauth_signing.py
       - name: Preflight all literal Kotlin regular expressions
         run: python3 scripts/validate_kotlin_raw_regex.py
       - name: Run answer-key matching regression tests
@@ -46,6 +35,7 @@ jobs:
           --tests com.example.util.PdfTextFooterKeysTest
           --tests com.example.util.PdfVectorAnswerStripTest
           --tests com.example.util.PdfVectorQuestionAnchorsTest
+          --tests com.example.util.PdfColumnLayoutEvidenceTest
           --tests com.example.util.TestAnswerAnalyticsEngineTest
           --tests com.example.data.TestSnapshotCodecTest
           --no-daemon --no-configuration-cache --max-workers=2
@@ -59,6 +49,17 @@ jobs:
             app/build/test-results/testDebugUnitTest/
           if-no-files-found: ignore
           retention-days: 7
+      - name: Restore stable development signing key
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$DEBUG_KEYSTORE_BASE64" ]; then
+            echo "::error::DEBUG_KEYSTORE_BASE64 secret is required. Random signing keys break Google OAuth and upgrades."
+            exit 1
+          fi
+          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > debug.keystore
+          keytool -list -keystore debug.keystore -storepass android -alias androiddebugkey >/dev/null
+          python3 scripts/check_debug_oauth_signing.py
       - run: bash ./gradlew :app:assembleDebug --no-daemon --no-configuration-cache --max-workers=2
       - uses: actions/upload-artifact@v4
         with:

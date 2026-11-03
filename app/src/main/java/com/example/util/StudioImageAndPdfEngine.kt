@@ -1371,7 +1371,7 @@ object StudioImageAndPdfEngine {
             keys.takeIf { it.isNotEmpty() }?.let { index to it }
         }.toMap()
         val pageSourceHeaders = vectorPageText.mapIndexedNotNull { index, text ->
-            text.lines().filter(String::isNotBlank).take(8).joinToString("\n")
+            PdfSourceHeaderExtractor.extract(text)
                 .takeIf(String::isNotBlank)?.let { index to it }
         }.toMap()
         vectorPageText.forEachIndexed { pageIndex, text ->

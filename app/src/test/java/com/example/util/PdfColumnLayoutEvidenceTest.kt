@@ -67,4 +67,17 @@ class PdfColumnLayoutEvidenceTest {
         ))
     }
 
+    @Test
+    fun `left footer number and chart labels must not invalidate actual columns`() {
+        val anchors = listOf(
+            q(1, 57, 82), q(2, 57, 288), q(3, 57, 607),
+            q(4, 315, 82), q(5, 315, 508),
+            q(1, 57, 755), // a footer number sharing the printed left margin
+            q(8, 95, 298), q(9, 95, 313) // inset diagram labels
+        )
+        assertTrue(PdfColumnLayoutEvidence.hasTwoPrintedColumns(
+            anchors, 623, 45, 775
+        ))
+    }
+
 }

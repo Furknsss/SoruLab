@@ -31,4 +31,15 @@ class PdfVectorQuestionAnchorsTest {
         )
         assertTrue(PdfVectorQuestionAnchors.find(glyphs, 595f, 792f).isEmpty())
     }
+    @Test
+    fun sparseMixedColumnLayoutsAreNotLost() {
+        val glyphs = listOf(
+            PdfSourceGlyph("1.", 42f, 90f, 10f, 9f),
+            PdfSourceGlyph("2.", 250f, 90f, 10f, 9f),
+            PdfSourceGlyph("3.", 250f, 285f, 10f, 9f)
+        )
+        val anchors = PdfVectorQuestionAnchors.find(glyphs, 460f, 600f)
+        assertEquals(listOf(1, 2, 3), anchors.map { it.number })
+    }
+
 }

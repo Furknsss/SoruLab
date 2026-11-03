@@ -1082,7 +1082,16 @@ class AiSolverViewModel : ViewModel() {
                                             pageBitmap.height).toInt().coerceIn(1, pageBitmap.height)
                                     )
                                 }.orEmpty()
-                                val sourceBackedPage = nativeAnchors.size >= 4 &&
+                                // OCR can misread graph labels as extra question
+                                // numbers. Trust a coherent two-column vector
+                                // sequence even when OCR reports more candidates.
+                                val vectorHasPrintedColumns =
+                                    com.example.util.PdfColumnLayoutEvidence.hasTwoPrintedColumns(
+                                        nativeAnchors, pageBitmap.width, 0, pageBitmap.height
+                                    )
+                                val sourceBackedPage = nativeAnchors.size >= 2 &&
+                                    (vectorHasPrintedColumns ||
+                                        nativeAnchors.size >= ocrPageLayout.questionNumberAnchors.size) &&
                                     pageIdx in localBlueprint.pageVectorOptionEvidence
                                 val pageLayout = if (sourceBackedPage) {
                                     ocrPageLayout.copy(questionNumberAnchors = nativeAnchors)
@@ -1406,6 +1415,32 @@ class AiSolverViewModel : ViewModel() {
                         "$detectedAnswerPages olası cevap sayfası • ${scopedAnswers.answerCount} okunan cevap • " +
                         "${allExtractedQuestions.count { it.answerKeyMatched }} doğrulanmış soru • " +
                         "${allExtractedQuestions.count { !it.answerKeyMatched }} inceleme gerekiyor.")
+                    // Per-page printed numbering is stronger than a whole-book
+                    // count: one missing right column cannot be concealed by
+                    // false positives on unrelated pages.
+                    val actualNumbersByPage = allExtractedQuestions
+                        .filter { it.pageIndex >= 0 && it.questionNumberInTest > 0 }
+                        .groupBy { it.pageIndex }
+                        .mapValues { (_, records) ->
+                            records.map { it.questionNumberInTest }.toSet()
+                        }
+                    val vectorMissingByPage = localBlueprint.pageVectorQuestionAnchors
+                        .mapNotNull { (pageIndex, source) ->
+                            val printed = source.anchors.map { it.number }.toSet()
+                            val detected = actualNumbersByPage[pageIndex].orEmpty()
+                            (printed - detected).takeIf { it.isNotEmpty() }
+                                ?.let { pageIndex to it }
+                        }
+                    val missedPrintedCount = vectorMissingByPage.sumOf { it.second.size }
+                    if (missedPrintedCount > 0) {
+                        val preview = vectorMissingByPage.take(8).joinToString(", ") {
+                            "sayfa ${it.first + 1}: ${it.second.sorted().joinToString("/")}"
+                        }
+                        add("KIRPMA EKSİĞİ: PDF metin katmanında görülen en az " +
+                            "$missedPrintedCount basılı soru numarası henüz kırpılmadı " +
+                            "(${vectorMissingByPage.size} sayfa; $preview). " +
+                            "Kitaplıkta inceleme gerektiği açıkça belirtilmeli.")
+                    }
                     val vectorExpected = localBlueprint.pageTextFooterKeys.values.sumOf { it.size }
                     if (vectorExpected > 0 && allExtractedQuestions.size != vectorExpected) {
                         add("ÖNEMLİ: PDF metin katmanındaki $vectorExpected cevap hücresine karşılık " +

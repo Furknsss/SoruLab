@@ -153,7 +153,8 @@ data class DrawStroke(
     val strokeWidthPx: Float,
     val isSmartShape: Boolean = false,
     val isEraser: Boolean = false,
-    val isHighlighter: Boolean = false
+    val isHighlighter: Boolean = false,
+    val pressureSamples: List<Float> = emptyList()
 )
 
 @Immutable
@@ -226,6 +227,9 @@ class SoruLabViewModel(
 
     private val _boardStrokes = MutableStateFlow<Map<String, List<DrawStroke>>>(emptyMap())
     val boardStrokes: StateFlow<Map<String, List<DrawStroke>>> = _boardStrokes.asStateFlow()
+
+    private val _currentBookPageIndex = MutableStateFlow(0)
+    val currentBookPageIndex: StateFlow<Int> = _currentBookPageIndex.asStateFlow()
 
     private val _activeTool = MutableStateFlow(DrawingTool.PEN)
     val activeTool: StateFlow<DrawingTool> = _activeTool.asStateFlow()
@@ -315,8 +319,11 @@ class SoruLabViewModel(
             if (recognized != null) {
                 hydrateLocalSessionData(recognized.uid)
             } else {
-                _customPublishers.value = emptyList()
+                _customPublishers.value = repository.loadCustomPublishers()
                 resetUserScopedData()
+                // A student can import PDFs before Google sign-in. Those
+                // books were written to the guest cache and MUST be reopened.
+                hydrateLocalSessionData(com.example.util.PdfLibraryAccount.GUEST_CACHE_UID)
             }
         }
     }
@@ -328,9 +335,9 @@ class SoruLabViewModel(
         if (current != null) {
             startFirestoreListeners(current.uid)
         } else {
-            _recognizedDeviceAccount.value?.let { recognized ->
-                hydrateLocalSessionData(recognized.uid)
-            }
+            hydrateLocalSessionData(com.example.util.PdfLibraryAccount.cacheUid(
+                _currentUser.value?.uid, _recognizedDeviceAccount.value?.uid
+            ))
         }
     }
 
@@ -371,7 +378,9 @@ class SoruLabViewModel(
             val cachedStrokes = repository.loadCachedBoardStrokes(uid)
 
             withContext(Dispatchers.Main) {
-                if (effectiveUserId() != uid) return@withContext
+                if (com.example.util.PdfLibraryAccount.cacheUid(
+                        _currentUser.value?.uid, _recognizedDeviceAccount.value?.uid
+                    ) != uid) return@withContext
                 _deletedTestIds.value = delIds
                 _customPublishers.value = (customPubs + _customPublishers.value).distinctBy { it.id }
                 if (_userCustomQuestions.value.isEmpty() || cachedCustomQuestions.size >= _userCustomQuestions.value.size) {
@@ -1514,6 +1523,7 @@ class SoruLabViewModel(
             (resolvedTestItem.questions.size - 1).coerceAtLeast(0)
         )
 
+        _currentBookPageIndex.value = 0
         _activeSession.value = ActiveSolvingSession(
             testItem = resolvedTestItem,
             examType = examType,
@@ -1832,6 +1842,10 @@ class SoruLabViewModel(
         )
     }
 
+    fun selectBookPageIndex(index: Int) {
+        _currentBookPageIndex.value = index.coerceAtLeast(0)
+    }
+
     fun selectQuestionIndex(index: Int) {
         val cur = _activeSession.value ?: return
         if (cur.testItem.questions.isEmpty()) return
@@ -1986,16 +2000,27 @@ class SoruLabViewModel(
     fun currentCanvasKey(): String {
         val cur = _activeSession.value ?: return "default"
         return if (cur.viewMode == BoardViewMode.FULL_PAGE) {
-            "full_page_${cur.testItem.id}"
+            com.example.util.StylusInputPolicy.canvasKey(
+                cur.testItem.id, _currentBookPageIndex.value
+            )
         } else {
             val q = cur.testItem.questions.getOrNull(cur.currentQuestionIndex)
             "q_${q?.id ?: cur.currentQuestionIndex}"
         }
     }
 
-    fun addStrokeToCurrentCanvas(points: List<Offset>) {
-        if (points.size < 2) return
-        val key = currentCanvasKey()
+    fun addStrokeToCurrentCanvas(
+        points: List<Offset>,
+        pressureSamples: List<Float> = emptyList()
+    ) = addStrokeToCanvas(currentCanvasKey(), points, pressureSamples)
+
+    fun addStrokeToCanvas(
+        canvasKey: String,
+        points: List<Offset>,
+        pressureSamples: List<Float> = emptyList()
+    ) {
+        if (points.size < 2 || canvasKey.isBlank()) return
+        val key = canvasKey
         val tool = _activeTool.value
         val currentList = _boardStrokes.value[key].orEmpty()
 
@@ -2060,16 +2085,23 @@ class SoruLabViewModel(
             strokeWidthPx = widthPx,
             isSmartShape = tool == DrawingTool.SMART_SHAPE,
             isEraser = false,
-            isHighlighter = isHighlighterTool
+            isHighlighter = isHighlighterTool,
+            pressureSamples = if (finalPoints.size == points.size &&
+                pressureSamples.size == points.size
+            ) {
+                pressureSamples.map { if (it.isFinite()) it.coerceIn(0f, 1.5f) else 1f }
+            } else emptyList()
         )
         val updatedStrokes = _boardStrokes.value + (key to (currentList + newStroke))
         _boardStrokes.value = updatedStrokes
         repository.saveCachedBoardStrokes(effectiveUserId() ?: "device_yks_student_tr", updatedStrokes)
     }
 
-    fun clearCurrentCanvasStrokes() {
-        val key = currentCanvasKey()
-        val updatedStrokes = _boardStrokes.value - key
+    fun clearCurrentCanvasStrokes() = clearCanvasStrokes(currentCanvasKey())
+
+    fun clearCanvasStrokes(canvasKey: String) {
+        if (canvasKey.isBlank()) return
+        val updatedStrokes = _boardStrokes.value - canvasKey
         _boardStrokes.value = updatedStrokes
         repository.saveCachedBoardStrokes(effectiveUserId() ?: "device_yks_student_tr", updatedStrokes)
     }
@@ -2267,7 +2299,8 @@ class SoruLabViewModel(
         publisherName: String,
         publisherLogoUri: String,
         bookOrTestName: String,
-        bookCoverPath: String
+        bookCoverPath: String,
+        onSaved: (Boolean, String) -> Unit = { _, _ -> }
     ) {
         val cleanItems = extractedItems
             .filter { item ->
@@ -2276,8 +2309,11 @@ class SoruLabViewModel(
                     item.questionText.trim().length >= 12
             }
 
-        if (cleanItems.isEmpty()) {
-            showBanner("PDF içinde aktarılabilecek soru bulunamadı.")
+        if (cleanItems.isEmpty() || cleanItems.size != extractedItems.size) {
+            val msg = if (cleanItems.isEmpty()) "PDF içinde aktarılabilecek soru bulunamadı."
+                else "${extractedItems.size - cleanItems.size} soru görsel veya metin içermiyor. Eksik kitabı kaydedilmiş göstermemek için aktarım durduruldu."
+            showBanner(msg)
+            onSaved(false, msg)
             return
         }
 
@@ -2287,6 +2323,7 @@ class SoruLabViewModel(
         val finalLogoUri = publisherLogoUri.ifBlank { resolvedPublisher.customLogoPath }
 
         viewModelScope.launch(Dispatchers.Default) {
+            try {
             val subjectMemo = HashMap<String, com.example.data.YksSubject>(32)
             val batchTimestamp = System.currentTimeMillis()
 
@@ -2299,13 +2336,14 @@ class SoruLabViewModel(
                 val previous = existingBySource[Triple(item.bookId, item.pageIndex, item.questionNumberInTest)]
                 val identity = "${item.bookId}|${item.sourceTestId}|${item.pageIndex}|${item.questionNumberInTest}|${item.boxNormalized}"
                 val recordId = previous?.id ?: if (item.bookId.isNotBlank()) "cq_" + java.util.UUID.nameUUIDFromBytes(identity.toByteArray(Charsets.UTF_8)) else "cq_${batchTimestamp}_${idx}_${(100..999).random()}"
-                val canonicalImagePath = if (item.croppedImagePath.isNotBlank()) {
-                    withContext(Dispatchers.IO) {
-                        repository.rekeyLocalQuestionImage(item.croppedImagePath, "custom_$recordId")
-                    }.also { if (it == null) imageRekeyFailureCount++ }
-                        ?: item.croppedImagePath
-                } else {
-                    ""
+                // Page crops are already durable files under filesDir/questions.
+                // Copying/renaming hundreds of JPEGs on every import causes a
+                // long extra pass and can interrupt a large book save.
+                val canonicalImagePath = item.croppedImagePath
+                    .takeIf { path -> path.isNotBlank() && java.io.File(path).isFile }
+                    .orEmpty()
+                if (item.croppedImagePath.isNotBlank() && canonicalImagePath.isBlank()) {
+                    imageRekeyFailureCount++
                 }
                 val requestedSubject = SoruLabCatalog.allSubjects.firstOrNull {
                     it.examType.name.equals(item.examType, ignoreCase = true) &&
@@ -2416,7 +2454,11 @@ class SoruLabViewModel(
                         aiSolutionSummary = packedSolution,
                         cropAspectRatio = item.cropAspectRatio.coerceIn(0.3, 4.5),
                         bookId = item.bookId,
-                        imageBase64 = item.imageBase64,
+                        // Use the persisted crop rather than duplicating every
+                        // JPEG as a base64 string in the local JSON and cloud.
+                        imageBase64 = if (canonicalImagePath.isNotBlank() &&
+                            java.io.File(canonicalImagePath).isFile
+                        ) "" else item.imageBase64,
                         pdfFilePath = item.pdfFilePath,
                         pageIndex = item.pageIndex,
                         questionNumberInTest = item.questionNumberInTest,
@@ -2432,30 +2474,37 @@ class SoruLabViewModel(
             updatedList.addAll(newRecords)
             updatedList.addAll(_userCustomQuestions.value.filterNot { old -> newRecords.any { it.id == old.id } })
 
-            var localCacheSaved = true
+            // A successful scan is not a successful import until an atomic
+            // file write and read-back both succeed.
             try {
                 withContext(Dispatchers.IO) {
                     repository.saveCachedCustomQuestions(uid, updatedList)
+                    val restored = repository.loadCachedCustomQuestions(uid)
+                    val ids = restored.mapTo(HashSet(restored.size)) { it.id }
+                    check(newRecords.all { it.id in ids }) {
+                        "Yerel kitaplık yazıldı fakat doğrulanamadı."
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
-                localCacheSaved = false
+            } catch (e: Exception) {
+                android.util.Log.e("SoruLabPdfImport", "Local PDF book commit failed", e)
+                val msg = "Sorular bulundu fakat kalıcı kaydetme tamamlanamadı. " +
+                    "Depolama alanını kontrol edip tekrar deneyin. Önizleme korunuyor."
+                withContext(Dispatchers.Main) {
+                    showBanner(msg)
+                    onSaved(false, msg)
+                }
+                return@launch
             }
 
             withContext(Dispatchers.Main) {
                 _userCustomQuestions.value = updatedList
-                showBanner(
-                    if (localCacheSaved) {
-                        if (imageRekeyFailureCount == 0) {
-                            "'$bookOrTestName' kaynağından ${newRecords.size} soru cihazınıza eklendi."
-                        } else {
-                            "${newRecords.size} soru eklendi; $imageRekeyFailureCount görseli dosya adıyla eşleştirilemedi."
-                        }
-                    } else {
-                        "Sorular oturumda açıldı ancak cihaz depolamasına yazılamadı; uygulamayı kapatmayın ve depolama alanını kontrol edin."
-                    }
-                )
+                val msg = "'$bookOrTestName' kitaplığa eklendi: ${newRecords.size} soru. " +
+                    if (imageRekeyFailureCount == 0) "Yerel kayıt doğrulandı."
+                    else "$imageRekeyFailureCount görselin dosya adı kontrol edilmeli."
+                showBanner(msg)
+                onSaved(true, msg)
             }
 
             syncPdfPoolToPracticeTests(updatedList)
@@ -2468,11 +2517,7 @@ class SoruLabViewModel(
                         repository.saveCustomQuestionsBatch(cloudBatch)
                         withContext(Dispatchers.Main) {
                             showBanner(
-                                if (localCacheSaved) {
-                                    "'$bookOrTestName' soruları bulut hesabınızla eşitlendi."
-                                } else {
-                                    "Bulut eşitlemesi tamamlandı; cihaz önbelleği yazılamadı."
-                                }
+                                "'$bookOrTestName' soruları bulut hesabınızla eşitlendi."
                             )
                         }
                     } catch (e: CancellationException) {
@@ -2480,15 +2525,25 @@ class SoruLabViewModel(
                     } catch (e: Exception) {
                         withContext(Dispatchers.Main) {
                             showBanner(
-                                "Sorular cihazda ${if (localCacheSaved) "kaydedildi" else "oturumda tutuluyor"}; buluta eşitlenemedi. " +
+                                "Sorular cihazda kaydedildi; buluta eşitlenemedi. " +
                                     cloudSaveProblem(e)
                             )
                         }
                     }
                 }
-            } else if (localCacheSaved) {
+            } else {
                 withContext(Dispatchers.Main) {
                     showBanner("Sorular cihazınıza kaydedildi. Bulut eşitlemesi için hesabınızla giriş yapın.")
+                }
+            }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.e("SoruLabPdfImport", "Unexpected PDF import commit failure", e)
+                val msg = "Kitaplık kaydı tamamlanamadı: ${e.javaClass.simpleName}. Önizleme korunuyor."
+                withContext(Dispatchers.Main) {
+                    showBanner(msg)
+                    onSaved(false, msg)
                 }
             }
         }

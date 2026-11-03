@@ -551,7 +551,8 @@ fun SoruHavuzuAndPdfStudioView(
         publisherName: String,
         publisherLogoUri: String,
         bookOrTestName: String,
-        bookCoverPath: String
+        bookCoverPath: String,
+        onSaved: (Boolean, String) -> Unit
     ) -> Unit,
     onDeleteLibraryBook: (List<String>) -> Unit,
     onClearAllData: () -> Unit = {},
@@ -580,6 +581,10 @@ fun SoruHavuzuAndPdfStudioView(
     var pdfSelectionError by remember { mutableStateOf<String?>(null) }
     var pendingCropReview by remember { mutableStateOf<PendingCropReview?>(null) }
     var showCropReview by remember { mutableStateOf(false) }
+    var isSavingImportedBook by remember { mutableStateOf(false) }
+    var hasSavedReview by remember { mutableStateOf(false) }
+    var importSaveError by remember { mutableStateOf<String?>(null) }
+    var importSaveSuccess by remember { mutableStateOf<String?>(null) }
     var showClearConfirmation by remember { mutableStateOf(false) }
     var pendingDeleteBook by remember { mutableStateOf<LibraryBookCardModel?>(null) }
 
@@ -637,6 +642,13 @@ fun SoruHavuzuAndPdfStudioView(
     ) { uri: Uri? ->
         if (uri != null) {
             onDismissError()
+            // A newly selected PDF must not reuse the previous review.
+            if (!isSavingImportedBook) {
+                pendingCropReview = null
+                hasSavedReview = false
+                importSaveError = null
+                importSaveSuccess = null
+            }
             selectedPdfUri = uri
             selectedPdfFileName = "PDF okunuyor…"
             totalPdfPages = 0
@@ -894,7 +906,7 @@ fun SoruHavuzuAndPdfStudioView(
 
                             Surface(
                                 onClick = { pdfPickerLauncher.launch("application/pdf") },
-                                enabled = !batchCropState.isAnalyzing && pendingCropReview == null,
+                                enabled = !batchCropState.isAnalyzing && !isSavingImportedBook,
                                 shape = RoundedCornerShape(16.dp),
                                 color = if (selectedPdfUri != null) Color(0xFFEFF6FF) else Color(0xFFF7F6FB),
                                 border = BorderStroke(
@@ -970,8 +982,14 @@ fun SoruHavuzuAndPdfStudioView(
                                 Text(message, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
                             }
                             pendingCropReview?.let { review ->
-                                OutlinedButton(onClick = { showCropReview = true }, modifier = Modifier.fillMaxWidth()) {
-                                    Text("${review.items.size} kırpma hazır · İncelemeye devam et")
+                                OutlinedButton(
+                                    onClick = { showCropReview = true },
+                                    enabled = !isSavingImportedBook,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(if (hasSavedReview)
+                                        "${review.items.size} soru kitaplıkta · Kırpmaları düzelt"
+                                    else "${review.items.size} kırpma hazır · Kaydetmeyi yeniden dene")
                                 }
                             }
                             Spacer(modifier = Modifier.height(4.dp))
@@ -981,20 +999,47 @@ fun SoruHavuzuAndPdfStudioView(
                                 onClick = {
                                     val uri = selectedPdfUri ?: return@Button
                                     val publisher = selectedPublisher ?: return@Button
+                                    importSaveError = null
+                                    importSaveSuccess = null
+                                    hasSavedReview = false
                                     onStartFastParallelPdfExtraction(
                                         uri,
                                         selectedPdfFileName,
                                         publisher
                                     ) { extractedItems, coverPath, autoDetectedBookTitle ->
                                         if (extractedItems.isNotEmpty()) {
-                                            pendingCropReview = PendingCropReview(extractedItems, publisher, autoDetectedBookTitle, coverPath)
-                                            showCropReview = true
+                                            // Import is committed automatically; review is optional.
+                                            // Do NOT claim the book was imported before disk read-back.
+                                            val review = PendingCropReview(
+                                                extractedItems, publisher, autoDetectedBookTitle, coverPath
+                                            )
+                                            pendingCropReview = review
+                                            showCropReview = false
+                                            isSavingImportedBook = true
+                                            onSaveExtractedPdfBatch(
+                                                extractedItems, publisher.name,
+                                                publisher.customLogoPath, autoDetectedBookTitle,
+                                                coverPath
+                                            ) { succeeded, message ->
+                                                isSavingImportedBook = false
+                                                if (succeeded) {
+                                                    hasSavedReview = true
+                                                    importSaveSuccess = message
+                                                    selectedPdfUri = null
+                                                    selectedPdfFileName = ""
+                                                    totalPdfPages = 0
+                                                } else {
+                                                    importSaveError = message
+                                                }
+                                            }
+                                        } else {
+                                            importSaveError = "Bu PDF'den soru aktarımı tamamlanmadı. Kitap kaydedilmedi."
                                         }
                                     }
                                 },
                                 enabled = selectedPdfUri != null &&
                                     selectedPublisher != null && totalPdfPages > 0 && !isReadingPdf &&
-                                    pendingCropReview == null && !batchCropState.isAnalyzing,
+                                    !isSavingImportedBook && !batchCropState.isAnalyzing,
                                 shape = RoundedCornerShape(16.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color(0xFF346CFA),
@@ -1014,15 +1059,32 @@ fun SoruHavuzuAndPdfStudioView(
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = if (batchCropState.isAnalyzing) {
-                                        "Sorular hazırlanıyor…"
-                                    } else {
-                                        "Soruları kırp ve incele"
+                                    text = when {
+                                        batchCropState.isAnalyzing -> "Sorular hazırlanıyor…"
+                                        isSavingImportedBook -> "Kitaplığa kaydediliyor…"
+                                        else -> "Soruları kırp ve kitaplığa ekle"
                                     },
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 15.sp
                                 )
                             }
+                        }
+
+                        if (isSavingImportedBook) {
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth().testTag("pdf_import_saving_progress"),
+                                color = Color(0xFF346CFA)
+                            )
+                            Text("Tarama bitti. Sorular kalıcı kitaplığa yazılıyor ve tekrar okunarak doğrulanıyor…",
+                                color = Color(0xFF1D4ED8), fontSize = 13.sp)
+                        }
+                        importSaveSuccess?.let { message ->
+                            Text(message, color = Color(0xFF166534), fontSize = 13.sp,
+                                modifier = Modifier.testTag("pdf_import_saved_success"))
+                        }
+                        importSaveError?.let { message ->
+                            Text(message, color = Color(0xFFB91C1C), fontSize = 13.sp,
+                                modifier = Modifier.testTag("pdf_import_save_error"))
                         }
 
                         // ====================================================================
@@ -1342,12 +1404,27 @@ fun SoruHavuzuAndPdfStudioView(
             visible = showCropReview,
             onClose = { showCropReview = false },
             onSave = { selectedItems ->
-                onSaveExtractedPdfBatch(selectedItems, review.publisher.name, review.publisher.customLogoPath, review.bookTitle, review.coverPath)
-                showCropReview = false
-                pendingCropReview = null
-                selectedPdfUri = null
-                selectedPdfFileName = ""
-                totalPdfPages = 0
+                if (!isSavingImportedBook) {
+                    isSavingImportedBook = true
+                    importSaveError = null
+                    onSaveExtractedPdfBatch(
+                        selectedItems, review.publisher.name, review.publisher.customLogoPath,
+                        review.bookTitle, review.coverPath
+                    ) { succeeded, message ->
+                        isSavingImportedBook = false
+                        if (succeeded) {
+                            hasSavedReview = true
+                            importSaveSuccess = message
+                            showCropReview = false
+                            pendingCropReview = null
+                            selectedPdfUri = null
+                            selectedPdfFileName = ""
+                            totalPdfPages = 0
+                        } else {
+                            importSaveError = message
+                        }
+                    }
+                }
             }
         )
     }

@@ -2,9 +2,9 @@ name: PDF preview APK
 on:
   workflow_dispatch:
   push:
-    branches: ['feat/premium-pdf-v5', 'fix/pdf-rc5-patternsyntax-regression']
+    branches: ['feat/premium-pdf-v5', 'fix/pdf-rc5-patternsyntax-regression', 'fix/rc7-auth-universal-pdf-layout-ink']
   pull_request:
-    branches: ['feat/premium-pdf-v5', 'feat/pdf-v5-biyotik-premium-review']
+    branches: ['feat/premium-pdf-v5', 'feat/pdf-v5-biyotik-premium-review', 'feat/s-pen-s9feplus-ink-gestures']
 permissions:
   contents: read
 jobs:
@@ -23,28 +23,22 @@ jobs:
           # Match the existing release workflow instead of installing that default.
           packages: platform-tools
       - run: sdkmanager 'platforms;android-36.1' 'build-tools;36.0.0'
-      - name: Restore development signing key
-        env:
-          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
-            printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > debug.keystore
-          elif [ -f debug.keystore.base64 ]; then
-            base64 --decode debug.keystore.base64 > debug.keystore
-          else
-            keytool -genkeypair -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -validity 10000
-          fi
       - name: Preflight all literal Kotlin regular expressions
         run: python3 scripts/validate_kotlin_raw_regex.py
       - name: Run answer-key matching regression tests
         run: >-
           bash ./gradlew :app:testDebugUnitTest
+          --tests com.example.util.StylusInputPolicyTest
           --tests com.example.util.PdfOptionEvidenceTest
           --tests com.example.util.PdfAdaptiveAnswerRowsTest
           --tests com.example.util.PdfScopedAnswerKeysTest
           --tests com.example.util.PdfTextFooterKeysTest
           --tests com.example.util.PdfVectorAnswerStripTest
           --tests com.example.util.PdfVectorQuestionAnchorsTest
+          --tests com.example.util.PdfColumnLayoutEvidenceTest
+          --tests com.example.util.PdfSourceHeaderExtractorTest
+          --tests com.example.util.PdfLibraryAccountTest
+          --tests com.example.data.LocalQuestionCacheIOTest
           --tests com.example.util.TestAnswerAnalyticsEngineTest
           --tests com.example.data.TestSnapshotCodecTest
           --no-daemon --no-configuration-cache --max-workers=2
@@ -58,9 +52,41 @@ jobs:
             app/build/test-results/testDebugUnitTest/
           if-no-files-found: ignore
           retention-days: 7
-      - run: bash ./gradlew :app:assembleDebug --no-daemon --no-configuration-cache --max-workers=2
+      # Verify APK packaging independently of the private preview signing key.
+      # The disposable APK is NEVER uploaded and MUST NOT be installed.
+      - name: Verify Android package using disposable CI signing identity
+        run: |
+          keytool -genkeypair -noprompt -keystore debug.keystore \
+            -storepass android -keypass android -alias androiddebugkey \
+            -dname 'CN=CI Packaging Only,O=SoruLab,C=TR' -keyalg RSA \
+            -keysize 2048 -validity 2
+          bash ./gradlew :app:assembleDebug --no-daemon --no-configuration-cache --max-workers=2
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          # Never expose a package with a temporary certificate to the user.
+          rm -f debug.keystore my-upload-key.jks app/build/outputs/apk/debug/*.apk
+      - name: Restore EXISTING release signing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Existing release signing secrets (KEYSTORE_BASE64, STORE_PASSWORD, KEY_PASSWORD) must be configured."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+          keytool -list -keystore my-upload-key.jks -storepass "$STORE_PASSWORD" -alias upload >/dev/null
+          python3 scripts/check_release_oauth_signing.py
+      - name: Build signed RC7 preview with established release certificate
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          bash ./gradlew :app:assembleRelease --no-daemon --no-configuration-cache --max-workers=2
+          test -s app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: SoruLab-1.2.5-rc5-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: SoruLab-1.2.5-rc7-signed-preview
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error

@@ -1351,13 +1351,13 @@ object StudioImageAndPdfEngine {
         val sourcePages = extractPdfPageTextLayer(context, pdfFile, totalPages)
         val vectorPageText = sourcePages.map { it.text }
         val pageVectorQuestionAnchors = sourcePages.mapIndexedNotNull { index, page ->
-            page.anchors.takeIf { it.size >= 4 }?.let { anchors ->
+            page.anchors.takeIf { it.size >= 2 }?.let { anchors ->
                 index to PdfSourcePageAnchors(page.pageWidth, page.pageHeight, anchors)
             }
         }.toMap()
         val pageVectorOptionEvidence = sourcePages.mapIndexedNotNull { index, page ->
             val letters = PdfOptionEvidence.letters(page.text)
-            index.takeIf { letters.size >= 3 && page.anchors.size >= 4 }
+            index.takeIf { letters.size >= 3 && page.anchors.size >= 2 }
         }.toSet()
         // Key strips may live on every other page instead of in a separate
         // answer-key chapter. Preserve the exact PDF page association.
@@ -1371,7 +1371,7 @@ object StudioImageAndPdfEngine {
             keys.takeIf { it.isNotEmpty() }?.let { index to it }
         }.toMap()
         val pageSourceHeaders = vectorPageText.mapIndexedNotNull { index, text ->
-            text.lines().filter(String::isNotBlank).take(8).joinToString("\n")
+            PdfSourceHeaderExtractor.extract(text)
                 .takeIf(String::isNotBlank)?.let { index to it }
         }.toMap()
         vectorPageText.forEachIndexed { pageIndex, text ->
@@ -2189,7 +2189,14 @@ object StudioImageAndPdfEngine {
         val hasRightNumberAnchor = questionNumberAnchors.any {
             it.left in (width * 0.56f).roundToInt() until width
         }
-        val isDualColumn = (hasLeftNumberAnchor && hasRightNumberAnchor) ||
+        val strongPrintedColumns = PdfColumnLayoutEvidence.hasTwoPrintedColumns(
+            questionNumberAnchors, width, bodyTop, bodyBottom
+        )
+        // Fixed 56%-width right-column threshold misses many textbook
+        // layouts whose right question numbers start around 52–54%.
+        // Strong consecutive printed numbers override a faint pixel gutter.
+        val isDualColumn = strongPrintedColumns ||
+            (hasLeftNumberAnchor && hasRightNumberAnchor) ||
             (avgGutterRowInk < 0.048f &&
                 leftHalfInk >= minHalfInkThreshold &&
                 rightHalfInk >= minHalfInkThreshold)

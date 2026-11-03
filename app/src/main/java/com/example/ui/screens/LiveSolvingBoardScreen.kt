@@ -21,6 +21,9 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,6 +41,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +51,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -61,6 +66,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -71,6 +77,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.example.data.*
 import com.example.util.StudioImageAndPdfEngine
+import com.example.util.StylusInputPolicy
 import com.example.util.TestAnswerAnalyticsEngine
 import com.example.viewmodel.*
 import kotlinx.coroutines.Dispatchers
@@ -100,7 +107,9 @@ internal fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>, colum
         repeat(2) {
             var columnHeight = 0f
             var columnCount = 0
-            while (index < questions.size && columnCount < 8) {
+            // Fixed-height tablet sheets need room: at most two questions
+            // per column; a full page flips instead of scrolling vertically.
+            while (index < questions.size && columnCount < 2) {
                 val question = questions[index]
                 val normalizedWidth = (question.normRight - question.normLeft).coerceAtLeast(0.08f)
                 val normalizedHeight = (question.normBottom - question.normTop).coerceAtLeast(0.04f)
@@ -155,6 +164,7 @@ internal fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>, colum
 fun LiveSolvingBoardScreen(
     session: ActiveSolvingSession,
     strokes: List<DrawStroke>,
+    currentCanvasKey: String,
     activeTool: DrawingTool,
     selectedStrokeSizeIndex: Int,
     selectedPenColorHex: Long,
@@ -163,8 +173,9 @@ fun LiveSolvingBoardScreen(
     onSelectTool: (DrawingTool) -> Unit,
     onSelectStrokeSize: (Int) -> Unit,
     onSelectPenColor: (Long) -> Unit,
-    onAddStroke: (List<Offset>) -> Unit,
-    onClearCanvas: () -> Unit,
+    onAddStroke: (String, List<Offset>, List<Float>) -> Unit,
+    onBookPageChanged: (Int) -> Unit,
+    onClearCanvas: (String) -> Unit,
     onSelectQuestionIndex: (Int) -> Unit,
     onSelectOption: (Int, String) -> Unit,
     onToggleOpticalForm: () -> Unit,
@@ -201,7 +212,23 @@ fun LiveSolvingBoardScreen(
         pageCount = { totalQuestions }
     )
     val currentBookPageIndex = bookPagerState.currentPage
+    val displayedCanvasKey = if (session.viewMode == BoardViewMode.FULL_PAGE) {
+        StylusInputPolicy.canvasKey(session.testItem.id, currentBookPageIndex)
+    } else {
+        val q = questions.getOrNull(singleQuestionPagerState.currentPage)
+        "q_${q?.id ?: singleQuestionPagerState.currentPage}"
+    }
+    // Hide previous-page ink during the frame before the ViewModel receives
+    // the pager's new selected page. Never draw it on the next PDF page.
+    val displayedStrokes = if (currentCanvasKey == displayedCanvasKey) strokes else emptyList()
     val pagerScope = rememberCoroutineScope()
+    var fingerDrawingEnabled by rememberSaveable(session.testItem.id) { mutableStateOf(false) }
+
+    LaunchedEffect(bookPagerState.settledPage, session.viewMode) {
+        if (session.viewMode == BoardViewMode.FULL_PAGE) {
+            onBookPageChanged(bookPagerState.settledPage)
+        }
+    }
 
     // Keep HorizontalPager synced when currentQuestionIndex is updated externally
     LaunchedEffect(session.currentQuestionIndex, session.viewMode) {
@@ -407,6 +434,8 @@ fun LiveSolvingBoardScreen(
                 viewMode = session.viewMode,
                 activeTool = activeTool,
                 isZoomMagnifierEnabled = isZoomMagnifierEnabled,
+                fingerDrawingEnabled = fingerDrawingEnabled,
+                onChangeFingerDrawing = { fingerDrawingEnabled = it },
                 selectedStrokeSizeIndex = selectedStrokeSizeIndex,
                 selectedPenColorHex = selectedPenColorHex,
                 elapsedSeconds = session.elapsedSeconds,
@@ -426,7 +455,7 @@ fun LiveSolvingBoardScreen(
                 },
                 onSelectStrokeSize = onSelectStrokeSize,
                 onSelectPenColor = onSelectPenColor,
-                onClearCanvas = onClearCanvas
+                onClearCanvas = { onClearCanvas(displayedCanvasKey) }
             )
         }
 
@@ -442,6 +471,7 @@ fun LiveSolvingBoardScreen(
             // Zero-latency raw path buffer (mutated directly during S-Pen/Mouse drag without recomposing UI tree!)
             val liveRawPath = remember { Path() }
             val liveRawPoints = remember { mutableListOf<Offset>() }
+            val liveRawPressures = remember { mutableListOf<Float>() }
             val liveDrawTick = remember { mutableIntStateOf(0) }
 
             // Book Page Container with Horizontal Finger/Hand Swipe (HorizontalPager) + Pinch-to-Zoom support
@@ -452,22 +482,189 @@ fun LiveSolvingBoardScreen(
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.White)
                     .shadow(2.dp, RoundedCornerShape(8.dp))
-                    .pointerInput(isZoomMagnifierEnabled, zoomScale) {
-                        if (isZoomMagnifierEnabled || zoomScale > 1.02f) {
-                            detectTransformGestures { _, pan, zoom, _ ->
-                                val newScale = (zoomScale * zoom).coerceIn(1f, 3.0f)
-                                zoomScale = newScale
-                                panOffset = if (newScale > 1.01f) {
-                                    Offset(
-                                        x = (panOffset.x + pan.x).coerceIn(-900f, 900f),
-                                        y = (panOffset.y + pan.y).coerceIn(-900f, 900f)
+                    // Initial pass wins two-finger gestures before the pager
+                    // can mistake a pinch for a page change. Single-finger
+                    // touches at normal zoom remain available to page swipe.
+                    .pointerInput(
+                        activeTool, fingerDrawingEnabled, isZoomMagnifierEnabled,
+                        currentBookPageIndex, session.viewMode
+                    ) {
+                        awaitEachGesture {
+                            var hadNavigationGesture = false
+                            do {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val fingers = event.changes.filter {
+                                    it.pressed && it.type == PointerType.Touch
+                                }
+                                val stylusPressed = event.changes.any {
+                                    it.pressed && it.type == PointerType.Stylus
+                                }
+                                val pinch = StylusInputPolicy.usePinch(
+                                    fingers.size, stylusPressed
+                                )
+                                val oneFingerPan = !pinch && fingers.size == 1 &&
+                                    !stylusPressed && zoomScale > 1.02f &&
+                                    (!fingerDrawingEnabled ||
+                                        activeTool == DrawingTool.HAND_PAN ||
+                                        isZoomMagnifierEnabled)
+                                if (pinch || oneFingerPan) {
+                                    val pan = event.calculatePan()
+                                    val scaleChange = if (pinch) {
+                                        event.calculateZoom().takeIf {
+                                            it.isFinite() && it > 0f
+                                        } ?: 1f
+                                    } else 1f
+                                    val nextScale = (zoomScale * scaleChange)
+                                        .coerceIn(1f, 4f)
+                                    val focus = if (pinch) {
+                                        event.calculateCentroid(useCurrent = false)
+                                    } else {
+                                        Offset(size.width / 2f, size.height / 2f)
+                                    }
+                                    val viewportCenter = Offset(
+                                        size.width / 2f, size.height / 2f
                                     )
-                                } else {
-                                    Offset.Zero
+                                    val factor = nextScale / zoomScale.coerceAtLeast(1f)
+                                    val proposed = panOffset + pan +
+                                        (focus - viewportCenter - panOffset) *
+                                        (1f - factor)
+                                    val maxX = (size.width * (nextScale - 1f) / 2f)
+                                        .coerceAtLeast(0f)
+                                    val maxY = (size.height * (nextScale - 1f) / 2f)
+                                        .coerceAtLeast(0f)
+                                    zoomScale = nextScale
+                                    panOffset = if (nextScale <= 1.02f) Offset.Zero else {
+                                        Offset(
+                                            proposed.x.coerceIn(-maxX, maxX),
+                                            proposed.y.coerceIn(-maxY, maxY)
+                                        )
+                                    }
+                                    hadNavigationGesture = true
+                                }
+                                if (hadNavigationGesture && !stylusPressed) {
+                                    event.changes.filter {
+                                        it.type == PointerType.Touch
+                                    }.forEach { it.consume() }
+                                }
+                            } while (event.changes.any { it.pressed })
+                        }
+                    }
+
+                    // Ink input belongs on the shared parent, not the drawing
+                    // Canvas sibling. Smart-mode finger taps/swipes can then
+                    // reach the page pager; S Pen strokes are consumed early.
+                    .then(
+                        if ((activeTool == DrawingTool.PEN ||
+                                    activeTool == DrawingTool.HIGHLIGHTER ||
+                                    activeTool == DrawingTool.SMART_SHAPE ||
+                                    activeTool == DrawingTool.ERASER) &&
+                                openThreeDotQuestionNumber == null) {
+                        Modifier.pointerInput(
+                            activeTool,
+                            selectedStrokeSizeIndex,
+                            selectedPenColorHex,
+                            fingerDrawingEnabled,
+                            currentBookPageIndex,
+                            session.viewMode,
+                            displayedCanvasKey
+                        ) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                if (!StylusInputPolicy.canInk(
+                                        down.type, fingerDrawingEnabled
+                                    ) || down.isConsumed
+                                ) return@awaitEachGesture
+                                down.consume()
+
+                                val activeId = down.id
+                                liveRawPoints.clear()
+                                liveRawPressures.clear()
+                                liveRawPoints.add(down.position)
+                                liveRawPressures.add(
+                                    if (down.type == PointerType.Stylus) down.pressure else 1f
+                                )
+                                liveRawPath.reset()
+                                liveRawPath.moveTo(down.position.x, down.position.y)
+                                liveDrawTick.intValue++
+
+                                var prevPt = down.position
+                                var cancelled = false
+                                try {
+                                    // Observe every pointer, not just the stylus.
+                                    // A second finger cancels an unfinished
+                                    // finger stroke and becomes a pinch gesture.
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                        val active = event.changes.firstOrNull {
+                                            it.id == activeId
+                                        }
+                                        if (active == null) {
+                                            cancelled = true
+                                            break
+                                        }
+                                        val touchCount = event.changes.count {
+                                            it.pressed && it.type == PointerType.Touch
+                                        }
+                                        if (down.type == PointerType.Touch &&
+                                            (touchCount >= 2 || event.changes.any {
+                                                it.pressed && it.type == PointerType.Stylus
+                                            })
+                                        ) {
+                                            cancelled = true
+                                            break
+                                        }
+                                        if (active.isConsumed && active.pressed) {
+                                            cancelled = true
+                                            break
+                                        }
+                                        val curPt = active.position
+                                        if ((curPt - prevPt).getDistance() >= 0.6f) {
+                                            liveRawPoints.add(curPt)
+                                            liveRawPressures.add(
+                                                if (down.type == PointerType.Stylus) {
+                                                    active.pressure
+                                                } else 1f
+                                            )
+                                            val mid = (prevPt + curPt) * 0.5f
+                                            liveRawPath.quadraticTo(
+                                                prevPt.x, prevPt.y, mid.x, mid.y
+                                            )
+                                            prevPt = curPt
+                                            liveDrawTick.intValue++
+                                        }
+                                        if (!active.pressed) break
+                                        active.consume()
+                                    }
+                                    if (!cancelled) {
+                                        if (liveRawPoints.size == 1) {
+                                            // Tapping the pen should make a dot.
+                                            liveRawPoints.add(
+                                                liveRawPoints.first() + Offset(0.05f, 0.05f)
+                                            )
+                                            liveRawPressures.add(
+                                                liveRawPressures.first()
+                                            )
+                                        }
+                                        if (liveRawPoints.size >= 2) {
+                                            onAddStroke(
+                                                displayedCanvasKey,
+                                                liveRawPoints.toList(),
+                                                liveRawPressures.toList()
+                                            )
+                                        }
+                                    }
+                                } finally {
+                                    liveRawPoints.clear()
+                                    liveRawPressures.clear()
+                                    liveRawPath.reset()
+                                    liveDrawTick.intValue++
                                 }
                             }
                         }
-                    }
+                        } else {
+                            Modifier
+                        }
+                    )
                     .graphicsLayer {
                         scaleX = zoomScale
                         scaleY = zoomScale
@@ -633,77 +830,36 @@ fun LiveSolvingBoardScreen(
                 }
 
                 // 2. SIFIR GECİKMELİ S-PEN ÇİZİMİ VE BLENDMODE.CLEAR SİLGİ
-                // KATI KURAL:
-                // - PointerType.Stylus -> Doğrudan çizer veya siler.
-                // - PointerType.Touch (Parmak) -> Kesinlikle çizim yapmaz (`return`), parmakla yatay sayfa çevirme (swipe) ve dikey scroll çalışır!
-                // - PointerType.Mouse (Emülatör) -> Sayfa kenarlarından/alt şeridinden yapılan yatay sayfa çevirme hareketlerini engellemez,
-                //   soru üzerinde yapılan çizimleri sıfır gecikmeyle çizer.
+                // Akıllı Mod: stylus draws; a palm or single finger never inks.
+                // Çizim Modu: stylus or one finger inks; two fingers cancel
+                // the finger stroke and navigate without ink damage.
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-                        .then(
-                            if ((activeTool == DrawingTool.PEN ||
-                                    activeTool == DrawingTool.HIGHLIGHTER ||
-                                    activeTool == DrawingTool.SMART_SHAPE ||
-                                    activeTool == DrawingTool.ERASER) &&
-                                openThreeDotQuestionNumber == null
-                            ) {
-                                Modifier.pointerInput(
-                                    activeTool,
-                                    selectedStrokeSizeIndex,
-                                    selectedPenColorHex,
-                                    currentBookPageIndex,
-                                    session.viewMode
-                                ) {
-                                    awaitEachGesture {
-                                        val down = awaitFirstDown(requireUnconsumed = false)
-                                        // Finger touches (PointerType.Touch) NEVER draw so HorizontalPager swipe & scroll work smoothly!
-                                        if (down.type == PointerType.Touch) {
-                                            return@awaitEachGesture
-                                        }
-                                        val isStylus = down.type == PointerType.Stylus
-                                        if (!isStylus) {
-                                            return@awaitEachGesture
-                                        }
-                                        down.consume()
-
-                                        liveRawPoints.clear()
-                                        liveRawPoints.add(down.position)
-                                        liveRawPath.reset()
-                                        liveRawPath.moveTo(down.position.x, down.position.y)
-                                        liveRawPath.lineTo(down.position.x + 0.1f, down.position.y + 0.1f)
-                                        liveDrawTick.intValue++
-
-                                        var prevPt = down.position
-                                        drag(down.id) { change ->
-                                            change.consume()
-                                            val curPt = change.position
-                                            liveRawPoints.add(curPt)
-                                            val midX = (prevPt.x + curPt.x) * 0.5f
-                                            val midY = (prevPt.y + curPt.y) * 0.5f
-                                            liveRawPath.quadraticTo(prevPt.x, prevPt.y, midX, midY)
-                                            prevPt = curPt
-                                            liveDrawTick.intValue++
-                                        }
-
-                                        if (liveRawPoints.size >= 2) {
-                                            onAddStroke(liveRawPoints.toList())
-                                        }
-                                        liveRawPoints.clear()
-                                        liveRawPath.reset()
-                                        liveDrawTick.intValue++
-                                    }
-                                }
-                            } else {
-                                Modifier
-                            }
-                        )
                 ) {
-                    // Read liveDrawTick inside draw scope so only the Canvas draw layer invalidates during drag
+                    // Keep ink history cached during writing. Eraser alone
+                    // temporarily composites old ink with its Clear path in
+                    // the preview layer for immediate visual feedback.
+                    val liveErasing = activeTool == DrawingTool.ERASER &&
+                        liveDrawTick.intValue >= 0 && liveRawPoints.isNotEmpty()
+                    if (!liveErasing) {
+                        displayedStrokes.forEach { stroke -> drawSmoothStroke(stroke) }
+                    }
+                }
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                        .testTag("live_spen_preview")
+                ) {
                     val tick = liveDrawTick.intValue
-                    strokes.forEach { stroke ->
-                        drawSmoothStroke(stroke)
+                    // The clear stroke must share an offscreen layer with the
+                    // ink it erases. Otherwise erasing would only appear on UP.
+                    if (activeTool == DrawingTool.ERASER &&
+                        liveRawPoints.isNotEmpty()
+                    ) {
+                        displayedStrokes.forEach { stroke -> drawSmoothStroke(stroke) }
                     }
                     if (tick >= 0 && liveRawPoints.size >= 2) {
                         val isEraser = activeTool == DrawingTool.ERASER
@@ -719,10 +875,20 @@ fun LiveSolvingBoardScreen(
                                 ),
                                 blendMode = BlendMode.Clear
                             )
+                        } else if (!isHigh &&
+                            liveRawPressures.size == liveRawPoints.size
+                        ) {
+                            drawPressureInkSegments(
+                                liveRawPoints,
+                                liveRawPressures,
+                                Color(selectedPenColorHex),
+                                currentStrokePx
+                            )
                         } else {
                             drawPath(
                                 path = liveRawPath,
-                                color = if (isHigh) Color(selectedPenColorHex).copy(alpha = 0.36f) else Color(selectedPenColorHex),
+                                color = if (isHigh) Color(selectedPenColorHex).copy(alpha = 0.36f)
+                                    else Color(selectedPenColorHex),
                                 style = Stroke(
                                     width = if (isHigh) currentStrokePx * 2.6f else currentStrokePx,
                                     cap = StrokeCap.Round,
@@ -1327,6 +1493,13 @@ private fun RealTwoColumnBookPageSurface(
             .background(Color.White)
     ) {
         val pageMinHeight = maxHeight
+        val perColumnCount = maxOf(
+            leftColumnQuestions.size, rightColumnQuestions.size, 1
+        )
+        val maxQuestionImageHeight = (
+            (pageMinHeight - 104.dp).coerceAtLeast(220.dp) /
+                perColumnCount.toFloat() - 42.dp
+        ).coerceAtLeast(120.dp)
 
         // Dışarı tıklandığında açık olan `⋮` Popover menüsünü kapatan şeffaf arka plan katmanı
         if (openThreeDotQuestionNumber != null) {
@@ -1346,17 +1519,14 @@ private fun RealTwoColumnBookPageSurface(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
-                .heightIn(min = pageMinHeight)
-                .verticalScroll(scrollState)
-                .padding(horizontal = 12.dp, vertical = 4.dp),
+                .padding(horizontal = 28.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // ÇİFT SÜTUNLU (SOL SÜTUN & SAĞ SÜTUN) VE ORTADAN İNCE DİKEY ÇİZGİLİ TAM SAYFA DÜZENİ
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = (pageMinHeight - 76.dp).coerceAtLeast(360.dp))
-                    .height(IntrinsicSize.Min),
+                    .weight(1f, fill = true),
                 horizontalArrangement = Arrangement.spacedBy(0.dp),
                 verticalAlignment = Alignment.Top
             ) {
@@ -1373,6 +1543,7 @@ private fun RealTwoColumnBookPageSurface(
                     leftColumnQuestions.forEachIndexed { idx, q ->
                         BookPageQuestionItem345(
                             question = q,
+                            maxImageHeight = maxQuestionImageHeight,
                             isReviewMode = session.isReviewMode,
                             selectedOption = session.selectedAnswers[q.number],
                             isThreeDotMenuOpen = openThreeDotQuestionNumber == q.number,
@@ -1414,6 +1585,7 @@ private fun RealTwoColumnBookPageSurface(
                         rightColumnQuestions.forEachIndexed { idx, q ->
                             BookPageQuestionItem345(
                                 question = q,
+                                maxImageHeight = maxQuestionImageHeight,
                                 isReviewMode = session.isReviewMode,
                                 selectedOption = session.selectedAnswers[q.number],
                                 isThreeDotMenuOpen = openThreeDotQuestionNumber == q.number,
@@ -1482,6 +1654,7 @@ private fun RealTwoColumnBookPageSurface(
 @Composable
 private fun BookPageQuestionItem345(
     question: YksQuestion,
+    maxImageHeight: Dp = 560.dp,
     isReviewMode: Boolean,
     selectedOption: String?,
     isThreeDotMenuOpen: Boolean,
@@ -1661,6 +1834,7 @@ private fun BookPageQuestionItem345(
                         alignment = Alignment.TopStart,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(max = maxImageHeight)
                             .aspectRatio(bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1))
                             .background(Color.White)
                     )
@@ -2491,6 +2665,8 @@ private fun BottomDarkNavyDrawingBar345(
     viewMode: BoardViewMode,
     activeTool: DrawingTool,
     isZoomMagnifierEnabled: Boolean,
+    fingerDrawingEnabled: Boolean = false,
+    onChangeFingerDrawing: (Boolean) -> Unit = {},
     selectedStrokeSizeIndex: Int,
     selectedPenColorHex: Long,
     elapsedSeconds: Int,
@@ -2549,6 +2725,45 @@ private fun BottomDarkNavyDrawingBar345(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Galaxy Tab S9 FE+: clear input routing. Smart mode protects
+                    // handwriting from palm/finger touches; Draw mode also inks
+                    // with one finger, while two fingers always navigate.
+                    Surface(
+                        onClick = { onChangeFingerDrawing(false) },
+                        shape = RoundedCornerShape(50),
+                        color = if (!fingerDrawingEnabled) Color(0xFF3475F5) else Color.White.copy(alpha = 0.10f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (!fingerDrawingEnabled) Color(0xFF93C5FD) else Color.White.copy(alpha = 0.22f)
+                        ),
+                        modifier = Modifier.height(38.dp).testTag("smart_spen_mode")
+                    ) {
+                        Text(
+                            "Akıllı Mod · S Pen",
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                            color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Surface(
+                        onClick = {
+                            onChangeFingerDrawing(true)
+                            if (activeTool == DrawingTool.HAND_PAN) onSelectTool(DrawingTool.PEN)
+                        },
+                        shape = RoundedCornerShape(50),
+                        color = if (fingerDrawingEnabled) Color(0xFF3475F5) else Color.White.copy(alpha = 0.10f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (fingerDrawingEnabled) Color(0xFF93C5FD) else Color.White.copy(alpha = 0.22f)
+                        ),
+                        modifier = Modifier.height(38.dp).testTag("finger_draw_mode")
+                    ) {
+                        Text(
+                            "Çizim Modu · Parmak",
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                            color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
                     // Kalem (Tıklandığında Kalemi Seçer VE Renk Seçici Paleti Açar/Kapatır — Varsayılan Renk: Siyah)
                     val isPenActive = activeTool == DrawingTool.PEN && !isZoomMagnifierEnabled
                     Surface(
@@ -3832,6 +4047,32 @@ private fun FullScreenSuccessReportCardView(
 }
 
 /**
+ * Natural S Pen pressure. Each segment retains the hardware sample pressure;
+ * old cached strokes without samples continue to draw with the legacy path.
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPressureInkSegments(
+    points: List<Offset>,
+    pressureSamples: List<Float>,
+    color: Color,
+    baseWidth: Float
+) {
+    if (points.size < 2 || points.size != pressureSamples.size) return
+    for (index in 1 until points.size) {
+        val factor = (
+            StylusInputPolicy.pressureWidthFactor(pressureSamples[index - 1]) +
+                StylusInputPolicy.pressureWidthFactor(pressureSamples[index])
+            ) / 2f
+        drawLine(
+            color = color,
+            start = points[index - 1],
+            end = points[index],
+            strokeWidth = baseWidth * factor,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+/**
  * Vektörel çizim motoru (Kalem, Akıllı Şekil ve `BlendMode.Clear` / `destination-out` Silgi)
  */
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSmoothStroke(stroke: DrawStroke) {
@@ -3844,6 +4085,13 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSmoothStroke(st
         else -> Color(stroke.colorHex)
     }
     val blendMode = if (isEraser) BlendMode.Clear else BlendMode.SrcOver
+
+    if (!isEraser && !stroke.isSmartShape &&
+        stroke.pressureSamples.size == pts.size && !stroke.isHighlighter
+    ) {
+        drawPressureInkSegments(pts, stroke.pressureSamples, strokeColor, stroke.strokeWidthPx)
+        return
+    }
 
     if (!isEraser && stroke.isSmartShape && pts.size >= 4) {
         val first = pts.first()

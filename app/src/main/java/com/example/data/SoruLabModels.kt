@@ -805,7 +805,12 @@ object SoruLabCatalog {
             else -> ""
         }
 
-        val preferredName = forcedTopicName.ifBlank { suggestedTopicName.trim() }
+        // A hint from a previous page or an OCR summary is NOT independent
+        // evidence for the current question. Accept it only when the caller
+        // explicitly marks the source (e.g. a printed heading) as trusted.
+        val preferredName = forcedTopicName.ifBlank {
+            suggestedTopicName.trim().takeIf { trustSuggestedTopic }.orEmpty()
+        }
         val preferredExam = if (forcedTopicName.isNotBlank() || examTypeHint.contains("AYT", ignoreCase = true)) ExamType.AYT else ExamType.TYT
         val preferredSubject = if (forcedTopicName.isNotBlank()) "Matematik" else normalizedSubjectHint
 
@@ -854,11 +859,9 @@ object SoruLabCatalog {
 
             if (bestMatch != null) {
                 bestMatch.first to bestMatch.second
-            } else if (isBiologyContext) {
-                targetSubject to (targetSubject.topics.firstOrNull { it.id == "sinir_sistemi" }
-                    ?: targetSubject.topics.firstOrNull()
-                    ?: return null)
             } else {
+                // Do not invent a biology topic when no printed heading or
+                // question-specific keyword supports the classification.
                 return null
             }
         } else {
@@ -881,11 +884,9 @@ object SoruLabCatalog {
 
             if (matched != null) {
                 matched
-            } else if (isBiologyContext) {
-                targetSubject to (targetSubject.topics.firstOrNull { it.id == "sinir_sistemi" }
-                    ?: targetSubject.topics.firstOrNull()
-                    ?: return null)
             } else {
+                // Do not invent a biology topic when no printed heading or
+                // question-specific keyword supports the classification.
                 return null
             }
         }

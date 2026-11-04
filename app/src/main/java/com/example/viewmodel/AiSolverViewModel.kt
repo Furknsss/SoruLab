@@ -1643,7 +1643,9 @@ class AiSolverViewModel : ViewModel() {
                                             publisherName = finalPubName,
                                             publisherLogoUri = finalLogoUri,
                                             questionText = classification.questionText,
-                                            solutionSummary = "Kaynak: $finalPubName ($finalBookTitle) • Konu: ${classification.topicName} • Zorluk: ${classification.difficulty} • " +
+                                            solutionSummary = "Kaynak: $finalPubName ($finalBookTitle) • " +
+                                                "Konu: ${classification.topicName.ifBlank { "Belirlenemedi (inceleme gerekli)" }} • " +
+                                                "Tahmini zorluk: ${classification.difficulty} • " +
                                                 if (verifiedAnswer != null) "Doğrulanmış Cevap: $verifiedAnswer" else "Cevap anahtarı eşleşmesi bulunamadı",
                                             croppedImagePath = cropBox.croppedImagePath,
                                             cropAspectRatio = cropBox.aspectRatio,
@@ -1774,6 +1776,15 @@ class AiSolverViewModel : ViewModel() {
                             "kırpmalar için sayfa önizlemesini kontrol edin; eksik kitabı tam " +
                             "aktarılmış saymayın.")
                     }
+                    val unknownTopicCount = allExtractedQuestions.count {
+                        it.topicName.isBlank()
+                    }
+                    if (unknownTopicCount > 0) {
+                        add("KONU İNCELEMESİ: $unknownTopicCount soruda güvenilir konu kanıtı " +
+                            "bulunamadı; konu uydurulmadı.")
+                    }
+                    add("Zorluk dereceleri otomatik tahmindir; kesin insan değerlendirmesi " +
+                        "olarak sunulmaz.")
                     if (scopedAnswers.answerCount == 0) {
                         add("$detectedAnswerPages olası cevap anahtarı sayfası tarandı ancak " +
                             "geçerli test-cevap eşleşmesi bulunamadı. Hiçbir cevap tahmin edilmedi.")

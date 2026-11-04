@@ -1910,8 +1910,42 @@ class AiSolverViewModel : ViewModel() {
                     }
                 }
                 _batchWarningText.value = warnings.takeIf { it.isNotEmpty() }?.joinToString(" ")
+                // Never repeat the old failure: 875 corrupted images persisted
+                // even though the system knew that hundreds were incomplete.
+                // A partially processed book is a FAILED import, not a
+                // successful library entry. Existing library data is untouched.
+                val completePdf = visionFailedPageCount == 0 &&
+                    visionRejectedQuestionPages == 0 &&
+                    suspectedSkippedQuestionPages.isEmpty() &&
+                    pageRenderFailureCount == 0 &&
+                    processingStatus.ocrFailureCount == 0 &&
+                    mergedOrMisnumberedCropCount == 0 &&
+                    pageCoverageMissingStartCount == 0 &&
+                    pageCoverageDuplicateStartCount == 0 &&
+                    allExtractedQuestions.all {
+                        it.answerKeyMatched && it.topicName.isNotBlank()
+                    }
+                if (!completePdf) {
+                    _batchErrorText.value = "Kitap eksik veya güvensiz: " +
+                        "${visionFailedPageCount} AI sayfa hatası, " +
+                        "${visionRejectedQuestionPages} reddedilmiş kırpma sayfası, " +
+                        "${suspectedSkippedQuestionPages.size} şüpheli eksik sayfa, " +
+                        "${allExtractedQuestions.count { !it.answerKeyMatched }} cevabı doğrulanmayan soru. " +
+                        "Hatalı kitabı otomatik kaydetmedik; önce bunları düzeltmek gerekir."
+                    // These cropped files were staged only for this import.
+                    // Do not delete previously saved library images.
+                    allExtractedQuestions.forEach { question ->
+                        if (question.croppedImagePath.isNotBlank()) {
+                            StudioImageAndPdfEngine.deleteQuestionImage(
+                                context, question.croppedImagePath
+                            )
+                        }
+                    }
+                    completeOnce(emptyList(), "", "")
+                    return@launch
+                }
                 _batchProgressPercent.value = 100
-                _batchStatusText.value = "Sayfa $totalPdfPages / $totalPdfPages tamamlandı • Aktarılan Soru: ${allExtractedQuestions.size}"
+                _batchStatusText.value = "Sayfa $totalPdfPages / $totalPdfPages tamamlandı • Doğrulanmış Soru: ${allExtractedQuestions.size}"
                 completeOnce(allExtractedQuestions, coverPath, finalBookTitle)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException && e !is TimeoutCancellationException) throw e

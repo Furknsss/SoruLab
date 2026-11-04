@@ -1,0 +1,18 @@
+name: Vision lab benchmark safety checks
+on:
+  push:
+    branches: ['feat/pdf-vision-gemini38-grounded-20261104']
+    paths: ['tools/vision_lab/**', '.github/workflows/vision-lab-benchmark.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sorulab-vision-lab-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  benchmark-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s tools/vision_lab -p 'test_*.py' -v

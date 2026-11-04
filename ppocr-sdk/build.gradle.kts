@@ -4,7 +4,7 @@ plugins {
 }
 android {
     namespace = "com.paddle.ocr"
-    compileSdk = 36
+    compileSdk { version = release(36) { minorApiLevel = 1 } }
     defaultConfig {
         // Preserve existing SoruLab minSdk=24, but invoke Paddle only on API>=26.
         // Upstream Android demo supports API>=26.

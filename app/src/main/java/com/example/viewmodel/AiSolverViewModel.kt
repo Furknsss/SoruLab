@@ -23,6 +23,7 @@ import com.example.util.PdfOcrTextCell
 import com.example.util.verifiedPrintedQuestionNumber
 import com.example.util.PdfScopedAnswerKeys
 import com.example.util.StudioImageAndPdfEngine
+import com.example.util.PdfPaddleMobileOcr
 import com.example.util.PdfVisionGeminiEngine
 import com.example.util.PdfVisionImportPolicy
 import com.example.util.PdfVisionAnswerConsensus
@@ -1268,8 +1269,31 @@ class AiSolverViewModel : ViewModel() {
                                 // using the two printed column margins.
                                 val imageOnlyAnchors = if (!sourceBackedPage) {
                                     val secondPass = recognizeSupplementalNumberAnchors(pageBitmap)
-                                    com.example.util.PdfPrintedAnchorConsensus.reconcile(
+                                    val mlKitAnchors = com.example.util.PdfPrintedAnchorConsensus.reconcile(
                                         ocrPageLayout.questionNumberAnchors, secondPass,
+                                        pageBitmap.width, pageBitmap.height
+                                    )
+                                    // Real free on-device PP-OCRv6 proposes independent
+                                    // printed starts; never let it silently invent
+                                    // numbers or substitute for a printed answer key.
+                                    val paddleNumbers = if (
+                                        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
+                                    ) {
+                                        try {
+                                            PdfPaddleMobileOcr.readPage(
+                                                context, pageBitmap
+                                            ).questionNumberAnchors
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (e: Exception) {
+                                            android.util.Log.w(
+                                                "SoruLabPaddle", "Paddle unavailable; retain ML Kit source evidence", e
+                                            )
+                                            emptyList()
+                                        }
+                                    } else emptyList()
+                                    com.example.util.PdfPrintedAnchorConsensus.reconcile(
+                                        mlKitAnchors, paddleNumbers,
                                         pageBitmap.width, pageBitmap.height
                                     )
                                 } else emptyList()

@@ -23,6 +23,8 @@ import com.example.util.PdfOcrTextCell
 import com.example.util.verifiedPrintedQuestionNumber
 import com.example.util.PdfScopedAnswerKeys
 import com.example.util.StudioImageAndPdfEngine
+import com.example.util.PdfVisionGeminiEngine
+import com.example.util.PdfVisionImportPolicy
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.Schema
@@ -1123,7 +1125,7 @@ class AiSolverViewModel : ViewModel() {
                 // STEP 2: Use the local PDF text layer and curriculum dictionary.
                 _batchProgressPercent.value = 14
                 _batchStatusText.value =
-                    "Yerel PDF metin haritası hazırlandı • ML Kit OCR ve SoruLab kırpma motoru başlatılıyor..."
+                    "PDF metin haritası hazırlandı • Gemini 3.8 görsel sayfa/cevap motoru başlatılıyor..."
 
                 // STEP 3: On-device ML Kit OCR anchors plus SoruLab's local question-region cropper.
                 val resolvedPub = SoruLabPublisherPresets.resolvePublisher(publisherName, customPublishers)
@@ -1139,6 +1141,10 @@ class AiSolverViewModel : ViewModel() {
                 var pageCoveragePagesAudited = 0
                 val pendingHorizontalGrids = mutableListOf<Pair<PdfAnswerScope, PdfHorizontalAnswerGrid>>()
                 val pendingVectorFooterKeys = mutableListOf<Pair<PdfAnswerScope, Map<Int, String>>>()
+                val pendingVisionPrintedKeys = mutableListOf<Pair<PdfAnswerScope, List<Pair<Int, String>>>>()
+                var visionFailedPageCount = 0
+                var visionRejectedQuestionPages = 0
+                var visionAcceptedQuestionPages = 0
                 var detectedAnswerPages = 0
                 var pageRenderFailureCount = 0
                 val suspectedSkippedQuestionPages = linkedSetOf<Int>()
@@ -1267,8 +1273,39 @@ class AiSolverViewModel : ViewModel() {
                                 val pageLayout = if (sourceBackedPage) {
                                     ocrPageLayout.copy(questionNumberAnchors = nativeAnchors)
                                 } else ocrPageLayout.copy(questionNumberAnchors = imageOnlyAnchors)
+                                // The old ML Kit projection is no longer the
+                                // PRIMARY question-region detector. Analyze
+                                // the complete page with multimodal structured
+                                // document vision; independently validate all
+                                // returned rectangles before saving anything.
+                                val visionPage = try {
+                                    PdfVisionGeminiEngine.readPage(
+                                        pageBitmap,
+                                        pageIdx + 1,
+                                        localBlueprint.pageSourceHeaders[pageIdx].orEmpty()
+                                    )
+                                } catch (e: CancellationException) {
+                                    if (e !is TimeoutCancellationException) throw e
+                                    visionFailedPageCount++
+                                    null
+                                } catch (e: Exception) {
+                                    visionFailedPageCount++
+                                    android.util.Log.w(
+                                        "SoruLabVisionImport", "Vision page ${pageIdx + 1} unavailable", e
+                                    )
+                                    null
+                                }
+                                if (visionPage != null &&
+                                    visionPage.pageType == "answer_key"
+                                ) {
+                                    pendingVisionPrintedKeys.addAll(
+                                        PdfVisionImportPolicy.verifiedPrintedKeyCandidates(visionPage)
+                                    )
+                                }
                                 val hasQuestionOptions = sourceBackedPage ||
-                                    pageLayout.optionAnchors.map { it.option }.distinct().size >= 3
+                                    pageLayout.optionAnchors.map { it.option }.distinct().size >= 3 ||
+                                    (visionPage?.pageType == "questions" &&
+                                        visionPage.questions.isNotEmpty())
                                 val hasAnswerKeyMarker =
                                     StudioImageAndPdfEngine.hasAnswerKeyMarker(pageLayout.text)
                                 val isAnswerTablePage =
@@ -1330,8 +1367,8 @@ class AiSolverViewModel : ViewModel() {
                                     // Skip only when there is NO valid A-E
                                     // multiple-choice question evidence.
                                     val hasQuestionEvidence =
-                                        pageLayout.questionNumberAnchors.isNotEmpty() &&
-                                            hasQuestionOptions
+                                        (visionPage?.pageType == "questions" &&
+                                            visionPage.questions.isNotEmpty())
                                     if (!hasQuestionEvidence) {
                                         // A separate key page needs its own explicit heading.
                                         if (gridHeaderScope != null) pageLayout.answerGrids.forEach {
@@ -1340,7 +1377,8 @@ class AiSolverViewModel : ViewModel() {
                                         continue
                                     }
                                 }
-                                if (skipPage && !sourceBackedPage) {
+                                if (skipPage && !sourceBackedPage &&
+                                    visionPage?.pageType != "questions") {
                                     // A skip heuristic must never silently hide
                                     // a page with credible printed question and
                                     // multiple-choice evidence.
@@ -1353,8 +1391,8 @@ class AiSolverViewModel : ViewModel() {
                                 // printed number or the A-E row from whole-page
                                 // OCR. Do not invent missing anchors: mark this
                                 // page for review instead of reporting 100%.
-                                if (pageLayout.questionNumberAnchors.isEmpty() ||
-                                    !hasQuestionOptions) {
+                                if (visionPage?.pageType != "questions" ||
+                                    visionPage.questions.isEmpty()) {
                                     if (pageLayout.questionNumberAnchors.isNotEmpty() ||
                                         pageLayout.optionAnchors.map { it.option }
                                             .distinct().size >= 3
@@ -1436,7 +1474,14 @@ class AiSolverViewModel : ViewModel() {
                                     topicName = resolvedPageTopic,
                                     isSkipPage = false
                                 )
+                                val visionHeaderScope = visionPage.printedHeader
+                                    .takeIf(String::isNotBlank)?.let {
+                                        PdfScopedAnswerKeys.scopeFromQuestionHeader(
+                                            it, scanPageInfo.topicName
+                                        )
+                                    }
                                 val detectedScope = vectorHeaderScope ?: gridHeaderScope
+                                    ?: visionHeaderScope
                                     ?: PdfScopedAnswerKeys.scopeFromQuestionHeader(
                                         pageLayout.scopeHeaderText, scanPageInfo.topicName
                                     )
@@ -1464,99 +1509,71 @@ class AiSolverViewModel : ViewModel() {
                                     pendingHorizontalGrids += pageAnswerScope to grid
                                 }
 
-                                var croppedBoxes = try {
-                                    StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
-                                        context = context,
-                                        pageBitmap = pageBitmap,
-                                        pageIndex = pageIdx,
-                                        totalPages = rendererTotal,
-                                        reusablePixelsRef = reusablePixelsRef,
-                                        questionNumberAnchors = pageLayout.questionNumberAnchors,
-                                        optionAnchors = pageLayout.optionAnchors,
-                                        maxQuestionBottomY = pageLayout.answerGrids
-                                            .filter { grid ->
-                                                grid.top > (pageLayout.questionNumberAnchors
-                                                    .maxOfOrNull { it.top } ?: Int.MAX_VALUE)
-                                            }.minOfOrNull { it.top }
-                                    )
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (_: OutOfMemoryError) {
-                                    reusablePixelsRef[0] = null
-                                    pageRenderFailureCount++
-                                    emptyList()
-                                } catch (_: Exception) {
-                                    pageRenderFailureCount++
-                                    emptyList()
+                                // Vision replaces the hand-built projection
+                                // cropper for bulk import. A model prediction is
+                                // never automatically trusted: printed-number
+                                // identities, image bounds and cross-crop
+                                // overlaps are checked independently.
+                                val corroborated = if (sourceBackedPage) {
+                                    nativeAnchors
+                                } else {
+                                    pageLayout.questionNumberAnchors
                                 }
-
-                                // Independent safety pass: if the native PDF text
-                                // proves that printed questions exist but OCR-based
-                                // cropping missed them, retry using the validated
-                                // page-local printed numbers. Accept the second pass
-                                // only if it preserves all source-confirmed questions
-                                // and adds at least one missing number; never guess.
-                                val sourcePrintedNumbers =
-                                    nativeAnchors.map { it.number }.toSet()
-                                val firstPassPrintedNumbers = croppedBoxes.filter {
-                                    it.hasPrintedQuestionNumber
-                                }.map { it.questionOrderInPage }
-                                val sourceHasOptionEvidence =
-                                    pageIdx in localBlueprint.pageVectorOptionEvidence
-                                if (com.example.util.PdfCropRecoveryPolicy.shouldRetry(
-                                        sourcePrintedNumbers, firstPassPrintedNumbers.toSet(),
-                                        sourceHasOptionEvidence
-                                    )
-                                ) {
-                                    val reCropped = try {
-                                        StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
+                                val validatedBoxes = PdfVisionImportPolicy.validateQuestionBoxes(
+                                    page = visionPage,
+                                    pageWidth = pageBitmap.width,
+                                    pageHeight = pageBitmap.height,
+                                    independentPrintedAnchors = corroborated,
+                                    requireExactPrintedCoverage = sourceBackedPage
+                                )
+                                if (validatedBoxes.isEmpty()) {
+                                    visionRejectedQuestionPages++
+                                    suspectedSkippedQuestionPages.add(pageIdx)
+                                    continue
+                                }
+                                val corroboratedNumbers = corroborated.map { it.number }.toSet()
+                                val candidateCrops = mutableListOf<
+                                    StudioImageAndPdfEngine.LocalCroppedBoxResult>()
+                                for (visionBox in validatedBoxes) {
+                                    val item = try {
+                                        StudioImageAndPdfEngine.cropQuestionFromNormalizedBox(
                                             context = context,
                                             pageBitmap = pageBitmap,
+                                            box2d = visionBox.toNormalizedBox(),
                                             pageIndex = pageIdx,
-                                            totalPages = rendererTotal,
-                                            reusablePixelsRef = reusablePixelsRef,
-                                            questionNumberAnchors = nativeAnchors,
-                                            optionAnchors = pageLayout.optionAnchors,
-                                            maxQuestionBottomY = pageLayout.answerGrids
-                                                .filter { grid ->
-                                                    grid.top > (nativeAnchors.maxOfOrNull { it.top }
-                                                        ?: Int.MAX_VALUE)
-                                                }.minOfOrNull { it.top }
+                                            questionOrder = visionBox.number,
+                                            difficulty = "Orta",
+                                            addPadding = false
                                         )
                                     } catch (e: CancellationException) {
                                         throw e
-                                    } catch (_: OutOfMemoryError) {
-                                        reusablePixelsRef[0] = null
-                                        emptyList()
                                     } catch (e: Exception) {
-                                        android.util.Log.w(
-                                            "SoruLabPdfImport",
-                                            "Native number recovery unavailable at page ${pageIdx + 1}", e
-                                        )
-                                        emptyList()
+                                        android.util.Log.w("SoruLabVisionImport",
+                                            "Source page ${pageIdx + 1} crop persist failure", e)
+                                        null
                                     }
-                                    val recoveredNumbers = reCropped.filter {
-                                        it.hasPrintedQuestionNumber
-                                    }.map { it.questionOrderInPage }
-                                    val useRecovered =
-                                        com.example.util.PdfCropRecoveryPolicy.preferRecovery(
-                                            sourcePrintedNumbers, firstPassPrintedNumbers, recoveredNumbers
-                                        )
-                                    val unselected = if (useRecovered) croppedBoxes else reCropped
-                                    // Delete only the temporary images from the
-                                    // unselected crop pass; none were added to
-                                    // the student's question library yet.
-                                    unselected.forEach { box ->
-                                        if (box.croppedImagePath.isNotBlank()) {
-                                            runCatching { java.io.File(box.croppedImagePath).delete() }
-                                        }
-                                    }
-                                    if (useRecovered) {
-                                        croppedBoxes = reCropped
-                                        recoveredPrintedQuestionPages++
-                                    }
+                                    if (item == null) break
+                                    candidateCrops.add(item.copy(
+                                        // A vision-only printed number is not
+                                        // independent evidence for a correct key.
+                                        hasPrintedQuestionNumber =
+                                            visionBox.number in corroboratedNumbers,
+                                        columnIndex = if (visionBox.left >= 500) 1 else 0
+                                    ))
                                 }
-
+                                if (candidateCrops.size != validatedBoxes.size) {
+                                    candidateCrops.forEach {
+                                        runCatching { java.io.File(it.croppedImagePath).delete() }
+                                    }
+                                    visionRejectedQuestionPages++
+                                    suspectedSkippedQuestionPages.add(pageIdx)
+                                    continue
+                                }
+                                visionAcceptedQuestionPages++
+                                val croppedBoxes = candidateCrops.toList()
+                                val sourcePrintedNumbers = nativeAnchors.map { it.number }.toSet()
+                                // Recovery no longer promotes unsafe pixel
+                                // projections into the imported question set.
                                 // A successful image save is NOT proof that
                                 // exactly one source question was cropped.
                                 // Validate rectangles against native printed
@@ -1726,6 +1743,13 @@ class AiSolverViewModel : ViewModel() {
                 for ((scope, pageKeys) in pendingVectorFooterKeys) {
                     scopedAnswers.addPairs(scope, pageKeys.toList())
                 }
+                // The new vision engine TRANSCRIBES printed answer tables.
+                // It is forbidden to solve questions as a substitute for a
+                // printed answer key. Conflicting independent sources are
+                // automatically quarantined by PdfScopedAnswerKeys.addPairs.
+                for ((scope, pairs) in pendingVisionPrintedKeys) {
+                    scopedAnswers.addPairs(scope, pairs)
+                }
 
                 // Match the completed, per-PDF answer index to the exact
                 // chapter/test/printed-number identity of each extracted question.
@@ -1781,6 +1805,15 @@ class AiSolverViewModel : ViewModel() {
                             (printed - detected).takeIf { it.isNotEmpty() }
                                 ?.let { pageIndex to it }
                         }
+                    if (visionFailedPageCount > 0 || visionRejectedQuestionPages > 0) {
+                        add("GÖRSEL BELGE ANALİZİ: $visionAcceptedQuestionPages sayfada " +
+                            "Gemini 3.8 ile doğrulanmış kırpma üretildi. " +
+                            "$visionFailedPageCount sayfada model/bağlantı başarısız, " +
+                            "$visionRejectedQuestionPages sayfada modelin kutuları " +
+                            "bağımsız geometri denetiminden geçmedi. " +
+                            "Bu sayfalar EKSIK olarak raporlandı, eski piksel " +
+                            "kırpıcısıyla sessizce tamamlanmış sayılmadı.")
+                    }
                     if (mergedOrMisnumberedCropCount > 0) {
                         add("KIRPMA BÜTÜNLÜĞÜ: $mergedOrMisnumberedCropCount görüntüde " +
                             "birleşmiş, mükerrer, yanlış numaralı veya kaynağı belirsiz kırpma " +

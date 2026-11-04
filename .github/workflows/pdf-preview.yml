@@ -2,7 +2,7 @@ name: PDF preview APK
 on:
   workflow_dispatch:
   push:
-    branches: ['feat/premium-pdf-v5', 'fix/pdf-rc5-patternsyntax-regression', 'fix/rc7-auth-universal-pdf-layout-ink', 'fix/rc8-pdf-completeness-spen-layout', 'fix/rc9-universal-pdf-ocr-crop-quality', 'fix/rc9-consensus-no-anchor-regression']
+    branches: ['feat/premium-pdf-v5', 'fix/pdf-rc5-patternsyntax-regression', 'fix/rc7-auth-universal-pdf-layout-ink', 'fix/rc8-pdf-completeness-spen-layout', 'fix/rc9-universal-pdf-ocr-crop-quality', 'fix/rc9-consensus-no-anchor-regression', 'feat/pdf-vision-gemini38-grounded-20261104']
   pull_request:
     branches: ['feat/premium-pdf-v5', 'feat/pdf-v5-biyotik-premium-review', 'feat/s-pen-s9feplus-ink-gestures', 'fix/rc7-auth-universal-pdf-layout-ink', 'fix/rc8-pdf-completeness-spen-layout']
 permissions:

@@ -48,4 +48,29 @@ class PdfPrintedAnchorConsensusTest {
         )
         assertEquals(primary, recovered)
     }
+
+    @Test fun longerFigureNumberRunMustNotDiscardRealPrintedQuestions() {
+        val printed = listOf(q(7, 82, 190), q(8, 82, 900), q(9, 940, 180))
+        val figureLabels = (1..8).map { q(it, 280, 630 + it * 80) }
+        val result = PdfPrintedAnchorConsensus.reconcile(
+            primary = printed,
+            secondPass = printed + figureLabels,
+            pageWidth = 1800,
+            pageHeight = 2400
+        )
+        assertEquals(printed, result)
+    }
+
+    @Test fun identicalNumbersInDistantGraphAreNotEvidenceOfSameQuestion() {
+        val printed = listOf(q(1, 82, 190), q(2, 82, 820))
+        val chartLabels = (1..8).map { q(it, 280, 500 + it * 90) }
+        val result = PdfPrintedAnchorConsensus.reconcile(
+            primary = printed,
+            secondPass = printed + chartLabels,
+            pageWidth = 1800,
+            pageHeight = 2400
+        )
+        assertEquals(printed, result)
+    }
+
 }

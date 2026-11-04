@@ -9,6 +9,9 @@ on:
       - 'app/src/androidTest/java/com/example/util/PdfVisionGeminiLiveDeviceTest.kt'
       - 'app/src/main/java/com/example/util/PdfVisionGeminiEngine.kt'
       - 'app/src/main/java/com/example/util/PdfVisionImportPolicy.kt'
+      - 'app/src/main/java/com/example/util/AppCheckHelper.kt'
+      - 'app/build.gradle.kts'
+      - 'gradle/libs.versions.toml'
       - '.github/workflows/pdf-gemini-live-canary.yml'
 
 permissions:

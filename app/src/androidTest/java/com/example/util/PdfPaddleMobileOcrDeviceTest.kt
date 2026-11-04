@@ -9,6 +9,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -38,6 +39,26 @@ class PdfPaddleMobileOcrDeviceTest {
             )
             assertTrue("ONNX model returned no real OCR text",result.lineCount>=2)
             assertTrue("No source coordinates returned",result.textCells.isNotEmpty())
+            assertTrue("Paddle did not read the first printed question number",
+                result.questionNumberAnchors.any { it.number == 1 && it.top in 220..330 })
+            assertTrue("Paddle did not read the second printed question number",
+                result.questionNumberAnchors.any { it.number == 2 && it.top in 760..870 })
+            assertTrue("Paddle did not recognize the authored question text",
+                result.textCells.any { it.text.contains("SORU", ignoreCase = true) })
+            assertTrue("OCR coordinates escaped the source page",
+                result.textCells.all {
+                    it.left >= 0 && it.top >= 0 && it.right <= image.width &&
+                        it.bottom <= image.height && it.right > it.left && it.bottom > it.top
+                })
+
+            // Reuse the same native session on a new blank page. Stale OCR
+            // buffers must never create question starts in the next PDF page.
+            image.eraseColor(Color.WHITE)
+            val blank = PdfPaddleMobileOcr.readPage(
+                InstrumentationRegistry.getInstrumentation().targetContext, image
+            )
+            assertEquals("Blank page retained previous OCR text", 0, blank.lineCount)
+            assertTrue("Blank page invented question numbers", blank.questionNumberAnchors.isEmpty())
         } finally {
             image.recycle()
         }

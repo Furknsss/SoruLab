@@ -43,11 +43,25 @@ internal object PdfCropGeometryAudit {
             midX >= left && midX <= right && midY >= top && midY <= bottom
         }
         val issues = mutableSetOf<PdfCropIssue>()
-        if (printedInside.map { it.number }.distinct().size > 1) {
+        // Physical printed starts matter, not just the SET of number values.
+        // Two different tests may both print "1." on one page; a crop that
+        // contains both is still a merged crop. Conversely, overlapping OCR
+        // detections of a single printed glyph must not count as two questions.
+        val xTolerance = kotlin.math.max(4f, pageWidth * .016f)
+        val yTolerance = kotlin.math.max(6f, pageHeight * .012f)
+        val distinctStarts = mutableListOf<QuestionNumberAnchor>()
+        printedInside.forEach { anchor ->
+            if (distinctStarts.none {
+                    kotlin.math.abs(it.left - anchor.left) < xTolerance &&
+                        kotlin.math.abs(it.top - anchor.top) < yTolerance
+                }) distinctStarts.add(anchor)
+        }
+        if (distinctStarts.size > 1) {
             issues += PdfCropIssue.MULTIPLE_PRINTED_QUESTIONS_IN_ONE_CROP
         }
-        if (crop.printedNumber > 0 && sourceNumbers.isNotEmpty() &&
-            printedInside.none { it.number == crop.printedNumber }
+        if (sourceNumbers.isNotEmpty() &&
+            (crop.printedNumber <= 0 ||
+                distinctStarts.none { it.number == crop.printedNumber })
         ) issues += PdfCropIssue.WRONG_OR_MISSING_PRINTED_START
         return issues
     }

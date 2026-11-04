@@ -73,4 +73,38 @@ class PdfPrintedAnchorConsensusTest {
         assertEquals(printed, result)
     }
 
+
+    @Test fun sampledScannedBookPageRecoversAllFivePrintedStartsDespiteDiagramOne() {
+        // Anonymized positions from an image-only textbook page. The diagram
+        // repeats a small "1." well inside the left column; it is not a
+        // second question one. Coordinates are not publisher detection rules.
+        val expected = listOf(
+            q(1, 108, 195), q(2, 108, 926), q(3, 108, 1337),
+            q(4, 682, 194), q(5, 682, 895)
+        )
+        val primary = listOf(expected[0], expected[1], expected[3])
+        val chartLabel = q(1, 172, 428)
+        val result = PdfPrintedAnchorConsensus.reconcile(
+            primary = primary,
+            secondPass = expected + chartLabel,
+            pageWidth = 1290,
+            pageHeight = 1720
+        )
+        assertEquals(listOf(1, 2, 3, 4, 5), result.map { it.number })
+    }
+
+    @Test fun actualScannedPageWithGraphicNumberCannotReplaceFiveKnownStarts() {
+        val printed = listOf(
+            q(1, 108, 195), q(2, 108, 926), q(3, 108, 1337),
+            q(4, 682, 194), q(5, 682, 895)
+        )
+        val result = PdfPrintedAnchorConsensus.reconcile(
+            primary = printed,
+            secondPass = printed + q(1, 172, 428),
+            pageWidth = 1290,
+            pageHeight = 1720
+        )
+        assertEquals(printed, result)
+    }
+
 }

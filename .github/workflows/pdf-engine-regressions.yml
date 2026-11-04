@@ -39,6 +39,7 @@ jobs:
           --tests com.example.util.PdfCropperSyntheticPageTest
           --tests com.example.util.PdfColumnLayoutEvidenceTest
           --tests com.example.util.PdfVectorQuestionAnchorsTest
+          --tests com.example.util.PdfVectorQuestionAnchorsLayoutCorpusTest
           --tests com.example.util.PdfScopedAnswerKeysTest
           --tests com.example.data.SoruLabQuestionClassificationTest
           --tests com.example.util.PdfAnswerSourceConsensusTest

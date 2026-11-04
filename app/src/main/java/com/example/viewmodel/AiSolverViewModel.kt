@@ -1134,6 +1134,9 @@ class AiSolverViewModel : ViewModel() {
                 val expectedScopeByQuestionId = mutableMapOf<String, PdfAnswerScope>()
                 val unsafeCropQuestionIds = mutableSetOf<String>()
                 var mergedOrMisnumberedCropCount = 0
+                var pageCoverageMissingStartCount = 0
+                var pageCoverageDuplicateStartCount = 0
+                var pageCoveragePagesAudited = 0
                 val pendingHorizontalGrids = mutableListOf<Pair<PdfAnswerScope, PdfHorizontalAnswerGrid>>()
                 val pendingVectorFooterKeys = mutableListOf<Pair<PdfAnswerScope, Map<Int, String>>>()
                 var detectedAnswerPages = 0
@@ -1538,18 +1541,34 @@ class AiSolverViewModel : ViewModel() {
                                             ) -> pageLayout.questionNumberAnchors
                                     else -> emptyList()
                                 }
-                                val unsafeCropIndexes = if (auditSourceNumbers.isNotEmpty()) {
+                                // Whole-page completeness is distinct from the
+                                // safety of each crop: two individually plausible
+                                // crops can overlap a single question while
+                                // another printed question disappears.
+                                val cropEvidence = croppedBoxes.map { box ->
+                                    com.example.util.PdfQuestionCropEvidence(
+                                        box.questionOrderInPage, box.boxNormalized
+                                    )
+                                }
+                                val pageCoverage = com.example.util.PdfPageCropCoverageAudit.assess(
+                                    auditSourceNumbers, cropEvidence,
+                                    pageBitmap.width, pageBitmap.height
+                                )
+                                if (pageCoverage.sourceEvidenceAvailable) {
+                                    pageCoveragePagesAudited++
+                                    pageCoverageMissingStartCount += pageCoverage.missingStartCount
+                                    pageCoverageDuplicateStartCount += pageCoverage.duplicateStartCount
+                                }
+                                val individuallyUnsafe = if (auditSourceNumbers.isNotEmpty()) {
                                     croppedBoxes.indices.filter { cropIndex ->
-                                        val box = croppedBoxes[cropIndex]
                                         com.example.util.PdfCropGeometryAudit.issues(
-                                            com.example.util.PdfQuestionCropEvidence(
-                                                box.questionOrderInPage, box.boxNormalized
-                                            ),
-                                            auditSourceNumbers, pageBitmap.width,
-                                            pageBitmap.height
+                                            cropEvidence[cropIndex], auditSourceNumbers,
+                                            pageBitmap.width, pageBitmap.height
                                         ).isNotEmpty()
                                     }.toSet()
                                 } else emptySet()
+                                val unsafeCropIndexes = individuallyUnsafe +
+                                    pageCoverage.unsafeCropIndexes
                                 mergedOrMisnumberedCropCount += unsafeCropIndexes.size
 
                                 val pageCandidates = if (croppedBoxes.isEmpty()) {
@@ -1725,9 +1744,18 @@ class AiSolverViewModel : ViewModel() {
                                 ?.let { pageIndex to it }
                         }
                     if (mergedOrMisnumberedCropCount > 0) {
-                        add("KIRPMA BÜTÜNLÜĞÜ: $mergedOrMisnumberedCropCount görüntüde birden " +
-                            "fazla basılı soru numarası veya yanlış soru başlangıcı saptandı. " +
-                            "Bu görüntüler cevapları bulunsa bile doğrulanmış sayılmadı.")
+                        add("KIRPMA BÜTÜNLÜĞÜ: $mergedOrMisnumberedCropCount görüntüde " +
+                            "birleşmiş, mükerrer, yanlış numaralı veya kaynağı belirsiz kırpma " +
+                            "saptandı. Bu görüntüler cevapları bulunsa bile doğrulanmış sayılmadı.")
+                    }
+                    if (pageCoverageMissingStartCount > 0 ||
+                        pageCoverageDuplicateStartCount > 0
+                    ) {
+                        add("SAYFA BÜTÜNLÜĞÜ: kaynakta güvenle tespit edilmiş " +
+                            "$pageCoverageMissingStartCount basılı soru başlangıcı eksik, " +
+                            "$pageCoverageDuplicateStartCount başlangıç birden fazla kırpmada " +
+                            "görünüyor. Kaynak numarası bulunan $pageCoveragePagesAudited " +
+                            "sayfa denetlendi. Kitap eksiksiz aktarılmış sayılamaz.")
                     }
                     val missedPrintedCount = vectorMissingByPage.sumOf { it.second.size }
                     if (missedPrintedCount > 0) {

@@ -121,4 +121,62 @@ class PdfOcrAndCropDeviceTest {
             page.recycle()
         }
     }
+
+    @Test
+    fun embeddedMlKitReadsAnswerGridAndBindsOnlyPrintedTestIdentity() {
+        // Fully original large-print answer table so the Android OCR model
+        // (rather than a mocked OCR string) supplies all parser input.
+        val width = 1600
+        val height = 1100
+        val page = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        page.eraseColor(Color.WHITE)
+        val canvas = Canvas(page)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 64f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        fun text(x: Float, y: Float, value: String) {
+            canvas.drawText(value, x, y, paint)
+        }
+
+        try {
+            text(100f, 175f, "SINIR SISTEMI")
+            text(100f, 335f, "TEST 1")
+            text(105f, 505f, "1.A")
+            text(325f, 505f, "2.B")
+            text(545f, 505f, "3.C")
+            text(765f, 505f, "4.D")
+            text(985f, 505f, "5.E")
+
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            val recognized = try {
+                Tasks.await(
+                    recognizer.process(InputImage.fromBitmap(page, 0)),
+                    90, TimeUnit.SECONDS
+                )
+            } finally {
+                recognizer.close()
+            }
+            val cells = recognized.textBlocks.flatMap { block -> block.lines }
+                .mapNotNull { line ->
+                    val b = line.boundingBox ?: return@mapNotNull null
+                    PdfOcrTextCell(line.text, b.left, b.top, b.right, b.bottom)
+                }
+            val regions = PdfAdaptiveAnswerRows.regions(cells, width)
+            val answers = PdfScopedAnswerKeys(setOf("sinir sistemi"))
+            regions.forEach(answers::addOcrRows)
+            val scope = PdfAnswerScope("sinir sistemi", 1, false)
+            assertEquals(
+                "On-device OCR + answer-table parser must preserve printed A-E identity",
+                listOf("A", "B", "C", "D", "E"),
+                (1..5).map { answers.get(scope, it) }
+            )
+            // No previous-page or unrelated test may inherit this key.
+            assertEquals(null, answers.get(PdfAnswerScope("sinir sistemi", 2, false), 1))
+        } finally {
+            page.recycle()
+        }
+    }
+
 }

@@ -107,8 +107,11 @@ internal object PdfVisionGeminiEngine {
             - Never invent an answer for unreadable or missing cells.
             - Only include a test when its chapter and test number are
               printed and unambiguous. Multiple tables are possible.
-            - answerTests: [] on ordinary question pages, even if their
-              multiple-choice options resemble an answer grid.
+            - On a mixed page with questions AND an explicit printed
+              answer-key grid, include answerTests ONLY if the same page
+              visibly identifies the chapter and test. Never confuse A-E
+              options within a question with printed answer-key cells.
+            - Otherwise answerTests: [] on ordinary question pages.
 
             Otherwise pageType=other, with empty arrays.
             Transcribe printedHeader from visible page title only; do not

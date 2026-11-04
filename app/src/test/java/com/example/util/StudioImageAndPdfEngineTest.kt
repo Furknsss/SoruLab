@@ -219,7 +219,7 @@ class StudioImageAndPdfEngineTest {
             StudioImageAndPdfEngine.detectPrintedTopicNameFromHeader(
                 examType = "AYT",
                 subjectName = "Biyoloji",
-                header = "ANALİZ 21\\nDuyu Organları Genel Tekrar\\n1. Deride bulunan reseptörler"
+                header = "ANALİZ 21\nDuyu Organları Genel Tekrar\n1. Deride bulunan reseptörler"
             )
         )
         assertEquals(
@@ -227,7 +227,7 @@ class StudioImageAndPdfEngineTest {
             StudioImageAndPdfEngine.detectPrintedTopicNameFromHeader(
                 examType = "AYT",
                 subjectName = "Biyoloji",
-                header = "ANALİZ 2\\nSinir Sistemi\\n1. Bir nöron"
+                header = "ANALİZ 2\nSinir Sistemi\n1. Bir nöron"
             )
         )
         assertEquals(

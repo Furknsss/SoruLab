@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/rc9-consensus-no-anchor-regression
+      - feat/pdf-vision-gemini38-grounded-20261104
     paths:
       - 'app/src/androidTest/**'
       - 'app/src/main/java/com/example/util/**'

@@ -266,6 +266,47 @@ fun DenemelerHubScreen(
         }
 
         item {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = Color.White,
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, Color(0xFFDBEAFE))
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "PDF Soru Stüdyosu",
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF0F172A),
+                            fontSize = 15.sp
+                        )
+                        Text(
+                            "$customQuestionsCount kayıtlı soru · PDF'den soru kırp ve incele",
+                            color = Color(0xFF64748B),
+                            fontSize = 12.sp,
+                            maxLines = 2
+                        )
+                    }
+                    Button(
+                        onClick = onOpenPdfStudio,
+                        modifier = Modifier.testTag("denemeler_open_pdf_studio"),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF2563EB),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text("PDF Aç", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),

@@ -1,0 +1,55 @@
+name: PDF engine regression checks
+
+on:
+  push:
+    branches:
+      - 'fix/rc9-*'
+  pull_request:
+    branches:
+      - 'fix/rc9-*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pdf-engine-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: sdkmanager 'platforms;android-36.1' 'build-tools;36.0.0'
+      - name: Check literal Kotlin regular expressions
+        run: python3 scripts/validate_kotlin_raw_regex.py
+      - name: Run PDF crop and answer matching regressions
+        run: >-
+          bash ./gradlew :app:testDebugUnitTest
+          --tests com.example.util.PdfPrintedAnchorConsensusTest
+          --tests com.example.util.PdfCropGeometryAuditTest
+          --tests com.example.util.PdfCropperSyntheticPageTest
+          --tests com.example.util.PdfColumnLayoutEvidenceTest
+          --tests com.example.util.PdfVectorQuestionAnchorsTest
+          --tests com.example.util.PdfScopedAnswerKeysTest
+          --tests com.example.util.PdfAnswerSourceConsensusTest
+          --tests com.example.util.PdfHorizontalAnswerGridTest
+          --tests com.example.util.PdfVectorAnswerStripTest
+          --no-daemon --no-configuration-cache --max-workers=2
+      - name: Preserve test reports even on failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-engine-regressions
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: ignore
+          retention-days: 7

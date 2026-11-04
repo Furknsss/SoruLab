@@ -6,6 +6,10 @@ on:
       - fix/rc9-consensus-no-anchor-regression
     paths:
       - 'app/src/androidTest/**'
+      - 'app/src/main/java/com/example/util/**'
+      - 'app/src/main/java/com/example/viewmodel/AiSolverViewModel.kt'
+      - 'app/src/main/java/com/example/data/SoruLabModels.kt'
+      - 'app/build.gradle.kts'
       - '.github/workflows/pdf-ocr-device-qa.yml'
   workflow_dispatch:
 

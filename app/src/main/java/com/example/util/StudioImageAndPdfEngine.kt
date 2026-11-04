@@ -2332,9 +2332,24 @@ object StudioImageAndPdfEngine {
                     val lastQuestionInk = projectedBands
                         .filter { it.second >= anchor.bottom && it.first < hardEnd }
                         .maxOfOrNull { it.second.coerceAtMost(hardEnd) }
-                    val endY = (withinQuestionOptions?.plus(anchorPadding)
+                    // The projection stage can discard sparse, short option
+                    // rows (e.g., B) as noise when their band is <80 px.
+                    // When the NEXT printed question is known, its number
+                    // gives us a hard boundary: safely preserve every OCR
+                    // option belonging to this question, even when the
+                    // A-E sequence is incomplete.
+                    val lastObservedOptionBottom = nextAnchorTop?.let {
+                        optionsForQuestion.filter { opt ->
+                            opt.top < hardEnd && opt.bottom > anchor.top
+                        }.maxOfOrNull { opt -> opt.bottom.coerceAtMost(hardEnd) }
+                    }
+                    val projectedEnd = withinQuestionOptions?.plus(anchorPadding)
                         ?: lastQuestionInk?.plus(anchorPadding)
-                        ?: hardEnd).coerceIn(startY + 1, hardEnd)
+                        ?: hardEnd
+                    val endY = maxOf(
+                        projectedEnd,
+                        lastObservedOptionBottom?.plus(anchorPadding) ?: projectedEnd
+                    ).coerceIn(startY + 1, hardEnd)
                     startY to endY
                 }
 

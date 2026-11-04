@@ -5,6 +5,10 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.graphics.pdf.PdfDocument
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
+import java.io.FileOutputStream
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.gms.tasks.Tasks
@@ -176,6 +180,168 @@ class PdfOcrAndCropDeviceTest {
             assertEquals(null, answers.get(PdfAnswerScope("sinir sistemi", 2, false), 1))
         } finally {
             page.recycle()
+        }
+    }
+
+
+    @Test
+    fun generatedTwoPagePdfRendersThenOcrCropsAndMatchesPrintedAnswerKey() {
+        // Test the PDF-to-bitmap step missing from our earlier smoke tests.
+        // Everything is original test art; no user's copyrighted book is
+        // uploaded to GitHub or published as an Actions artifact.
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val pdf = File(context.cacheDir, "qa-two-page-${System.nanoTime()}.pdf")
+        val width = 1600
+        val height = 2000
+
+        try {
+            val document = PdfDocument()
+            try {
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.BLACK
+                    textSize = 51f
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                }
+                val questions = document.startPage(
+                    PdfDocument.PageInfo.Builder(width, height, 1).create()
+                )
+                val pageCanvas = questions.canvas
+                pageCanvas.drawColor(Color.WHITE)
+                fun question(x: Float, number: Int, title: String) {
+                    pageCanvas.drawText("$number. $title", x, 260f, paint)
+                    listOf("A) ONE", "B) TWO", "C) THREE", "D) FOUR", "E) FIVE")
+                        .forEachIndexed { index, option ->
+                            pageCanvas.drawText(option, x + 40f, 350f + index * 70f, paint)
+                        }
+                }
+                question(120f, 1, "FIRST QUESTION")
+                question(850f, 2, "NEXT QUESTION")
+                document.finishPage(questions)
+
+                val keyPage = document.startPage(
+                    PdfDocument.PageInfo.Builder(width, 1100, 2).create()
+                )
+                keyPage.canvas.drawColor(Color.WHITE)
+                paint.textSize = 64f
+                keyPage.canvas.drawText("SINIR SISTEMI", 100f, 175f, paint)
+                keyPage.canvas.drawText("TEST 1", 100f, 335f, paint)
+                listOf("1.A", "2.B", "3.C", "4.D", "5.E")
+                    .forEachIndexed { index, answer ->
+                        keyPage.canvas.drawText(answer, 105f + index * 220f, 505f, paint)
+                    }
+                document.finishPage(keyPage)
+                FileOutputStream(pdf).use { document.writeTo(it) }
+            } finally {
+                document.close()
+            }
+            assertTrue("Generated PDF must exist", pdf.isFile && pdf.length() > 0)
+
+            ParcelFileDescriptor.open(
+                pdf, ParcelFileDescriptor.MODE_READ_ONLY
+            ).use { descriptor ->
+                PdfRenderer(descriptor).use { renderer ->
+                    assertEquals("Must read both question and answer pages", 2, renderer.pageCount)
+                    fun render(index: Int): Bitmap {
+                        renderer.openPage(index).use { page ->
+                            val rendered = Bitmap.createBitmap(
+                                page.width, page.height, Bitmap.Config.ARGB_8888
+                            )
+                            rendered.eraseColor(Color.WHITE)
+                            page.render(
+                                rendered, null, null,
+                                PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
+                            )
+                            return rendered
+                        }
+                    }
+                    val questionBitmap = render(0)
+                    val answerBitmap = render(1)
+                    try {
+                        val recognizer = TextRecognition.getClient(
+                            TextRecognizerOptions.DEFAULT_OPTIONS
+                        )
+                        val questionText: com.google.mlkit.vision.text.Text
+                        val answerText: com.google.mlkit.vision.text.Text
+                        try {
+                            questionText = Tasks.await(
+                                recognizer.process(
+                                    InputImage.fromBitmap(questionBitmap, 0)
+                                ), 90, TimeUnit.SECONDS
+                            )
+                            answerText = Tasks.await(
+                                recognizer.process(InputImage.fromBitmap(answerBitmap, 0)),
+                                90, TimeUnit.SECONDS
+                            )
+                        } finally {
+                            recognizer.close()
+                        }
+                        val numberAnchors = questionText.textBlocks
+                            .flatMap { it.lines }
+                            .mapNotNull { line ->
+                                val n = PdfOcrQuestionMarker.numberAtStart(line.text)
+                                    ?: return@mapNotNull null
+                                val b = line.boundingBox ?: return@mapNotNull null
+                                QuestionNumberAnchor(n, b.left, b.top, b.right, b.bottom)
+                            }.filter { it.number in 1..2 }
+                        assertEquals("PDF-rendered question numbering lost",
+                            setOf(1, 2), numberAnchors.map { it.number }.toSet())
+
+                        val optionRegex = Regex("""^\s*([A-E])\s*[).:]""")
+                        val options = questionText.textBlocks.flatMap { it.lines }
+                            .mapNotNull { line ->
+                                val label = optionRegex.find(line.text)
+                                    ?.groupValues?.get(1) ?: return@mapNotNull null
+                                val b = line.boundingBox ?: return@mapNotNull null
+                                QuestionOptionAnchor(label, b.left, b.top, b.right, b.bottom)
+                            }
+                        val crops = StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
+                            context = context,
+                            pageBitmap = questionBitmap,
+                            pageIndex = 0,
+                            totalPages = 2,
+                            reusablePixelsRef = arrayOfNulls<IntArray>(1),
+                            questionNumberAnchors = numberAnchors,
+                            optionAnchors = options
+                        )
+                        try {
+                            assertEquals(
+                                "PDF -> renderer -> OCR -> crop must not drop a question",
+                                2, crops.size
+                            )
+                            assertEquals(setOf(1, 2),
+                                crops.map { it.questionOrderInPage }.toSet())
+                            assertTrue(crops.all { File(it.croppedImagePath).isFile })
+                        } finally {
+                            crops.forEach { File(it.croppedImagePath).delete() }
+                        }
+
+                        val cells = answerText.textBlocks.flatMap { it.lines }
+                            .mapNotNull { line ->
+                                val b = line.boundingBox ?: return@mapNotNull null
+                                PdfOcrTextCell(
+                                    line.text, b.left, b.top, b.right, b.bottom
+                                )
+                            }
+                        val scopedKeys = PdfScopedAnswerKeys(setOf("sinir sistemi"))
+                        PdfAdaptiveAnswerRows.regions(cells, answerBitmap.width)
+                            .forEach(scopedKeys::addOcrRows)
+                        assertEquals(
+                            "PDF answer page OCR must bind 5 separate printed answers",
+                            listOf("A", "B", "C", "D", "E"),
+                            (1..5).map {
+                                scopedKeys.get(PdfAnswerScope("sinir sistemi", 1, false), it)
+                            }
+                        )
+                        assertEquals(null,
+                            scopedKeys.get(PdfAnswerScope("sinir sistemi", 2, false), 1))
+                    } finally {
+                        questionBitmap.recycle()
+                        answerBitmap.recycle()
+                    }
+                }
+            }
+        } finally {
+            pdf.delete()
         }
     }
 

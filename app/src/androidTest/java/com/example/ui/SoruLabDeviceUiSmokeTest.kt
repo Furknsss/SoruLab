@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.DifficultyLevel
@@ -64,8 +65,10 @@ class SoruLabDeviceUiSmokeTest {
         compose.onNodeWithTag("denemeler_open_pdf_studio").assertIsDisplayed()
         compose.onNodeWithTag("denemeler_open_pdf_studio").performClick()
         compose.runOnIdle { assertEquals(1, pdfOpens) }
+        compose.onNodeWithTag("denemeler_filter_tyt").performScrollTo()
         compose.onNodeWithTag("denemeler_filter_tyt").assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(ExamType.TYT, selected) }
+        compose.onNodeWithTag("denemeler_filter_ayt").performScrollTo()
         compose.onNodeWithTag("denemeler_filter_ayt").assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(ExamType.AYT, selected) }
         captureOnlySyntheticScreen("denemeler-phone.png")

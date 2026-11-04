@@ -64,9 +64,9 @@ class SoruLabDeviceUiSmokeTest {
         compose.onNodeWithTag("denemeler_open_pdf_studio").assertIsDisplayed()
         compose.onNodeWithTag("denemeler_open_pdf_studio").performClick()
         compose.runOnIdle { assertEquals(1, pdfOpens) }
-        compose.onNodeWithText("TYT Denemeleri").performClick()
+        compose.onNodeWithTag("denemeler_filter_tyt").assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(ExamType.TYT, selected) }
-        compose.onNodeWithText("AYT Denemeleri").performClick()
+        compose.onNodeWithTag("denemeler_filter_ayt").assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(ExamType.AYT, selected) }
         captureOnlySyntheticScreen("denemeler-phone.png")
     }

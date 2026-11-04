@@ -58,7 +58,13 @@ jobs:
           emulator-options: '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none'
           disable-animations: true
           emulator-boot-timeout: 600
-          script: bash ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2
+          script: |
+            bash ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2
+            # Capture ORIGINAL QA fixtures only, no copyrighted book pages.
+            mkdir -p app/build/qa-device-screenshots
+            adb pull /sdcard/Android/data/com.aistudio.sorulab.ykslab/files/qa-screens/. app/build/qa-device-screenshots/
+            test -s app/build/qa-device-screenshots/denemeler-phone.png
+            test -s app/build/qa-device-screenshots/solving-board-phone.png
       - name: Archive device screenshots and test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -67,5 +73,6 @@ jobs:
           path: |
             app/build/outputs/androidTest-results/connected/
             app/build/reports/androidTests/connected/
+            app/build/qa-device-screenshots/
           if-no-files-found: ignore
           retention-days: 7

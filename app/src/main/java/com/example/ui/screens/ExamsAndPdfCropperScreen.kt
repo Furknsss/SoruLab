@@ -632,6 +632,9 @@ fun SoruHavuzuAndPdfStudioView(
     }
     var selectedPdfUri by remember { mutableStateOf<Uri?>(null) }
     var selectedPdfFileName by remember { mutableStateOf("") }
+    // Cloud vision is explicitly opt-in. PDF page imagery goes to Gemini
+    // through Firebase AI Logic and may use paid API quota.
+    var cloudVisionConsent by remember { mutableStateOf(false) }
     var totalPdfPages by remember { mutableIntStateOf(0) }
     var isReadingPdf by remember { mutableStateOf(false) }
     var pdfSelectionError by remember { mutableStateOf<String?>(null) }
@@ -1049,6 +1052,28 @@ fun SoruHavuzuAndPdfStudioView(
                                 }
                             }
                             Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("pdf_cloud_vision_consent"),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Checkbox(
+                                    checked = cloudVisionConsent,
+                                    onCheckedChange = { cloudVisionConsent = it },
+                                    enabled = !batchCropState.isAnalyzing && !isSavingImportedBook
+                                )
+                                Text(
+                                    "Gelişmiş AI PDF analizi: Sayfa görüntüleri Gemini 3.8 " +
+                                        "(Firebase AI) bulut hizmetine gönderilir. İnternet ve " +
+                                        "API kotası gerekir; kullanım ücretli olabilir. " +
+                                        "Kişisel kullanım hakkım olan PDF'yi işlemek için onaylıyorum.",
+                                    color = Color(0xFF475569),
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
+                                )
+                            }
 
                             // TAM GENİŞLİKLİ FERAH "BAŞLAT VE SİSTEME AKTAR" BUTONU (ASLA EZİLMEZ)
                             Button(
@@ -1095,6 +1120,7 @@ fun SoruHavuzuAndPdfStudioView(
                                 },
                                 enabled = selectedPdfUri != null &&
                                     selectedPublisher != null && totalPdfPages > 0 && !isReadingPdf &&
+                                    cloudVisionConsent &&
                                     !isSavingImportedBook && !batchCropState.isAnalyzing,
                                 shape = RoundedCornerShape(16.dp),
                                 colors = ButtonDefaults.buttonColors(

@@ -11,20 +11,27 @@ internal object PdfAnswerSourceConsensus {
         geometric: Map<Int, String>,
         linearText: Map<Int, String>
     ): Map<Int, String> {
-        if (geometric.isEmpty()) return linearText
-        if (linearText.isEmpty()) return geometric
         val result = linkedMapOf<Int, String>()
+        // Apply the same validation when only ONE source is available.
+        // Previously the early return could pass through lowercase, blank or
+        // invalid OCR cells, inflating the independent completeness report.
+        fun valid(raw: String?): String? = raw?.trim()?.uppercase()
+            ?.takeIf { it in setOf("A", "B", "C", "D", "E") }
         for (key in (geometric.keys + linearText.keys).sorted()) {
-            val geometricAnswer = geometric[key]?.uppercase()
-            val linearAnswer = linearText[key]?.uppercase()
-            val finalAnswer = when {
-                geometricAnswer != null && linearAnswer != null &&
-                    geometricAnswer != linearAnswer -> null
-                else -> geometricAnswer ?: linearAnswer
-            }
-            if (finalAnswer != null && finalAnswer in setOf("A", "B", "C", "D", "E")) {
-                result[key] = finalAnswer
-            }
+            if (key !in 1..200) continue
+            val geoRaw = geometric[key]
+            val textRaw = linearText[key]
+            val geometricAnswer = valid(geoRaw)
+            val linearAnswer = valid(textRaw)
+            // Two OCR channels reporting the same cell must AGREE.
+            // Even an invalid character in either channel indicates that
+            // the independent reads disagree; fail closed rather than
+            // silently treating the other letter as independently verified.
+            if (geoRaw != null && textRaw != null &&
+                (geometricAnswer == null || linearAnswer == null ||
+                    geometricAnswer != linearAnswer)) continue
+            val finalAnswer = geometricAnswer ?: linearAnswer
+            if (finalAnswer != null) result[key] = finalAnswer
         }
         return result
     }

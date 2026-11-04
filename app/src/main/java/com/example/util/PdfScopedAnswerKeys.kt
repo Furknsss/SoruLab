@@ -41,6 +41,19 @@ internal class PdfScopedAnswerKeys(
             if (sectionHeading != null) {
                 currentSection = sectionHeading
                 lastRecognizedSection = sectionHeading
+            } else {
+                // An explicitly printed but UNKNOWN chapter is a hard boundary.
+                // Do not carry the preceding test's answer key across it merely
+                // because the chapter was absent from observedSections / OCR.
+                // Continuations without a new uppercase chapter keep the old
+                // section so a key split across pages still works.
+                val beforeTest = if (firstTest != null) {
+                    clean.substring(0, firstTest.range.first)
+                } else clean
+                if (detectSectionHeading(beforeTest) != null) {
+                    currentSection = null
+                    lastRecognizedSection = null
+                }
             }
             if (tests.isEmpty()) continue
 
@@ -265,8 +278,11 @@ internal class PdfScopedAnswerKeys(
                 .minByOrNull { it.first }?.second
             val nearestBefore = headings.filter { it.first < testLineIndex }
                 .maxByOrNull { it.first }?.second
+            // A catalog hint or the previous page's topic is NEVER enough
+            // to bind an answer key. This header must itself contain visible
+            // chapter/topic evidence; otherwise keep the answer unresolved.
             val section = matchedHint ?: nearestAfter ?: nearestBefore
-                ?: headings.lastOrNull()?.second ?: hint.takeIf(String::isNotBlank)
+                ?: headings.lastOrNull()?.second
             if (section.isNullOrBlank()) return null
             return PdfAnswerScope(section, testNum, isOsym, kind)
         }

@@ -330,4 +330,64 @@ class PdfScopedAnswerKeysTest {
         assertEquals(16, identity?.testNumber)
     }
 
+
+    @Test
+    fun unknownPrintedChapterMustInvalidateInheritedAnswerScope() {
+        val index = PdfScopedAnswerKeys(setOf("sinir sistemi"))
+        index.addOcrRows(listOf(
+            "SİNİR SİSTEMİ",
+            "Test 1 1.A 2.B",
+            "BİTKİ FİZYOLOJİSİ",
+            "Test 2 1.C 2.D"
+        ))
+        assertEquals("A", index.get(PdfAnswerScope("sinir sistemi", 1, false), 1))
+        assertNull(index.get(PdfAnswerScope("sinir sistemi", 2, false), 1))
+        assertFalse(index.hasRecognizedScope(PdfAnswerScope("sinir sistemi", 2, false)))
+    }
+
+    @Test
+    fun unknownChapterAndTestOnOneOcrLineMustNotInheritPreviousAnswers() {
+        val index = PdfScopedAnswerKeys(setOf("sinir sistemi"))
+        index.addOcrRows(listOf(
+            "SİNİR SİSTEMİ",
+            "Test 1 1.E 2.D",
+            "BİTKİ FİZYOLOJİSİ Test 2 1.B 2.A",
+            "Test 3 1.C 2.D"
+        ))
+        assertEquals("E", index.get(PdfAnswerScope("sinir sistemi", 1, false), 1))
+        assertNull(index.get(PdfAnswerScope("sinir sistemi", 2, false), 1))
+        assertNull(index.get(PdfAnswerScope("sinir sistemi", 3, false), 1))
+    }
+
+    @Test
+    fun legitimateSplitAnswerTableWithoutNewChapterRetainsItsScope() {
+        val index = PdfScopedAnswerKeys(setOf("sinir sistemi"))
+        index.addOcrRows(listOf("SİNİR SİSTEMİ", "Test 1 1.E 2.D"))
+        index.addOcrRows(listOf("Test 2 1.C 2.B"))
+        assertEquals("C", index.get(PdfAnswerScope("sinir sistemi", 2, false), 1))
+    }
+
+
+    @Test
+    fun testNumberWithoutVisibleChapterDoesNotUseLastPageTopicHint() {
+        val scope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 3", "Sinir Sistemi"
+        )
+        assertNull(scope)
+    }
+
+    @Test
+    fun unrelatedCatalogTopicCannotBindAnswerKeyWithoutPrintedHeading() {
+        val index = PdfScopedAnswerKeys()
+        index.addOcrRows(listOf("SİNİR SİSTEMİ", "Test 3 1.A 2.B"))
+        val unknownPageScope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 3", "Sinir Sistemi"
+        )
+        assertNull(index.get(unknownPageScope, 1))
+        val explicitPageScope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 3\nSinir Sistemi", "Sinir Sistemi"
+        )
+        assertEquals("A", index.get(explicitPageScope, 1))
+    }
+
 }

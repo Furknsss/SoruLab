@@ -431,6 +431,50 @@ object StudioImageAndPdfEngine {
         return detectSubjectFromContent(text)
     }
 
+    /**
+     * A printed chapter title is source evidence; generic biology keywords
+     * inside a question are not. For example, a skin/receptor question in
+     * "Duyu Organları Genel Tekrar" must never be moved to "Sinir Sistemi"
+     * just because its stem also mentions neurons or nerve impulses.
+     *
+     * Look for an ACTUAL title line, not a topic name somewhere in body text.
+     */
+    fun detectPrintedTopicNameFromHeader(
+        examType: String,
+        subjectName: String,
+        header: String
+    ): String? {
+        if (header.isBlank()) return null
+        val subject = com.example.data.SoruLabCatalog.allSubjects.firstOrNull {
+            it.examType.name.equals(examType, ignoreCase = true) &&
+                it.name.equals(
+                    subjectName.replace("TYT ", "", ignoreCase = true)
+                        .replace("AYT ", "", ignoreCase = true).trim(),
+                    ignoreCase = true
+                )
+        } ?: return null
+        val headerLines = header.lineSequence()
+            .map { it.trim().replace(Regex("""\s+"""), " ").lowercase(java.util.Locale.forLanguageTag("tr-TR")) }
+            .filter(String::isNotBlank)
+            .take(18)
+            .toList()
+        return subject.topics
+            .filter { topic ->
+                val name = topic.name.trim()
+                    .lowercase(java.util.Locale.forLanguageTag("tr-TR"))
+                headerLines.any { line ->
+                    line == name ||
+                        line.startsWith("$name genel tekrar") ||
+                        line.startsWith("$name -") ||
+                        line.startsWith("$name –") ||
+                        line.startsWith("$name:") ||
+                        line.startsWith("$name /")
+                }
+            }
+            .maxByOrNull { it.name.length }
+            ?.name
+    }
+
     fun detectTopicNameFromText(
         examType: String,
         subjectName: String,
@@ -949,7 +993,10 @@ object StudioImageAndPdfEngine {
      *    colored diagram lines (blue, red, green, orange).
      * 4. Trims excess empty white borders and adds a clean uniform padding.
      */
-    fun applyAdaptiveContrastAndBackgroundWhitening(source: Bitmap): Bitmap {
+    fun applyAdaptiveContrastAndBackgroundWhitening(
+        source: Bitmap,
+        trimWhiteMargins: Boolean = true
+    ): Bitmap {
         val width = source.width
         val height = source.height
         if (width < 8 || height < 8) return source
@@ -1059,7 +1106,12 @@ object StudioImageAndPdfEngine {
         val processedFull = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         processedFull.setPixels(pixels, 0, width, 0, 0, width, height)
 
-        if (minX >= maxX || minY >= maxY) {
+        // Question crops must preserve a 1:1 mapping to their source-page
+        // rectangle. Removing white borders after recording boxNormalized
+        // shifts the actual pixels, corrupts reload/preview coordinates and
+        // can make a saved diagram appear clipped. Logo/general image
+        // enhancement may still opt into the old margin trimming.
+        if (!trimWhiteMargins || minX >= maxX || minY >= maxY) {
             return processedFull
         }
 
@@ -2324,9 +2376,35 @@ object StudioImageAndPdfEngine {
                     val lastQuestionInk = projectedBands
                         .filter { it.second >= anchor.bottom && it.first < hardEnd }
                         .maxOfOrNull { it.second.coerceAtMost(hardEnd) }
-                    val endY = (withinQuestionOptions?.plus(anchorPadding)
+                    // The projection stage can discard sparse, short option
+                    // rows (e.g., B) as noise when their band is <80 px.
+                    // When the NEXT printed question is known, its number
+                    // gives us a hard boundary: safely preserve every OCR
+                    // option belonging to this question, even when the
+                    // A-E sequence is incomplete.
+                    val lastObservedOptionBottom = nextAnchorTop?.let {
+                        optionsForQuestion.filter { opt ->
+                            opt.top < hardEnd && opt.bottom > anchor.top
+                        }.maxOfOrNull { opt -> opt.bottom.coerceAtMost(hardEnd) }
+                    }
+                    val projectedEnd = withinQuestionOptions?.plus(anchorPadding)
                         ?: lastQuestionInk?.plus(anchorPadding)
-                        ?: hardEnd).coerceIn(startY + 1, hardEnd)
+                        ?: hardEnd
+                    // With a verified NEXT printed number, the only safe end
+                    // is the start boundary of that next question. Pixel
+                    // projection and OCR option lines can stop hundreds of
+                    // pixels early after a large diagram, equation or table.
+                    // Ending on 'E)' silently amputates the rest of the source.
+                    // The hardEnd excludes the following printed question and
+                    // gives the current question all of its intervening space.
+                    val endY = if (nextAnchorTop != null) {
+                        hardEnd
+                    } else {
+                        maxOf(
+                            projectedEnd,
+                            lastObservedOptionBottom?.plus(anchorPadding) ?: projectedEnd
+                        ).coerceIn(startY + 1, hardEnd)
+                    }
                     startY to endY
                 }
 
@@ -2405,8 +2483,17 @@ object StudioImageAndPdfEngine {
                     .coerceAtLeast(finalLeft + 119)
                 val finalTop = (rawTop - padY)
                     .coerceAtLeast(if (cropAnchor != null) band.first else bodyTop)
+                // The following question starts ABOVE its printed number
+                // (startY = nextNumberTop - anchorPadding). Clamping the
+                // previous image to nextNumberTop - 4 still overlaps that
+                // next crop, even though it does not contain the next number.
+                // Use the *same* start boundary as the following crop.
+                val nextCropStart = nextNumberTop?.let { nextTop ->
+                    (nextTop - (height * 0.008f).roundToInt().coerceIn(9, 22))
+                        .coerceAtLeast(bodyTop)
+                }
                 val finalBottom = (rawBottom + padY)
-                    .coerceAtMost(nextNumberTop?.minus(4) ?: bodyBottom)
+                    .coerceAtMost(nextCropStart?.minus(1) ?: bodyBottom)
 
                 val safeLeft = finalLeft.coerceIn(0, width - 1)
                 val safeTop = finalTop.coerceIn(0, height - 1)
@@ -2988,7 +3075,9 @@ object StudioImageAndPdfEngine {
     ): Bitmap {
         val w = sourceCrop.width
         val h = sourceCrop.height
-        if (w < 60 || h < 60) return applyAdaptiveContrastAndBackgroundWhitening(sourceCrop)
+        if (w < 60 || h < 60) return applyAdaptiveContrastAndBackgroundWhitening(
+            sourceCrop, trimWhiteMargins = false
+        )
 
         val mutableCrop = if (sourceCrop.isMutable && sourceCrop.config == Bitmap.Config.ARGB_8888) {
             sourceCrop
@@ -3041,7 +3130,9 @@ object StudioImageAndPdfEngine {
             }
         }
 
-        val whitened = applyAdaptiveContrastAndBackgroundWhitening(mutableCrop)
+        val whitened = applyAdaptiveContrastAndBackgroundWhitening(
+            mutableCrop, trimWhiteMargins = false
+        )
         if (whitened !== mutableCrop && mutableCrop !== sourceCrop) {
             mutableCrop.recycle()
         }

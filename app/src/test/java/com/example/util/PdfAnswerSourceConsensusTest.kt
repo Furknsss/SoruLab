@@ -28,4 +28,40 @@ class PdfAnswerSourceConsensusTest {
         )
         assertEquals(mapOf(1 to "A", 2 to "B", 3 to "D"), combined)
     }
+
+    @Test fun singleOcrSourceCannotIntroduceInvalidOrUnnumberedAnswers() {
+        val result = PdfAnswerSourceConsensus.combine(
+            emptyMap(),
+            mapOf(1 to " a ", 2 to "X", 3 to "", 201 to "B", 4 to "d")
+        )
+        assertEquals(mapOf(1 to "A", 4 to "D"), result)
+    }
+
+    @Test fun singleGeometrySourceAlsoNormalizesAndRejectsMalformedCells() {
+        val result = PdfAnswerSourceConsensus.combine(
+            mapOf(1 to "b", 2 to "f", 3 to " E ", 0 to "A"),
+            emptyMap()
+        )
+        assertEquals(mapOf(1 to "B", 3 to "E"), result)
+    }
+
+    @Test fun twoDifferentValidLettersRemainQuarantinedAfterNormalization() {
+        val result = PdfAnswerSourceConsensus.combine(
+            mapOf(1 to " a ", 2 to "b"),
+            mapOf(1 to "C", 2 to " B ")
+        )
+        assertNull(result[1])
+        assertEquals("B", result[2])
+    }
+
+
+    @Test fun malformedCompetingOcrReadingCannotValidateAnotherChannelsLetter() {
+        val result = PdfAnswerSourceConsensus.combine(
+            mapOf(1 to "X", 2 to "B"),
+            mapOf(1 to "A", 2 to " B ")
+        )
+        assertNull(result[1])
+        assertEquals("B", result[2])
+    }
+
 }

@@ -48,4 +48,63 @@ class PdfPrintedAnchorConsensusTest {
         )
         assertEquals(primary, recovered)
     }
+
+    @Test fun longerFigureNumberRunMustNotDiscardRealPrintedQuestions() {
+        val printed = listOf(q(7, 82, 190), q(8, 82, 900), q(9, 940, 180))
+        val figureLabels = (1..8).map { q(it, 280, 630 + it * 80) }
+        val result = PdfPrintedAnchorConsensus.reconcile(
+            primary = printed,
+            secondPass = printed + figureLabels,
+            pageWidth = 1800,
+            pageHeight = 2400
+        )
+        assertEquals(printed, result)
+    }
+
+    @Test fun identicalNumbersInDistantGraphAreNotEvidenceOfSameQuestion() {
+        val printed = listOf(q(1, 82, 190), q(2, 82, 820))
+        val chartLabels = (1..8).map { q(it, 280, 500 + it * 90) }
+        val result = PdfPrintedAnchorConsensus.reconcile(
+            primary = printed,
+            secondPass = printed + chartLabels,
+            pageWidth = 1800,
+            pageHeight = 2400
+        )
+        assertEquals(printed, result)
+    }
+
+
+    @Test fun sampledScannedBookPageRecoversAllFivePrintedStartsDespiteDiagramOne() {
+        // Anonymized positions from an image-only textbook page. The diagram
+        // repeats a small "1." well inside the left column; it is not a
+        // second question one. Coordinates are not publisher detection rules.
+        val expected = listOf(
+            q(1, 108, 195), q(2, 108, 926), q(3, 108, 1337),
+            q(4, 682, 194), q(5, 682, 895)
+        )
+        val primary = listOf(expected[0], expected[1], expected[3])
+        val chartLabel = q(1, 172, 428)
+        val result = PdfPrintedAnchorConsensus.reconcile(
+            primary = primary,
+            secondPass = expected + chartLabel,
+            pageWidth = 1290,
+            pageHeight = 1720
+        )
+        assertEquals(listOf(1, 2, 3, 4, 5), result.map { it.number })
+    }
+
+    @Test fun actualScannedPageWithGraphicNumberCannotReplaceFiveKnownStarts() {
+        val printed = listOf(
+            q(1, 108, 195), q(2, 108, 926), q(3, 108, 1337),
+            q(4, 682, 194), q(5, 682, 895)
+        )
+        val result = PdfPrintedAnchorConsensus.reconcile(
+            primary = printed,
+            secondPass = printed + q(1, 172, 428),
+            pageWidth = 1290,
+            pageHeight = 1720
+        )
+        assertEquals(printed, result)
+    }
+
 }

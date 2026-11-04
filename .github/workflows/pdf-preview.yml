@@ -2,7 +2,7 @@ name: PDF preview APK
 on:
   workflow_dispatch:
   push:
-    branches: ['feat/premium-pdf-v5', 'fix/pdf-rc5-patternsyntax-regression', 'fix/rc7-auth-universal-pdf-layout-ink', 'fix/rc8-pdf-completeness-spen-layout', 'fix/rc9-universal-pdf-ocr-crop-quality']
+    branches: ['feat/premium-pdf-v5', 'fix/pdf-rc5-patternsyntax-regression', 'fix/rc7-auth-universal-pdf-layout-ink', 'fix/rc8-pdf-completeness-spen-layout', 'fix/rc9-universal-pdf-ocr-crop-quality', 'fix/rc9-consensus-no-anchor-regression']
   pull_request:
     branches: ['feat/premium-pdf-v5', 'feat/pdf-v5-biyotik-premium-review', 'feat/s-pen-s9feplus-ink-gestures', 'fix/rc7-auth-universal-pdf-layout-ink', 'fix/rc8-pdf-completeness-spen-layout']
 permissions:
@@ -30,33 +30,25 @@ jobs:
       - run: sdkmanager 'platforms;android-36.1' 'build-tools;36.0.0'
       - name: Preflight all literal Kotlin regular expressions
         run: python3 scripts/validate_kotlin_raw_regex.py
-      - name: Run answer-key matching regression tests
-        run: >-
-          bash ./gradlew :app:testDebugUnitTest
-          --tests com.example.util.StylusInputPolicyTest
-          --tests com.example.util.PdfOptionEvidenceTest
-          --tests com.example.util.PdfAdaptiveAnswerRowsTest
-          --tests com.example.util.PdfScopedAnswerKeysTest
-          --tests com.example.util.PdfTextFooterKeysTest
-          --tests com.example.util.PdfVectorAnswerStripTest
-          --tests com.example.util.PdfVectorQuestionAnchorsTest
-          --tests com.example.util.PdfVectorTestMarkerTest
-          --tests com.example.util.PdfPrintedAnchorConsensusTest
-          --tests com.example.util.PdfNativeQuestionEvidenceTest
-          --tests com.example.util.PdfCropGeometryAuditTest
-          --tests com.example.util.PdfAnswerSourceConsensusTest
-          --tests com.example.util.PdfVectorPageHeaderTest
-          --tests com.example.util.PdfColumnLayoutEvidenceTest
-          --tests com.example.util.PdfColumnGeometryTest
-          --tests com.example.util.PdfAdaptiveGutterTest
-          --tests com.example.util.PdfCropRecoveryPolicyTest
-          --tests com.example.util.PdfOcrQuestionMarkerTest
-          --tests com.example.util.PdfSourceHeaderExtractorTest
-          --tests com.example.util.PdfLibraryAccountTest
-          --tests com.example.data.LocalQuestionCacheIOTest
-          --tests com.example.util.TestAnswerAnalyticsEngineTest
-          --tests com.example.data.TestSnapshotCodecTest
-          --no-daemon --no-configuration-cache --max-workers=2
+      - name: Run all JVM unit tests before signing validation APK
+        run: bash ./gradlew :app:testDebugUnitTest --no-daemon --no-configuration-cache --max-workers=2
+      - name: Verify unit test XML report is nonempty and failure-free
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          files = list(Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml'))
+          if not files:
+              raise SystemExit('No unit test report: never distribute unsigned/untested APK')
+          totals = {k: 0 for k in ('tests','failures','errors','skipped')}
+          for f in files:
+              root = ET.parse(f).getroot()
+              for k in totals:
+                  totals[k] += int(root.get(k,'0'))
+          print('RC9 VALIDATION APK QA:',totals,'suites:',len(files))
+          if totals['tests']==0 or totals['failures'] or totals['errors']:
+              raise SystemExit('QA gate failed; do not upload validation APK')
+          PY
       - name: Upload answer-key test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -79,7 +71,7 @@ jobs:
           test -s app/build/outputs/apk/debug/app-debug.apk
           # Never expose a package with a temporary certificate to the user.
           rm -f debug.keystore my-upload-key.jks app/build/outputs/apk/debug/*.apk
-      - name: Restore EXISTING release signing identity
+      - name: Restore EXISTING release signing identity (must match installed app)
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
@@ -92,7 +84,7 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
           keytool -list -keystore my-upload-key.jks -storepass "$STORE_PASSWORD" -alias upload >/dev/null
           python3 scripts/check_release_oauth_signing.py
-      - name: Build signed RC8 validation package with established release certificate
+      - name: Build signed RC9 TEST package with established release certificate
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
@@ -102,6 +94,7 @@ jobs:
           test -s app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: SoruLab-RC9-UNVERIFIED-crop-engine
+          name: SoruLab-RC9-SIGNED-TEST-NOT-RELEASE
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+          retention-days: 7

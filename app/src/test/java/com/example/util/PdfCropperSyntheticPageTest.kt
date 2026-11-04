@@ -1,6 +1,7 @@
 package com.example.util
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -128,4 +129,117 @@ class PdfCropperSyntheticPageTest {
             bmp.recycle()
         }
     }
+
+    @Test
+    fun scannedStylePageWithFiveUnevenQuestionsKeepsEveryRegion() {
+        // Independently authored visual fixture: 3 questions on the left,
+        // 2 on the right, with tall diagram-like strokes and wide blank gaps.
+        // Geometry models a real scanned textbook layout, not publisher text.
+        val width = 1300
+        val height = 1700
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(Color.WHITE)
+        val ink = IntArray(360 * 6) { Color.BLACK }
+        fun content(x: Int, rows: List<Int>) {
+            rows.forEach { y -> bitmap.setPixels(ink, 0, 360, x, y, 360, 6) }
+        }
+        content(150, listOf(230, 290, 415, 470, 550, 616, 755))
+        content(150, listOf(860, 905, 950, 995, 1060))
+        content(150, listOf(1300, 1345, 1390, 1450))
+        content(720, listOf(230, 290, 390, 465, 520, 610, 777))
+        content(720, listOf(860, 905, 1080, 1160, 1260, 1370))
+
+        val numbers = listOf(
+            QuestionNumberAnchor(1, 105, 190, 133, 216),
+            QuestionNumberAnchor(2, 105, 825, 133, 850),
+            QuestionNumberAnchor(3, 105, 1265, 133, 1290),
+            QuestionNumberAnchor(4, 680, 190, 708, 216),
+            QuestionNumberAnchor(5, 680, 825, 708, 850)
+        )
+        val options = listOf(
+            QuestionOptionAnchor("A", 150, 550, 170, 572),
+            QuestionOptionAnchor("B", 150, 615, 170, 638),
+            QuestionOptionAnchor("A", 150, 950, 170, 972),
+            QuestionOptionAnchor("B", 150, 1058, 170, 1080),
+            QuestionOptionAnchor("A", 150, 1380, 170, 1402),
+            QuestionOptionAnchor("B", 150, 1447, 170, 1469),
+            QuestionOptionAnchor("A", 720, 520, 740, 542),
+            QuestionOptionAnchor("B", 720, 608, 740, 630),
+            QuestionOptionAnchor("A", 720, 1260, 740, 1282),
+            QuestionOptionAnchor("B", 720, 1368, 740, 1390)
+        )
+        val crops = StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
+            context = RuntimeEnvironment.getApplication(),
+            pageBitmap = bitmap,
+            pageIndex = 3,
+            totalPages = 256,
+            reusablePixelsRef = arrayOfNulls<IntArray>(1),
+            questionNumberAnchors = numbers,
+            optionAnchors = options
+        )
+        try {
+            assertEquals("All five source questions must be cropped", 5, crops.size)
+            assertEquals(listOf(1, 2, 3, 4, 5),
+                crops.map { it.questionOrderInPage }.sorted())
+            assertEquals(3, crops.count { it.columnIndex == 0 })
+            assertEquals(2, crops.count { it.columnIndex == 1 })
+            val left = crops.filter { it.columnIndex == 0 }
+                .sortedBy { it.boxNormalized[0] }
+            val right = crops.filter { it.columnIndex == 1 }
+                .sortedBy { it.boxNormalized[0] }
+            assertTrue("First diagram-like stroke must be retained",
+                left[0].boxNormalized[2] > 620f / height)
+            assertTrue("Left column crops must not overlap",
+                left.zipWithNext().all { (a, b) ->
+                    a.boxNormalized[2] <= b.boxNormalized[0]
+                })
+            assertTrue("Right column crops must not overlap",
+                right.zipWithNext().all { (a, b) ->
+                    a.boxNormalized[2] <= b.boxNormalized[0]
+                })
+            assertTrue(crops.all { File(it.croppedImagePath).isFile })
+
+            // Image bounds may look correct while the post-processing or JPEG
+            // writer erased the diagram/choice ink. Verify the *saved files*,
+            // not merely an in-memory geometry rectangle.
+            fun assertSavedStroke(number: Int, sourceX: Int, sourceY: Int) {
+                val crop = crops.single { it.questionOrderInPage == number }
+                val saved = BitmapFactory.decodeFile(crop.croppedImagePath)
+                    ?: throw AssertionError("JPEG crop could not be decoded for question $number")
+                try {
+                    val left = (crop.boxNormalized[1] * width).toInt()
+                    val top = (crop.boxNormalized[0] * height).toInt()
+                    val x = sourceX - left
+                    val y = sourceY - top
+                    assertTrue("Question $number must include source ink ($sourceX,$sourceY), " +
+                        "crop bounds=${crop.boxNormalized}, local=($x,$y), " +
+                        "saved=${saved.width}x${saved.height}",
+                        x in 0 until saved.width && y in 0 until saved.height)
+                    val pixel = saved.getPixel(x, y)
+                    val red = Color.red(pixel)
+                    val green = Color.green(pixel)
+                    val blue = Color.blue(pixel)
+                    assertTrue(
+                        "Saved JPEG lost a question/diagram stroke in question $number",
+                        red < 120 && green < 120 && blue < 120
+                    )
+                } finally {
+                    saved.recycle()
+                }
+            }
+            assertSavedStroke(1, 300, 616)
+            // A late diagram/annotation without an OCR option marker must
+            // not be amputated just because projection detected an early E.
+            assertSavedStroke(1, 300, 755)
+            assertSavedStroke(2, 300, 1060)
+            assertSavedStroke(3, 300, 1450)
+            assertSavedStroke(4, 900, 610)
+            assertSavedStroke(4, 900, 777)
+            assertSavedStroke(5, 900, 1370)
+        } finally {
+            crops.forEach { File(it.croppedImagePath).delete() }
+            bitmap.recycle()
+        }
+    }
+
 }

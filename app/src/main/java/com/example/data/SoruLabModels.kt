@@ -512,16 +512,40 @@ fun automaticBookTestChunks(
     // Books imported before source test detection still use the old 12-question
     // chunks. New imports must never mix the end of one printed test with the
     // start of the next. Preserve page/order and split larger tests at 12.
-    if (eligible.none { it.sourceTestId.isNotBlank() }) {
+    if (eligible.none { it.sourceTestId.isNotBlank() } &&
+        eligible.all { it.pageIndex < 0 }) {
+        // Only truly legacy records without any source-page metadata may
+        // retain the original arbitrary 12-question batching behavior.
         return eligible.chunked(AUTOMATIC_TEST_QUESTION_COUNT)
     }
     val groups = mutableListOf<List<CustomQuestionRecord>>()
     var activeKey: String? = null
     var active = mutableListOf<CustomQuestionRecord>()
     for (item in eligible) {
-        val key = item.sourceTestId.takeIf(String::isNotBlank) ?: "legacy"
+        // A printed test identity is NOT enough to justify mixing topics:
+        // OCR can misread the header, and previous imports occasionally
+        // assigned the last chapter's scope to a new page. Likewise all
+        // source-unidentified questions must not share one global 'legacy'
+        // group across unrelated PDF pages.
+        val topicKey = item.topicName.trim().lowercase(java.util.Locale.ROOT)
+            .ifBlank { "unverified-topic" }
+        val sourceKey = item.sourceTestId.takeIf(String::isNotBlank)?.let {
+            "source:$it"
+        } ?: if (item.pageIndex >= 0) {
+            "unverified-page:${item.bookId}:${item.pageIndex}"
+        } else {
+            "legacy"
+        }
+        val key = "$sourceKey|topic:$topicKey"
+        val previous = active.lastOrNull()
+        val printedNumberRestarted = previous != null &&
+            previous.questionNumberInTest > 0 && item.questionNumberInTest > 0 &&
+            item.questionNumberInTest <= previous.questionNumberInTest &&
+            // An OCR duplicate can never be a reliable continuation.
+            previous.id != item.id
         if (active.isNotEmpty() &&
-            (key != activeKey || active.size >= AUTOMATIC_TEST_QUESTION_COUNT)
+            (key != activeKey || active.size >= AUTOMATIC_TEST_QUESTION_COUNT ||
+                printedNumberRestarted)
         ) {
             groups += active.toList()
             active = mutableListOf()
@@ -805,7 +829,12 @@ object SoruLabCatalog {
             else -> ""
         }
 
-        val preferredName = forcedTopicName.ifBlank { suggestedTopicName.trim() }
+        // A hint from a previous page or an OCR summary is NOT independent
+        // evidence for the current question. Accept it only when the caller
+        // explicitly marks the source (e.g. a printed heading) as trusted.
+        val preferredName = forcedTopicName.ifBlank {
+            suggestedTopicName.trim().takeIf { trustSuggestedTopic }.orEmpty()
+        }
         val preferredExam = if (forcedTopicName.isNotBlank() || examTypeHint.contains("AYT", ignoreCase = true)) ExamType.AYT else ExamType.TYT
         val preferredSubject = if (forcedTopicName.isNotBlank()) "Matematik" else normalizedSubjectHint
 
@@ -854,11 +883,9 @@ object SoruLabCatalog {
 
             if (bestMatch != null) {
                 bestMatch.first to bestMatch.second
-            } else if (isBiologyContext) {
-                targetSubject to (targetSubject.topics.firstOrNull { it.id == "sinir_sistemi" }
-                    ?: targetSubject.topics.firstOrNull()
-                    ?: return null)
             } else {
+                // Do not invent a biology topic when no printed heading or
+                // question-specific keyword supports the classification.
                 return null
             }
         } else {
@@ -881,11 +908,9 @@ object SoruLabCatalog {
 
             if (matched != null) {
                 matched
-            } else if (isBiologyContext) {
-                targetSubject to (targetSubject.topics.firstOrNull { it.id == "sinir_sistemi" }
-                    ?: targetSubject.topics.firstOrNull()
-                    ?: return null)
             } else {
+                // Do not invent a biology topic when no printed heading or
+                // question-specific keyword supports the classification.
                 return null
             }
         }
@@ -969,7 +994,11 @@ object SoruLabCatalog {
         "bagil_hareket" to listOf("bağıl hareket", "bagil hareket", "gözlemci", "yere göre", "akıntı", "kayık", "yürüyen merdiven"),
         "newton_hareket_yasalari" to listOf("newton", "sürtünme", "ivme", "net kuvvet"),
         "bir_boyutta_sabit_ivmeli" to listOf("sabit ivmeli", "hız-zaman", "konum-zaman", "duruştan harekete"),
-        "atislar" to listOf("atış", "atis", "serbest düşme", "yatay atış", "eğik atış"),
+        // "atılıyor / fırlatılıyor" are direct projectile-motion signals;
+        // a generic old page topic is NOT sufficient evidence.
+        "atislar" to listOf("atış", "atis", "atılıyor", "atiliyor",
+            "fırlatılıyor", "firlatiliyor", "fırlatılan", "firlatilan",
+            "serbest düşme", "yatay atış", "eğik atış"),
         "enerji_ve_hareket" to listOf("iş, enerji", "kinetik enerji", "potansiyel enerji", "yay sabiti"),
         "itme_momentum" to listOf("itme", "momentum", "çarpışma", "patlama"),
         "tork_ve_denge" to listOf("tork", "denge", "ip gerilmesi", "destek"),

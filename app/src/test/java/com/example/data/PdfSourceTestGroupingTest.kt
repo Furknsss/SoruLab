@@ -58,4 +58,38 @@ class PdfSourceTestGroupingTest {
         assertEquals(initial.sourceTestId, repacked.sourceTestId)
         assertTrue(repacked.isInKumbara)
     }
+
+    @Test
+    fun sourceScopeCannotMixPrintedDuyuOrganlariWithSinirSistemi() {
+        val records = listOf(
+            question(10, "printed~analiz~21").copy(topicName = "Duyu Organları"),
+            question(1, "printed~analiz~21").copy(topicName = "Sinir Sistemi")
+        )
+        val chunks = automaticBookTestChunks(records, TopicTestLevel.OSYM)
+        assertEquals(listOf(1, 1), chunks.map { it.size })
+        assertEquals(listOf("Duyu Organları", "Sinir Sistemi"),
+            chunks.map { it.first().topicName })
+    }
+
+    @Test
+    fun unidentifiedPdfPagesNeverMixEvenWhenTopicIsSame() {
+        val records = listOf(
+            question(1, "").copy(pageIndex = 9, topicName = "Sinir Sistemi"),
+            question(2, "").copy(pageIndex = 9, topicName = "Sinir Sistemi"),
+            question(1, "").copy(pageIndex = 49, topicName = "Sinir Sistemi")
+        )
+        assertEquals(listOf(2, 1),
+            automaticBookTestChunks(records, TopicTestLevel.OSYM).map { it.size })
+    }
+
+    @Test
+    fun printedNumberRestartSplitsAnIncorrectlyReusedScope() {
+        val records = listOf(
+            question(8, "sinir sistemi~analiz~2").copy(topicName = "Sinir Sistemi"),
+            question(1, "sinir sistemi~analiz~2").copy(topicName = "Sinir Sistemi")
+        )
+        assertEquals(listOf(1, 1),
+            automaticBookTestChunks(records, TopicTestLevel.OSYM).map { it.size })
+    }
+
 }

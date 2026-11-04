@@ -266,8 +266,54 @@ fun DenemelerHubScreen(
         }
 
         item {
-            Row(
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
+                color = Color.White,
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, Color(0xFFDBEAFE))
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "PDF Soru Stüdyosu",
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF0F172A),
+                            fontSize = 15.sp
+                        )
+                        Text(
+                            "$customQuestionsCount kayıtlı soru · PDF'den soru kırp ve incele",
+                            color = Color(0xFF64748B),
+                            fontSize = 12.sp,
+                            maxLines = 2
+                        )
+                    }
+                    Button(
+                        onClick = onOpenPdfStudio,
+                        modifier = Modifier.testTag("denemeler_open_pdf_studio"),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF2563EB),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text("PDF Aç", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        item {
+            // Three exam filters exceed a phone's content width. A clipped
+            // AYT chip was unreachable on narrow devices; scroll the strip
+            // horizontally without shrinking its touch targets.
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .testTag("denemeler_filter_strip"),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -310,11 +356,21 @@ private fun FilterChipPill(
     onClick: () -> Unit
 ) {
     Surface(
+        onClick = onClick,
         shape = RoundedCornerShape(50),
         color = if (selected) Color(0xFF0F172A) else Color.White,
         border = BorderStroke(1.dp, if (selected) Color(0xFF0F172A) else Color(0xFFE2E8F0)),
         shadowElevation = if (selected) 3.dp else 0.dp,
-        modifier = Modifier.clickable(onClick = onClick)
+        // Put click semantics on the actual Material3 Surface rather than
+        // only an outer modifier. Compose tests and accessibility both need
+        // an unambiguous, stable hit target for these exam filters.
+        modifier = Modifier.testTag(
+            when {
+                label.startsWith("TYT") -> "denemeler_filter_tyt"
+                label.startsWith("AYT") -> "denemeler_filter_ayt"
+                else -> "denemeler_filter_all"
+            }
+        )
     ) {
         Text(
             text = label,

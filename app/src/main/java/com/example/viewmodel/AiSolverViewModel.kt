@@ -1134,10 +1134,14 @@ class AiSolverViewModel : ViewModel() {
                 val expectedScopeByQuestionId = mutableMapOf<String, PdfAnswerScope>()
                 val unsafeCropQuestionIds = mutableSetOf<String>()
                 var mergedOrMisnumberedCropCount = 0
+                var pageCoverageMissingStartCount = 0
+                var pageCoverageDuplicateStartCount = 0
+                var pageCoveragePagesAudited = 0
                 val pendingHorizontalGrids = mutableListOf<Pair<PdfAnswerScope, PdfHorizontalAnswerGrid>>()
                 val pendingVectorFooterKeys = mutableListOf<Pair<PdfAnswerScope, Map<Int, String>>>()
                 var detectedAnswerPages = 0
                 var pageRenderFailureCount = 0
+                val suspectedSkippedQuestionPages = linkedSetOf<Int>()
                 var recoveredPrintedQuestionPages = 0
 
                 val pageIndicesToScan = 0 until totalPdfPages
@@ -1336,12 +1340,25 @@ class AiSolverViewModel : ViewModel() {
                                         continue
                                     }
                                 }
-                                if (skipPage && !sourceBackedPage) continue
-                                // A scanned foreword, contents page or advertisement
-                                // can have numbered paragraphs that look like 1./2.
-                                // Require A-E evidence before creating YKS questions.
+                                if (skipPage && !sourceBackedPage) {
+                                    // A skip heuristic must never silently hide
+                                    // a page with credible printed question and
+                                    // multiple-choice evidence.
+                                    if (pageLayout.questionNumberAnchors.isNotEmpty() &&
+                                        hasQuestionOptions
+                                    ) suspectedSkippedQuestionPages.add(pageIdx)
+                                    continue
+                                }
+                                // Scanned diagrams sometimes hide the small
+                                // printed number or the A-E row from whole-page
+                                // OCR. Do not invent missing anchors: mark this
+                                // page for review instead of reporting 100%.
                                 if (pageLayout.questionNumberAnchors.isEmpty() ||
                                     !hasQuestionOptions) {
+                                    if (pageLayout.questionNumberAnchors.isNotEmpty() ||
+                                        pageLayout.optionAnchors.map { it.option }
+                                            .distinct().size >= 3
+                                    ) suspectedSkippedQuestionPages.add(pageIdx)
                                     continue
                                 }
 
@@ -1369,11 +1386,27 @@ class AiSolverViewModel : ViewModel() {
                                 }
                                 val subjectForPage = lockedBookSubject ?: pageInfo.subjectName
                                 val subjectKey = "$examTypeForPage|$subjectForPage"
-                                val explicitHeaderTopic = StudioImageAndPdfEngine.detectTopicNameFromText(
-                                    examType = examTypeForPage,
-                                    subjectName = subjectForPage,
-                                    text = pageLayout.scopeHeaderText
-                                )
+                                // A title printed in this PDF (native text first,
+                                // OCR header second) must outweigh generic
+                                // neuron/skin keywords found inside a question.
+                                // Using stem keywords as the page topic mixed
+                                // Duyu Organları questions into Sinir Sistemi.
+                                val printedHeaderTopic =
+                                    StudioImageAndPdfEngine.detectPrintedTopicNameFromHeader(
+                                        examType = examTypeForPage,
+                                        subjectName = subjectForPage,
+                                        header = pageSourceHeader.orEmpty()
+                                    ) ?: StudioImageAndPdfEngine.detectPrintedTopicNameFromHeader(
+                                        examType = examTypeForPage,
+                                        subjectName = subjectForPage,
+                                        header = pageLayout.scopeHeaderText
+                                    )
+                                val explicitHeaderTopic = printedHeaderTopic
+                                    ?: StudioImageAndPdfEngine.detectTopicNameFromText(
+                                        examType = examTypeForPage,
+                                        subjectName = subjectForPage,
+                                        text = pageLayout.scopeHeaderText
+                                    )
                                 val detectedTopic = explicitHeaderTopic ?: StudioImageAndPdfEngine.detectTopicNameFromText(
                                     examType = examTypeForPage,
                                     subjectName = subjectForPage,
@@ -1538,18 +1571,34 @@ class AiSolverViewModel : ViewModel() {
                                             ) -> pageLayout.questionNumberAnchors
                                     else -> emptyList()
                                 }
-                                val unsafeCropIndexes = if (auditSourceNumbers.isNotEmpty()) {
+                                // Whole-page completeness is distinct from the
+                                // safety of each crop: two individually plausible
+                                // crops can overlap a single question while
+                                // another printed question disappears.
+                                val cropEvidence = croppedBoxes.map { box ->
+                                    com.example.util.PdfQuestionCropEvidence(
+                                        box.questionOrderInPage, box.boxNormalized
+                                    )
+                                }
+                                val pageCoverage = com.example.util.PdfPageCropCoverageAudit.assess(
+                                    auditSourceNumbers, cropEvidence,
+                                    pageBitmap.width, pageBitmap.height
+                                )
+                                if (pageCoverage.sourceEvidenceAvailable) {
+                                    pageCoveragePagesAudited++
+                                    pageCoverageMissingStartCount += pageCoverage.missingStartCount
+                                    pageCoverageDuplicateStartCount += pageCoverage.duplicateStartCount
+                                }
+                                val individuallyUnsafe = if (auditSourceNumbers.isNotEmpty()) {
                                     croppedBoxes.indices.filter { cropIndex ->
-                                        val box = croppedBoxes[cropIndex]
                                         com.example.util.PdfCropGeometryAudit.issues(
-                                            com.example.util.PdfQuestionCropEvidence(
-                                                box.questionOrderInPage, box.boxNormalized
-                                            ),
-                                            auditSourceNumbers, pageBitmap.width,
-                                            pageBitmap.height
+                                            cropEvidence[cropIndex], auditSourceNumbers,
+                                            pageBitmap.width, pageBitmap.height
                                         ).isNotEmpty()
                                     }.toSet()
                                 } else emptySet()
+                                val unsafeCropIndexes = individuallyUnsafe +
+                                    pageCoverage.unsafeCropIndexes
                                 mergedOrMisnumberedCropCount += unsafeCropIndexes.size
 
                                 val pageCandidates = if (croppedBoxes.isEmpty()) {
@@ -1579,9 +1628,15 @@ class AiSolverViewModel : ViewModel() {
                                         val recognized = classifications[index]
                                         // Only an explicit current-page heading may fill a missing
                                         // topic. A previous chapter or filename is not evidence.
-                                        val classification = if (recognized.topicName.isBlank() && explicitHeaderTopic != null) {
-                                            recognized.copy(topicName = explicitHeaderTopic)
-                                        } else recognized
+                                        val classification = when {
+                                            // The printed source title is stronger than
+                                            // OCR keyword guesses inside individual crops.
+                                            printedHeaderTopic != null ->
+                                                recognized.copy(topicName = printedHeaderTopic)
+                                            recognized.topicName.isBlank() && explicitHeaderTopic != null ->
+                                                recognized.copy(topicName = explicitHeaderTopic)
+                                            else -> recognized
+                                        }
                                         PageQuestionCandidate(
                                             cropBox = cropBox,
                                             classification = classification,
@@ -1624,7 +1679,9 @@ class AiSolverViewModel : ViewModel() {
                                             publisherName = finalPubName,
                                             publisherLogoUri = finalLogoUri,
                                             questionText = classification.questionText,
-                                            solutionSummary = "Kaynak: $finalPubName ($finalBookTitle) • Konu: ${classification.topicName} • Zorluk: ${classification.difficulty} • " +
+                                            solutionSummary = "Kaynak: $finalPubName ($finalBookTitle) • " +
+                                                "Konu: ${classification.topicName.ifBlank { "Belirlenemedi (inceleme gerekli)" }} • " +
+                                                "Tahmini zorluk: ${classification.difficulty} • " +
                                                 if (verifiedAnswer != null) "Doğrulanmış Cevap: $verifiedAnswer" else "Cevap anahtarı eşleşmesi bulunamadı",
                                             croppedImagePath = cropBox.croppedImagePath,
                                             cropAspectRatio = cropBox.aspectRatio,
@@ -1725,9 +1782,18 @@ class AiSolverViewModel : ViewModel() {
                                 ?.let { pageIndex to it }
                         }
                     if (mergedOrMisnumberedCropCount > 0) {
-                        add("KIRPMA BÜTÜNLÜĞÜ: $mergedOrMisnumberedCropCount görüntüde birden " +
-                            "fazla basılı soru numarası veya yanlış soru başlangıcı saptandı. " +
-                            "Bu görüntüler cevapları bulunsa bile doğrulanmış sayılmadı.")
+                        add("KIRPMA BÜTÜNLÜĞÜ: $mergedOrMisnumberedCropCount görüntüde " +
+                            "birleşmiş, mükerrer, yanlış numaralı veya kaynağı belirsiz kırpma " +
+                            "saptandı. Bu görüntüler cevapları bulunsa bile doğrulanmış sayılmadı.")
+                    }
+                    if (pageCoverageMissingStartCount > 0 ||
+                        pageCoverageDuplicateStartCount > 0
+                    ) {
+                        add("SAYFA BÜTÜNLÜĞÜ: kaynakta güvenle tespit edilmiş " +
+                            "$pageCoverageMissingStartCount basılı soru başlangıcı eksik, " +
+                            "$pageCoverageDuplicateStartCount başlangıç birden fazla kırpmada " +
+                            "görünüyor. Kaynak numarası bulunan $pageCoveragePagesAudited " +
+                            "sayfa denetlendi. Kitap eksiksiz aktarılmış sayılamaz.")
                     }
                     val missedPrintedCount = vectorMissingByPage.sumOf { it.second.size }
                     if (missedPrintedCount > 0) {
@@ -1746,6 +1812,15 @@ class AiSolverViewModel : ViewModel() {
                             "kırpmalar için sayfa önizlemesini kontrol edin; eksik kitabı tam " +
                             "aktarılmış saymayın.")
                     }
+                    val unknownTopicCount = allExtractedQuestions.count {
+                        it.topicName.isBlank()
+                    }
+                    if (unknownTopicCount > 0) {
+                        add("KONU İNCELEMESİ: $unknownTopicCount soruda güvenilir konu kanıtı " +
+                            "bulunamadı; konu uydurulmadı.")
+                    }
+                    add("Zorluk dereceleri otomatik tahmindir; kesin insan değerlendirmesi " +
+                        "olarak sunulmaz.")
                     if (scopedAnswers.answerCount == 0) {
                         add("$detectedAnswerPages olası cevap anahtarı sayfası tarandı ancak " +
                             "geçerli test-cevap eşleşmesi bulunamadı. Hiçbir cevap tahmin edilmedi.")
@@ -1787,6 +1862,15 @@ class AiSolverViewModel : ViewModel() {
                     }
                     if (processingStatus.ocrFailureCount > 0) {
                         add("Cihaz içi OCR ${processingStatus.ocrFailureCount} soruda tamamlanamadı; kırpılmış görseller yine aktarıldı.")
+                    }
+                    if (suspectedSkippedQuestionPages.isNotEmpty()) {
+                        val pagePreview = suspectedSkippedQuestionPages.take(12)
+                            .joinToString(", ") { (it + 1).toString() }
+                        add("OLASI EKSİK SORU SAYFASI: " +
+                            "${suspectedSkippedQuestionPages.size} sayfada soru/şık işareti " +
+                            "görüldü ancak güvenli kırpma yapılamadı " +
+                            "(PDF sayfaları: $pagePreview). " +
+                            "Eksiksiz aktarım doğrulanmadı; sayfaları inceleyin.")
                     }
                     if (pageRenderFailureCount > 0) {
                         add("$pageRenderFailureCount PDF sayfası işlenemedi; diğer sayfalar aktarıldı.")

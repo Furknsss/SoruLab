@@ -110,18 +110,31 @@ class SoruLabQuestionClassificationTest {
     }
 
     @Test
-    fun suggestedPageTopicIsUsedWhenQuestionTextHasNoTopicSignal() {
+    fun verifiedPrintedPageTopicCanLabelQuestionWithoutTextSignal() {
         val result = SoruLabCatalog.classifyQuestionTopicFromText(
             examTypeHint = "AYT",
             subjectNameHint = "Matematik",
             questionText = "Verilen koşullara göre doğru seçeneği bulunuz.",
-            suggestedTopicName = "Polinomlar"
+            suggestedTopicName = "Polinomlar",
+            trustSuggestedTopic = true
         )
 
         assertNotNull(result)
         assertEquals("AYT", result?.first?.examType?.name)
         assertEquals("Matematik", result?.first?.name)
         assertEquals("Polinomlar", result?.second?.name)
+    }
+
+    @Test
+    fun staleTopicFromPreviousPageIsNotTreatedAsPrintedEvidence() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Matematik",
+            questionText = "Verilen koşullara göre doğru seçeneği bulunuz.",
+            suggestedTopicName = "Polinomlar",
+            trustSuggestedTopic = false
+        )
+        assertEquals(null, result)
     }
 
     @Test
@@ -201,17 +214,36 @@ class SoruLabQuestionClassificationTest {
     }
 
     @Test
-    fun biologyNeverGetsAnUnrelatedMathTopicAndDefaultsToNervousSystem() {
+    fun biologyWithoutSubjectEvidenceNeverDefaultsToNervousSystem() {
         val result = SoruLabCatalog.classifyQuestionTopicFromText(
             examTypeHint = "AYT",
             subjectNameHint = "Biyoloji",
             questionText = "Yukarıda verilen bilgilere göre hangisi doğrudur?",
             suggestedTopicName = "Türev Alma Kuralları"
         )
+        assertEquals(null, result)
+    }
 
-        assertNotNull(result)
-        assertEquals("Biyoloji", result?.first?.name)
-        assertEquals("Sinir Sistemi", result?.second?.name)
+    @Test
+    fun unknownBiologyTopicWithoutAnyHintMustRemainUnclassified() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Biyoloji",
+            questionText = "Aşağıdakilerden hangisi doğrudur?"
+        )
+        assertEquals(null, result)
+    }
+
+    @Test
+    fun trustedBiologyPageHeadingIsAcceptedWhenQuestionIsOnlyDiagram() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Biyoloji",
+            questionText = "Grafiğe göre hangisi doğrudur?",
+            suggestedTopicName = "Endokrin Sistem",
+            trustSuggestedTopic = true
+        )
+        assertEquals("Endokrin Sistem", result?.second?.name)
     }
 
     @Test
@@ -319,4 +351,28 @@ class SoruLabQuestionClassificationTest {
         assertEquals("Biyoloji", SoruLabCatalog.subjectNameForTopic("Sinir Sistemi"))
         assertEquals(null, SoruLabCatalog.subjectNameForTopic("Bilinmeyen Konu"))
     }
+
+    @Test
+    fun projectileVerbSupportsPhysicsClassificationWithoutPrintedTopicHint() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Fizik",
+            questionText = "Yerden yatay olarak fırlatılan cismin yere düşme süresi kaç saniyedir?"
+        )
+        assertEquals("Fizik", result?.first?.name)
+        assertEquals("Atışlar", result?.second?.name)
+    }
+
+    @Test
+    fun unrelatedPhysicsQuestionCannotInheritAtislarFromPreviousPage() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Fizik",
+            questionText = "Verilen şekle göre hangi seçenek doğrudur?",
+            suggestedTopicName = "Atışlar",
+            trustSuggestedTopic = false
+        )
+        assertEquals(null, result)
+    }
+
 }

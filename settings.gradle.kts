@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 rootProject.name = "SoruLab"
 
 include(":app")
+include(":skeleton")

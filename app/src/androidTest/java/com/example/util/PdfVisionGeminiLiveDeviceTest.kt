@@ -1,5 +1,6 @@
 package com.example.util
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -30,6 +31,18 @@ class PdfVisionGeminiLiveDeviceTest {
         val optIn = InstrumentationRegistry.getArguments()
             .getString("sorulab.liveVision", "false") == "true"
         assumeTrue("Explicit opt-in is required for cloud model requests", optIn)
+        val token = InstrumentationRegistry.getArguments()
+            .getString("sorulab.appCheckDebugToken").orEmpty()
+        check(token.isNotBlank()) {
+            "Gemini LIVE test requires a Firebase Console-registered " +
+                "App Check debug token in GitHub Actions secret " +
+                "SORULAB_APPCHECK_DEBUG_TOKEN. Do not disable App Check."
+        }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        configureAppCheck(
+            context,
+            Intent().putExtra("FIREBASE_APPCHECK_DEBUG_TOKEN", token)
+        )
         val page = Bitmap.createBitmap(1400, 1600, Bitmap.Config.ARGB_8888)
         page.eraseColor(Color.WHITE)
         val canvas = Canvas(page)

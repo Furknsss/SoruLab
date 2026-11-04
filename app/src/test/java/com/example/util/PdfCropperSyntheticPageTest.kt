@@ -211,7 +211,9 @@ class PdfCropperSyntheticPageTest {
                     val top = (crop.boxNormalized[0] * height).toInt()
                     val x = sourceX - left
                     val y = sourceY - top
-                    assertTrue("Question $number must include its source ink position",
+                    assertTrue("Question $number must include source ink ($sourceX,$sourceY), " +
+                        "crop bounds=${crop.boxNormalized}, local=($x,$y), " +
+                        "saved=${saved.width}x${saved.height}",
                         x in 0 until saved.width && y in 0 until saved.height)
                     val pixel = saved.getPixel(x, y)
                     val red = Color.red(pixel)

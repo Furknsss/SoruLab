@@ -431,6 +431,50 @@ object StudioImageAndPdfEngine {
         return detectSubjectFromContent(text)
     }
 
+    /**
+     * A printed chapter title is source evidence; generic biology keywords
+     * inside a question are not. For example, a skin/receptor question in
+     * "Duyu Organları Genel Tekrar" must never be moved to "Sinir Sistemi"
+     * just because its stem also mentions neurons or nerve impulses.
+     *
+     * Look for an ACTUAL title line, not a topic name somewhere in body text.
+     */
+    fun detectPrintedTopicNameFromHeader(
+        examType: String,
+        subjectName: String,
+        header: String
+    ): String? {
+        if (header.isBlank()) return null
+        val subject = com.example.data.SoruLabCatalog.allSubjects.firstOrNull {
+            it.examType.name.equals(examType, ignoreCase = true) &&
+                it.name.equals(
+                    subjectName.replace("TYT ", "", ignoreCase = true)
+                        .replace("AYT ", "", ignoreCase = true).trim(),
+                    ignoreCase = true
+                )
+        } ?: return null
+        val headerLines = header.lineSequence()
+            .map { it.trim().replace(Regex("""\\s+"""), " ").lowercase(java.util.Locale.forLanguageTag("tr-TR")) }
+            .filter(String::isNotBlank)
+            .take(18)
+            .toList()
+        return subject.topics
+            .filter { topic ->
+                val name = topic.name.trim()
+                    .lowercase(java.util.Locale.forLanguageTag("tr-TR"))
+                headerLines.any { line ->
+                    line == name ||
+                        line.startsWith("$name genel tekrar") ||
+                        line.startsWith("$name -") ||
+                        line.startsWith("$name –") ||
+                        line.startsWith("$name:") ||
+                        line.startsWith("$name /")
+                }
+            }
+            .maxByOrNull { it.name.length }
+            ?.name
+    }
+
     fun detectTopicNameFromText(
         examType: String,
         subjectName: String,

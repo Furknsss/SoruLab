@@ -159,10 +159,11 @@ internal object PdfVisionImportPolicy {
      */
     fun verifiedPrintedKeyCandidates(page: PdfVisionPage):
         List<Pair<PdfAnswerScope, List<Pair<Int, String>>>> {
-        // A real answer strip can be printed on the SAME page as numbered
-        // questions. The independent OCR/PDF reader must corroborate every
-        // proposed cell before the application can grade it.
-        if (page.pageType !in setOf("answer_key", "questions")) return emptyList()
+        // On a question page the model can confuse A-E options with a
+        // printed answer strip. Until there is independently validated
+        // answer-table REGION evidence, never accept such candidates.
+        // Native PDF answer-strip parsing still handles mixed pages.
+        if (page.pageType != "answer_key") return emptyList()
         return page.answerTests.mapNotNull { test ->
             val section = PdfScopedAnswerKeys.normalize(test.section)
             val kind = PdfScopedAnswerKeys.normalize(test.kind)

@@ -351,11 +351,21 @@ private fun FilterChipPill(
     onClick: () -> Unit
 ) {
     Surface(
+        onClick = onClick,
         shape = RoundedCornerShape(50),
         color = if (selected) Color(0xFF0F172A) else Color.White,
         border = BorderStroke(1.dp, if (selected) Color(0xFF0F172A) else Color(0xFFE2E8F0)),
         shadowElevation = if (selected) 3.dp else 0.dp,
-        modifier = Modifier.clickable(onClick = onClick)
+        // Put click semantics on the actual Material3 Surface rather than
+        // only an outer modifier. Compose tests and accessibility both need
+        // an unambiguous, stable hit target for these exam filters.
+        modifier = Modifier.testTag(
+            when {
+                label.startsWith("TYT") -> "denemeler_filter_tyt"
+                label.startsWith("AYT") -> "denemeler_filter_ayt"
+                else -> "denemeler_filter_all"
+            }
+        )
     ) {
         Text(
             text = label,

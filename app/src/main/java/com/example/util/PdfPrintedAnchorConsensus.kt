@@ -78,12 +78,24 @@ internal object PdfPrintedAnchorConsensus {
                 .thenBy { it.list.size }
                 .thenBy { -it.list.first().left }
         )?.list ?: return primary
-        val primaryValidated = primary.map { it.number }.toSet()
-        val recoveredValidated = best.map { it.number }.toSet()
-        // Do not discard an equally good primary result, or claim that a
-        // single confirmed question has disappeared because of another pass.
-        if (best.size < 2 || (best.size <= primary.size &&
-                    !recoveredValidated.containsAll(primaryValidated))) return primary
+        // A longer OCR sequence is not evidence that it belongs to printed
+        // question starts: diagrams can also contain long numbered runs.
+        // Never regress a first-pass start, even if the second pass has MORE
+        // labels. Equal-length alternatives provide no additional coverage.
+        if (best.size <= primary.size) return primary
+        val matchX = max(8f, pageWidth * .035f)
+        val matchY = max(12f, pageHeight * .025f)
+        val primaryStarts = primary.filter {
+            it.number in 1..200 && it.left in 0 until pageWidth &&
+                it.top in 0 until pageHeight && it.bottom > it.top
+        }
+        if (primaryStarts.any { original ->
+                best.none { candidate ->
+                    candidate.number == original.number &&
+                        abs(candidate.left - original.left) <= matchX &&
+                        abs(candidate.top - original.top) <= matchY
+                }
+            }) return primary
         return best
     }
 }

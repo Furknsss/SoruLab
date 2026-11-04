@@ -2405,8 +2405,17 @@ object StudioImageAndPdfEngine {
                     .coerceAtLeast(finalLeft + 119)
                 val finalTop = (rawTop - padY)
                     .coerceAtLeast(if (cropAnchor != null) band.first else bodyTop)
+                // The following question starts ABOVE its printed number
+                // (startY = nextNumberTop - anchorPadding). Clamping the
+                // previous image to nextNumberTop - 4 still overlaps that
+                // next crop, even though it does not contain the next number.
+                // Use the *same* start boundary as the following crop.
+                val nextCropStart = nextNumberTop?.let { nextTop ->
+                    (nextTop - (height * 0.008f).roundToInt().coerceIn(9, 22))
+                        .coerceAtLeast(bodyTop)
+                }
                 val finalBottom = (rawBottom + padY)
-                    .coerceAtMost(nextNumberTop?.minus(4) ?: bodyBottom)
+                    .coerceAtMost(nextCropStart?.minus(1) ?: bodyBottom)
 
                 val safeLeft = finalLeft.coerceIn(0, width - 1)
                 val safeTop = finalTop.coerceIn(0, height - 1)

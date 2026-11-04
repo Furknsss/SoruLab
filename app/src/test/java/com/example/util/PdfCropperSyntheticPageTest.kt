@@ -143,10 +143,10 @@ class PdfCropperSyntheticPageTest {
         fun content(x: Int, rows: List<Int>) {
             rows.forEach { y -> bitmap.setPixels(ink, 0, 360, x, y, 360, 6) }
         }
-        content(150, listOf(230, 290, 415, 470, 550, 616))
+        content(150, listOf(230, 290, 415, 470, 550, 616, 755))
         content(150, listOf(860, 905, 950, 995, 1060))
         content(150, listOf(1300, 1345, 1390, 1450))
-        content(720, listOf(230, 290, 390, 465, 520, 610))
+        content(720, listOf(230, 290, 390, 465, 520, 610, 777))
         content(720, listOf(860, 905, 1080, 1160, 1260, 1370))
 
         val numbers = listOf(
@@ -228,9 +228,13 @@ class PdfCropperSyntheticPageTest {
                 }
             }
             assertSavedStroke(1, 300, 616)
+            // A late diagram/annotation without an OCR option marker must
+            // not be amputated just because projection detected an early E.
+            assertSavedStroke(1, 300, 755)
             assertSavedStroke(2, 300, 1060)
             assertSavedStroke(3, 300, 1450)
             assertSavedStroke(4, 900, 610)
+            assertSavedStroke(4, 900, 777)
             assertSavedStroke(5, 900, 1370)
         } finally {
             crops.forEach { File(it.croppedImagePath).delete() }

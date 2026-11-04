@@ -1519,12 +1519,13 @@ class AiSolverViewModel : ViewModel() {
                                 } else {
                                     pageLayout.questionNumberAnchors
                                 }
+                                if (visionPage == null) {
+                                    visionRejectedQuestionPages++
+                                    suspectedSkippedQuestionPages.add(pageIdx)
+                                    continue
+                                }
                                 val validatedBoxes = PdfVisionImportPolicy.validateQuestionBoxes(
-                                    page = visionPage ?: run {
-                                        visionRejectedQuestionPages++
-                                        suspectedSkippedQuestionPages.add(pageIdx)
-                                        continue
-                                    },
+                                    page = visionPage,
                                     pageWidth = pageBitmap.width,
                                     pageHeight = pageBitmap.height,
                                     independentPrintedAnchors = corroborated,

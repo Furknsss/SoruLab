@@ -512,16 +512,40 @@ fun automaticBookTestChunks(
     // Books imported before source test detection still use the old 12-question
     // chunks. New imports must never mix the end of one printed test with the
     // start of the next. Preserve page/order and split larger tests at 12.
-    if (eligible.none { it.sourceTestId.isNotBlank() }) {
+    if (eligible.none { it.sourceTestId.isNotBlank() } &&
+        eligible.all { it.pageIndex < 0 }) {
+        // Only truly legacy records without any source-page metadata may
+        // retain the original arbitrary 12-question batching behavior.
         return eligible.chunked(AUTOMATIC_TEST_QUESTION_COUNT)
     }
     val groups = mutableListOf<List<CustomQuestionRecord>>()
     var activeKey: String? = null
     var active = mutableListOf<CustomQuestionRecord>()
     for (item in eligible) {
-        val key = item.sourceTestId.takeIf(String::isNotBlank) ?: "legacy"
+        // A printed test identity is NOT enough to justify mixing topics:
+        // OCR can misread the header, and previous imports occasionally
+        // assigned the last chapter's scope to a new page. Likewise all
+        // source-unidentified questions must not share one global 'legacy'
+        // group across unrelated PDF pages.
+        val topicKey = item.topicName.trim().lowercase(java.util.Locale.ROOT)
+            .ifBlank { "unverified-topic" }
+        val sourceKey = item.sourceTestId.takeIf(String::isNotBlank)?.let {
+            "source:$it"
+        } ?: if (item.pageIndex >= 0) {
+            "unverified-page:${item.bookId}:${item.pageIndex}"
+        } else {
+            "legacy"
+        }
+        val key = "$sourceKey|topic:$topicKey"
+        val previous = active.lastOrNull()
+        val printedNumberRestarted = previous != null &&
+            previous.questionNumberInTest > 0 && item.questionNumberInTest > 0 &&
+            item.questionNumberInTest <= previous.questionNumberInTest &&
+            // An OCR duplicate can never be a reliable continuation.
+            previous.id != item.id
         if (active.isNotEmpty() &&
-            (key != activeKey || active.size >= AUTOMATIC_TEST_QUESTION_COUNT)
+            (key != activeKey || active.size >= AUTOMATIC_TEST_QUESTION_COUNT ||
+                printedNumberRestarted)
         ) {
             groups += active.toList()
             active = mutableListOf()

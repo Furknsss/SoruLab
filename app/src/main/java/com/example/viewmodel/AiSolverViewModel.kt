@@ -1386,11 +1386,27 @@ class AiSolverViewModel : ViewModel() {
                                 }
                                 val subjectForPage = lockedBookSubject ?: pageInfo.subjectName
                                 val subjectKey = "$examTypeForPage|$subjectForPage"
-                                val explicitHeaderTopic = StudioImageAndPdfEngine.detectTopicNameFromText(
-                                    examType = examTypeForPage,
-                                    subjectName = subjectForPage,
-                                    text = pageLayout.scopeHeaderText
-                                )
+                                // A title printed in this PDF (native text first,
+                                // OCR header second) must outweigh generic
+                                // neuron/skin keywords found inside a question.
+                                // Using stem keywords as the page topic mixed
+                                // Duyu Organları questions into Sinir Sistemi.
+                                val printedHeaderTopic =
+                                    StudioImageAndPdfEngine.detectPrintedTopicNameFromHeader(
+                                        examType = examTypeForPage,
+                                        subjectName = subjectForPage,
+                                        header = pageSourceHeader.orEmpty()
+                                    ) ?: StudioImageAndPdfEngine.detectPrintedTopicNameFromHeader(
+                                        examType = examTypeForPage,
+                                        subjectName = subjectForPage,
+                                        header = pageLayout.scopeHeaderText
+                                    )
+                                val explicitHeaderTopic = printedHeaderTopic
+                                    ?: StudioImageAndPdfEngine.detectTopicNameFromText(
+                                        examType = examTypeForPage,
+                                        subjectName = subjectForPage,
+                                        text = pageLayout.scopeHeaderText
+                                    )
                                 val detectedTopic = explicitHeaderTopic ?: StudioImageAndPdfEngine.detectTopicNameFromText(
                                     examType = examTypeForPage,
                                     subjectName = subjectForPage,
@@ -1612,9 +1628,15 @@ class AiSolverViewModel : ViewModel() {
                                         val recognized = classifications[index]
                                         // Only an explicit current-page heading may fill a missing
                                         // topic. A previous chapter or filename is not evidence.
-                                        val classification = if (recognized.topicName.isBlank() && explicitHeaderTopic != null) {
-                                            recognized.copy(topicName = explicitHeaderTopic)
-                                        } else recognized
+                                        val classification = when {
+                                            // The printed source title is stronger than
+                                            // OCR keyword guesses inside individual crops.
+                                            printedHeaderTopic != null ->
+                                                recognized.copy(topicName = printedHeaderTopic)
+                                            recognized.topicName.isBlank() && explicitHeaderTopic != null ->
+                                                recognized.copy(topicName = explicitHeaderTopic)
+                                            else -> recognized
+                                        }
                                         PageQuestionCandidate(
                                             cropBox = cropBox,
                                             classification = classification,

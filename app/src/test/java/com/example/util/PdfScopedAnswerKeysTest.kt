@@ -330,4 +330,41 @@ class PdfScopedAnswerKeysTest {
         assertEquals(16, identity?.testNumber)
     }
 
+
+    @Test
+    fun unknownPrintedChapterMustInvalidateInheritedAnswerScope() {
+        val index = PdfScopedAnswerKeys(setOf("sinir sistemi"))
+        index.addOcrRows(listOf(
+            "SİNİR SİSTEMİ",
+            "Test 1 1.A 2.B",
+            "BİTKİ FİZYOLOJİSİ",
+            "Test 2 1.C 2.D"
+        ))
+        assertEquals("A", index.get(PdfAnswerScope("sinir sistemi", 1, false), 1))
+        assertNull(index.get(PdfAnswerScope("sinir sistemi", 2, false), 1))
+        assertFalse(index.hasRecognizedScope(PdfAnswerScope("sinir sistemi", 2, false)))
+    }
+
+    @Test
+    fun unknownChapterAndTestOnOneOcrLineMustNotInheritPreviousAnswers() {
+        val index = PdfScopedAnswerKeys(setOf("sinir sistemi"))
+        index.addOcrRows(listOf(
+            "SİNİR SİSTEMİ",
+            "Test 1 1.E 2.D",
+            "BİTKİ FİZYOLOJİSİ Test 2 1.B 2.A",
+            "Test 3 1.C 2.D"
+        ))
+        assertEquals("E", index.get(PdfAnswerScope("sinir sistemi", 1, false), 1))
+        assertNull(index.get(PdfAnswerScope("sinir sistemi", 2, false), 1))
+        assertNull(index.get(PdfAnswerScope("sinir sistemi", 3, false), 1))
+    }
+
+    @Test
+    fun legitimateSplitAnswerTableWithoutNewChapterRetainsItsScope() {
+        val index = PdfScopedAnswerKeys(setOf("sinir sistemi"))
+        index.addOcrRows(listOf("SİNİR SİSTEMİ", "Test 1 1.E 2.D"))
+        index.addOcrRows(listOf("Test 2 1.C 2.B"))
+        assertEquals("C", index.get(PdfAnswerScope("sinir sistemi", 2, false), 1))
+    }
+
 }

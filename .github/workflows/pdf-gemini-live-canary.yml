@@ -40,8 +40,18 @@ jobs:
             -storepass android -keypass androiddebugkey -alias androiddebugkey \
             -dname 'CN=Android Vision Canary Only,O=SoruLab,C=TR' \
             -keyalg RSA -keysize 2048 -validity 2
+      - name: Require registered Firebase App Check debug credential
+        env:
+          SORULAB_APPCHECK_DEBUG_TOKEN: ${{ secrets.SORULAB_APPCHECK_DEBUG_TOKEN }}
+        run: |
+          if test -z "$SORULAB_APPCHECK_DEBUG_TOKEN"; then
+            echo "::error::Firebase App Check rejects GitHub emulators. Register a DEBUG token in Firebase Console, then add it as Actions secret SORULAB_APPCHECK_DEBUG_TOKEN. Production enforcement stays enabled."
+            exit 1
+          fi
       - name: Request live structured output from Firebase AI Gemini 3.8 Flash
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          SORULAB_APPCHECK_DEBUG_TOKEN: ${{ secrets.SORULAB_APPCHECK_DEBUG_TOKEN }}
         with:
           api-level: 35
           target: google_apis
@@ -53,6 +63,7 @@ jobs:
             bash ./gradlew :app:connectedDebugAndroidTest
             -Pandroid.testInstrumentationRunnerArguments.class=com.example.util.PdfVisionGeminiLiveDeviceTest
             -Pandroid.testInstrumentationRunnerArguments.sorulab.liveVision=true
+            -Pandroid.testInstrumentationRunnerArguments.sorulab.appCheckDebugToken="$SORULAB_APPCHECK_DEBUG_TOKEN"
             --no-daemon --no-configuration-cache --max-workers=2
       - name: Preserve live Firebase API result and Android test log
         if: always()

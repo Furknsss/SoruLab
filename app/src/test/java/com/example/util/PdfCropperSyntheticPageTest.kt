@@ -1,6 +1,7 @@
 package com.example.util
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -197,6 +198,38 @@ class PdfCropperSyntheticPageTest {
                     a.boxNormalized[2] <= b.boxNormalized[0]
                 })
             assertTrue(crops.all { File(it.croppedImagePath).isFile })
+
+            // Image bounds may look correct while the post-processing or JPEG
+            // writer erased the diagram/choice ink. Verify the *saved files*,
+            // not merely an in-memory geometry rectangle.
+            fun assertSavedStroke(number: Int, sourceX: Int, sourceY: Int) {
+                val crop = crops.single { it.questionOrderInPage == number }
+                val saved = BitmapFactory.decodeFile(crop.croppedImagePath)
+                    ?: throw AssertionError("JPEG crop could not be decoded for question $number")
+                try {
+                    val left = (crop.boxNormalized[1] * width).toInt()
+                    val top = (crop.boxNormalized[0] * height).toInt()
+                    val x = sourceX - left
+                    val y = sourceY - top
+                    assertTrue("Question $number must include its source ink position",
+                        x in 0 until saved.width && y in 0 until saved.height)
+                    val pixel = saved.getPixel(x, y)
+                    val red = Color.red(pixel)
+                    val green = Color.green(pixel)
+                    val blue = Color.blue(pixel)
+                    assertTrue(
+                        "Saved JPEG lost a question/diagram stroke in question $number",
+                        red < 120 && green < 120 && blue < 120
+                    )
+                } finally {
+                    saved.recycle()
+                }
+            }
+            assertSavedStroke(1, 300, 616)
+            assertSavedStroke(2, 300, 1060)
+            assertSavedStroke(3, 300, 1450)
+            assertSavedStroke(4, 900, 610)
+            assertSavedStroke(5, 900, 1370)
         } finally {
             crops.forEach { File(it.croppedImagePath).delete() }
             bitmap.recycle()

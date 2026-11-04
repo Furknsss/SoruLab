@@ -5,6 +5,7 @@
 # IMPORTANT: This script does not expose the inference port publicly.
 set -euo pipefail
 ROOT="${SORULAB_VISION_HOME:-$HOME/sorulab-vision-lab}"
+SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "x86_64" ]]; then
   echo "Requires Linux x86_64 NVIDIA GPU host" >&2; exit 2
 fi
@@ -65,5 +66,8 @@ if [[ "$ready" != "1" ]]; then
   docker compose -f compose.yaml -f docker-compose.sorulab-loopback.yml ps >&2 || true
   exit 4
 fi
-echo "PaddleOCR-VL-1.6 READY on local loopback only."
+# Do not confuse a healthy HTTP server with an inference-capable model.
+# A real model call with an original (nonpublisher) image is mandatory.
+python3 "$SCRIPTS_DIR/smoke_paddle_endpoint.py" --url http://127.0.0.1:8080
+echo "PaddleOCR-VL-1.6 READY and local live inference validated."
 echo "An authenticated TLS proxy and independent inference tests are still required before Android integration."

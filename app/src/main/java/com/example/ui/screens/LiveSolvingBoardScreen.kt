@@ -71,6 +71,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.example.data.*
 import com.example.util.StudioImageAndPdfEngine
+import com.example.util.TestAnswerAnalyticsEngine
 import com.example.viewmodel.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -745,7 +746,8 @@ fun LiveSolvingBoardScreen(
                     onSelectOption = onSelectOption,
                     onFinishTest = { showFinishConfirmation = true },
                     modifier = Modifier
-                        .align(Alignment.CenterEnd)
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 8.dp, bottom = 42.dp)
                         .zIndex(35f)
                 )
             } else {
@@ -1734,6 +1736,7 @@ private fun BookPageQuestionItem345(
                 }
             }
 
+            if (isReviewMode) {
             Box(
                 modifier = Modifier.width(36.dp),
                 contentAlignment = Alignment.TopCenter
@@ -1777,6 +1780,7 @@ private fun BookPageQuestionItem345(
                         )
                     }
                 }
+            }
             }
         }
     }
@@ -1856,80 +1860,73 @@ private fun HandDrawnBrushMark345(
     isUngraded: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    Canvas(modifier = modifier) {
+    var appeared by remember { mutableStateOf(false) }
+    LaunchedEffect(isEmpty, isCorrect, isUngraded) { appeared = true }
+    val entrance by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (appeared) 1f else 0.70f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
+        ), label = "hand_drawn_answer_mark"
+    )
+    Canvas(modifier.graphicsLayer {
+        alpha = entrance.coerceIn(0.15f, 1f)
+        scaleX = entrance
+        scaleY = entrance
+    }) {
         val w = size.width
         val h = size.height
         when {
             isCorrect -> {
-                // Organik El Yapımı / Fırça Darbesi Büyük Yeşil Tik (`✓`, #16A34A)
-                val checkPath = Path().apply {
-                    moveTo(w * 0.12f, h * 0.54f)
-                    cubicTo(
-                        w * 0.22f, h * 0.66f,
-                        w * 0.30f, h * 0.78f,
-                        w * 0.38f, h * 0.86f
-                    )
-                    cubicTo(
-                        w * 0.54f, h * 0.52f,
-                        w * 0.72f, h * 0.26f,
-                        w * 0.92f, h * 0.10f
-                    )
+                // Imperfect hand-painted ink, with a translucent second pigment
+                // layer instead of a flat Material icon.
+                val ink = Color(0xFF189551)
+                val check = Path().apply {
+                    moveTo(w * .09f, h * .55f)
+                    quadraticTo(w * .23f, h * .60f, w * .38f, h * .85f)
+                    cubicTo(w * .53f, h * .53f, w * .69f, h * .31f, w * .94f, h * .13f)
                 }
-                drawPath(
-                    path = checkPath,
-                    color = Color(0xFF16A34A),
-                    style = Stroke(
-                        width = w * 0.125f,
-                        cap = StrokeCap.Round,
-                        join = StrokeJoin.Round
-                    )
-                )
+                drawPath(check, ink.copy(alpha = .20f),
+                    style = Stroke(width = w * .20f, cap = StrokeCap.Round,
+                        join = StrokeJoin.Round))
+                drawPath(check, ink,
+                    style = Stroke(width = w * .105f, cap = StrokeCap.Round,
+                        join = StrokeJoin.Round))
+                drawLine(ink.copy(alpha = .54f),
+                    Offset(w * .34f, h * .82f), Offset(w * .91f, h * .14f),
+                    strokeWidth = w * .035f, cap = StrokeCap.Round)
             }
-            isUngraded -> {
-                drawCircle(
-                    color = Color(0xFF94A3B8),
-                    radius = min(w, h) * 0.33f,
-                    center = Offset(w * 0.46f, h * 0.46f),
-                    style = Stroke(width = w * 0.10f)
-                )
-            }
-            isEmpty -> {
-                // Boş Bırakılan Soru: İçinde hiçbir çizgi olmayan temiz, içi boş gri çember (`○`, #94A3B8)
-                val center = Offset(w * 0.46f, h * 0.46f)
-                val radius = min(w, h) * 0.33f
-                drawCircle(
-                    color = Color(0xFF94A3B8),
-                    radius = radius,
-                    center = center,
-                    style = Stroke(width = w * 0.10f)
-                )
+            isEmpty || isUngraded -> {
+                val ring = Path().apply {
+                    moveTo(w * .80f, h * .28f)
+                    cubicTo(w * .55f, h * .02f, w * .16f, h * .16f, w * .13f, h * .48f)
+                    cubicTo(w * .06f, h * .77f, w * .47f, h * .98f, w * .74f, h * .80f)
+                    cubicTo(w * .92f, h * .69f, w * .91f, h * .40f, w * .80f, h * .28f)
+                }
+                drawPath(ring, Color(0xFF95A0B2).copy(alpha = .2f),
+                    style = Stroke(width = w * .16f, cap = StrokeCap.Round))
+                drawPath(ring, Color(0xFF9AA4B5),
+                    style = Stroke(width = w * .07f, cap = StrokeCap.Round))
             }
             else -> {
-                // Yanlış İşaretlenen Soru: Organik Fırça Darbesi Büyük Kırmızı Çarpı (`✗`, #DC2626)
-                val stroke1 = Path().apply {
-                    moveTo(w * 0.16f, h * 0.15f)
-                    quadraticTo(w * 0.50f, h * 0.48f, w * 0.84f, h * 0.85f)
+                val redInk = Color(0xFFE03145)
+                val first = Path().apply {
+                    moveTo(w * .16f, h * .12f)
+                    cubicTo(w * .36f, h * .33f, w * .54f, h * .61f, w * .85f, h * .90f)
                 }
-                val stroke2 = Path().apply {
-                    moveTo(w * 0.82f, h * 0.15f)
-                    quadraticTo(w * 0.48f, h * 0.48f, w * 0.16f, h * 0.85f)
+                val second = Path().apply {
+                    moveTo(w * .88f, h * .13f)
+                    cubicTo(w * .70f, h * .35f, w * .37f, h * .61f, w * .14f, h * .87f)
                 }
-                drawPath(
-                    path = stroke1,
-                    color = Color(0xFFDC2626),
-                    style = Stroke(
-                        width = w * 0.115f,
-                        cap = StrokeCap.Round
-                    )
-                )
-                drawPath(
-                    path = stroke2,
-                    color = Color(0xFFDC2626),
-                    style = Stroke(
-                        width = w * 0.115f,
-                        cap = StrokeCap.Round
-                    )
-                )
+                listOf(first, second).forEach { stroke ->
+                    drawPath(stroke, redInk.copy(alpha = .16f),
+                        style = Stroke(width = w * .22f, cap = StrokeCap.Round))
+                    drawPath(stroke, redInk,
+                        style = Stroke(width = w * .105f, cap = StrokeCap.Round))
+                }
+                drawLine(redInk.copy(alpha = .55f),
+                    Offset(w * .21f, h * .17f), Offset(w * .81f, h * .86f),
+                    strokeWidth = w * .025f, cap = StrokeCap.Round)
             }
         }
     }
@@ -2176,13 +2173,16 @@ private fun RightSlidingOpticalFormDrawer345(
             exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
         ) {
             Surface(
-                shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp),
+                shape = RoundedCornerShape(24.dp),
                 color = Color.White,
-                shadowElevation = 12.dp,
+                shadowElevation = 18.dp,
                 border = BorderStroke(1.dp, Color(0xFFE7E5F0)),
                 modifier = Modifier
-                    .width((configuration.screenWidthDp.dp - 48.dp).coerceAtMost(380.dp))
-                    .heightIn(max = (configuration.screenHeightDp.dp - 160.dp).coerceIn(180.dp, 580.dp))
+                    .width((configuration.screenWidthDp.dp - 36.dp).coerceAtMost(440.dp))
+                    .heightIn(
+                        min = 300.dp,
+                        max = (configuration.screenHeightDp.dp - 180.dp).coerceIn(300.dp, 610.dp)
+                    )
                     .testTag("optical_form_drawer")
             ) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
@@ -3305,6 +3305,23 @@ private fun FullScreenSuccessReportCardView(
 ) {
     val questions = session.testItem.questions
     var expandedQuestionNumber by remember { mutableStateOf<Int?>(null) }
+    var showMistakeAnalysis by remember(session.testItem.id) { mutableStateOf(false) }
+    val mistakeSummary = remember(questions, session.selectedAnswers, session.subjectName, session.topicName) {
+        TestAnswerAnalyticsEngine.calculate(
+            questions = questions,
+            selectedAnswers = session.selectedAnswers,
+            lessonHint = session.subjectName,
+            topicHint = session.topicName
+        )
+    }
+    if (showMistakeAnalysis) {
+        PremiumMistakeAnalysisScreen(
+            title = session.testItem.fullTitle.ifBlank { session.topicName },
+            summary = mistakeSummary,
+            onBack = { showMistakeAnalysis = false }
+        )
+        return
+    }
 
     val gradedQuestionCount = questions.count { it.answerKeyVerified }
     val headlineText = remember(correctCount, gradedQuestionCount) {
@@ -3490,6 +3507,39 @@ private fun FullScreenSuccessReportCardView(
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
                         )
+                    }
+                }
+            }
+
+            // Premium, source-aware analysis entry, visible only after finishing the test.
+            item {
+                Surface(
+                    onClick = { showMistakeAnalysis = true },
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xFFF0F4FF),
+                    border = BorderStroke(1.dp, Color(0xFFDCE6FF)),
+                    modifier = Modifier.fillMaxWidth().widthIn(max = 620.dp)
+                        .testTag("open_frequency_analysis")
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(shape = CircleShape, color = Color.White) {
+                            Icon(Icons.Default.Visibility, contentDescription = null,
+                                tint = Color(0xFF3475F5),
+                                modifier = Modifier.padding(12.dp).size(24.dp))
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Hata Frekansı", fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold, color = Color(0xFF25215D))
+                            Text("Ders, konu, alt kazanım ve soru türlerini incele",
+                                fontSize = 12.sp, color = Color(0xFF607398))
+                        }
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "Hata frekansı ayrıntılarını aç",
+                            tint = Color(0xFF3475F5))
                     }
                 }
             }

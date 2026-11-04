@@ -796,6 +796,7 @@ class AiSolverViewModel : ViewModel() {
 
     private fun describePdfFailure(error: Exception): String {
         return when (error) {
+            is java.util.regex.PatternSyntaxException -> "PDF işleme motorunda düzenli ifade hatası oluştu (PatternSyntaxException). Bu dosyanızın hatası değil; uygulamanın güncellenmesi gerekiyor."
             is SecurityException -> "PDF dosyasına erişim izni alınamadı. Dosyayı yeniden seçip tekrar deneyin."
             is java.io.FileNotFoundException -> "Seçilen PDF artık bulunamıyor. Dosyayı yeniden seçin."
             is java.io.IOException -> "PDF okunamadı. Dosyanın bozuk veya parola korumalı olmadığını kontrol edin."
@@ -984,6 +985,7 @@ class AiSolverViewModel : ViewModel() {
                 val allExtractedQuestions = mutableListOf<ExtractedPdfQuestionItem>()
                 val expectedScopeByQuestionId = mutableMapOf<String, PdfAnswerScope>()
                 val pendingHorizontalGrids = mutableListOf<Pair<PdfAnswerScope, PdfHorizontalAnswerGrid>>()
+                val pendingVectorFooterKeys = mutableListOf<Pair<PdfAnswerScope, Map<Int, String>>>()
                 var detectedAnswerPages = 0
                 var pageRenderFailureCount = 0
 
@@ -1048,7 +1050,7 @@ class AiSolverViewModel : ViewModel() {
                                 }
                                 if (pageBitmap == null) continue
 
-                                val pageLayout = try {
+                                val ocrPageLayout = try {
                                     recognizePdfPageLayout(pageBitmap)
                                 } catch (e: CancellationException) {
                                     throw e
@@ -1060,6 +1062,33 @@ class AiSolverViewModel : ViewModel() {
                                     processingStatus.ocrFailureCount++
                                     PdfPageOcrLayout()
                                 }
+                                // Prefer a geometrically validated native text-layer
+                                // question run when OCR lost printed numbers. The
+                                // detector requires a consecutive aligned sequence;
+                                // scanned/image-only pages keep their ML Kit anchors.
+                                val source = localBlueprint.pageVectorQuestionAnchors[pageIdx]
+                                val nativeAnchors = source?.takeIf {
+                                    it.pageWidth > 0f && it.pageHeight > 0f
+                                }?.anchors?.map { anchor ->
+                                    QuestionNumberAnchor(
+                                        number = anchor.number,
+                                        left = (anchor.x / source.pageWidth * pageBitmap.width).toInt()
+                                            .coerceIn(0, pageBitmap.width - 1),
+                                        top = (anchor.y / source.pageHeight * pageBitmap.height).toInt()
+                                            .coerceIn(0, pageBitmap.height - 1),
+                                        right = ((anchor.x + anchor.width) / source.pageWidth *
+                                            pageBitmap.width).toInt().coerceIn(1, pageBitmap.width),
+                                        bottom = ((anchor.y + anchor.height) / source.pageHeight *
+                                            pageBitmap.height).toInt().coerceIn(1, pageBitmap.height)
+                                    )
+                                }.orEmpty()
+                                val sourceBackedPage = nativeAnchors.size >= 4 &&
+                                    pageIdx in localBlueprint.pageVectorOptionEvidence
+                                val pageLayout = if (sourceBackedPage) {
+                                    ocrPageLayout.copy(questionNumberAnchors = nativeAnchors)
+                                } else ocrPageLayout
+                                val hasQuestionOptions = sourceBackedPage ||
+                                    pageLayout.optionAnchors.map { it.option }.distinct().size >= 3
                                 val hasAnswerKeyMarker =
                                     StudioImageAndPdfEngine.hasAnswerKeyMarker(pageLayout.text)
                                 val isAnswerTablePage =
@@ -1069,6 +1098,16 @@ class AiSolverViewModel : ViewModel() {
                                 val gridHeaderScope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
                                     pageLayout.scopeHeaderText, pageInfo.topicName
                                 )
+                                // The PDF's embedded text layer can preserve tiny
+                                // table titles which whole-page device OCR misses.
+                                // Resolve only from THIS page's printed heading.
+                                val vectorHeaderScope = localBlueprint.pageSourceHeaders[pageIdx]?.let {
+                                    PdfScopedAnswerKeys.scopeFromQuestionHeader(it, pageInfo.topicName)
+                                }
+                                val footerFromTextLayer = localBlueprint.pageTextFooterKeys[pageIdx]
+                                if (footerFromTextLayer != null && vectorHeaderScope != null) {
+                                    pendingVectorFooterKeys += vectorHeaderScope to footerFromTextLayer
+                                }
                                 if (pageLayout.answerGrids.isNotEmpty() && !hasAnswerKeyMarker && !isAnswerTablePage) {
                                     detectedAnswerPages++
                                 }
@@ -1087,8 +1126,7 @@ class AiSolverViewModel : ViewModel() {
                                     // multiple-choice question evidence.
                                     val hasQuestionEvidence =
                                         pageLayout.questionNumberAnchors.isNotEmpty() &&
-                                            pageLayout.optionAnchors.map { it.option }
-                                                .distinct().size >= 3
+                                            hasQuestionOptions
                                     if (!hasQuestionEvidence) {
                                         // A separate key page needs its own explicit heading.
                                         if (gridHeaderScope != null) pageLayout.answerGrids.forEach {
@@ -1097,12 +1135,12 @@ class AiSolverViewModel : ViewModel() {
                                         continue
                                     }
                                 }
-                                if (skipPage) continue
+                                if (skipPage && !sourceBackedPage) continue
                                 // A scanned foreword, contents page or advertisement
                                 // can have numbered paragraphs that look like 1./2.
                                 // Require A-E evidence before creating YKS questions.
                                 if (pageLayout.questionNumberAnchors.isEmpty() ||
-                                    pageLayout.optionAnchors.map { it.option }.distinct().size < 3) {
+                                    !hasQuestionOptions) {
                                     continue
                                 }
 
@@ -1164,7 +1202,7 @@ class AiSolverViewModel : ViewModel() {
                                     topicName = resolvedPageTopic,
                                     isSkipPage = false
                                 )
-                                val detectedScope = gridHeaderScope
+                                val detectedScope = vectorHeaderScope ?: gridHeaderScope
                                     ?: PdfScopedAnswerKeys.scopeFromQuestionHeader(
                                         pageLayout.scopeHeaderText, scanPageInfo.topicName
                                     )
@@ -1326,6 +1364,9 @@ class AiSolverViewModel : ViewModel() {
                 for ((scope, grid) in pendingHorizontalGrids) {
                     scopedAnswers.addPairs(scope, grid.answers.toList())
                 }
+                for ((scope, pageKeys) in pendingVectorFooterKeys) {
+                    scopedAnswers.addPairs(scope, pageKeys.toList())
+                }
 
                 // Match the completed, per-PDF answer index to the exact
                 // chapter/test/printed-number identity of each extracted question.
@@ -1365,6 +1406,13 @@ class AiSolverViewModel : ViewModel() {
                         "$detectedAnswerPages olası cevap sayfası • ${scopedAnswers.answerCount} okunan cevap • " +
                         "${allExtractedQuestions.count { it.answerKeyMatched }} doğrulanmış soru • " +
                         "${allExtractedQuestions.count { !it.answerKeyMatched }} inceleme gerekiyor.")
+                    val vectorExpected = localBlueprint.pageTextFooterKeys.values.sumOf { it.size }
+                    if (vectorExpected > 0 && allExtractedQuestions.size != vectorExpected) {
+                        add("ÖNEMLİ: PDF metin katmanındaki $vectorExpected cevap hücresine karşılık " +
+                            "yalnızca ${allExtractedQuestions.size} soru kesildi. Eksik veya fazla " +
+                            "kırpmalar için sayfa önizlemesini kontrol edin; eksik kitabı tam " +
+                            "aktarılmış saymayın.")
+                    }
                     if (scopedAnswers.answerCount == 0) {
                         add("$detectedAnswerPages olası cevap anahtarı sayfası tarandı ancak " +
                             "geçerli test-cevap eşleşmesi bulunamadı. Hiçbir cevap tahmin edilmedi.")
@@ -1413,6 +1461,7 @@ class AiSolverViewModel : ViewModel() {
                 completeOnce(allExtractedQuestions, coverPath, finalBookTitle)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException && e !is TimeoutCancellationException) throw e
+                android.util.Log.e("SoruLabPdfImport", "PDF aktarımı başarısız; hata kaynağı için yığın izi", e)
                 _batchErrorText.value = describePdfFailure(e)
                 completeOnce(emptyList(), "", "")
             } finally {

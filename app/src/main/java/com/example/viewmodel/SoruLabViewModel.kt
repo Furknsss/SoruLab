@@ -904,6 +904,7 @@ class SoruLabViewModel(
                 croppedImagePath = custom.croppedImagePath,
                 answerKeyVerified = answerKeyVerified,
                 stemTop = if (hasCroppedStemImage) "" else custom.questionText,
+                analyticsText = custom.questionText,
                 bulletsOrSteps = emptyList(),
                 stemBottom = if (hasCroppedStemImage) "" else "Buna göre doğru seçenek aşağıdakilerden hangisidir?",
                 options = mapOf(
@@ -1036,6 +1037,7 @@ class SoruLabViewModel(
                 croppedImagePath = custom.croppedImagePath,
                 answerKeyVerified = answerKeyVerified,
                 stemTop = if (hasCroppedStemImage) "" else custom.questionText,
+                analyticsText = custom.questionText,
                 bulletsOrSteps = emptyList(),
                 stemBottom = if (hasCroppedStemImage) "" else "Buna göre doğru seçenek aşağıdakilerden hangisidir?",
                 options = mapOf(
@@ -1580,6 +1582,7 @@ class SoruLabViewModel(
                 croppedImagePath = record.croppedImagePath,
                 answerKeyVerified = answerKeyVerified,
                 stemTop = if (hasCroppedImg) "" else record.questionText,
+                analyticsText = record.questionText,
                 bulletsOrSteps = emptyList(),
                 stemBottom = if (hasCroppedImg) "" else "Doğru seçeneği işaretleyiniz.",
                 options = mapOf(
@@ -1698,6 +1701,7 @@ class SoruLabViewModel(
                 croppedImagePath = record.croppedImagePath,
                 answerKeyVerified = answerKeyVerified,
                 stemTop = if (hasCroppedImg) "" else record.questionText,
+                analyticsText = record.questionText,
                 bulletsOrSteps = emptyList(),
                 stemBottom = if (hasCroppedImg) "" else "Doğru seçeneği işaretleyiniz.",
                 options = mapOf(

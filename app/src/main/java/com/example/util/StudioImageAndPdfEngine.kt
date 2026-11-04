@@ -454,7 +454,7 @@ object StudioImageAndPdfEngine {
                 )
         } ?: return null
         val headerLines = header.lineSequence()
-            .map { it.trim().replace(Regex("""\\s+"""), " ").lowercase(java.util.Locale.forLanguageTag("tr-TR")) }
+            .map { it.trim().replace(Regex("""\s+"""), " ").lowercase(java.util.Locale.forLanguageTag("tr-TR")) }
             .filter(String::isNotBlank)
             .take(18)
             .toList()

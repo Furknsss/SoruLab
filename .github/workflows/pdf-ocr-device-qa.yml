@@ -1,0 +1,67 @@
+name: PDF Android device OCR and crop smoke
+
+on:
+  push:
+    branches:
+      - fix/rc9-consensus-no-anchor-regression
+    paths:
+      - 'app/src/androidTest/**'
+      - '.github/workflows/pdf-ocr-device-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pdf-android-device-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-device-ocr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install required Android compile SDK
+        run: sdkmanager 'platforms;android-36.1' 'build-tools;36.0.0'
+      - name: Configure emulator virtualization
+        run: |
+          if test -e /dev/kvm; then
+            sudo chmod a+rw /dev/kvm
+          else
+            echo 'ERROR: Host does not expose /dev/kvm, device OCR cannot be certified'
+            exit 1
+          fi
+      - name: Generate disposable local-only debug signing key
+        run: |
+          keytool -genkeypair -noprompt -keystore debug.keystore \
+            -storepass android -keypass androiddebugkey -alias androiddebugkey \
+            -dname 'CN=Android QA Only,O=SoruLab,C=TR' -keyalg RSA \
+            -keysize 2048 -validity 2
+      - name: Execute actual on-device ML Kit and question-crop integration
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          emulator-options: '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none'
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2
+      - name: Archive device screenshots and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sorulab-android-device-ocr-smoke
+          path: |
+            app/build/outputs/androidTest-results/connected/
+            app/build/reports/androidTests/connected/
+          if-no-files-found: ignore
+          retention-days: 7

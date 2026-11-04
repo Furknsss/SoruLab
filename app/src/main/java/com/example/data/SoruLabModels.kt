@@ -970,7 +970,11 @@ object SoruLabCatalog {
         "bagil_hareket" to listOf("bağıl hareket", "bagil hareket", "gözlemci", "yere göre", "akıntı", "kayık", "yürüyen merdiven"),
         "newton_hareket_yasalari" to listOf("newton", "sürtünme", "ivme", "net kuvvet"),
         "bir_boyutta_sabit_ivmeli" to listOf("sabit ivmeli", "hız-zaman", "konum-zaman", "duruştan harekete"),
-        "atislar" to listOf("atış", "atis", "serbest düşme", "yatay atış", "eğik atış"),
+        // "atılıyor / fırlatılıyor" are direct projectile-motion signals;
+        // a generic old page topic is NOT sufficient evidence.
+        "atislar" to listOf("atış", "atis", "atılıyor", "atiliyor",
+            "fırlatılıyor", "firlatiliyor", "fırlatılan", "firlatilan",
+            "serbest düşme", "yatay atış", "eğik atış"),
         "enerji_ve_hareket" to listOf("iş, enerji", "kinetik enerji", "potansiyel enerji", "yay sabiti"),
         "itme_momentum" to listOf("itme", "momentum", "çarpışma", "patlama"),
         "tork_ve_denge" to listOf("tork", "denge", "ip gerilmesi", "destek"),

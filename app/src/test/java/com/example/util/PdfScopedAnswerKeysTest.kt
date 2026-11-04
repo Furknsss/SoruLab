@@ -367,4 +367,27 @@ class PdfScopedAnswerKeysTest {
         assertEquals("C", index.get(PdfAnswerScope("sinir sistemi", 2, false), 1))
     }
 
+
+    @Test
+    fun testNumberWithoutVisibleChapterDoesNotUseLastPageTopicHint() {
+        val scope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 3", "Sinir Sistemi"
+        )
+        assertNull(scope)
+    }
+
+    @Test
+    fun unrelatedCatalogTopicCannotBindAnswerKeyWithoutPrintedHeading() {
+        val index = PdfScopedAnswerKeys()
+        index.addOcrRows(listOf("SİNİR SİSTEMİ", "Test 3 1.A 2.B"))
+        val unknownPageScope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 3", "Sinir Sistemi"
+        )
+        assertNull(index.get(unknownPageScope, 1))
+        val explicitPageScope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 3\nSinir Sistemi", "Sinir Sistemi"
+        )
+        assertEquals("A", index.get(explicitPageScope, 1))
+    }
+
 }

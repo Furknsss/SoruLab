@@ -307,8 +307,13 @@ fun DenemelerHubScreen(
         }
 
         item {
+            // Three exam filters exceed a phone's content width. A clipped
+            // AYT chip was unreachable on narrow devices; scroll the strip
+            // horizontally without shrinking its touch targets.
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .testTag("denemeler_filter_strip"),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

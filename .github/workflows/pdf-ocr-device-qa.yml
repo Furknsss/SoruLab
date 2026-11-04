@@ -61,24 +61,9 @@ jobs:
           emulator-boot-timeout: 600
           script: |
             bash ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2
-            # Capture ORIGINAL QA fixtures only, no copyrighted book pages.
-            mkdir -p app/build/qa-device-screenshots
-            # Android instrumentation may write screenshots under the test
-            # package's external files directory instead of the target app's.
-            # Discover the real directory rather than assuming its package.
-            adb shell 'find /sdcard/Android/data -type f -name denemeler-phone.png 2>/dev/null' | tr -d '\r' > app/build/qa-device-screenshots/paths.txt
-            echo "Found QA screenshots:"
-            cat app/build/qa-device-screenshots/paths.txt
-            screen_path="$(head -n 1 app/build/qa-device-screenshots/paths.txt)"
-            if test -z "$screen_path"; then
-              echo 'ERROR: UI screenshot was not saved on device'
-              adb shell 'ls -l /sdcard/Android/data/*/files/qa-screens/ 2>/dev/null' || true
-              exit 1
-            fi
-            screen_dir="${screen_path%/*}"
-            adb pull "$screen_dir/." app/build/qa-device-screenshots/
-            test -s app/build/qa-device-screenshots/denemeler-phone.png
-            test -s app/build/qa-device-screenshots/solving-board-phone.png
+            # Screenshot collection runs as a SINGLE shell script;
+            # the runner executes each here-line as a distinct command.
+            bash scripts/collect_pdf_qa_screenshots.sh
       - name: Archive device screenshots and test reports
         if: always()
         uses: actions/upload-artifact@v4

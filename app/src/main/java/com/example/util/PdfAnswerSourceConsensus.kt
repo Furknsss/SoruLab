@@ -23,11 +23,13 @@ internal object PdfAnswerSourceConsensus {
             val textRaw = linearText[key]
             val geometricAnswer = valid(geoRaw)
             val linearAnswer = valid(textRaw)
-            // A malformed cell in one channel is not independent evidence
-            // against a valid cell in the other; two distinct VALID answers
-            // are a real conflict and must remain unresolved.
-            if (geometricAnswer != null && linearAnswer != null &&
-                geometricAnswer != linearAnswer) continue
+            // Two OCR channels reporting the same cell must AGREE.
+            // Even an invalid character in either channel indicates that
+            // the independent reads disagree; fail closed rather than
+            // silently treating the other letter as independently verified.
+            if (geoRaw != null && textRaw != null &&
+                (geometricAnswer == null || linearAnswer == null ||
+                    geometricAnswer != linearAnswer)) continue
             val finalAnswer = geometricAnswer ?: linearAnswer
             if (finalAnswer != null) result[key] = finalAnswer
         }

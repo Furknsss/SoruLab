@@ -949,7 +949,10 @@ object StudioImageAndPdfEngine {
      *    colored diagram lines (blue, red, green, orange).
      * 4. Trims excess empty white borders and adds a clean uniform padding.
      */
-    fun applyAdaptiveContrastAndBackgroundWhitening(source: Bitmap): Bitmap {
+    fun applyAdaptiveContrastAndBackgroundWhitening(
+        source: Bitmap,
+        trimWhiteMargins: Boolean = true
+    ): Bitmap {
         val width = source.width
         val height = source.height
         if (width < 8 || height < 8) return source
@@ -1059,7 +1062,12 @@ object StudioImageAndPdfEngine {
         val processedFull = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         processedFull.setPixels(pixels, 0, width, 0, 0, width, height)
 
-        if (minX >= maxX || minY >= maxY) {
+        // Question crops must preserve a 1:1 mapping to their source-page
+        // rectangle. Removing white borders after recording boxNormalized
+        // shifts the actual pixels, corrupts reload/preview coordinates and
+        // can make a saved diagram appear clipped. Logo/general image
+        // enhancement may still opt into the old margin trimming.
+        if (!trimWhiteMargins || minX >= maxX || minY >= maxY) {
             return processedFull
         }
 
@@ -2997,7 +3005,9 @@ object StudioImageAndPdfEngine {
     ): Bitmap {
         val w = sourceCrop.width
         val h = sourceCrop.height
-        if (w < 60 || h < 60) return applyAdaptiveContrastAndBackgroundWhitening(sourceCrop)
+        if (w < 60 || h < 60) return applyAdaptiveContrastAndBackgroundWhitening(
+            sourceCrop, trimWhiteMargins = false
+        )
 
         val mutableCrop = if (sourceCrop.isMutable && sourceCrop.config == Bitmap.Config.ARGB_8888) {
             sourceCrop
@@ -3050,7 +3060,9 @@ object StudioImageAndPdfEngine {
             }
         }
 
-        val whitened = applyAdaptiveContrastAndBackgroundWhitening(mutableCrop)
+        val whitened = applyAdaptiveContrastAndBackgroundWhitening(
+            mutableCrop, trimWhiteMargins = false
+        )
         if (whitened !== mutableCrop && mutableCrop !== sourceCrop) {
             mutableCrop.recycle()
         }

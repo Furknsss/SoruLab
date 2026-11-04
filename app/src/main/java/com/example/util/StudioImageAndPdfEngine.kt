@@ -2346,10 +2346,21 @@ object StudioImageAndPdfEngine {
                     val projectedEnd = withinQuestionOptions?.plus(anchorPadding)
                         ?: lastQuestionInk?.plus(anchorPadding)
                         ?: hardEnd
-                    val endY = maxOf(
-                        projectedEnd,
-                        lastObservedOptionBottom?.plus(anchorPadding) ?: projectedEnd
-                    ).coerceIn(startY + 1, hardEnd)
+                    // With a verified NEXT printed number, the only safe end
+                    // is the start boundary of that next question. Pixel
+                    // projection and OCR option lines can stop hundreds of
+                    // pixels early after a large diagram, equation or table.
+                    // Ending on 'E)' silently amputates the rest of the source.
+                    // The hardEnd excludes the following printed question and
+                    // gives the current question all of its intervening space.
+                    val endY = if (nextAnchorTop != null) {
+                        hardEnd
+                    } else {
+                        maxOf(
+                            projectedEnd,
+                            lastObservedOptionBottom?.plus(anchorPadding) ?: projectedEnd
+                        ).coerceIn(startY + 1, hardEnd)
+                    }
                     startY to endY
                 }
 

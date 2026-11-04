@@ -35,6 +35,7 @@ jobs:
           bash ./gradlew :app:testDebugUnitTest
           --tests com.example.util.PdfPrintedAnchorConsensusTest
           --tests com.example.util.PdfCropGeometryAuditTest
+          --tests com.example.util.PdfPageCropCoverageAuditTest
           --tests com.example.util.PdfCropperSyntheticPageTest
           --tests com.example.util.PdfColumnLayoutEvidenceTest
           --tests com.example.util.PdfVectorQuestionAnchorsTest

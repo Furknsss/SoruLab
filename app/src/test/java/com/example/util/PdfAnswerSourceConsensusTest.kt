@@ -54,4 +54,14 @@ class PdfAnswerSourceConsensusTest {
         assertEquals("B", result[2])
     }
 
+
+    @Test fun malformedCompetingOcrReadingCannotValidateAnotherChannelsLetter() {
+        val result = PdfAnswerSourceConsensus.combine(
+            mapOf(1 to "X", 2 to "B"),
+            mapOf(1 to "A", 2 to " B ")
+        )
+        assertNull(result[1])
+        assertEquals("B", result[2])
+    }
+
 }

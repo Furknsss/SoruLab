@@ -26,6 +26,8 @@ import com.example.util.StudioImageAndPdfEngine
 import com.example.util.PdfVisionGeminiEngine
 import com.example.util.PdfVisionImportPolicy
 import com.example.util.PdfVisionAnswerConsensus
+import com.example.util.PdfPrintedKeyCoverageAudit
+import com.example.util.PdfAnswerId
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.Schema
@@ -1753,6 +1755,26 @@ class AiSolverViewModel : ViewModel() {
                 val printedKeyConsensus = PdfVisionAnswerConsensus.compare(
                     scopedAnswers, pendingVisionPrintedKeys
                 )
+                // Whole-test completeness is NOT the same as per-crop OCR
+                // success. If the printed key has 10 question identities
+                // and the import has only 8, refuse the whole book.
+                val sourceKeysForCoverage = pendingVisionPrintedKeys +
+                    pendingVectorFooterKeys.map { (scope, keys) ->
+                        scope to keys.toList()
+                    } +
+                    pendingHorizontalGrids.map { (scope, grid) ->
+                        scope to grid.answers.toList()
+                    }
+                val importedSourceIdentities = allExtractedQuestions.mapNotNull { item ->
+                    val scope = expectedScopeByQuestionId[item.id]
+                    val number = item.questionNumberInTest
+                    if (scope != null && number in 1..200) {
+                        PdfAnswerId(scope, number)
+                    } else null
+                }
+                val sourceKeyCoverage = PdfPrintedKeyCoverageAudit.assess(
+                    sourceKeysForCoverage, importedSourceIdentities
+                )
 
                 // Match the completed, per-PDF answer index to the exact
                 // chapter/test/printed-number identity of each extracted question.
@@ -1810,6 +1832,13 @@ class AiSolverViewModel : ViewModel() {
                             (printed - detected).takeIf { it.isNotEmpty() }
                                 ?.let { pageIndex to it }
                         }
+                    if (!sourceKeyCoverage.complete) {
+                        add("KAYNAK TEST BÜTÜNLÜĞÜ: " +
+                            "${sourceKeyCoverage.totalSourceNumbers} kaynak cevap hücresi kimliği, " +
+                            "${sourceKeyCoverage.missingSourceQuestions.size} eksik soru, " +
+                            "${sourceKeyCoverage.duplicateImportedQuestions.size} mükerrer soru. " +
+                            "Kitap eksiksiz kabul edilemez.")
+                    }
                     add("CEVAP OKUMA UZLAŞMASI: " +
                         "${printedKeyConsensus.confirmed.size} hücre iki bağımsız okuyucuda uyuştu, " +
                         "${printedKeyConsensus.disputed.size} hücre çelişkili, " +
@@ -1924,7 +1953,8 @@ class AiSolverViewModel : ViewModel() {
                 // even though the system knew that hundreds were incomplete.
                 // A partially processed book is a FAILED import, not a
                 // successful library entry. Existing library data is untouched.
-                val completePdf = visionFailedPageCount == 0 &&
+                val completePdf = sourceKeyCoverage.complete &&
+                    visionFailedPageCount == 0 &&
                     visionRejectedQuestionPages == 0 &&
                     suspectedSkippedQuestionPages.isEmpty() &&
                     pageRenderFailureCount == 0 &&
@@ -1940,6 +1970,8 @@ class AiSolverViewModel : ViewModel() {
                         "${visionFailedPageCount} AI sayfa hatası, " +
                         "${visionRejectedQuestionPages} reddedilmiş kırpma sayfası, " +
                         "${suspectedSkippedQuestionPages.size} şüpheli eksik sayfa, " +
+                        "${sourceKeyCoverage.missingSourceQuestions.size} kaynak cevaba göre eksik soru, " +
+                        "${sourceKeyCoverage.duplicateImportedQuestions.size} mükerrer soru, " +
                         "${allExtractedQuestions.count { !it.answerKeyMatched }} cevabı doğrulanmayan soru. " +
                         "Hatalı kitabı otomatik kaydetmedik; önce bunları düzeltmek gerekir."
                     // These cropped files were staged only for this import.

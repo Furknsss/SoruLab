@@ -1520,7 +1520,11 @@ class AiSolverViewModel : ViewModel() {
                                     pageLayout.questionNumberAnchors
                                 }
                                 val validatedBoxes = PdfVisionImportPolicy.validateQuestionBoxes(
-                                    page = visionPage,
+                                    page = visionPage ?: run {
+                                        visionRejectedQuestionPages++
+                                        suspectedSkippedQuestionPages.add(pageIdx)
+                                        continue
+                                    },
                                     pageWidth = pageBitmap.width,
                                     pageHeight = pageBitmap.height,
                                     independentPrintedAnchors = corroborated,

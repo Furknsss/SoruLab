@@ -25,6 +25,7 @@ import com.example.util.PdfScopedAnswerKeys
 import com.example.util.StudioImageAndPdfEngine
 import com.example.util.PdfVisionGeminiEngine
 import com.example.util.PdfVisionImportPolicy
+import com.example.util.PdfVisionAnswerConsensus
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.Schema
@@ -1295,9 +1296,7 @@ class AiSolverViewModel : ViewModel() {
                                     )
                                     null
                                 }
-                                if (visionPage != null &&
-                                    visionPage.pageType == "answer_key"
-                                ) {
+                                if (visionPage != null && visionPage.answerTests.isNotEmpty()) {
                                     pendingVisionPrintedKeys.addAll(
                                         PdfVisionImportPolicy.verifiedPrintedKeyCandidates(visionPage)
                                     )
@@ -1748,13 +1747,12 @@ class AiSolverViewModel : ViewModel() {
                 for ((scope, pageKeys) in pendingVectorFooterKeys) {
                     scopedAnswers.addPairs(scope, pageKeys.toList())
                 }
-                // The new vision engine TRANSCRIBES printed answer tables.
-                // It is forbidden to solve questions as a substitute for a
-                // printed answer key. Conflicting independent sources are
-                // automatically quarantined by PdfScopedAnswerKeys.addPairs.
-                for ((scope, pairs) in pendingVisionPrintedKeys) {
-                    scopedAnswers.addPairs(scope, pairs)
-                }
+                // Two INDEPENDENT readers must agree on a printed answer.
+                // Never promote Gemini's own answer transcription to verified
+                // status when PDF-native text/ML Kit did not also read it.
+                val printedKeyConsensus = PdfVisionAnswerConsensus.compare(
+                    scopedAnswers, pendingVisionPrintedKeys
+                )
 
                 // Match the completed, per-PDF answer index to the exact
                 // chapter/test/printed-number identity of each extracted question.
@@ -1762,7 +1760,9 @@ class AiSolverViewModel : ViewModel() {
                 for (idx in allExtractedQuestions.indices) {
                     val original = allExtractedQuestions[idx]
                     val scope = expectedScopeByQuestionId[original.id]
-                    val correct = scopedAnswers.get(scope, original.questionNumberInTest)
+                    val correct = printedKeyConsensus.confirmedOption(
+                        scope, original.questionNumberInTest
+                    )
                     if (correct != null && original.id !in unsafeCropQuestionIds) {
                         allExtractedQuestions[idx] = original.copy(
                             correctOption = correct,
@@ -1810,6 +1810,11 @@ class AiSolverViewModel : ViewModel() {
                             (printed - detected).takeIf { it.isNotEmpty() }
                                 ?.let { pageIndex to it }
                         }
+                    add("CEVAP OKUMA UZLAŞMASI: " +
+                        "${printedKeyConsensus.confirmed.size} hücre iki bağımsız okuyucuda uyuştu, " +
+                        "${printedKeyConsensus.disputed.size} hücre çelişkili, " +
+                        "${printedKeyConsensus.unsupported.size} hücre ikinci kaynakça doğrulanamadı. " +
+                        "Çelişkili ve tek kaynaklı cevaplar doğrulanmış kabul edilmedi.")
                     if (visionFailedPageCount > 0 || visionRejectedQuestionPages > 0) {
                         add("GÖRSEL BELGE ANALİZİ: $visionAcceptedQuestionPages sayfada " +
                             "Gemini 3.8 ile doğrulanmış kırpma üretildi. " +

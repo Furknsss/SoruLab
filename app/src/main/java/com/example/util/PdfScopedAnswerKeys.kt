@@ -278,8 +278,11 @@ internal class PdfScopedAnswerKeys(
                 .minByOrNull { it.first }?.second
             val nearestBefore = headings.filter { it.first < testLineIndex }
                 .maxByOrNull { it.first }?.second
+            // A catalog hint or the previous page's topic is NEVER enough
+            // to bind an answer key. This header must itself contain visible
+            // chapter/topic evidence; otherwise keep the answer unresolved.
             val section = matchedHint ?: nearestAfter ?: nearestBefore
-                ?: headings.lastOrNull()?.second ?: hint.takeIf(String::isNotBlank)
+                ?: headings.lastOrNull()?.second
             if (section.isNullOrBlank()) return null
             return PdfAnswerScope(section, testNum, isOsym, kind)
         }

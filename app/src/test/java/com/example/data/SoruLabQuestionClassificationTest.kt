@@ -351,4 +351,28 @@ class SoruLabQuestionClassificationTest {
         assertEquals("Biyoloji", SoruLabCatalog.subjectNameForTopic("Sinir Sistemi"))
         assertEquals(null, SoruLabCatalog.subjectNameForTopic("Bilinmeyen Konu"))
     }
+
+    @Test
+    fun projectileVerbSupportsPhysicsClassificationWithoutPrintedTopicHint() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Fizik",
+            questionText = "Yerden yatay olarak fırlatılan cismin yere düşme süresi kaç saniyedir?"
+        )
+        assertEquals("Fizik", result?.first?.name)
+        assertEquals("Atışlar", result?.second?.name)
+    }
+
+    @Test
+    fun unrelatedPhysicsQuestionCannotInheritAtislarFromPreviousPage() {
+        val result = SoruLabCatalog.classifyQuestionTopicFromText(
+            examTypeHint = "AYT",
+            subjectNameHint = "Fizik",
+            questionText = "Verilen şekle göre hangi seçenek doğrudur?",
+            suggestedTopicName = "Atışlar",
+            trustSuggestedTopic = false
+        )
+        assertEquals(null, result)
+    }
+
 }

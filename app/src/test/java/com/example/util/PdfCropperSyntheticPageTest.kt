@@ -128,4 +128,79 @@ class PdfCropperSyntheticPageTest {
             bmp.recycle()
         }
     }
+
+    @Test
+    fun scannedStylePageWithFiveUnevenQuestionsKeepsEveryRegion() {
+        // Independently authored visual fixture: 3 questions on the left,
+        // 2 on the right, with tall diagram-like strokes and wide blank gaps.
+        // Geometry models a real scanned textbook layout, not publisher text.
+        val width = 1300
+        val height = 1700
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(Color.WHITE)
+        val ink = IntArray(360 * 6) { Color.BLACK }
+        fun content(x: Int, rows: List<Int>) {
+            rows.forEach { y -> bitmap.setPixels(ink, 0, 360, x, y, 360, 6) }
+        }
+        content(150, listOf(230, 290, 415, 470, 550, 616))
+        content(150, listOf(860, 905, 950, 995, 1060))
+        content(150, listOf(1300, 1345, 1390, 1450))
+        content(720, listOf(230, 290, 390, 465, 520, 610))
+        content(720, listOf(860, 905, 1080, 1160, 1260, 1370))
+
+        val numbers = listOf(
+            QuestionNumberAnchor(1, 105, 190, 133, 216),
+            QuestionNumberAnchor(2, 105, 825, 133, 850),
+            QuestionNumberAnchor(3, 105, 1265, 133, 1290),
+            QuestionNumberAnchor(4, 680, 190, 708, 216),
+            QuestionNumberAnchor(5, 680, 825, 708, 850)
+        )
+        val options = listOf(
+            QuestionOptionAnchor("A", 150, 550, 170, 572),
+            QuestionOptionAnchor("B", 150, 615, 170, 638),
+            QuestionOptionAnchor("A", 150, 950, 170, 972),
+            QuestionOptionAnchor("B", 150, 1058, 170, 1080),
+            QuestionOptionAnchor("A", 150, 1380, 170, 1402),
+            QuestionOptionAnchor("B", 150, 1447, 170, 1469),
+            QuestionOptionAnchor("A", 720, 520, 740, 542),
+            QuestionOptionAnchor("B", 720, 608, 740, 630),
+            QuestionOptionAnchor("A", 720, 1260, 740, 1282),
+            QuestionOptionAnchor("B", 720, 1368, 740, 1390)
+        )
+        val crops = StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
+            context = RuntimeEnvironment.getApplication(),
+            pageBitmap = bitmap,
+            pageIndex = 3,
+            totalPages = 256,
+            reusablePixelsRef = arrayOfNulls<IntArray>(1),
+            questionNumberAnchors = numbers,
+            optionAnchors = options
+        )
+        try {
+            assertEquals("All five source questions must be cropped", 5, crops.size)
+            assertEquals(listOf(1, 2, 3, 4, 5),
+                crops.map { it.questionOrderInPage }.sorted())
+            assertEquals(3, crops.count { it.columnIndex == 0 })
+            assertEquals(2, crops.count { it.columnIndex == 1 })
+            val left = crops.filter { it.columnIndex == 0 }
+                .sortedBy { it.boxNormalized[0] }
+            val right = crops.filter { it.columnIndex == 1 }
+                .sortedBy { it.boxNormalized[0] }
+            assertTrue("First diagram-like stroke must be retained",
+                left[0].boxNormalized[2] > 620f / height)
+            assertTrue("Left column crops must not overlap",
+                left.zipWithNext().all { (a, b) ->
+                    a.boxNormalized[2] <= b.boxNormalized[0]
+                })
+            assertTrue("Right column crops must not overlap",
+                right.zipWithNext().all { (a, b) ->
+                    a.boxNormalized[2] <= b.boxNormalized[0]
+                })
+            assertTrue(crops.all { File(it.croppedImagePath).isFile })
+        } finally {
+            crops.forEach { File(it.croppedImagePath).delete() }
+            bitmap.recycle()
+        }
+    }
+
 }

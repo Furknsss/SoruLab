@@ -1,6 +1,5 @@
 package com.example.util
 
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -8,7 +7,11 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.appcheck.debug.testing.DebugAppCheckTestHelper
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -27,22 +30,33 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class PdfVisionGeminiLiveDeviceTest {
     @Test
-    fun actualFirebaseGeminiReturnsStructuredOriginalQuestionPage() = runBlocking {
+    fun actualFirebaseGeminiReturnsStructuredOriginalQuestionPage() {
         val optIn = InstrumentationRegistry.getArguments()
             .getString("sorulab.liveVision", "false") == "true"
         assumeTrue("Explicit opt-in is required for cloud model requests", optIn)
         val token = InstrumentationRegistry.getArguments()
-            .getString("sorulab.appCheckDebugToken").orEmpty()
+            .getString("firebaseAppCheckDebugSecret").orEmpty()
         check(token.isNotBlank()) {
             "Gemini LIVE test requires a Firebase Console-registered " +
                 "App Check debug token in GitHub Actions secret " +
                 "SORULAB_APPCHECK_DEBUG_TOKEN. Do not disable App Check."
         }
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        configureAppCheck(
-            context,
-            Intent().putExtra("FIREBASE_APPCHECK_DEBUG_TOKEN", token)
-        )
+        check(ensureFirebaseInitialized(context)) { "Firebase configuration is unavailable" }
+        DebugAppCheckTestHelper.fromInstrumentationArgs().withDebugProvider {
+            runBlocking {
+                // Isolate token exchange from the Gemini call: an attestation
+                // failure must not masquerade as a model/schema failure.
+                val attestation = withTimeout(30_000L) {
+                    FirebaseAppCheck.getInstance().getAppCheckToken(true).await()
+                }
+                check(attestation.token.isNotBlank()) { "App Check returned no attestation" }
+                verifyOriginalQuestionPage()
+            }
+        }
+    }
+
+    private suspend fun verifyOriginalQuestionPage() {
         val page = Bitmap.createBitmap(1400, 1600, Bitmap.Config.ARGB_8888)
         page.eraseColor(Color.WHITE)
         val canvas = Canvas(page)

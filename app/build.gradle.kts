@@ -65,6 +65,11 @@ android {
     versionName = "1.2.6-rc9-validation"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    // Firebase's supported CI debug-secret provider reads this argument before
+    // the app's Firebase components initialize. Never bundle it in resources.
+    System.getenv("SORULAB_APPCHECK_DEBUG_TOKEN")?.trim()?.takeIf { it.isNotBlank() }?.let {
+      testInstrumentationRunnerArguments["firebaseAppCheckDebugSecret"] = it
+    }
   }
 
   // Do not remove or modify these signingConfigs. They are necessary for building, installing,
@@ -269,6 +274,7 @@ dependencies {
   androidTestImplementation(libs.androidx.espresso.core)
   androidTestImplementation(libs.androidx.junit)
   androidTestImplementation(libs.androidx.runner)
+  androidTestImplementation("com.google.firebase:firebase-appcheck-debug-testing")
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
   // "ksp"(libs.androidx.room.compiler)

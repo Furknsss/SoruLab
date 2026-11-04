@@ -210,4 +210,34 @@ class StudioImageAndPdfEngineTest {
     }
 
 
+    @Test
+    fun printedDuyuOrganlariHeaderOutweighsUnrelatedNeuronWords() {
+        // Source page includes a real printed chapter title. It must not be
+        // classified as Sinir Sistemi merely because its stem has neurons.
+        assertEquals(
+            "Duyu Organları",
+            StudioImageAndPdfEngine.detectPrintedTopicNameFromHeader(
+                examType = "AYT",
+                subjectName = "Biyoloji",
+                header = "ANALİZ 21\\nDuyu Organları Genel Tekrar\\n1. Deride bulunan reseptörler"
+            )
+        )
+        assertEquals(
+            "Sinir Sistemi",
+            StudioImageAndPdfEngine.detectPrintedTopicNameFromHeader(
+                examType = "AYT",
+                subjectName = "Biyoloji",
+                header = "ANALİZ 2\\nSinir Sistemi\\n1. Bir nöron"
+            )
+        )
+        assertEquals(
+            null,
+            StudioImageAndPdfEngine.detectPrintedTopicNameFromHeader(
+                examType = "AYT",
+                subjectName = "Biyoloji",
+                header = "1. Bir nöronda sinir sistemi impulslarının iletilmesi"
+            )
+        )
+    }
+
 }

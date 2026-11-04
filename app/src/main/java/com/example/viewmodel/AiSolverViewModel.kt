@@ -1141,6 +1141,7 @@ class AiSolverViewModel : ViewModel() {
                 val pendingVectorFooterKeys = mutableListOf<Pair<PdfAnswerScope, Map<Int, String>>>()
                 var detectedAnswerPages = 0
                 var pageRenderFailureCount = 0
+                val suspectedSkippedQuestionPages = linkedSetOf<Int>()
                 var recoveredPrintedQuestionPages = 0
 
                 val pageIndicesToScan = 0 until totalPdfPages
@@ -1339,12 +1340,25 @@ class AiSolverViewModel : ViewModel() {
                                         continue
                                     }
                                 }
-                                if (skipPage && !sourceBackedPage) continue
-                                // A scanned foreword, contents page or advertisement
-                                // can have numbered paragraphs that look like 1./2.
-                                // Require A-E evidence before creating YKS questions.
+                                if (skipPage && !sourceBackedPage) {
+                                    // A skip heuristic must never silently hide
+                                    // a page with credible printed question and
+                                    // multiple-choice evidence.
+                                    if (pageLayout.questionNumberAnchors.isNotEmpty() &&
+                                        hasQuestionOptions
+                                    ) suspectedSkippedQuestionPages.add(pageIdx)
+                                    continue
+                                }
+                                // Scanned diagrams sometimes hide the small
+                                // printed number or the A-E row from whole-page
+                                // OCR. Do not invent missing anchors: mark this
+                                // page for review instead of reporting 100%.
                                 if (pageLayout.questionNumberAnchors.isEmpty() ||
                                     !hasQuestionOptions) {
+                                    if (pageLayout.questionNumberAnchors.isNotEmpty() ||
+                                        pageLayout.optionAnchors.map { it.option }
+                                            .distinct().size >= 3
+                                    ) suspectedSkippedQuestionPages.add(pageIdx)
                                     continue
                                 }
 
@@ -1826,6 +1840,15 @@ class AiSolverViewModel : ViewModel() {
                     }
                     if (processingStatus.ocrFailureCount > 0) {
                         add("Cihaz içi OCR ${processingStatus.ocrFailureCount} soruda tamamlanamadı; kırpılmış görseller yine aktarıldı.")
+                    }
+                    if (suspectedSkippedQuestionPages.isNotEmpty()) {
+                        val pagePreview = suspectedSkippedQuestionPages.take(12)
+                            .joinToString(", ") { (it + 1).toString() }
+                        add("OLASI EKSİK SORU SAYFASI: " +
+                            "${suspectedSkippedQuestionPages.size} sayfada soru/şık işareti " +
+                            "görüldü ancak güvenli kırpma yapılamadı " +
+                            "(PDF sayfaları: $pagePreview). " +
+                            "Eksiksiz aktarım doğrulanmadı; sayfaları inceleyin.")
                     }
                     if (pageRenderFailureCount > 0) {
                         add("$pageRenderFailureCount PDF sayfası işlenemedi; diğer sayfalar aktarıldı.")

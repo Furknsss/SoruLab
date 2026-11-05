@@ -24,6 +24,9 @@ run_case() {
   if bash ./gradlew "${args[@]}"; then
     archive_case "$case_label"
   else
+    # Log only OCR reader counts (never source text, image pixels, keys or
+    # student data) so missing second-source evidence can be debugged.
+    adb logcat -d -s SoruLabPdfKeyQA:I 2>/dev/null | tail -100 || true
     archive_case "$case_label"
     return 1
   fi

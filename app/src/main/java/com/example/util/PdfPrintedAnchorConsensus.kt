@@ -98,4 +98,61 @@ internal object PdfPrintedAnchorConsensus {
             }) return primary
         return best
     }
+
+    /**
+     * Three independently located OCR passes allow a recovery that ordinary
+     * two-pass reconciliation cannot safely make: primary OCR occasionally
+     * includes a graph number outside the actual 1..N question run. If both
+     * independent passes concur about a LONGER physical run, we can discard
+     * only that uncorroborated distractor without guessing an absent number.
+     *
+     * Never replace any primary anchor that has independent spatial support.
+     * If evidence is insufficient, retain the conservative two-pass result.
+     */
+    fun reconcileThree(
+        primary: List<QuestionNumberAnchor>,
+        marginPass: List<QuestionNumberAnchor>,
+        paddlePass: List<QuestionNumberAnchor>,
+        pageWidth: Int,
+        pageHeight: Int
+    ): List<QuestionNumberAnchor> {
+        val ordinary = reconcile(
+            reconcile(primary, marginPass, pageWidth, pageHeight),
+            paddlePass, pageWidth, pageHeight
+        )
+        if (pageWidth <= 0 || pageHeight <= 0 ||
+            marginPass.isEmpty() || paddlePass.isEmpty()
+        ) return ordinary
+
+        val sources = listOf(primary, marginPass, paddlePass)
+        val xTolerance = max(8f, pageWidth * .027f)
+        val yTolerance = max(12f, pageHeight * .019f)
+        fun samePhysical(a: QuestionNumberAnchor, b: QuestionNumberAnchor): Boolean =
+            a.number == b.number &&
+                abs(a.left - b.left) <= xTolerance &&
+                abs(a.top - b.top) <= yTolerance
+
+        fun support(anchor: QuestionNumberAnchor): Int =
+            sources.count { pass -> pass.any { samePhysical(anchor, it) } }
+
+        // Source order is significant only for geometry: preserve primary
+        // coordinates when it agrees with the other readers.
+        val corroborated = sources.flatten()
+            .filter { it.number in 1..200 && it.left in 0 until pageWidth &&
+                it.top in 0 until pageHeight && it.bottom > it.top &&
+                support(it) >= 2 }
+            .fold(mutableListOf<QuestionNumberAnchor>()) { out, anchor ->
+                if (out.none { samePhysical(it, anchor) }) out.add(anchor)
+                out
+            }
+
+        // The existing layout solver requires increasing, column-aligned
+        // printed numbers; votes by themselves do not certify a question.
+        val voted = reconcile(emptyList(), corroborated, pageWidth, pageHeight)
+        if (voted.size < 3 || voted.size <= ordinary.size) return ordinary
+        if (primary.filter { support(it) >= 2 }.any { original ->
+                voted.none { samePhysical(original, it) }
+            }) return ordinary
+        return voted
+    }
 }

@@ -87,6 +87,10 @@ class PdfOfflineImportDeviceTest {
                 finalCrop.normBottom > .735f)
             assertTrue("The printed answer-key strip leaked into a question image",
                 finalCrop.normBottom < .91f)
+            assertTrue(
+                "Large-book import must not keep a second base64 copy of every durable image",
+                rows.all { it.imageBase64.isBlank() }
+            )
             assertTrue("Offline import may only accept complete, nonempty crop files", rows.all {
                 it.answerKeyMatched && File(it.croppedImagePath).isFile &&
                     File(it.croppedImagePath).length() > 0L &&

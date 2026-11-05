@@ -20,4 +20,38 @@ internal object PdfNativeQuestionEvidence {
                 (hasNativeChoiceEvidence &&
                     nativeAnchorCount >= wholePageOcrAnchorCount)
             )
+
+    /**
+     * Selectable PDFs sometimes contain an exact printed question run while
+     * ML Kit adds unrelated chart numbers. Native evidence may be rejected
+     * by the old raw-count comparison (4 real native vs 7 noisy OCR).
+     *
+     * Use the native run ONLY after spatially confirming at least two
+     * distinct printed numbers in the independent image reading and at least
+     * half of the native starts. A PDF text layer alone is not sufficient.
+     */
+    fun hasIndependentSpatialSupport(
+        native: List<QuestionNumberAnchor>,
+        imageOcr: List<QuestionNumberAnchor>,
+        pageWidth: Int,
+        pageHeight: Int
+    ): Boolean {
+        if (pageWidth <= 0 || pageHeight <= 0 ||
+            native.size < 3 || imageOcr.size < 2 ||
+            native.map { it.number }.distinct().size != native.size
+        ) return false
+        val xTolerance = maxOf(8f, pageWidth * .026f)
+        val yTolerance = maxOf(11f, pageHeight * .018f)
+        val supported = native.count { original ->
+            original.number in 1..200 &&
+                original.left in 0 until pageWidth &&
+                original.top in 0 until pageHeight &&
+                imageOcr.any { ocr ->
+                    ocr.number == original.number &&
+                        kotlin.math.abs(ocr.left - original.left) <= xTolerance &&
+                        kotlin.math.abs(ocr.top - original.top) <= yTolerance
+                }
+        }
+        return supported >= 2 && supported * 2 >= native.size
+    }
 }

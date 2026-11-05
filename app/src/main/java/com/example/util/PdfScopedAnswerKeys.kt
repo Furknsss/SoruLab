@@ -25,6 +25,17 @@ internal class PdfScopedAnswerKeys(
 
     val answerCount: Int get() = answers.size
 
+    fun readings(): List<Pair<PdfAnswerScope, List<Pair<Int, String>>>> =
+        answers.entries.groupBy { it.key.scope }.map { (scope, entries) ->
+            scope to entries.map { it.key.questionNumber to it.value }
+        }
+
+    fun conflicts(): Set<PdfAnswerId> = ambiguous.toSet()
+
+    private fun canonical(scope: PdfAnswerScope) = scope.copy(
+        section = normalize(scope.section), testKind = normalize(scope.testKind)
+    )
+
     fun addOcrRows(rows: List<String>) {
         // A table may continue onto the next answer-key page without a repeated heading.
         var currentSection: String? = lastRecognizedSection
@@ -120,7 +131,7 @@ internal class PdfScopedAnswerKeys(
         for ((number, rawAnswer) in pairs) {
             val option = rawAnswer.uppercase(Locale.ROOT)
             if (number !in 1..200 || option !in listOf("A", "B", "C", "D", "E")) continue
-            val id = PdfAnswerId(scope, number)
+            val id = PdfAnswerId(canonical(scope), number)
             if (id in ambiguous) continue
             val previous = answers.putIfAbsent(id, option)
             if (previous != null && previous != option) {
@@ -147,18 +158,18 @@ internal class PdfScopedAnswerKeys(
 
     fun get(scope: PdfAnswerScope?, questionNumber: Int?): String? {
         if (scope == null || questionNumber == null || questionNumber <= 0) return null
-        return answers[PdfAnswerId(scope, questionNumber)]
+        return answers[PdfAnswerId(canonical(scope), questionNumber)]
     }
 
     /** Distinguish unread answer-key scopes from missing cells inside a known scope. */
     fun hasRecognizedScope(scope: PdfAnswerScope?): Boolean =
-        scope != null && (answers.keys.any { it.scope == scope } ||
-            ambiguous.any { it.scope == scope })
+        scope != null && (answers.keys.any { it.scope == canonical(scope) } ||
+            ambiguous.any { it.scope == canonical(scope) })
 
     /** Conflicting OCR/key evidence cannot be graded but can be reported. */
     fun hasConflictingAnswer(scope: PdfAnswerScope?, questionNumber: Int?): Boolean =
         scope != null && questionNumber != null &&
-            PdfAnswerId(scope, questionNumber) in ambiguous
+            PdfAnswerId(canonical(scope), questionNumber) in ambiguous
 
     companion object {
         private val testLabel = Regex(

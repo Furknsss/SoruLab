@@ -1373,7 +1373,8 @@ object StudioImageAndPdfEngine {
         val pageSourceHeaders: Map<Int, String> = emptyMap(),
         val pageVectorTestMarkers: Map<Int, PdfPrintedTestMarker> = emptyMap(),
         val pageVectorQuestionAnchors: Map<Int, PdfSourcePageAnchors> = emptyMap(),
-        val pageVectorOptionEvidence: Set<Int> = emptySet()
+        val pageVectorOptionEvidence: Set<Int> = emptySet(),
+        val pageNativeAnswerRows: Map<Int, List<String>> = emptyMap()
     )
 
     data class LocalCroppedBoxResult(
@@ -1591,7 +1592,13 @@ object StudioImageAndPdfEngine {
             pageSourceHeaders = pageSourceHeaders,
             pageVectorTestMarkers = pageVectorTestMarkers,
             pageVectorQuestionAnchors = pageVectorQuestionAnchors,
-            pageVectorOptionEvidence = pageVectorOptionEvidence
+            pageVectorOptionEvidence = pageVectorOptionEvidence,
+            pageNativeAnswerRows = sourcePages.mapIndexedNotNull { index, page ->
+                val rows = page.text.lines()
+                if (hasAnswerKeyMarker(page.text) || PdfScopedAnswerKeys.looksLikeAnswerPage(rows)) {
+                    index to rows
+                } else null
+            }.toMap()
         )
     }
 

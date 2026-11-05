@@ -2,6 +2,7 @@ name: PDF full QA - all unit tests and Android packaging
 
 on:
   push:
+    paths-ignore: ['.qa-encrypted/**']
     branches:
       - 'fix/rc9-consensus-no-anchor-regression'
       - 'feat/pdf-vision-gemini38-grounded-20261104'

@@ -2,6 +2,7 @@ name: PDF engine regression checks
 
 on:
   push:
+    paths-ignore: ['.qa-encrypted/**']
     branches:
       - 'fix/rc9-*'
       - 'feat/pdf-vision-gemini38-grounded-20261104'

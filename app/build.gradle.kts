@@ -61,15 +61,16 @@ android {
     applicationId = "com.aistudio.sorulab.ykslab"
     minSdk = 24
     targetSdk = 36
-    versionCode = 32
-    versionName = "1.2.6-rc9-validation"
+    versionCode = 33
+    versionName = "1.2.7-offline-test"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    // Firebase's supported CI debug-secret provider reads this argument before
-    // the app's Firebase components initialize. Never bundle it in resources.
-    System.getenv("SORULAB_APPCHECK_DEBUG_TOKEN")?.trim()?.takeIf { it.isNotBlank() }?.let {
-      testInstrumentationRunnerArguments["firebaseAppCheckDebugSecret"] = it
-    }
+
+  }
+
+  packaging {
+    // Keep a complete universal APK compact without dropping any supported CPU.
+    jniLibs.useLegacyPackaging = true
   }
 
   // Do not remove or modify these signingConfigs. They are necessary for building, installing,
@@ -242,7 +243,6 @@ dependencies {
   implementation(libs.coil.compose)
   // implementation(libs.converter.moshi)
   implementation(project(":ppocr-sdk"))
-  implementation(libs.firebase.ai)
   // Uncomment to use Firestore:
   implementation(libs.firebase.firestore)
 
@@ -275,7 +275,6 @@ dependencies {
   androidTestImplementation(libs.androidx.espresso.core)
   androidTestImplementation(libs.androidx.junit)
   androidTestImplementation(libs.androidx.runner)
-  androidTestImplementation("com.google.firebase:firebase-appcheck-debug-testing")
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
   // "ksp"(libs.androidx.room.compiler)

@@ -51,42 +51,31 @@ Firestore App Check enforcement is enabled, verify production app requests
 first; debug builds use the Firebase App Check debug provider and need a
 registered debug token when enforcement is active.
 
-## CI App Check activation
+## Free offline PDF processing
 
-For the live canary, register a debug token under the exact Android app
-`1:656943524635:android:8ff497c04d59f36e5e01be` in this project, using
-**App Check → Apps → Manage debug tokens**. Store the same raw token in the
-repository Actions secret `SORULAB_APPCHECK_DEBUG_TOKEN`; do not paste it into
-issues, chat, source files, or an APK. A token belonging to a different app
-does not activate this Android app. The token name is not the token value.
+PDF import has no Firebase AI dependency, token exchange, HTTP endpoint, cloud
+consent gate, or API quota. The Firebase AI SDK and live-generation canary have
+been removed. Existing account/storage configuration above remains separate.
+AI controls return existing stored solutions or an explicit unavailable message;
+they do not invoke a billed model or fabricate a new solution.
 
-The live workflow first exchanges the secret with the App Check REST service.
-`403 PERMISSION_DENIED: App attestation failed` means this registration gate
-has not passed; a successful local OCR or emulator UI test cannot replace it.
-The CI secret is injected only into instrumentation and is never bundled in
-the distributable APK. A debug installation on a separate device has its own
-token; a release APK uses the release provider described above instead.
+The installed engines are PDFBox/native PDF text extraction, bundled ML Kit
+Latin OCR, official Apache-2.0 PP-OCRv6_small Android ONNX inference, and local
+layout/crop/ink checks. Models are bundled at build time. Question identity
+and printed answer matching use chapter + test kind + test number + question
+number. A separate ML Kit reading must agree with native PDF/Paddle evidence;
+missing and conflicting answers are not guessed. Crop and source-key coverage
+checks still reject an incomplete book rather than falsely marking it complete.
 
-Reference: https://firebase.google.com/docs/app-check/android/debug-provider
+Device QA includes a full original synthetic PDF import with the emulator's
+network disabled. Representative user-source pages may be tested using a
+per-run encrypted fixture; the decryption key and plaintext stay on the ephemeral
+runner and are excluded from artifacts. Do not commit plaintext textbook pages
+or place them in screenshots/test report artifacts.
 
-## PDF question cropping and answer matching
+Neither synthetic tests nor selected real-page checks certify every question
+in every book. Keep per-book evidence and report remaining failures honestly.
 
-The current verified-import path uses Firebase AI / Gemini for visual page
-rectangles and printed answer-table transcription. PDF page images are sent
-to that service; cloud quotas, availability, and provider pricing apply.
-App Check access is verified before copying, archiving, rendering, or scanning
-the PDF, so an unavailable attestation fails promptly without importing a book.
-Passing that preflight verifies attestation only, not model access or accuracy.
-
-The embedded PDF text layer, bundled on-device ML Kit Latin OCR, and free
-PP-OCRv6_small on-device inference supply independent printed-source evidence.
-The PP-OCRv6 SDK is not the server-side PaddleOCR-VL product. Geometry checks
-reject missing/overlapping/misnumbered questions. Answer-key matches require
-independent reader agreement on chapter, test identity, and printed number;
-page order and model-generated solutions are never used as an answer key.
-
-Missing, extra, duplicated, ambiguous, or disputed source questions/answers
-prevent the book from being accepted as a complete verified import. Synthetic
-regressions and native device tests do not certify every question in a real
-book. Complete real-book imports still require successful live model access
-and their own source-based verification.
+Sources:
+- https://developers.google.com/ml-kit/guides
+- https://www.paddleocr.ai/latest/en/version3.x/inference_deployment/cross_platform/android_deployment.html

@@ -29,10 +29,20 @@ run_case() {
   fi
 }
 
-trap 'adb shell wm size reset >/dev/null 2>&1 || true; adb shell wm density reset >/dev/null 2>&1 || true' EXIT
+trap 'adb shell wm size reset >/dev/null 2>&1 || true; adb shell wm density reset >/dev/null 2>&1 || true; adb shell cmd connectivity airplane-mode disable >/dev/null 2>&1 || true' EXIT
 run_case phone
 adb shell wm size 1600x2560
 adb shell wm density 240
 run_case tablet-portrait
 adb shell wm size 2560x1600
 run_case tablet-landscape
+adb shell wm size reset
+adb shell wm density reset
+adb shell cmd connectivity airplane-mode enable
+adb shell svc wifi disable
+adb shell svc data disable
+bash ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2 \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.example.util.PdfOfflineImportDeviceTest \
+  -Pandroid.testInstrumentationRunnerArguments.sorulab.requireOffline=true \
+  -Pandroid.testInstrumentationRunnerArguments.sorulab.viewportCase=offline
+archive_case offline

@@ -8,6 +8,7 @@ on:
       - '.github/workflows/pdf-private-offline-qa.yml'
       - 'app/src/main/java/com/example/viewmodel/AiSolverViewModel.kt'
       - 'app/src/main/java/com/example/util/**'
+      - 'app/src/test/java/com/example/util/**'
       - 'app/src/androidTest/java/com/example/util/PdfPrivateCorpusDeviceTest.kt'
 
 permissions:

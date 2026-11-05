@@ -1079,7 +1079,20 @@ class AiSolverViewModel : ViewModel() {
                                         pageHeight = pageBitmap.height
                                     )
                                 } else emptyList()
-                                var pageLayout = if (sourceBackedPage) {
+                                // Single-column textbook pages can have a
+                                // clean native printed run plus stray OCR
+                                // diagram numbers. Retain the PDF geometry
+                                // only where independent OCR spatially
+                                // corroborates a majority of actual starts.
+                                val nativeSpatiallyConfirmed = !sourceBackedPage &&
+                                    com.example.util.PdfNativeQuestionEvidence
+                                        .hasIndependentSpatialSupport(
+                                            nativeAnchors, imageOnlyAnchors,
+                                            pageBitmap.width, pageBitmap.height
+                                        )
+                                val useNativeQuestionStarts =
+                                    sourceBackedPage || nativeSpatiallyConfirmed
+                                var pageLayout = if (useNativeQuestionStarts) {
                                     ocrPageLayout.copy(questionNumberAnchors = nativeAnchors)
                                 } else ocrPageLayout.copy(questionNumberAnchors = imageOnlyAnchors)
                                 // A second OCR reader is useful only when its actual
@@ -1125,11 +1138,11 @@ class AiSolverViewModel : ViewModel() {
                                 val paddleChoices = paddleEvidence?.optionAnchors.orEmpty()
                                 val paddleChoiceCount = paddleChoices
                                     .map { it.option.uppercase() }.distinct().size
-                                val cropOptionAnchors = if (!sourceBackedPage &&
+                                val cropOptionAnchors = if (!useNativeQuestionStarts &&
                                     paddleChoiceCount >= 3 &&
                                     paddleChoiceCount > primaryChoiceCount
                                 ) paddleChoices else pageLayout.optionAnchors
-                                val hasQuestionOptions = sourceBackedPage ||
+                                val hasQuestionOptions = useNativeQuestionStarts ||
                                     cropOptionAnchors.map { it.option.uppercase() }.distinct().size >= 3
                                 val hasAnswerKeyMarker =
                                     StudioImageAndPdfEngine.hasAnswerKeyMarker(pageLayout.text)
@@ -1210,7 +1223,7 @@ class AiSolverViewModel : ViewModel() {
                                         continue
                                     }
                                 }
-                                if (skipPage && !sourceBackedPage && !hasQuestionOptions) {
+                                if (skipPage && !useNativeQuestionStarts && !hasQuestionOptions) {
                                     // A skip heuristic must never silently hide
                                     // a page with credible printed question and
                                     // multiple-choice evidence.
@@ -1479,7 +1492,7 @@ class AiSolverViewModel : ViewModel() {
                                     suspectedSkippedQuestionPages.add(pageIdx)
                                 }
                                 val auditSourceNumbers = when {
-                                    sourceBackedPage -> nativeAnchors
+                                    useNativeQuestionStarts -> nativeAnchors
                                     pageLayout.questionNumberAnchors.size >= 3 &&
                                         com.example.util.PdfColumnLayoutEvidence
                                             .hasTwoPrintedColumns(

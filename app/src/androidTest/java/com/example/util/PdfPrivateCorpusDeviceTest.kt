@@ -48,7 +48,11 @@ class PdfPrivateCorpusDeviceTest {
                 }
             }
             assertTrue("Private local import timed out", done.await(8, TimeUnit.MINUTES))
-            assertNull(model!!.batchErrorText.value, model!!.batchErrorText.value)
+            assertNull(
+                "Import error: ${model!!.batchErrorText.value}\\n" +
+                    "Source coverage and OCR diagnostics: ${model!!.batchWarningText.value}",
+                model!!.batchErrorText.value
+            )
             val rows = requireNotNull(result)
             val expected = reference.getJSONArray("questions")
             assertEquals("Private source question count", expected.length(), rows.size)

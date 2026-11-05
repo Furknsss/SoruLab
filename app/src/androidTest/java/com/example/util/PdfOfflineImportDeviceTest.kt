@@ -49,8 +49,14 @@ class PdfOfflineImportDeviceTest {
                 text("$letter) Secenek ${i + 1}", x + 30f, y + 110f + i * 100f)
             }
         }
-        text("1    2    3    4", 360f, 1990f)
-        text("A    B    C    D", 360f, 2070f)
+        // A source key can span the middle 60% of a page. Neither
+        // left-only nor right-only OCR tile sees BOTH the first and last
+        // cells. Preserve a complete 1..4 strip with full-width OCR.
+        for (number in 1..4) {
+            val x = 320f + (number - 1) * 300f
+            text("$number", x, 1990f)
+            text("ABCD"[number - 1].toString(), x, 2070f)
+        }
         document.finishPage(page)
         pdf.outputStream().use(document::writeTo)
         document.close()

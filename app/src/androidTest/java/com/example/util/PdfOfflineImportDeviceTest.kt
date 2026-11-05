@@ -65,7 +65,11 @@ class PdfOfflineImportDeviceTest {
                 }
             }
             assertTrue("Local import timed out", done.await(5, TimeUnit.MINUTES))
-            assertNull(model!!.batchErrorText.value, model!!.batchErrorText.value)
+            assertNull(
+                "Import error: ${model!!.batchErrorText.value}\\n" +
+                    "Source coverage and OCR diagnostics: ${model!!.batchWarningText.value}",
+                model!!.batchErrorText.value
+            )
             val rows = requireNotNull(imported)
             assertEquals(4, rows.size)
             assertEquals(listOf("A", "B", "C", "D"), rows.sortedBy { it.questionNumberInTest }.map { it.correctOption })

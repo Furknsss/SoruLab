@@ -1269,7 +1269,20 @@ class AiSolverViewModel : ViewModel() {
                                         examType = examTypeForPage,
                                         subjectName = subjectForPage,
                                         header = pageLayout.scopeHeaderText
-                                    )
+                                    ) ?: (vectorHeaderScope ?: gridHeaderScope)?.section
+                                        ?.takeIf { section ->
+                                            // The chapter was physically printed on
+                                            // THIS page and parsed with the actual
+                                            // test number. Do not invent a topic
+                                            // from unrelated stem keywords or a
+                                            // PDF filename.
+                                            section.isNotBlank() &&
+                                                !section.startsWith("pdf-page-") &&
+                                                section.length >= 4
+                                        }?.split(Regex("""\s+"""))
+                                        ?.joinToString(" ") { word ->
+                                            word.replaceFirstChar { it.titlecase() }
+                                        }
                                 val explicitHeaderTopic = printedHeaderTopic
                                     ?: StudioImageAndPdfEngine.detectTopicNameFromText(
                                         examType = examTypeForPage,
@@ -1824,7 +1837,13 @@ class AiSolverViewModel : ViewModel() {
                         "${sourceKeyCoverage.missingSourceQuestions.size} kaynak cevaba göre eksik soru, " +
                         "${sourceKeyCoverage.duplicateImportedQuestions.size} mükerrer soru, " +
                         "${sourceKeyCoverage.unexpectedImportedQuestions.size} kaynak anahtarda bulunmayan soru, " +
-                        "${allExtractedQuestions.count { !it.answerKeyMatched }} cevabı doğrulanmayan soru. " +
+                        "${allExtractedQuestions.count { !it.answerKeyMatched }} cevabı doğrulanmayan soru, " +
+                        "${allExtractedQuestions.count { it.topicName.isBlank() }} basılı konusu belirlenemeyen soru, " +
+                        "$mergedOrMisnumberedCropCount geometrisi güvensiz kırpma, " +
+                        "$pageCoverageMissingStartCount eksik basılı soru başlangıcı, " +
+                        "$pageCoverageDuplicateStartCount mükerrer soru başlangıcı, " +
+                        "$pageRenderFailureCount işlenemeyen PDF sayfası, " +
+                        "${processingStatus.ocrFailureCount} OCR hatası. " +
                         "Cevap kaynakları: ML Kit ${scopedAnswers.answerCount}, " +
                         "bağımsız PDF/Paddle ${secondaryAnswers.answerCount}, " +
                         "iki kaynaktan doğrulanan ${printedKeyConsensus.confirmed.size}, " +

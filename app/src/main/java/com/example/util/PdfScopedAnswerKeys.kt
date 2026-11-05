@@ -243,7 +243,23 @@ internal class PdfScopedAnswerKeys(
             val kind = match.groupValues[1].lowercase(Locale.ROOT)
             val isOsym = "osym" in normalizedHeader
             val hint = normalize(topicHint)
-            val headerLines = headerText.lines()
+            // Printed headings often occupy ONE OCR line, e.g.
+            // "SINIR SISTEMI - TEST 1" or "TEST 1 - SINIR SISTEMI".
+            // Separate only an explicitly printed numbered test marker from
+            // the text beside it. The topic still comes from visible ink,
+            // never a guessed previous-page heading or catalog hint.
+            val inlineTestMarker = Regex(
+                """\b(?:test|analiz|sentez|deneme|uygulama|etkinlik)\s+[0-9]{1,3}\b"""
+            )
+            val headerLines = headerText.lines().flatMap { raw ->
+                val line = normalize(raw)
+                val printed = inlineTestMarker.find(line)
+                if (printed == null) listOf(raw) else listOf(
+                    line.substring(0, printed.range.first),
+                    printed.value,
+                    line.substring(printed.range.last + 1)
+                ).filter { it.isNotBlank() }
+            }
             val testLineIndex = headerLines.indexOfFirst { line ->
                 Regex("""\b(test|analiz|sentez|deneme|uygulama|etkinlik)\b""")
                     .containsMatchIn(normalize(line))

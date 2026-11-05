@@ -1017,9 +1017,11 @@ fun LiveSolvingBoardScreen(
                     onToggleDrawer = onToggleOpticalForm,
                     onSelectOption = onSelectOption,
                     onFinishTest = { showFinishConfirmation = true },
+                    // Float beside the book, vertically centered as in the
+                    // reference tablet screenshot; never consume book width.
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 8.dp, bottom = 42.dp)
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 8.dp)
                         .zIndex(35f)
                 )
             } else {
@@ -1034,7 +1036,8 @@ fun LiveSolvingBoardScreen(
                     ungradedCount = ungradedCount,
                     onToggleDrawer = onToggleStatsDrawer,
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 8.dp)
                         .zIndex(35f)
                 )
             }
@@ -2538,22 +2541,24 @@ private fun RightSlidingOpticalFormDrawer345(
             exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
         ) {
             Surface(
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(20.dp),
                 color = Color.White,
-                shadowElevation = 18.dp,
-                border = BorderStroke(1.dp, Color(0xFFE7E5F0)),
+                shadowElevation = 10.dp,
+                border = BorderStroke(1.dp, Color(0xFFE4EAF4)),
                 modifier = Modifier
-                    .width((configuration.screenWidthDp.dp - 36.dp).coerceAtMost(440.dp))
+                    // A compact floating drawer, never a full-width modal.
+                    // Long tests scroll inside, without growing the panel.
+                    .width((configuration.screenWidthDp.dp - 54.dp).coerceAtMost(320.dp))
                     .heightIn(
-                        min = 300.dp,
-                        max = (configuration.screenHeightDp.dp - 180.dp).coerceIn(300.dp, 610.dp)
+                        min = 260.dp,
+                        max = (configuration.screenHeightDp.dp - 112.dp).coerceIn(260.dp, 540.dp)
                     )
                     .testTag("optical_form_drawer")
             ) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Optik Form", color = Color(0xFF25215D), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Optik Form", color = Color(0xFF25215D), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                             Text(
                                 "$answered / ${questions.size} yanıtlandı",
                                 color = Color(0xFF74708F), fontSize = 12.sp,
@@ -2566,21 +2571,21 @@ private fun RightSlidingOpticalFormDrawer345(
                     }
                     LinearProgressIndicator(
                         progress = { answered.toFloat() / questions.size.coerceAtLeast(1) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp).height(3.dp).clip(CircleShape),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).height(3.dp).clip(CircleShape),
                         color = Color(0xFF3475F5), trackColor = Color(0xFFEFEEF6)
                     )
                     LazyColumn(
                         modifier = Modifier.weight(1f).fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        contentPadding = PaddingValues(vertical = 8.dp)
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        contentPadding = PaddingValues(vertical = 5.dp)
                     ) {
                         items(questions, key = { it.number }) { q ->
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("${q.number}.", modifier = Modifier.width(28.dp), color = Color(0xFF25215D), fontSize = 14.sp)
+                                Text("${q.number}.", modifier = Modifier.width(24.dp), color = Color(0xFF25215D), fontSize = 13.5.sp)
                                 listOf("A", "B", "C", "D", "E").forEach { option ->
                                     val checked = selectedAnswers[q.number] == option
                                     Box(
-                                        modifier = Modifier.weight(1f).height(48.dp)
+                                        modifier = Modifier.weight(1f).height(44.dp)
                                             .semantics {
                                                 selected = checked
                                                 contentDescription = "${q.number}. soru, $option seçeneği"
@@ -2590,12 +2595,12 @@ private fun RightSlidingOpticalFormDrawer345(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Box(
-                                            modifier = Modifier.size(34.dp).clip(CircleShape)
+                                            modifier = Modifier.size(30.dp).clip(CircleShape)
                                                 .background(if (checked) Color(0xFF3475F5) else Color.White)
-                                                .border(1.dp, if (checked) Color(0xFF3475F5) else Color(0xFFD6D3E5), CircleShape),
+                                                .border(1.dp, if (checked) Color(0xFF3475F5) else Color(0xFFCED8E7), CircleShape),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Text(option, color = if (checked) Color.White else Color(0xFF74708F), fontSize = 14.sp)
+                                            Text(option, color = if (checked) Color.White else Color(0xFF64748B), fontSize = 13.sp)
                                         }
                                     }
                                 }
@@ -2604,7 +2609,7 @@ private fun RightSlidingOpticalFormDrawer345(
                     }
                     Button(
                         onClick = onFinishTest,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("drawer_finish_test_btn"),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).testTag("drawer_finish_test_btn"),
                         shape = CircleShape,
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3475F5))
                     ) {
@@ -2662,17 +2667,17 @@ private fun RightSlidingStatsDrawer345(
                 shadowElevation = 16.dp,
                 border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                 modifier = Modifier
-                    .width((LocalConfiguration.current.screenWidthDp.dp - 48.dp).coerceAtMost(360.dp))
-                    .heightIn(max = (LocalConfiguration.current.screenHeightDp.dp - 160.dp).coerceAtLeast(180.dp))
+                    .width((LocalConfiguration.current.screenWidthDp.dp - 54.dp).coerceAtMost(300.dp))
+                    .heightIn(max = (LocalConfiguration.current.screenHeightDp.dp - 112.dp).coerceAtLeast(240.dp))
                     .testTag("stats_drawer_panel")
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 18.dp, vertical = 22.dp),
+                        .padding(horizontal = 15.dp, vertical = 18.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(22.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text(
                         text = testTitle,
@@ -2686,7 +2691,7 @@ private fun RightSlidingStatsDrawer345(
                         correctCount = correctCount,
                         wrongCount = wrongCount,
                         emptyCount = emptyCount,
-                        circleSizeDp = 82
+                        circleSizeDp = 68
                     )
                     if (ungradedCount > 0) {
                         Text(
@@ -2698,8 +2703,8 @@ private fun RightSlidingStatsDrawer345(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 320.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                            .heightIn(max = 280.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         items(questions, key = { it.number }) { question ->
                             val answer = selectedAnswers[question.number]
@@ -2713,8 +2718,8 @@ private fun RightSlidingStatsDrawer345(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(Color(0xFFF5F4FA), RoundedCornerShape(12.dp))
-                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                    .background(Color(0xFFF7F9FC), RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 10.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
@@ -2798,15 +2803,15 @@ private fun VerticalBlueSideTab345(
     onClick: () -> Unit,
     testTag: String
 ) {
-    val tabHeight = if (isStatsIcon) 130.dp else 94.dp
-    val innerWidth = if (isStatsIcon) 118.dp else 84.dp
+    val tabHeight = if (isStatsIcon) 104.dp else 88.dp
+    val innerWidth = if (isStatsIcon) 104.dp else 79.dp
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp),
+        shape = RoundedCornerShape(topStart = 11.dp, bottomStart = 11.dp),
         color = Color(0xFF3475F5),
-        shadowElevation = 6.dp,
+        shadowElevation = 3.dp,
         modifier = Modifier
-            .width(36.dp)
+            .width(32.dp)
             .height(tabHeight)
             .testTag(testTag)
     ) {
@@ -2825,14 +2830,14 @@ private fun VerticalBlueSideTab345(
                     imageVector = if (isStatsIcon) Icons.Default.PieChart else Icons.Default.Apps,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(15.dp)
+                    modifier = Modifier.size(13.dp)
                 )
-                Spacer(modifier = Modifier.width(5.dp))
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = title,
                     color = Color.White,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 11.sp,
                     maxLines = 1
                 )
             }
@@ -3863,7 +3868,7 @@ private fun FullScreenSuccessReportCardView(
                             correctCount = correctCount,
                             wrongCount = wrongCount,
                             emptyCount = emptyCount,
-                            circleSizeDp = 92
+                            circleSizeDp = 72
                         )
                     } else {
                         Surface(

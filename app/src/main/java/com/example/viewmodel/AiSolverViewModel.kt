@@ -143,7 +143,8 @@ private data class PdfPageOcrLayout(
     val answerRegions: List<List<String>> = emptyList(),
     val answerGrids: List<PdfHorizontalAnswerGrid> = emptyList(),
     val questionNumberAnchors: List<QuestionNumberAnchor> = emptyList(),
-    val optionAnchors: List<QuestionOptionAnchor> = emptyList()
+    val optionAnchors: List<QuestionOptionAnchor> = emptyList(),
+    val positionedText: List<PdfOcrTextCell> = emptyList()
 )
 
 @Immutable
@@ -285,6 +286,13 @@ class AiSolverViewModel : ViewModel() {
             recognizer.close()
         }
         val lines = recognized.textBlocks.flatMap { it.lines }
+        // Reuse these physical OCR lines for complete question regions.
+        // Avoid re-running ML Kit on each resulting JPEG unnecessarily.
+        val positionedText = lines.mapNotNull { line ->
+            line.boundingBox?.let { box ->
+                PdfOcrTextCell(line.text, box.left, box.top, box.right, box.bottom)
+            }
+        }
         val headerText = lines
             .filter { (it.boundingBox?.top ?: Int.MAX_VALUE) <= bitmap.height * 0.07f }
             .joinToString("\n") { it.text }
@@ -306,15 +314,7 @@ class AiSolverViewModel : ViewModel() {
         // Use this PDF's actual OCR geometry. Independent answer-key
         // columns must not share cells just because they have the same Y.
         var answerRegions = PdfAdaptiveAnswerRows.regions(
-            cells = lines.mapNotNull { line ->
-                line.boundingBox?.let {
-                    PdfOcrTextCell(
-                        text = line.text,
-                        left = it.left, top = it.top,
-                        right = it.right, bottom = it.bottom
-                    )
-                }
-            },
+            cells = positionedText,
             pageWidth = bitmap.width
         )
         // Dense answer-key pages are frequently fully rasterized. A normal
@@ -411,7 +411,8 @@ class AiSolverViewModel : ViewModel() {
             answerRegions = answerRegions,
             answerGrids = answerGrids,
             questionNumberAnchors = anchors,
-            optionAnchors = options
+            optionAnchors = options,
+            positionedText = positionedText
         )
     }
 
@@ -1549,18 +1550,42 @@ class AiSolverViewModel : ViewModel() {
                                         val semaphore = Semaphore(2)
                                         croppedBoxes.map { cropBox ->
                                             async {
-                                                semaphore.withPermit {
-                                                    classifyCroppedQuestion(
-                                                        context = context,
-                                                        imagePath = cropBox.croppedImagePath,
+                                                // Whole-page ML Kit has already run on
+                                                // this bitmap. If its spatial text is
+                                                // complete, skip a second bitmap load,
+                                                // JPEG decode and ML Kit model invocation.
+                                                val reused = com.example.util.PdfPageQuestionTextReuse
+                                                    .readIfComplete(
+                                                        lines = pageLayout.positionedText,
+                                                        normalizedCrop = cropBox.boxNormalized,
+                                                        pageWidth = pageBitmap.width,
+                                                        pageHeight = pageBitmap.height
+                                                    )
+                                                if (reused != null) {
+                                                    buildQuestionOcrClassification(
+                                                        questionText = reused,
                                                         examTypeHint = scanPageInfo.examType,
                                                         subjectNameHint = scanPageInfo.subjectName,
-                                                        pageTopicHint = scanPageInfo.topicName,
-                                                        visualDifficultyHint = cropBox.estimatedDifficulty5,
+                                                        suggestedTopicName = scanPageInfo.topicName,
+                                                        trustSuggestedTopic = false,
                                                         hasDiagramOrGraph = cropBox.hasDiagramOrGraph,
                                                         lineCountEstimate = cropBox.lineCountEstimate,
-                                                        processingStatus = processingStatus
+                                                        visualDifficultyHint = cropBox.estimatedDifficulty5
                                                     )
+                                                } else {
+                                                    semaphore.withPermit {
+                                                        classifyCroppedQuestion(
+                                                            context = context,
+                                                            imagePath = cropBox.croppedImagePath,
+                                                            examTypeHint = scanPageInfo.examType,
+                                                            subjectNameHint = scanPageInfo.subjectName,
+                                                            pageTopicHint = scanPageInfo.topicName,
+                                                            visualDifficultyHint = cropBox.estimatedDifficulty5,
+                                                            hasDiagramOrGraph = cropBox.hasDiagramOrGraph,
+                                                            lineCountEstimate = cropBox.lineCountEstimate,
+                                                            processingStatus = processingStatus
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }.awaitAll()

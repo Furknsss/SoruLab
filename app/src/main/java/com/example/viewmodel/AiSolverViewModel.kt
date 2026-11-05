@@ -1030,8 +1030,12 @@ class AiSolverViewModel : ViewModel() {
                                 // own confirmation.
                                 val nativeFooterEvidence =
                                     (localBlueprint.pageTextFooterKeys[pageIdx]?.size ?: 0) >= 4
+                                // Native *key* evidence is independent of
+                                // whether native *question starts* are strong
+                                // enough to drive cropping. Trust the printed
+                                // key as a second reading even on mixed pages.
                                 val needsNativeImageKeyVerification =
-                                    sourceBackedPage && nativeFooterEvidence &&
+                                    nativeFooterEvidence &&
                                         ocrPageLayout.answerGrids.isEmpty()
                                 val paddleEvidence = if ((!sourceBackedPage ||
                                         needsNativeImageKeyVerification) &&
@@ -1051,7 +1055,13 @@ class AiSolverViewModel : ViewModel() {
                                     PdfAdaptiveAnswerRows.regions(it.textCells, pageBitmap.width)
                                 }.orEmpty()
                                 if (PdfScopedAnswerKeys.looksLikeAnswerPage(paddleRegions.flatten())) {
-                                    pendingSecondaryAnswerRegions.addAll(paddleRegions)
+                                    if (nativeFooterEvidence) {
+                                        // Paddle is image OCR; native PDF is the
+                                        // independent source, not the same reader.
+                                        pendingAnswerRegions.addAll(paddleRegions)
+                                    } else {
+                                        pendingSecondaryAnswerRegions.addAll(paddleRegions)
+                                    }
                                 }
                                 val imageOnlyAnchors = if (!sourceBackedPage) {
                                     val secondPass = recognizeSupplementalNumberAnchors(pageBitmap)
@@ -1328,7 +1338,7 @@ class AiSolverViewModel : ViewModel() {
                                     // image-reader channel, NOT the native one.
                                     // For image-only pages Paddle remains the
                                     // independent second channel behind ML Kit.
-                                    if (sourceBackedPage && nativeFooterEvidence) {
+                                    if (nativeFooterEvidence) {
                                         pendingHorizontalGrids += pageAnswerScope to grid
                                     } else {
                                         pendingSecondaryGrids += pageAnswerScope to grid

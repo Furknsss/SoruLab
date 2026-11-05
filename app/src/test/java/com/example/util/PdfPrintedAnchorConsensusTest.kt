@@ -107,4 +107,38 @@ class PdfPrintedAnchorConsensusTest {
         assertEquals(printed, result)
     }
 
+
+    @Test fun threeIndependentReadersRecoverMissingNumberDespitePrimaryGraphDistractor() {
+        val printed = listOf(
+            q(1, 108, 195), q(2, 108, 745), q(3, 108, 1337),
+            q(4, 682, 194), q(5, 682, 895)
+        )
+        val graphNumber = q(1, 315, 410)
+        // The fake primary start is uncorroborated. Both independent reads
+        // locate each genuine printed number in its original column.
+        val primary = listOf(printed[0], printed[1], printed[3], graphNumber)
+        val recovered = PdfPrintedAnchorConsensus.reconcileThree(
+            primary, printed, printed, 1290, 1720
+        )
+        assertEquals(listOf(1, 2, 3, 4, 5), recovered.map { it.number })
+    }
+
+    @Test fun threeReaderConsensusCannotReplaceIndependentlyConfirmedQuestionsWithDiagramNumbers() {
+        val printed = listOf(
+            q(7, 82, 190), q(8, 82, 900), q(9, 940, 180)
+        )
+        val diagram = (1..8).map { q(it, 280, 630 + it * 80) }
+        val recovered = PdfPrintedAnchorConsensus.reconcileThree(
+            printed, printed + diagram, printed + diagram, 1800, 2400
+        )
+        assertEquals(printed, recovered)
+    }
+
+    @Test fun unavailableThirdReaderDoesNotWeakenFailClosedTwoPassSafety() {
+        val printed = listOf(q(1, 82, 190), q(2, 82, 900))
+        val diagram = (1..8).map { q(it, 280, 630 + it * 80) }
+        assertEquals(printed, PdfPrintedAnchorConsensus.reconcileThree(
+            printed, printed + diagram, emptyList(), 1800, 2400
+        ))
+    }
 }

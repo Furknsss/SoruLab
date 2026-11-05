@@ -345,8 +345,7 @@ fun LiveSolvingBoardScreen(
     var isZoomMagnifierEnabled by remember(displayedCanvasKey, session.viewMode) { mutableStateOf(false) }
     var zoomScale by remember(displayedCanvasKey, session.viewMode) { mutableFloatStateOf(1f) }
     var panOffset by remember(displayedCanvasKey, session.viewMode) { mutableStateOf(Offset.Zero) }
-    // Capture the current value in composition so older Compose semantics
-    // nodes invalidate their cached accessibility configuration after zoom.
+    // Keep the accessibility percentage in the toolbar's composition snapshot.
     val zoomStateDescription = "${(zoomScale * 100).toInt()}%"
     val singleQuestionScrollStates = remember(session.testItem.id) {
         mutableMapOf<String, ScrollState>()
@@ -474,7 +473,12 @@ fun LiveSolvingBoardScreen(
         // 1. ÜST BEYAZ BAR: Solda Geri Oku, Ortada Test Başlığı, Sağda Mavi Hap Buton
         if (!isImmersive) {
             BookPageTopBar345(
-                testTitle = session.testItem.fullTitle.ifBlank { "${session.topicName} - Test 1" },
+                testTitle = if (session.viewMode == BoardViewMode.SINGLE_QUESTION)
+                    "Soru ${session.currentQuestionIndex + 1}/$totalQuestions"
+                    else session.testItem.fullTitle.ifBlank { "${session.topicName} - Test 1" },
+                onOpenOpticalForm = onToggleOpticalForm.takeIf {
+                    session.viewMode == BoardViewMode.SINGLE_QUESTION && !session.isReviewMode
+                },
                 isReviewMode = session.isReviewMode,
                 onBack = onExitSession,
                 onFinishTest = { showFinishConfirmation = true },
@@ -1007,6 +1011,7 @@ fun LiveSolvingBoardScreen(
             if (!session.isReviewMode) {
                 RightSlidingOpticalFormDrawer345(
                     isOpen = session.isOpticalFormDrawerOpen,
+                    showClosedTab = session.viewMode == BoardViewMode.FULL_PAGE,
                     questions = questions,
                     selectedAnswers = session.selectedAnswers,
                     onToggleDrawer = onToggleOpticalForm,
@@ -1458,7 +1463,8 @@ private fun BookPageTopBar345(
     isReviewMode: Boolean,
     onBack: () -> Unit,
     onFinishTest: () -> Unit,
-    onOpenReportCard: () -> Unit
+    onOpenReportCard: () -> Unit,
+    onOpenOpticalForm: (() -> Unit)? = null
 ) {
     Surface(
         color = Color.White,
@@ -1500,6 +1506,15 @@ private fun BookPageTopBar345(
                     .padding(horizontal = 12.dp)
             )
 
+            if (onOpenOpticalForm != null) {
+                IconButton(
+                    onClick = onOpenOpticalForm,
+                    modifier = Modifier.size(40.dp).testTag("single_optical_toggle")
+                ) {
+                    Icon(Icons.Default.Apps, contentDescription = "Optik formu aç",
+                        tint = Color(0xFF24205E))
+                }
+            }
             if (!isReviewMode) {
                 Surface(
                     onClick = onFinishTest,
@@ -2503,6 +2518,7 @@ private fun PopoverPillButton345(
 @Composable
 private fun RightSlidingOpticalFormDrawer345(
     isOpen: Boolean,
+    showClosedTab: Boolean = true,
     questions: List<YksQuestion>,
     selectedAnswers: Map<Int, String>,
     onToggleDrawer: () -> Unit,
@@ -2513,7 +2529,9 @@ private fun RightSlidingOpticalFormDrawer345(
     val configuration = LocalConfiguration.current
     val answered = questions.count { !selectedAnswers[it.number].isNullOrBlank() }
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        VerticalBlueSideTab345("Optik Form", false, onToggleDrawer, "optical_form_tab")
+        if (showClosedTab || isOpen) {
+            VerticalBlueSideTab345("Optik Form", false, onToggleDrawer, "optical_form_tab")
+        }
         AnimatedVisibility(
             visible = isOpen,
             enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),

@@ -41,7 +41,7 @@ class SoruLabStylusViewportDeviceTest {
 
     @Test fun zoomedStylusStoresPageCoordinatesAndRendersAtContact() {
         showBoard()
-        compose.onNodeWithTag("board_zoom_toggle").performClick()
+        compose.onNodeWithTag("board_zoom_toggle").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithTag("board_zoom_toggle").assertIsSelected()
         compose.onNodeWithTag("board_ink_viewport").assert(
             SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "145%")
@@ -112,7 +112,7 @@ class SoruLabStylusViewportDeviceTest {
 
     @Test fun changingFocusedQuestionResetsZoomAndDoesNotReuseInk() {
         showBoard()
-        compose.onNodeWithTag("board_zoom_toggle").performClick()
+        compose.onNodeWithTag("board_zoom_toggle").performScrollTo().assertIsDisplayed().performClick()
         val bounds = compose.onNodeWithTag("board_ink_viewport").fetchSemanticsNode().boundsInWindow
         stroke(bounds.center, bounds.center + Offset(30f, 20f))
         compose.runOnIdle { session = session.copy(currentQuestionIndex = 1) }
@@ -130,6 +130,29 @@ class SoruLabStylusViewportDeviceTest {
 
     @Test fun tallCroppedImageKeepsItsLastInkVisibleInFocusedView() {
         checkTallImage(BoardViewMode.SINGLE_QUESTION, "single-question-tall-image.png")
+    }
+
+    @Test fun focusedEAnswerIsUnobstructedAndOpticalGridStillWorks() {
+        showBoard()
+        compose.onNodeWithTag("single_answer_1_E").performScrollTo().assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals("E", session.selectedAnswers[1]) }
+        compose.onNodeWithTag("optical_form_tab").assertDoesNotExist()
+        screenshot("single-question-e-answer.png")
+        // Chrome stays outside the ink surface, so a real stylus tap can open
+        // the grid without creating an accidental dot on the question.
+        val button = compose.onNodeWithTag("single_optical_toggle").assertIsDisplayed()
+            .fetchSemanticsNode().boundsInWindow
+        val down = SystemClock.uptimeMillis()
+        dispatch(MotionEvent.ACTION_DOWN, listOf(Contact(7, MotionEvent.TOOL_TYPE_STYLUS, button.center)), down)
+        dispatch(MotionEvent.ACTION_UP, listOf(Contact(7, MotionEvent.TOOL_TYPE_STYLUS, button.center)), down)
+        compose.onNodeWithTag("optical_form_drawer").assertIsDisplayed()
+        compose.onNodeWithTag("optic_q1_A").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("Optik formu kapat").performClick()
+        compose.onNodeWithTag("optical_form_drawer").assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals("A", session.selectedAnswers[1])
+            assertTrue("Stylus toolbar tap created an accidental stroke", captured.isEmpty())
+        }
     }
 
     @Test fun tallCroppedImageKeepsItsLastInkVisibleOnBookPage() {
@@ -197,7 +220,8 @@ class SoruLabStylusViewportDeviceTest {
                     }, onBookPageChanged = {}, onClearCanvas = {},
                     onSelectQuestionIndex = { session = session.copy(currentQuestionIndex = it) },
                     onSelectOption = { n, answer -> session = session.copy(selectedAnswers = session.selectedAnswers + (n to answer)) },
-                    onToggleOpticalForm = {}, onToggleStatsDrawer = {}, onToggleQuestionMap = {},
+                    onToggleOpticalForm = { session = session.copy(isOpticalFormDrawerOpen = !session.isOpticalFormDrawerOpen) },
+                    onToggleStatsDrawer = {}, onToggleQuestionMap = {},
                     onFinishTest = {}, onGoToStatsTab = {}, onAskAiForQuestion = {}
                 )
             }

@@ -1860,7 +1860,8 @@ class AiSolverViewModel : ViewModel() {
                         add("KAYNAK TEST BÜTÜNLÜĞÜ: " +
                             "${sourceKeyCoverage.totalSourceNumbers} kaynak cevap hücresi kimliği, " +
                             "${sourceKeyCoverage.missingSourceQuestions.size} eksik soru, " +
-                            "${sourceKeyCoverage.duplicateImportedQuestions.size} mükerrer soru. " +
+                            "${sourceKeyCoverage.duplicateImportedQuestions.size} mükerrer soru, " +
+                            "${sourceKeyCoverage.unexpectedImportedQuestions.size} kaynak anahtarda bulunmayan soru. " +
                             "Kitap eksiksiz kabul edilemez.")
                     }
                     add("CEVAP OKUMA UZLAŞMASI: " +
@@ -1996,6 +1997,7 @@ class AiSolverViewModel : ViewModel() {
                         "${suspectedSkippedQuestionPages.size} şüpheli eksik sayfa, " +
                         "${sourceKeyCoverage.missingSourceQuestions.size} kaynak cevaba göre eksik soru, " +
                         "${sourceKeyCoverage.duplicateImportedQuestions.size} mükerrer soru, " +
+                        "${sourceKeyCoverage.unexpectedImportedQuestions.size} kaynak anahtarda bulunmayan soru, " +
                         "${allExtractedQuestions.count { !it.answerKeyMatched }} cevabı doğrulanmayan soru. " +
                         "Hatalı kitabı otomatik kaydetmedik; önce bunları düzeltmek gerekir."
                     // These cropped files were staged only for this import.

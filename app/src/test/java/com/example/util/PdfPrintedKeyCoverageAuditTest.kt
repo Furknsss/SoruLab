@@ -39,4 +39,23 @@ class PdfPrintedKeyCoverageAuditTest {
     fun zeroIndependentPrintedCellsNeverMeansComplete() {
         assertFalse(PdfPrintedKeyCoverageAudit.assess(emptyList(), listOf(PdfAnswerId(scope,1))).complete)
     }
+
+    @Test
+    fun extraQuestionCannotHideBehindOtherwiseCompletePrintedKey() {
+        val extra = PdfAnswerId(scope, 6)
+        val imported = (1..5).map { PdfAnswerId(scope, it) } + extra
+        val report = PdfPrintedKeyCoverageAudit.assess(printed, imported)
+        assertFalse(report.complete)
+        assertTrue(report.missingSourceQuestions.isEmpty())
+        assertEquals(setOf(extra), report.unexpectedImportedQuestions)
+    }
+
+    @Test
+    fun extraQuestionFromWrongTestAlsoRejectsBookCompleteness() {
+        val wrongTest = PdfAnswerId(scope.copy(testNumber = 2), 1)
+        val imported = (1..5).map { PdfAnswerId(scope, it) } + wrongTest
+        val report = PdfPrintedKeyCoverageAudit.assess(printed, imported)
+        assertFalse(report.complete)
+        assertEquals(setOf(wrongTest), report.unexpectedImportedQuestions)
+    }
 }

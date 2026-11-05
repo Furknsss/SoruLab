@@ -638,7 +638,9 @@ fun LiveSolvingBoardScreen(
                               while (true) {
                                 // Do not wait for every palm pointer to lift
                                 // before recognizing the next S Pen contact.
-                                val down = queuedPenDown ?: run {
+                                val down = if (queuedPenDown != null) {
+                                    queuedPenDown
+                                } else {
                                     val event = awaitPointerEvent(PointerEventPass.Initial)
                                     val pen = event.changes.firstOrNull {
                                         it.pressed && !it.previousPressed &&

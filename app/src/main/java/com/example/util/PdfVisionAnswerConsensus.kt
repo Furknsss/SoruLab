@@ -13,7 +13,11 @@ internal data class PdfVisionAnswerVerdict(
 ) {
     fun confirmedOption(scope: PdfAnswerScope?, number: Int?): String? {
         if (scope == null || number == null) return null
-        return confirmed[PdfAnswerId(scope, number)]
+        val normalizedScope = scope.copy(
+            section = PdfScopedAnswerKeys.normalize(scope.section),
+            testKind = PdfScopedAnswerKeys.normalize(scope.testKind)
+        )
+        return confirmed[PdfAnswerId(normalizedScope, number)]
     }
 }
 

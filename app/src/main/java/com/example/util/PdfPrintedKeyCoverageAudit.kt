@@ -4,11 +4,12 @@ package com.example.util
 internal data class PdfPrintedKeyCoverage(
     val missingSourceQuestions: Set<PdfAnswerId>,
     val duplicateImportedQuestions: Set<PdfAnswerId>,
+    val unexpectedImportedQuestions: Set<PdfAnswerId>,
     val totalSourceNumbers: Int
 ) {
     val complete: Boolean
         get() = totalSourceNumbers > 0 && missingSourceQuestions.isEmpty() &&
-            duplicateImportedQuestions.isEmpty()
+            duplicateImportedQuestions.isEmpty() && unexpectedImportedQuestions.isEmpty()
 }
 
 internal object PdfPrintedKeyCoverageAudit {
@@ -33,6 +34,7 @@ internal object PdfPrintedKeyCoverageAudit {
         return PdfPrintedKeyCoverage(
             missingSourceQuestions = expected - observed.toSet(),
             duplicateImportedQuestions = duplicates,
+            unexpectedImportedQuestions = observed.toSet() - expected,
             totalSourceNumbers = expected.size
         )
     }

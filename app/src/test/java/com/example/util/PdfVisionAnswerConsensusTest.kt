@@ -66,4 +66,17 @@ class PdfVisionAnswerConsensusTest {
         assertNull(result.confirmedOption(scope, 1))
         assertNull(result.confirmedOption(otherScope, 1))
     }
+
+    @Test
+    fun uppercaseTurkishSourceScopeRetrievesTheSameVerifiedPrintedCell() {
+        val independent = PdfScopedAnswerKeys()
+        independent.addPairs(scope, listOf(1 to "B"))
+        val printedScope = scope.copy(section = "SİNİR SİSTEMİ", testKind = "ANALİZ")
+        val result = PdfVisionAnswerConsensus.compare(
+            independent, listOf(printedScope to listOf(1 to "B"))
+        )
+        assertEquals("B", result.confirmedOption(printedScope, 1))
+        assertEquals("B", result.confirmedOption(scope, 1))
+        assertNull(result.confirmedOption(printedScope.copy(testNumber = 4), 1))
+    }
 }

@@ -174,7 +174,9 @@ class SoruLabStylusViewportDeviceTest {
     private fun screenshot(name: String) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val dir = File(context.getExternalFilesDir(null), "qa-screens").apply { mkdirs() }
-        File(dir, name).outputStream().use {
+        val viewport = InstrumentationRegistry.getArguments().getString("sorulab.viewportCase", "phone")
+        val filename = if (viewport == "phone") name else "${viewport}_$name"
+        File(dir, filename).outputStream().use {
             compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
         }
     }

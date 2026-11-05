@@ -162,7 +162,9 @@ class SoruLabDeviceUiSmokeTest {
         val dest = File(context.getExternalFilesDir(null), "qa-screens")
         check(dest.exists() || dest.mkdirs()) { "Could not create QA screenshot directory" }
         val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
-        FileOutputStream(File(dest, filename)).use { output ->
+        val viewport = InstrumentationRegistry.getArguments().getString("sorulab.viewportCase", "phone")
+        val snapshotName = if (viewport == "phone") filename else "${viewport}_$filename"
+        FileOutputStream(File(dest, snapshotName)).use { output ->
             check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
         }
     }

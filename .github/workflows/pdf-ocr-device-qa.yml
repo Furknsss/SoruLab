@@ -14,6 +14,7 @@ on:
       - 'app/build.gradle.kts'
       - 'ppocr-sdk/**'
       - 'scripts/prepare_ppocrv6_models.py'
+      - 'scripts/run_pdf_board_device_qa.sh'
       - 'gradle/libs.versions.toml'
       - 'settings.gradle.kts'
       - '.github/workflows/pdf-ocr-device-qa.yml'
@@ -64,11 +65,7 @@ jobs:
           emulator-options: '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none'
           disable-animations: true
           emulator-boot-timeout: 600
-          script: |
-            bash ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2
-            # Screenshot collection runs as a SINGLE shell script;
-            # the runner executes each here-line as a distinct command.
-            bash scripts/collect_pdf_qa_screenshots.sh
+          script: bash scripts/run_pdf_board_device_qa.sh
       - name: Archive device screenshots and test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -78,5 +75,6 @@ jobs:
             app/build/outputs/androidTest-results/connected/
             app/build/reports/androidTests/connected/
             app/build/qa-device-screenshots/
+            app/build/qa-viewport-reports/
           if-no-files-found: ignore
           retention-days: 7

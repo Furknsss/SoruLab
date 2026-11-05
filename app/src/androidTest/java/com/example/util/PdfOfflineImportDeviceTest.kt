@@ -73,6 +73,14 @@ class PdfOfflineImportDeviceTest {
             val rows = requireNotNull(imported)
             assertEquals(4, rows.size)
             assertEquals(listOf("A", "B", "C", "D"), rows.sortedBy { it.questionNumberInTest }.map { it.correctOption })
+            val finalCrop = rows.single { it.questionNumberInTest == 4 }
+            // The last E choice ends near 73% of the source page. The
+            // independently printed 1..4 answer strip begins near 90%.
+            // Neither cutting E nor leaking the answer strip is acceptable.
+            assertTrue("Final E choice was cut from the question",
+                finalCrop.normBottom > .735f)
+            assertTrue("The printed answer-key strip leaked into a question image",
+                finalCrop.normBottom < .91f)
             assertTrue("Offline import may only accept complete, nonempty crop files", rows.all {
                 it.answerKeyMatched && File(it.croppedImagePath).isFile &&
                     File(it.croppedImagePath).length() > 0L &&

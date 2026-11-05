@@ -1,15 +1,11 @@
 name: Private source PDF offline acceptance
 
+# Real private-book acceptance requires a per-run encrypted fixture uploaded
+# for that runner's ephemeral public key. Automatic pushes have no such fixture:
+# they otherwise occupy an Android runner waiting 20 minutes and cannot certify
+# book accuracy. Keep this a mandatory manually dispatched RELEASE gate.
 on:
   workflow_dispatch:
-  push:
-    branches: [feat/pdf-vision-gemini38-grounded-20261104]
-    paths:
-      - '.github/workflows/pdf-private-offline-qa.yml'
-      - 'app/src/main/java/com/example/viewmodel/AiSolverViewModel.kt'
-      - 'app/src/main/java/com/example/util/**'
-      - 'app/src/test/java/com/example/util/**'
-      - 'app/src/androidTest/java/com/example/util/PdfPrivateCorpusDeviceTest.kt'
 
 permissions:
   contents: read

@@ -16,6 +16,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -54,6 +55,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -65,6 +68,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.font.FontWeight
@@ -82,6 +86,7 @@ import androidx.compose.ui.window.PopupProperties
 import com.example.data.*
 import com.example.util.StudioImageAndPdfEngine
 import com.example.util.StylusInputPolicy
+import com.example.util.BoardInkCoordinates
 import com.example.util.TestAnswerAnalyticsEngine
 import com.example.viewmodel.*
 import kotlinx.coroutines.Dispatchers
@@ -337,9 +342,15 @@ fun LiveSolvingBoardScreen(
     var activeTopicLectureQuestion by remember { mutableStateOf<YksQuestion?>(null) }
 
     // Zoom & Pan state for the book page
-    var isZoomMagnifierEnabled by remember { mutableStateOf(false) }
-    var zoomScale by remember(currentBookPageIndex, session.viewMode) { mutableFloatStateOf(1f) }
-    var panOffset by remember(currentBookPageIndex, session.viewMode) { mutableStateOf(Offset.Zero) }
+    var isZoomMagnifierEnabled by remember(displayedCanvasKey, session.viewMode) { mutableStateOf(false) }
+    var zoomScale by remember(displayedCanvasKey, session.viewMode) { mutableFloatStateOf(1f) }
+    var panOffset by remember(displayedCanvasKey, session.viewMode) { mutableStateOf(Offset.Zero) }
+    val singleQuestionScrollStates = remember(session.testItem.id) {
+        mutableMapOf<String, ScrollState>()
+    }
+    val displayedDocumentScroll = if (session.viewMode == BoardViewMode.SINGLE_QUESTION) {
+        singleQuestionScrollStates.getOrPut(displayedCanvasKey) { ScrollState(0) }
+    } else null
 
     BackHandler {
         when {
@@ -528,12 +539,14 @@ fun LiveSolvingBoardScreen(
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.White)
                     .shadow(2.dp, RoundedCornerShape(8.dp))
+                    .testTag("board_ink_viewport")
+                    .semantics { stateDescription = "${(zoomScale * 100).toInt()}%" }
                     // Initial pass wins two-finger gestures before the pager
                     // can mistake a pinch for a page change. Single-finger
                     // touches at normal zoom remain available to page swipe.
                     .pointerInput(
                         activeTool, fingerDrawingEnabled, isZoomMagnifierEnabled,
-                        currentBookPageIndex, session.viewMode
+                        displayedCanvasKey, session.viewMode
                     ) {
                         awaitEachGesture {
                             var hadNavigationGesture = false
@@ -544,6 +557,12 @@ fun LiveSolvingBoardScreen(
                                 }
                                 val stylusPressed = event.changes.any {
                                     it.pressed && it.type == PointerType.Stylus
+                                }
+                                // A palm must not scroll the question underneath
+                                // the pen while a stroke is in progress.
+                                if (stylusPressed) {
+                                    event.changes.filter { it.type == PointerType.Touch }
+                                        .forEach { it.consume() }
                                 }
                                 val pinch = StylusInputPolicy.usePinch(
                                     fingers.size, stylusPressed
@@ -614,26 +633,47 @@ fun LiveSolvingBoardScreen(
                             session.viewMode,
                             displayedCanvasKey
                         ) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                                if (!StylusInputPolicy.canInk(
-                                        down.type, fingerDrawingEnabled
-                                    ) || down.isConsumed
-                                ) return@awaitEachGesture
+                            awaitPointerEventScope {
+                              var queuedPenDown: PointerInputChange? = null
+                              while (true) {
+                                // Do not wait for every palm pointer to lift
+                                // before recognizing the next S Pen contact.
+                                val down = queuedPenDown ?: run {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    val pen = event.changes.firstOrNull {
+                                        it.pressed && !it.previousPressed &&
+                                            it.type == PointerType.Stylus && !it.isConsumed
+                                    }
+                                    pen ?: event.changes.firstOrNull {
+                                        it.pressed && !it.previousPressed && !it.isConsumed &&
+                                            StylusInputPolicy.canInk(it.type, fingerDrawingEnabled) &&
+                                            event.changes.count { p -> p.pressed && p.type == PointerType.Touch } == 1 &&
+                                            event.changes.none { p -> p.pressed && p.type == PointerType.Stylus }
+                                    }
+                                }
+                                queuedPenDown = null
+                                if (down == null) continue
+                                if (bookPagerState.isScrollInProgress || singleQuestionPagerState.isScrollInProgress) continue
                                 down.consume()
+
+                                fun documentPoint(position: Offset) = BoardInkCoordinates.toDocument(
+                                    position, Size(size.width.toFloat(), size.height.toFloat()),
+                                    zoomScale, panOffset, displayedDocumentScroll?.value?.toFloat() ?: 0f
+                                )
+                                val start = documentPoint(down.position)
 
                                 val activeId = down.id
                                 liveRawPoints.clear()
                                 liveRawPressures.clear()
-                                liveRawPoints.add(down.position)
+                                liveRawPoints.add(start)
                                 liveRawPressures.add(
                                     if (down.type == PointerType.Stylus) down.pressure else 1f
                                 )
                                 liveRawPath.reset()
-                                liveRawPath.moveTo(down.position.x, down.position.y)
+                                liveRawPath.moveTo(start.x, start.y)
                                 liveDrawTick.intValue++
 
-                                var prevPt = down.position
+                                var prevPt = start
                                 var cancelled = false
                                 try {
                                     // Observe every pointer, not just the stylus.
@@ -656,6 +696,10 @@ fun LiveSolvingBoardScreen(
                                                 it.pressed && it.type == PointerType.Stylus
                                             })
                                         ) {
+                                            queuedPenDown = event.changes.firstOrNull {
+                                                it.pressed && !it.previousPressed &&
+                                                    it.type == PointerType.Stylus && !it.isConsumed
+                                            }
                                             cancelled = true
                                             break
                                         }
@@ -663,7 +707,7 @@ fun LiveSolvingBoardScreen(
                                             cancelled = true
                                             break
                                         }
-                                        val curPt = active.position
+                                        val curPt = documentPoint(active.position)
                                         if ((curPt - prevPt).getDistance() >= 0.6f) {
                                             liveRawPoints.add(curPt)
                                             liveRawPressures.add(
@@ -705,6 +749,7 @@ fun LiveSolvingBoardScreen(
                                     liveRawPath.reset()
                                     liveDrawTick.intValue++
                                 }
+                              }
                             }
                         }
                         } else {
@@ -831,6 +876,7 @@ fun LiveSolvingBoardScreen(
                             SingleQuestionFocusedPageSurface(
                                 session = session,
                                 question = currentQuestion,
+                                scrollState = singleQuestionScrollStates.getOrPut("q_${currentQuestion.id}") { ScrollState(0) },
                                 customPublishers = customPublishers,
                                 openThreeDotQuestionNumber = openThreeDotQuestionNumber,
                                 onDismissThreeDotMenu = {
@@ -887,10 +933,12 @@ fun LiveSolvingBoardScreen(
                     // Keep ink history cached during writing. Eraser alone
                     // temporarily composites old ink with its Clear path in
                     // the preview layer for immediate visual feedback.
+                    translate(top = -(displayedDocumentScroll?.value ?: 0).toFloat()) {
                     val liveErasing = activeTool == DrawingTool.ERASER &&
                         liveDrawTick.intValue >= 0 && liveRawPoints.isNotEmpty()
                     if (!liveErasing) {
                         displayedStrokes.forEach { stroke -> drawSmoothStroke(stroke) }
+                    }
                     }
                 }
                 Canvas(
@@ -899,6 +947,7 @@ fun LiveSolvingBoardScreen(
                         .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
                         .testTag("live_spen_preview")
                 ) {
+                    translate(top = -(displayedDocumentScroll?.value ?: 0).toFloat()) {
                     val tick = liveDrawTick.intValue
                     // The clear stroke must share an offscreen layer with the
                     // ink it erases. Otherwise erasing would only appear on UP.
@@ -942,6 +991,7 @@ fun LiveSolvingBoardScreen(
                                 )
                             )
                         }
+                    }
                     }
                 }
             }
@@ -1816,7 +1866,16 @@ private fun BookPageQuestionItem345(
             .testTag("book_question_${question.number}")
     ) {
         // A single focused question carries its publisher mark at upper right.
-        if (singleQuestionLayout && !isReviewMode) {
+        if (singleQuestionLayout) {
+            Text(
+                question.topicHeader.ifBlank { "Tek soru" },
+                color = Color(0xFF64748B),
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.TopStart)
+                    .padding(end = 54.dp, top = 12.dp)
+            )
             Box(
                 modifier = Modifier.align(Alignment.TopEnd)
                     .size(42.dp).zIndex(5f)
@@ -1835,7 +1894,7 @@ private fun BookPageQuestionItem345(
         // 1. SORU İÇERİĞİ: Sol başta soru numarası, sağında saf soru görseli
         Row(
             modifier = Modifier.fillMaxWidth().padding(
-                end = if (singleQuestionLayout && !isReviewMode) 50.dp else 0.dp
+                top = if (singleQuestionLayout) 54.dp else 0.dp
             ),
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1843,9 +1902,9 @@ private fun BookPageQuestionItem345(
             // Sol oluk: logo ve soru numarası soru görselinden ayrı tutulur.
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.width(42.dp)
+                modifier = Modifier.width(if (singleQuestionLayout) 30.dp else 42.dp)
             ) {
-                if (!singleQuestionLayout || isReviewMode) {
+                if (!singleQuestionLayout) {
                     Box(
                         modifier = Modifier.size(36.dp)
                             .testTag("question_source_logo_${question.number}")
@@ -1889,17 +1948,20 @@ private fun BookPageQuestionItem345(
             ) {
                 val bitmap = croppedBitmap
                 if (bitmap != null) {
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = "${question.number}. Soru",
-                        contentScale = ContentScale.Fit,
-                        alignment = Alignment.TopStart,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = maxImageHeight)
-                            .aspectRatio(bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1))
-                            .background(Color.White)
-                    )
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        // Exact bounded height avoids contradictory full-width /
+                        // aspectRatio constraints cutting off tall PDF figures.
+                        val ratio = bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1)
+                        val imageHeight = (maxWidth / ratio).coerceAtMost(maxImageHeight)
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "${question.number}. Soru",
+                            contentScale = ContentScale.Fit,
+                            alignment = Alignment.TopStart,
+                            modifier = Modifier.fillMaxWidth().height(imageHeight)
+                                .background(Color.White)
+                        )
+                    }
                 } else {
                     // Fallback vector/text rendering if a catalog question has no bitmap
                     if (question.stemTop.isNotBlank()) {
@@ -1939,20 +2001,14 @@ private fun BookPageQuestionItem345(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    // Kitap tarzı yatay A) B) C) D) E) şıkları
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    val optionsContent: @Composable () -> Unit = {
                         listOf("A", "B", "C", "D", "E").forEach { optKey ->
                             val optVal = question.options[optKey] ?: optKey
                             val isChosen = selectedOption == optKey
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
+                                    .then(if (singleQuestionLayout) Modifier.fillMaxWidth().heightIn(min = 44.dp) else Modifier)
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(
                                         when {
@@ -1972,6 +2028,14 @@ private fun BookPageQuestionItem345(
                                 )
                             }
                         }
+                    }
+                    if (singleQuestionLayout) {
+                        Column(Modifier.fillMaxWidth().padding(top = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)) { optionsContent() }
+                    } else {
+                        Row(Modifier.fillMaxWidth().padding(top = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically) { optionsContent() }
                     }
                 }
             }
@@ -2033,6 +2097,7 @@ private fun BookPageQuestionItem345(
 private fun SingleQuestionFocusedPageSurface(
     session: ActiveSolvingSession,
     question: YksQuestion,
+    scrollState: ScrollState,
     customPublishers: List<YksPublisherInfo>,
     openThreeDotQuestionNumber: Int?,
     onDismissThreeDotMenu: () -> Unit,
@@ -2047,9 +2112,9 @@ private fun SingleQuestionFocusedPageSurface(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.White)
-            .padding(horizontal = 24.dp, vertical = 12.dp)
+            .padding(horizontal = 16.dp, vertical = 16.dp)
     ) {
-        val fitQuestionHeight = (maxHeight - 90.dp).coerceIn(190.dp, 760.dp)
+        val fitQuestionHeight = (maxHeight - 196.dp).coerceIn(72.dp, 760.dp)
         if (openThreeDotQuestionNumber != null) {
             Box(
                 modifier = Modifier
@@ -2065,11 +2130,12 @@ private fun SingleQuestionFocusedPageSurface(
 
         Column(
             modifier = Modifier
-                .widthIn(max = 840.dp)
+                .widthIn(max = 760.dp)
                 .fillMaxWidth()
                 .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
                 .align(Alignment.TopCenter)
-                .verticalScroll(rememberScrollState()),
+                .testTag("single_question_content_${question.id}")
+                .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             BookPageQuestionItem345(
@@ -2086,6 +2152,38 @@ private fun SingleQuestionFocusedPageSurface(
                 onOpenSolutionModal = { onOpenSolutionModal(question) },
                 onOpenTwinScreen = { onOpenTwinScreen(question) },
                 onAddToKumbara = { onAddToKumbara(question) }
+            )
+            if (!session.isReviewMode) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+                ) {
+                    listOf("A", "B", "C", "D", "E").forEach { option ->
+                        val chosen = session.selectedAnswers[question.number] == option
+                        Surface(
+                            onClick = { onSelectOption(option) },
+                            shape = CircleShape,
+                            color = if (chosen) Color(0xFF24205E) else Color(0xFFF1F5F9),
+                            contentColor = if (chosen) Color.White else Color(0xFF334155),
+                            modifier = Modifier.size(48.dp)
+                                .testTag("single_answer_${question.number}_$option")
+                                .semantics {
+                                    selected = chosen
+                                    contentDescription = "${question.number}. soru, $option şıkkı"
+                                }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(option, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
+            Text(
+                "${session.testItem.questions.indexOfFirst { it.id == question.id } + 1} / ${session.testItem.questions.size}",
+                color = Color(0xFF94A3B8),
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 16.dp)
             )
         }
     }
@@ -2895,7 +2993,7 @@ private fun BottomDarkNavyDrawingBar345(
                         },
                         shape = CircleShape,
                         color = if (isZoomMagnifierEnabled) Color(0xFF3475F5) else Color.Transparent,
-                        modifier = Modifier.size(40.dp)
+                        modifier = Modifier.size(40.dp).testTag("board_zoom_toggle")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(

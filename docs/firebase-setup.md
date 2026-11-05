@@ -51,17 +51,42 @@ Firestore App Check enforcement is enabled, verify production app requests
 first; debug builds use the Firebase App Check debug provider and need a
 registered debug token when enforcement is active.
 
-## Free on-device PDF question cropping and answer matching
+## CI App Check activation
 
-The PDF import path uses the PDF's embedded text layer when available, on-device
-ML Kit Latin-script text recognition for scanned pages, and SoruLab's local
-dual-column pixel-projection cropper. Page images are not sent to an OCR vendor,
-and the PDF cropping and answer-key extraction path does not use Gemini or a
-paid cloud OCR API.
+For the live canary, register a debug token under the exact Android app
+`1:656943524635:android:8ff497c04d59f36e5e01be` in this project, using
+**App Check → Apps → Manage debug tokens**. Store the same raw token in the
+repository Actions secret `SORULAB_APPCHECK_DEBUG_TOKEN`; do not paste it into
+issues, chat, source files, or an APK. A token belonging to a different app
+does not activate this Android app. The token name is not the token value.
 
-Answer keys are extracted only from pages with a recognized answer-key heading
-and matched by a printed question number detected on the question page. Page
-order is never treated as the printed question number. Conflicting repeated
-numbers are left unmatched; image quality, unusual layouts, and OCR mistakes
-can still require manual verification. The local answer-key parser tests cover
-the supported printed answer-key formats.
+The live workflow first exchanges the secret with the App Check REST service.
+`403 PERMISSION_DENIED: App attestation failed` means this registration gate
+has not passed; a successful local OCR or emulator UI test cannot replace it.
+The CI secret is injected only into instrumentation and is never bundled in
+the distributable APK. A debug installation on a separate device has its own
+token; a release APK uses the release provider described above instead.
+
+Reference: https://firebase.google.com/docs/app-check/android/debug-provider
+
+## PDF question cropping and answer matching
+
+The current verified-import path uses Firebase AI / Gemini for visual page
+rectangles and printed answer-table transcription. PDF page images are sent
+to that service; cloud quotas, availability, and provider pricing apply.
+App Check access is verified before copying, archiving, rendering, or scanning
+the PDF, so an unavailable attestation fails promptly without importing a book.
+Passing that preflight verifies attestation only, not model access or accuracy.
+
+The embedded PDF text layer, bundled on-device ML Kit Latin OCR, and free
+PP-OCRv6_small on-device inference supply independent printed-source evidence.
+The PP-OCRv6 SDK is not the server-side PaddleOCR-VL product. Geometry checks
+reject missing/overlapping/misnumbered questions. Answer-key matches require
+independent reader agreement on chapter, test identity, and printed number;
+page order and model-generated solutions are never used as an answer key.
+
+Missing, extra, duplicated, ambiguous, or disputed source questions/answers
+prevent the book from being accepted as a complete verified import. Synthetic
+regressions and native device tests do not certify every question in a real
+book. Complete real-book imports still require successful live model access
+and their own source-based verification.

@@ -29,6 +29,8 @@ import com.example.util.PdfVisionImportPolicy
 import com.example.util.PdfVisionAnswerConsensus
 import com.example.util.PdfPrintedKeyCoverageAudit
 import com.example.util.PdfAnswerId
+import com.example.util.PdfVisionAccessException
+import com.example.util.requirePdfVisionAccess
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.Schema
@@ -169,7 +171,9 @@ private data class PdfLocalProcessingStatus(
     @Volatile var ocrFailureCount: Int = 0,
 )
 
-class AiSolverViewModel : ViewModel() {
+class AiSolverViewModel(
+    private val pdfAccessCheck: suspend (Context) -> Unit = ::requirePdfVisionAccess
+) : ViewModel() {
 
     private val generativeModel by lazy {
         Firebase.ai.generativeModel("gemini-3.8-flash")
@@ -950,6 +954,7 @@ class AiSolverViewModel : ViewModel() {
 
     private fun describePdfFailure(error: Exception): String {
         return when (error) {
+            is PdfVisionAccessException -> error.message.orEmpty()
             is java.util.regex.PatternSyntaxException -> "PDF işleme motorunda düzenli ifade hatası oluştu (PatternSyntaxException). Bu dosyanızın hatası değil; uygulamanın güncellenmesi gerekiyor."
             is SecurityException -> "PDF dosyasına erişim izni alınamadı. Dosyayı yeniden seçip tekrar deneyin."
             is java.io.FileNotFoundException -> "Seçilen PDF artık bulunamıyor. Dosyayı yeniden seçin."
@@ -1045,7 +1050,7 @@ class AiSolverViewModel : ViewModel() {
         _batchErrorText.value = null
         _batchWarningText.value = null
         _batchProgressPercent.value = 4
-        _batchStatusText.value = "PDF açılıyor ve yapısal başlıklar ile cevap anahtarı okunuyor..."
+        _batchStatusText.value = "Görsel analiz bağlantısı doğrulanıyor..."
 
         viewModelScope.launch {
             val reusableBitmapRef = arrayOfNulls<Bitmap>(1)
@@ -1059,6 +1064,9 @@ class AiSolverViewModel : ViewModel() {
             }
 
             try {
+                // Vision is mandatory for verified imports. Fail before any
+                // PDF copy/render/OCR if this installation cannot attest.
+                pdfAccessCheck(context)
                 val seekablePdfFile = withContext(Dispatchers.IO) {
                     StudioImageAndPdfEngine.prepareSeekablePdfFile(context, pdfUri)
                 }

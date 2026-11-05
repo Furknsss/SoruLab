@@ -1227,8 +1227,11 @@ class AiSolverViewModel : ViewModel() {
                                     // A skip heuristic must never silently hide
                                     // a page with credible printed question and
                                     // multiple-choice evidence.
-                                    if (pageLayout.questionNumberAnchors.isNotEmpty() &&
-                                        hasQuestionOptions
+                                    if (com.example.util.PdfQuestionPagePresence.needsCropReview(
+                                            pageLayout.questionNumberAnchors,
+                                            cropOptionAnchors,
+                                            useNativeQuestionStarts
+                                        )
                                     ) suspectedSkippedQuestionPages.add(pageIdx)
                                     continue
                                 }
@@ -1237,9 +1240,11 @@ class AiSolverViewModel : ViewModel() {
                                 // OCR. Do not invent missing anchors: mark this
                                 // page for review instead of reporting 100%.
                                 if (pageLayout.questionNumberAnchors.isEmpty() || !hasQuestionOptions) {
-                                    if (pageLayout.questionNumberAnchors.isNotEmpty() ||
-                                        pageLayout.optionAnchors.map { it.option }
-                                            .distinct().size >= 3
+                                    if (com.example.util.PdfQuestionPagePresence.needsCropReview(
+                                            pageLayout.questionNumberAnchors,
+                                            cropOptionAnchors,
+                                            useNativeQuestionStarts
+                                        )
                                     ) suspectedSkippedQuestionPages.add(pageIdx)
                                     continue
                                 }

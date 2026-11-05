@@ -543,6 +543,100 @@ class AiSolverViewModel : ViewModel() {
         }
     }
 
+
+    /**
+     * High-detail, independent ML Kit recovery for a printed number/letter
+     * footer that is already present in the PDF text layer or in Paddle OCR.
+     *
+     * Full-page text recognition can see a 1..N strip as one tiny undeciphered
+     * blob. Two overlapping horizontal tiles give ML Kit ~3x the pixels while
+     * preserving physical answer-cell coordinates. Read the line and element
+     * interpretations separately; merging them creates duplicate numbers.
+     *
+     * This is OCR of the actual page image, not a copy of the PDF native
+     * answer labels. Failed reads remain unverified.
+     */
+    private suspend fun recognizeAnswerFooterTiledGrids(
+        bitmap: Bitmap
+    ): List<PdfHorizontalAnswerGrid> {
+        val reader = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val recovered = mutableListOf<PdfHorizontalAnswerGrid>()
+        val top = (bitmap.height * .65f).toInt()
+            .coerceIn(0, bitmap.height - 1)
+        try {
+            for ((leftFraction, rightFraction) in
+                listOf(0f to .72f, .28f to 1f)
+            ) {
+                val left = (bitmap.width * leftFraction).toInt()
+                    .coerceIn(0, bitmap.width - 1)
+                val right = (bitmap.width * rightFraction).toInt()
+                    .coerceIn(left + 1, bitmap.width)
+                val crop = Bitmap.createBitmap(
+                    bitmap, left, top, right - left, bitmap.height - top
+                )
+                val scale = minOf(
+                    3.25f, 3100f / crop.width, 2500f / crop.height
+                ).coerceAtLeast(1f)
+                val enlarged = if (scale > 1.01f) Bitmap.createScaledBitmap(
+                    crop,
+                    (crop.width * scale).toInt().coerceAtLeast(1),
+                    (crop.height * scale).toInt().coerceAtLeast(1),
+                    true
+                ) else crop
+                try {
+                    val recognized = reader.process(
+                        InputImage.fromBitmap(enlarged, 0)
+                    ).await()
+                    val lines = recognized.textBlocks.flatMap { it.lines }
+                    val elementCells = lines.flatMap { it.elements }
+                        .mapNotNull { element ->
+                            element.boundingBox?.let { box ->
+                                PdfOcrTextCell(
+                                    element.text,
+                                    left + (box.left / scale).toInt(),
+                                    top + (box.top / scale).toInt(),
+                                    left + (box.right / scale).toInt(),
+                                    top + (box.bottom / scale).toInt()
+                                )
+                            }
+                        }
+                    val lineCells = lines.mapNotNull { line ->
+                        line.boundingBox?.let { box ->
+                            PdfOcrTextCell(
+                                line.text,
+                                left + (box.left / scale).toInt(),
+                                top + (box.top / scale).toInt(),
+                                left + (box.right / scale).toInt(),
+                                top + (box.bottom / scale).toInt()
+                            )
+                        }
+                    }
+                    val elementGrids = PdfHorizontalAnswerGridReader.find(
+                        elementCells, bitmap.width, bitmap.height
+                    )
+                    recovered += if (elementGrids.isNotEmpty()) elementGrids
+                    else PdfHorizontalAnswerGridReader.find(
+                        lineCells, bitmap.width, bitmap.height
+                    )
+                } finally {
+                    if (enlarged !== crop) enlarged.recycle()
+                    crop.recycle()
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (oom: OutOfMemoryError) {
+            android.util.Log.w("SoruLabPdfOCR", "Tiled footer OCR exceeds device memory")
+        } catch (error: Exception) {
+            android.util.Log.w("SoruLabPdfOCR", "Tiled footer OCR unavailable", error)
+        } finally {
+            reader.close()
+        }
+        return recovered.distinctBy { grid ->
+            grid.top / 10 to grid.answers
+        }
+    }
+
     private suspend fun recognizeAnswerFooter(bitmap: Bitmap): List<PdfOcrTextCell> {
         val top = (bitmap.height * 0.7f).toInt()
         val crop = Bitmap.createBitmap(bitmap, 0, top, bitmap.width, bitmap.height - top)
@@ -963,13 +1057,37 @@ class AiSolverViewModel : ViewModel() {
                                         pageHeight = pageBitmap.height
                                     )
                                 } else emptyList()
-                                val pageLayout = if (sourceBackedPage) {
+                                var pageLayout = if (sourceBackedPage) {
                                     ocrPageLayout.copy(questionNumberAnchors = nativeAnchors)
                                 } else ocrPageLayout.copy(questionNumberAnchors = imageOnlyAnchors)
                                 // A second OCR reader is useful only when its actual
                                 // spatial A-E coordinates reach the cropper. Previously
                                 // we accepted Paddle-only choices as proof of a question
                                 // but passed the missing ML Kit choices to the cropper.
+                                // The native text layer or independent Paddle
+                                // reader can establish that a real footer exists,
+                                // but it cannot replace ML Kit's independent vote.
+                                // Retry ONLY when ML Kit missed printed cells.
+                                val independentFooterCount = maxOf(
+                                    localBlueprint.pageTextFooterKeys[pageIdx]?.size ?: 0,
+                                    paddleGrids.maxOfOrNull { it.answers.size } ?: 0
+                                )
+                                val primaryFooterCount =
+                                    pageLayout.answerGrids.maxOfOrNull { it.answers.size } ?: 0
+                                if (independentFooterCount >= 4 &&
+                                    primaryFooterCount < independentFooterCount
+                                ) {
+                                    val highResolutionFooter = recognizeAnswerFooterTiledGrids(
+                                        pageBitmap
+                                    )
+                                    if (highResolutionFooter.isNotEmpty()) {
+                                        pageLayout = pageLayout.copy(
+                                            answerGrids = (
+                                                pageLayout.answerGrids + highResolutionFooter
+                                            ).distinctBy { it.top / 10 to it.answers }
+                                        )
+                                    }
+                                }
                                 val primaryChoiceCount = pageLayout.optionAnchors
                                     .map { it.option.uppercase() }.distinct().size
                                 val paddleChoices = paddleEvidence?.optionAnchors.orEmpty()

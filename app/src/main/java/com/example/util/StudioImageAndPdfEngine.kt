@@ -1874,7 +1874,10 @@ object StudioImageAndPdfEngine {
         reusablePixelsRef: Array<IntArray?>,
         questionNumberAnchors: List<QuestionNumberAnchor> = emptyList(),
         optionAnchors: List<QuestionOptionAnchor> = emptyList(),
-        maxQuestionBottomY: Int? = null
+        maxQuestionBottomY: Int? = null,
+        // The full-book import already persists JPEGs; base64 is only needed
+        // by legacy single-image callers that have no durable image path.
+        embedImageBase64: Boolean = true
     ): List<LocalCroppedBoxResult> {
         if (pageBitmap.isRecycled) return emptyList()
         val width = pageBitmap.width
@@ -1897,7 +1900,8 @@ object StudioImageAndPdfEngine {
             totalPages = totalPages,
             questionNumberAnchors = questionNumberAnchors,
             optionAnchors = optionAnchors,
-            maxQuestionBottomY = maxQuestionBottomY
+            maxQuestionBottomY = maxQuestionBottomY,
+            embedImageBase64 = embedImageBase64
         )
     }
 
@@ -1980,7 +1984,8 @@ object StudioImageAndPdfEngine {
         totalPages: Int,
         questionNumberAnchors: List<QuestionNumberAnchor>,
         optionAnchors: List<QuestionOptionAnchor>,
-        maxQuestionBottomY: Int?
+        maxQuestionBottomY: Int?,
+        embedImageBase64: Boolean
     ): List<LocalCroppedBoxResult> {
         // 1. Estimate background paper luminance so off-white / gray / yellow backgrounds are ignored
         var highLumSum = 0L
@@ -2573,7 +2578,11 @@ object StudioImageAndPdfEngine {
                         bitmap = cleanedCrop,
                         id = "p${pageIndex + 1}_c${colIdx + 1}_q${qIdx + 1}_${java.util.UUID.randomUUID()}"
                     )
-                    imageBase64 = encodeLightweightQuestionBitmap(cleanedCrop)
+                    // Avoid a second JPEG encode + base64 conversion per
+                    // question when a durable local JPEG is already saved.
+                    imageBase64 = if (embedImageBase64) {
+                        encodeLightweightQuestionBitmap(cleanedCrop)
+                    } else ""
                 } finally {
                     if (!cleanedCrop.isRecycled) cleanedCrop.recycle()
                 }

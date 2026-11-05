@@ -51,6 +51,38 @@ jobs:
             echo "::error::Firebase App Check rejects GitHub emulators. Register a DEBUG token in Firebase Console, then add it as Actions secret SORULAB_APPCHECK_DEBUG_TOKEN. Production enforcement stays enabled."
             exit 1
           fi
+      - name: Verify registered App Check secret against the configured Firebase app
+        env:
+          SORULAB_APPCHECK_DEBUG_TOKEN: ${{ secrets.SORULAB_APPCHECK_DEBUG_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, sys
+          from pathlib import Path
+          from urllib.error import HTTPError
+          from urllib.parse import urlencode
+          from urllib.request import Request, urlopen
+          config = json.loads(base64.b64decode(Path('google-services.json.base64').read_text()))
+          client = next(c for c in config['client'] if c['client_info'].get('android_client_info', {}).get('package_name') == 'com.aistudio.sorulab.ykslab')
+          app_id = client['client_info']['mobilesdk_app_id']
+          project = config['project_info']['project_number']
+          api_key = client['api_key'][0]['current_key']
+          secret = os.environ['SORULAB_APPCHECK_DEBUG_TOKEN'].strip()
+          url = f'https://firebaseappcheck.googleapis.com/v1/projects/{project}/apps/{app_id}:exchangeDebugToken?' + urlencode({'key': api_key})
+          payload = json.dumps({'debugToken': secret}).encode()
+          request = Request(url, data=payload, headers={'Content-Type': 'application/json'}, method='POST')
+          try:
+              with urlopen(request, timeout=30) as response:
+                  result = json.load(response)
+          except HTTPError as error:
+              body = json.loads(error.read()).get('error', {})
+              message = str(body.get('message', 'Request rejected')).replace(secret, '[redacted]').replace(api_key, '[redacted]')
+              print(f'::error::App Check token exchange: HTTP {error.code} {body.get("status", "")}: {message[:500]}')
+              print('Firebase project:', config['project_info']['project_id'], 'Android app:', app_id)
+              sys.exit(1)
+          if not result.get('token'):
+              sys.exit('App Check exchange returned no token')
+          print('App Check server accepted the registered CI secret; token value is not logged.')
+          PY
       - name: Request live structured output from Firebase AI Gemini 3.8 Flash
         uses: reactivecircus/android-emulator-runner@v2
         env:

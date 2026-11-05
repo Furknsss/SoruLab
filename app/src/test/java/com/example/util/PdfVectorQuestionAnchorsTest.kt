@@ -128,4 +128,37 @@ class PdfVectorQuestionAnchorsTest {
         assertEquals(listOf(1, 2, 3, 4), numbers)
     }
 
+
+    @Test
+    fun bottomAnswerStripNumberNeverReplacesTheRealLastQuestionStart() {
+        // Anonymized physical coordinates measured on a 272-page selectable
+        // textbook. Its answer strip repeats "3." at 93.5% page height.
+        // The source question is the "3." at y=647, not y=755.
+        val glyphs = listOf(
+            PdfSourceGlyph("1.", 57f, 82f, 12f, 9f),
+            PdfSourceGlyph("2.", 57f, 260f, 12f, 9f),
+            PdfSourceGlyph("3.", 57f, 647f, 12f, 9f),
+            PdfSourceGlyph("3.", 59f, 755f, 12f, 9f),
+            PdfSourceGlyph("4.", 315f, 82f, 12f, 9f),
+            PdfSourceGlyph("5.", 315f, 254f, 12f, 9f),
+            PdfSourceGlyph("6.", 315f, 434f, 12f, 9f),
+            PdfSourceGlyph("7.", 315f, 592f, 12f, 9f)
+        )
+        val anchors = PdfVectorQuestionAnchors.find(glyphs, 623f, 807f)
+        assertEquals(listOf(1, 2, 3, 4, 5, 6, 7), anchors.map { it.number })
+        assertEquals(647f, anchors.single { it.number == 3 }.y, .01f)
+    }
+
+    @Test
+    fun aValidLateQuestionDoesNotDisappearBeforeTheFooter() {
+        val glyphs = listOf(
+            PdfSourceGlyph("1.", 57f, 84f, 12f, 9f),
+            PdfSourceGlyph("2.", 57f, 440f, 12f, 9f),
+            PdfSourceGlyph("3.", 57f, 725f, 12f, 9f),
+            PdfSourceGlyph("3.", 59f, 755f, 12f, 9f)
+        )
+        val anchors = PdfVectorQuestionAnchors.find(glyphs, 623f, 807f)
+        assertEquals(listOf(1, 2, 3), anchors.map { it.number })
+        assertEquals(725f, anchors.last().y, .01f)
+    }
 }

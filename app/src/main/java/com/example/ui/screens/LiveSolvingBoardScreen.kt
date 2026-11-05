@@ -2703,6 +2703,56 @@ private fun RightSlidingStatsDrawer345(
                             fontWeight = FontWeight.Bold
                         )
                     }
+                    // Compact reference-style success strip. A correct answer
+                    // is only scored when the original printed key is verified.
+                    val graded = questions.count { it.answerKeyVerified }
+                    if (graded > 0) {
+                        val successRatio = correctCount.toFloat() / graded
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(7.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Konu Başarı Oranı",
+                                    color = Color(0xFF25215D),
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    "%${(successRatio * 100).toInt()}",
+                                    color = Color(0xFF3475F5),
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            LinearProgressIndicator(
+                                progress = { successRatio },
+                                color = Color(0xFF3475F5),
+                                trackColor = Color(0xFFE8ECF4),
+                                modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "Net: ${String.format(java.util.Locale.forLanguageTag("tr-TR"), "%.2f", correctCount - wrongCount / 4f)}",
+                                    color = Color(0xFF64748B),
+                                    fontSize = 11.5.sp
+                                )
+                                Text(
+                                    "Yanlış etkisi: -${String.format(java.util.Locale.forLanguageTag("tr-TR"), "%.2f", wrongCount / 4f)} net",
+                                    color = Color(0xFF64748B),
+                                    fontSize = 11.5.sp
+                                )
+                            }
+                        }
+                    }
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -3896,6 +3946,54 @@ private fun FullScreenSuccessReportCardView(
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
                         )
+                    }
+                }
+            }
+
+            // Small, readable success and net-loss panel instead of an
+            // oversized dashboard. Never infer YKS points from raw net.
+            if (gradedQuestionCount > 0) item {
+                val successRatio = correctCount.toFloat() / gradedQuestionCount
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, Color(0xFFE4EAF4)),
+                    modifier = Modifier.fillMaxWidth().widthIn(max = 620.dp)
+                        .testTag("result_topic_success_card")
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Konu Başarı Oranı", color = Color(0xFF25215D),
+                                fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f))
+                            Text("%${(successRatio * 100).toInt()}", color = Color(0xFF3475F5),
+                                fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+                        LinearProgressIndicator(
+                            progress = { successRatio },
+                            color = Color(0xFF3475F5),
+                            trackColor = Color(0xFFE8ECF4),
+                            modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                "Net: ${String.format(java.util.Locale.forLanguageTag("tr-TR"), "%.2f", correctCount - wrongCount / 4f)}",
+                                color = Color(0xFF475569), fontSize = 12.sp
+                            )
+                            Text(
+                                "Yanlışların net etkisi: -${String.format(java.util.Locale.forLanguageTag("tr-TR"), "%.2f", wrongCount / 4f)}",
+                                color = Color(0xFFB45309), fontSize = 12.sp
+                            )
+                        }
                     }
                 }
             }

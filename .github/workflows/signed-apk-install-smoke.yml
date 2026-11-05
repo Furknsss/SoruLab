@@ -1,0 +1,58 @@
+name: Signed distributable APK install and launch
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/pdf-vision-gemini38-grounded-20261104]
+    paths:
+      - '.github/workflows/signed-apk-install-smoke.yml'
+      - 'scripts/check_signed_apk_install.sh'
+      - 'scripts/check_apk_integrity.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  install-existing-signed-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: sdkmanager 'build-tools;36.0.0'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SoruLab-RC9-SIGNED-TEST-NOT-RELEASE
+          path: signed-original
+          run-id: 41949828822
+          github-token: ${{ github.token }}
+      - name: Require exact original signed build before installation
+        run: >-
+          python3 scripts/check_apk_integrity.py signed-original/app-release.apk
+          --expected-size 310621110
+          --expected-sha256 ddc9524085a99002eabaa8642098e503333604560b95d342b6d350afd9e7c20d
+      - run: sudo chmod a+rw /dev/kvm
+      - name: Install and open the distributable release APK
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          emulator-options: '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none'
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash scripts/check_signed_apk_install.sh signed-original/app-release.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sorulab-signed-release-install-proof
+          path: app/build/signed-apk-install/
+          if-no-files-found: ignore
+          retention-days: 7

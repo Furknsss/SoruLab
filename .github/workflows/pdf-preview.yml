@@ -92,9 +92,28 @@ jobs:
         run: |
           bash ./gradlew :app:assembleRelease --no-daemon --no-configuration-cache --max-workers=2
           test -s app/build/outputs/apk/release/app-release.apk
+      - name: Enable emulator virtualization for actual release APK check
+        run: sudo chmod a+rw /dev/kvm
+      - name: Install and launch the signed APK delivered to testers
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          emulator-options: '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none'
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash scripts/check_signed_apk_install.sh app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@v4
         with:
           name: SoruLab-RC9-SIGNED-TEST-NOT-RELEASE
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SoruLab-signed-install-proof
+          path: app/build/signed-apk-install/
+          if-no-files-found: ignore
           retention-days: 7

@@ -2531,6 +2531,12 @@ private fun RightSlidingOpticalFormDrawer345(
 ) {
     val configuration = LocalConfiguration.current
     val answered = questions.count { !selectedAnswers[it.number].isNullOrBlank() }
+    // A 2-question test must not show the same tall empty drawer as a
+    // 30-question test. Seven rows can be shown; the rest scroll.
+    // Keep a small vertical margin on compact landscape devices.
+    val availableHeight = (configuration.screenHeightDp.dp - 96.dp).coerceAtLeast(212.dp)
+    val desiredHeight = (154 + questions.size.coerceAtMost(7) * 46).dp
+    val opticalDrawerHeight = desiredHeight.coerceIn(212.dp, availableHeight)
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         if (showClosedTab || isOpen) {
             VerticalBlueSideTab345("Optik Form", false, onToggleDrawer, "optical_form_tab")
@@ -2546,13 +2552,10 @@ private fun RightSlidingOpticalFormDrawer345(
                 shadowElevation = 10.dp,
                 border = BorderStroke(1.dp, Color(0xFFE4EAF4)),
                 modifier = Modifier
-                    // A compact floating drawer, never a full-width modal.
-                    // Long tests scroll inside, without growing the panel.
+                    // Height follows actual question count. Previously a
+                    // two-row optical form expanded to 540dp with dead space.
                     .width((configuration.screenWidthDp.dp - 54.dp).coerceAtMost(320.dp))
-                    .heightIn(
-                        min = 260.dp,
-                        max = (configuration.screenHeightDp.dp - 112.dp).coerceIn(260.dp, 540.dp)
-                    )
+                    .height(opticalDrawerHeight)
                     .testTag("optical_form_drawer")
             ) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {

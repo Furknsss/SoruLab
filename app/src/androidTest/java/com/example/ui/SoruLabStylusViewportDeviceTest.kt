@@ -42,6 +42,7 @@ class SoruLabStylusViewportDeviceTest {
     @Test fun zoomedStylusStoresPageCoordinatesAndRendersAtContact() {
         showBoard()
         compose.onNodeWithTag("board_zoom_toggle").performClick()
+        compose.onNodeWithTag("board_zoom_toggle").assertIsSelected()
         compose.onNodeWithTag("board_ink_viewport").assert(
             SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "145%")
         )
@@ -227,13 +228,7 @@ class SoruLabStylusViewportDeviceTest {
     }
 
     private fun screenshot(name: String) {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val dir = File(context.getExternalFilesDir(null), "qa-screens").apply { mkdirs() }
-        val viewport = InstrumentationRegistry.getArguments().getString("sorulab.viewportCase", "phone")
-        val filename = if (viewport == "phone") name else "${viewport}_$name"
-        File(dir, filename).outputStream().use {
-            compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
-        }
+        saveSyntheticQaScreenshot(compose.onRoot().captureToImage().asAndroidBitmap(), name)
     }
 
     private fun fixtureSession(longQuestion: Boolean = false): ActiveSolvingSession {

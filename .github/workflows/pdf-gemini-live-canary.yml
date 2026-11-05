@@ -99,6 +99,30 @@ jobs:
             -Pandroid.testInstrumentationRunnerArguments.class=com.example.util.PdfVisionGeminiLiveDeviceTest
             -Pandroid.testInstrumentationRunnerArguments.sorulab.liveVision=true
             --no-daemon --no-configuration-cache --max-workers=2
+      - name: Redact debug credentials from live test reports
+        if: always()
+        env:
+          SORULAB_APPCHECK_DEBUG_TOKEN: ${{ secrets.SORULAB_APPCHECK_DEBUG_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          raw = os.environ.get('SORULAB_APPCHECK_DEBUG_TOKEN', '')
+          secrets = {s.encode() for s in (raw, raw.strip()) if len(s) >= 8}
+          changed = 0
+          for folder in ('app/build/outputs/androidTest-results/connected', 'app/build/reports/androidTests/connected'):
+              for path in Path(folder).rglob('*'):
+                  if not path.is_file():
+                      continue
+                  original = path.read_bytes()
+                  sanitized = original
+                  for secret in secrets:
+                      sanitized = sanitized.replace(secret, b'*' * len(secret))
+                  if sanitized != original:
+                      path.write_bytes(sanitized)
+                      changed += 1
+          print('Redacted registered CI credentials from', changed, 'report files.')
+          PY
       - name: Preserve live Firebase API result and Android test log
         if: always()
         uses: actions/upload-artifact@v4

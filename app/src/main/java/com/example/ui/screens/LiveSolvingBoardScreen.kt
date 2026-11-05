@@ -345,6 +345,9 @@ fun LiveSolvingBoardScreen(
     var isZoomMagnifierEnabled by remember(displayedCanvasKey, session.viewMode) { mutableStateOf(false) }
     var zoomScale by remember(displayedCanvasKey, session.viewMode) { mutableFloatStateOf(1f) }
     var panOffset by remember(displayedCanvasKey, session.viewMode) { mutableStateOf(Offset.Zero) }
+    // Capture the current value in composition so older Compose semantics
+    // nodes invalidate their cached accessibility configuration after zoom.
+    val zoomStateDescription = "${(zoomScale * 100).toInt()}%"
     val singleQuestionScrollStates = remember(session.testItem.id) {
         mutableMapOf<String, ScrollState>()
     }
@@ -540,7 +543,7 @@ fun LiveSolvingBoardScreen(
                     .background(Color.White)
                     .shadow(2.dp, RoundedCornerShape(8.dp))
                     .testTag("board_ink_viewport")
-                    .semantics { stateDescription = "${(zoomScale * 100).toInt()}%" }
+                    .semantics { stateDescription = zoomStateDescription }
                     // Initial pass wins two-finger gestures before the pager
                     // can mistake a pinch for a page change. Single-finger
                     // touches at normal zoom remain available to page swipe.
@@ -2996,6 +2999,7 @@ private fun BottomDarkNavyDrawingBar345(
                         shape = CircleShape,
                         color = if (isZoomMagnifierEnabled) Color(0xFF3475F5) else Color.Transparent,
                         modifier = Modifier.size(40.dp).testTag("board_zoom_toggle")
+                            .semantics { selected = isZoomMagnifierEnabled }
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(

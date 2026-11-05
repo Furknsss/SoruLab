@@ -6,6 +6,14 @@ set -euo pipefail
 OUT="app/build/qa-device-screenshots"
 mkdir -p "$OUT"
 echo "Trying to locate synthetic device UI screenshots..."
+# Android Gradle's UTP may uninstall the tested APK before this step. Its
+# externalFilesDir is then gone, while our original shared QA images remain.
+if adb shell 'test -d /sdcard/Pictures/SoruLabQA' >/dev/null 2>&1; then
+  if adb pull /sdcard/Pictures/SoruLabQA/. "$OUT/"; then
+    echo "Original synthetic shared QA pictures archived."
+    exit 0
+  fi
+fi
 adb shell 'find /sdcard/Android/data -type f -name denemeler-phone.png 2>/dev/null' \
   | tr -d '\r' > "$OUT/paths.txt" || true
 for pkg in com.aistudio.sorulab.ykslab com.aistudio.sorulab.ykslab.test; do

@@ -15,6 +15,7 @@ on:
       - 'ppocr-sdk/**'
       - 'scripts/prepare_ppocrv6_models.py'
       - 'scripts/run_pdf_board_device_qa.sh'
+      - 'scripts/collect_pdf_qa_screenshots.sh'
       - 'gradle/libs.versions.toml'
       - 'settings.gradle.kts'
       - '.github/workflows/pdf-ocr-device-qa.yml'

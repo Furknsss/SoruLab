@@ -1,6 +1,5 @@
 package com.example.ui
 
-import android.graphics.Bitmap
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -15,7 +14,6 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.DifficultyLevel
 import com.example.data.ExamType
 import com.example.data.YksQuestion
@@ -26,8 +24,6 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.ActiveSolvingSession
 import com.example.viewmodel.BoardViewMode
 import com.example.viewmodel.DrawingTool
-import java.io.File
-import java.io.FileOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -158,15 +154,7 @@ class SoruLabDeviceUiSmokeTest {
     }
 
     private fun captureOnlySyntheticScreen(filename: String) {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val dest = File(context.getExternalFilesDir(null), "qa-screens")
-        check(dest.exists() || dest.mkdirs()) { "Could not create QA screenshot directory" }
-        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
-        val viewport = InstrumentationRegistry.getArguments().getString("sorulab.viewportCase", "phone")
-        val snapshotName = if (viewport == "phone") filename else "${viewport}_$filename"
-        FileOutputStream(File(dest, snapshotName)).use { output ->
-            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
-        }
+        saveSyntheticQaScreenshot(compose.onRoot().captureToImage().asAndroidBitmap(), filename)
     }
 
     private fun fixtureSession(): ActiveSolvingSession {

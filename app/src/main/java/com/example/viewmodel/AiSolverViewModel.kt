@@ -31,6 +31,7 @@ import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
@@ -237,7 +238,8 @@ class AiSolverViewModel : ViewModel() {
         visualDifficultyHint: String,
         hasDiagramOrGraph: Boolean,
         lineCountEstimate: Int,
-        processingStatus: PdfLocalProcessingStatus
+        processingStatus: PdfLocalProcessingStatus,
+        reader: TextRecognizer
     ): QuestionOcrClassification {
         val questionBitmap = withContext(Dispatchers.IO) {
             StudioImageAndPdfEngine.getCachedBitmap(context, imagePath, maxDimension = 1440)
@@ -257,7 +259,7 @@ class AiSolverViewModel : ViewModel() {
         }
 
         val localText = try {
-            recognizeQuestionText(questionBitmap)
+            recognizeQuestionText(questionBitmap, reader)
         } catch (e: CancellationException) {
             throw e
         } catch (_: OutOfMemoryError) {
@@ -659,15 +661,9 @@ class AiSolverViewModel : ViewModel() {
         }
     }
 
-    private suspend fun recognizeQuestionText(bitmap: Bitmap): String =
+    private suspend fun recognizeQuestionText(bitmap: Bitmap, reader: TextRecognizer): String =
         withContext(Dispatchers.IO) {
-            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-            val recognizedText = try {
-                recognizer.process(InputImage.fromBitmap(bitmap, 0)).await()
-            } finally {
-                recognizer.close()
-            }
-            recognizedText.text
+            reader.process(InputImage.fromBitmap(bitmap, 0)).await().text
         }
 
     private fun buildQuestionOcrClassification(
@@ -911,6 +907,14 @@ class AiSolverViewModel : ViewModel() {
                     val pageOcrReader = TextRecognition.getClient(
                         TextRecognizerOptions.DEFAULT_OPTIONS
                     )
+                    // At most two simultaneous crop OCR calls. Keep each
+                    // reader hot for the whole import; never process two
+                    // bitmap crops concurrently on one native recognizer.
+                    val cropOcrReaders = Array(2) {
+                        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                    }
+                    val cropOcrPool = Channel<TextRecognizer>(cropOcrReaders.size)
+                    cropOcrReaders.forEach { cropOcrPool.trySend(it) }
                     try {
                     android.os.ParcelFileDescriptor.open(
                         seekablePdfFile,
@@ -1569,17 +1573,23 @@ class AiSolverViewModel : ViewModel() {
                                                     )
                                                 } else {
                                                     semaphore.withPermit {
-                                                        classifyCroppedQuestion(
-                                                            context = context,
-                                                            imagePath = cropBox.croppedImagePath,
-                                                            examTypeHint = scanPageInfo.examType,
-                                                            subjectNameHint = scanPageInfo.subjectName,
-                                                            pageTopicHint = scanPageInfo.topicName,
-                                                            visualDifficultyHint = cropBox.estimatedDifficulty5,
-                                                            hasDiagramOrGraph = cropBox.hasDiagramOrGraph,
-                                                            lineCountEstimate = cropBox.lineCountEstimate,
-                                                            processingStatus = processingStatus
-                                                        )
+                                                        val cropReader = cropOcrPool.receive()
+                                                        try {
+                                                            classifyCroppedQuestion(
+                                                                context = context,
+                                                                imagePath = cropBox.croppedImagePath,
+                                                                examTypeHint = scanPageInfo.examType,
+                                                                subjectNameHint = scanPageInfo.subjectName,
+                                                                pageTopicHint = scanPageInfo.topicName,
+                                                                visualDifficultyHint = cropBox.estimatedDifficulty5,
+                                                                hasDiagramOrGraph = cropBox.hasDiagramOrGraph,
+                                                                lineCountEstimate = cropBox.lineCountEstimate,
+                                                                processingStatus = processingStatus,
+                                                                reader = cropReader
+                                                            )
+                                                        } finally {
+                                                            cropOcrPool.trySend(cropReader)
+                                                        }
                                                     }
                                                 }
                                             }
@@ -1674,6 +1684,8 @@ class AiSolverViewModel : ViewModel() {
                         // failed or cancelled imports. Cropped-question OCR
                         // uses separate readers and is already awaited.
                         pageOcrReader.close()
+                        cropOcrReaders.forEach { it.close() }
+                        cropOcrPool.close()
                     }
                 }
 

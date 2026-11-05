@@ -59,6 +59,8 @@ class PdfPrivateCorpusDeviceTest {
                 }
                 assertNotNull("Missing printed source identity at reference index $i", row)
                 requireNotNull(row)
+                assertTrue("Question crop image was not actually saved at reference index $i",
+                    File(row.croppedImagePath).isFile && File(row.croppedImagePath).length() > 0L)
                 assertEquals("Wrong printed answer at reference index $i", item.getString("answer"), row.correctOption)
                 assertTrue("Unverified answer at reference index $i", row.answerKeyMatched)
                 if (item.has("lastInk")) {

@@ -8,6 +8,7 @@ on:
     paths:
       - 'app/src/androidTest/**'
       - 'app/src/main/java/com/example/util/**'
+      - 'app/src/test/java/com/example/util/**'
       - 'app/src/main/java/com/example/ui/screens/LiveSolvingBoardScreen.kt'
       - 'app/src/main/java/com/example/viewmodel/AiSolverViewModel.kt'
       - 'app/src/main/java/com/example/data/SoruLabModels.kt'

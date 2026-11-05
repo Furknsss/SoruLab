@@ -27,6 +27,7 @@ import com.example.util.PdfPaddleMobileOcr
 import com.example.util.PdfPrintedKeyCoverageAudit
 import com.example.util.PdfAnswerId
 import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.CancellationException
@@ -278,13 +279,11 @@ class AiSolverViewModel : ViewModel() {
         )
     }
 
-    private suspend fun recognizePdfPageLayout(bitmap: Bitmap): PdfPageOcrLayout {
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        val recognized = try {
-            recognizer.process(InputImage.fromBitmap(bitmap, 0)).await()
-        } finally {
-            recognizer.close()
-        }
+    private suspend fun recognizePdfPageLayout(
+        bitmap: Bitmap,
+        reader: TextRecognizer
+    ): PdfPageOcrLayout {
+        val recognized = reader.process(InputImage.fromBitmap(bitmap, 0)).await()
         val lines = recognized.textBlocks.flatMap { it.lines }
         // Reuse these physical OCR lines for complete question regions.
         // Avoid re-running ML Kit on each resulting JPEG unnecessarily.
@@ -327,7 +326,7 @@ class AiSolverViewModel : ViewModel() {
         if (StudioImageAndPdfEngine.hasAnswerKeyMarker(recognized.text) ||
             sourceTestHeadings >= 3
         ) {
-            val detailedCells = recognizeDenseAnswerPage(bitmap)
+            val detailedCells = recognizeDenseAnswerPage(bitmap, reader)
             val detailedRegions = PdfAdaptiveAnswerRows.regions(
                 cells = detailedCells, pageWidth = bitmap.width
             )
@@ -355,7 +354,7 @@ class AiSolverViewModel : ViewModel() {
         // Small footer text loses accuracy in whole-page OCR. Retry only this
         // region at a larger scale, mapping every box back to source coordinates.
         if ((answerGrids.isNotEmpty() || Regex("""[A-E]\s*[).]""").containsMatchIn(recognized.text))) {
-            val footerCells = recognizeAnswerFooter(bitmap)
+            val footerCells = recognizeAnswerFooter(bitmap, reader)
             answerGrids = (answerGrids + PdfHorizontalAnswerGridReader.find(footerCells, bitmap.width, bitmap.height)).distinctBy { it.top / 8 to it.answers }
         }
         val optionRegex = Regex("""^\s*([A-E])\s*[).:]\s*""", RegexOption.IGNORE_CASE)
@@ -426,14 +425,13 @@ class AiSolverViewModel : ViewModel() {
      * The consensus detector, not this raw OCR output, decides if a recovered
      * number is trustworthy.
      */
-    private suspend fun recognizeSupplementalNumberAnchors(bitmap: Bitmap): List<QuestionNumberAnchor> {
+    private suspend fun recognizeSupplementalNumberAnchors(bitmap: Bitmap, reader: TextRecognizer): List<QuestionNumberAnchor> {
         val w = bitmap.width
         val h = bitmap.height
         if (w < 300 || h < 300) return emptyList()
         val startY = (h * .065f).toInt()
         val endY = (h * .935f).toInt().coerceAtMost(h)
         val margins = listOf(.025f to .35f, .435f to .80f)
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         val results = mutableListOf<QuestionNumberAnchor>()
         try {
             for ((startXFraction, endXFraction) in margins) {
@@ -450,7 +448,7 @@ class AiSolverViewModel : ViewModel() {
                     (crop.height * scale).toInt().coerceAtLeast(1), true
                 ) else crop
                 try {
-                    val recognized = recognizer.process(InputImage.fromBitmap(enlarged, 0)).await()
+                    val recognized = reader.process(InputImage.fromBitmap(enlarged, 0)).await()
                     for (line in recognized.textBlocks.flatMap { it.lines }) {
                         val printed = com.example.util.PdfOcrQuestionMarker
                             .numberAtStart(line.text)
@@ -486,15 +484,12 @@ class AiSolverViewModel : ViewModel() {
             android.util.Log.w("SoruLabPdfOCR", "Margin OCR memory limit; primary pass retained")
         } catch (error: Exception) {
             android.util.Log.w("SoruLabPdfOCR", "Margin OCR unavailable; primary pass retained", error)
-        } finally {
-            recognizer.close()
         }
         return results
     }
 
     /** High-resolution, on-device fallback for dense scanned answer tables. */
-    private suspend fun recognizeDenseAnswerPage(bitmap: Bitmap): List<PdfOcrTextCell> {
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    private suspend fun recognizeDenseAnswerPage(bitmap: Bitmap, reader: TextRecognizer): List<PdfOcrTextCell> {
         val cells = mutableListOf<PdfOcrTextCell>()
         try {
             // Overlap preserves test headers located exactly on a tile edge.
@@ -511,7 +506,7 @@ class AiSolverViewModel : ViewModel() {
                     (cropped.height * scale).toInt().coerceAtLeast(1), true
                 ) else cropped
                 try {
-                    val recognized = recognizer.process(
+                    val recognized = reader.process(
                         InputImage.fromBitmap(enlarged, 0)
                     ).await()
                     for (line in recognized.textBlocks.flatMap { it.lines }) {
@@ -536,8 +531,6 @@ class AiSolverViewModel : ViewModel() {
         } catch (error: Exception) {
             android.util.Log.w("SoruLabPdfOCR",
                 "Dense answer OCR fallback unavailable", error)
-        } finally {
-            recognizer.close()
         }
         return cells.distinctBy { cell ->
             Triple(cell.text, cell.left / 9, cell.top / 9)
@@ -558,9 +551,9 @@ class AiSolverViewModel : ViewModel() {
      * answer labels. Failed reads remain unverified.
      */
     private suspend fun recognizeAnswerFooterTiledGrids(
-        bitmap: Bitmap
+        bitmap: Bitmap,
+        reader: TextRecognizer
     ): List<PdfHorizontalAnswerGrid> {
-        val reader = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         val recovered = mutableListOf<PdfHorizontalAnswerGrid>()
         val top = (bitmap.height * .65f).toInt()
             .coerceIn(0, bitmap.height - 1)
@@ -636,23 +629,20 @@ class AiSolverViewModel : ViewModel() {
             android.util.Log.w("SoruLabPdfOCR", "Tiled footer OCR exceeds device memory")
         } catch (error: Exception) {
             android.util.Log.w("SoruLabPdfOCR", "Tiled footer OCR unavailable", error)
-        } finally {
-            reader.close()
         }
         return recovered.distinctBy { grid ->
             grid.top / 10 to grid.answers
         }
     }
 
-    private suspend fun recognizeAnswerFooter(bitmap: Bitmap): List<PdfOcrTextCell> {
+    private suspend fun recognizeAnswerFooter(bitmap: Bitmap, reader: TextRecognizer): List<PdfOcrTextCell> {
         val top = (bitmap.height * 0.7f).toInt()
         val crop = Bitmap.createBitmap(bitmap, 0, top, bitmap.width, bitmap.height - top)
         val targetWidth = (bitmap.width * 2).coerceAtMost(3600)
         val scale = targetWidth.toFloat() / crop.width
         val enlarged = Bitmap.createScaledBitmap(crop, targetWidth, (crop.height * scale).toInt(), true)
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         return try {
-            val result = recognizer.process(InputImage.fromBitmap(enlarged, 0)).await()
+            val result = reader.process(InputImage.fromBitmap(enlarged, 0)).await()
             result.textBlocks.flatMap { it.lines }.flatMap { it.elements }.mapNotNull { element ->
                 element.boundingBox?.let { box ->
                     PdfOcrTextCell(element.text, (box.left / scale).toInt(), top + (box.top / scale).toInt(),
@@ -664,7 +654,6 @@ class AiSolverViewModel : ViewModel() {
         } catch (_: Exception) {
             emptyList()
         } finally {
-            recognizer.close()
             if (enlarged !== crop) enlarged.recycle()
             crop.recycle()
         }
@@ -919,6 +908,10 @@ class AiSolverViewModel : ViewModel() {
                 val pageIndicesToScan = 0 until totalPdfPages
 
                 withContext(Dispatchers.IO) {
+                    val pageOcrReader = TextRecognition.getClient(
+                        TextRecognizerOptions.DEFAULT_OPTIONS
+                    )
+                    try {
                     android.os.ParcelFileDescriptor.open(
                         seekablePdfFile,
                         android.os.ParcelFileDescriptor.MODE_READ_ONLY
@@ -978,7 +971,7 @@ class AiSolverViewModel : ViewModel() {
                                 if (pageBitmap == null) continue
 
                                 val ocrPageLayout = try {
-                                    recognizePdfPageLayout(pageBitmap)
+                                    recognizePdfPageLayout(pageBitmap, pageOcrReader)
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (_: OutOfMemoryError) {
@@ -1071,7 +1064,7 @@ class AiSolverViewModel : ViewModel() {
                                     }
                                 }
                                 val imageOnlyAnchors = if (!sourceBackedPage) {
-                                    val secondPass = recognizeSupplementalNumberAnchors(pageBitmap)
+                                    val secondPass = recognizeSupplementalNumberAnchors(pageBitmap, pageOcrReader)
                                     // A false primary graph number must not block
                                     // genuinely independent ML Kit margin + Paddle
                                     // evidence of the complete printed sequence.
@@ -1120,7 +1113,7 @@ class AiSolverViewModel : ViewModel() {
                                     primaryFooterCount < independentFooterCount
                                 ) {
                                     val highResolutionFooter = recognizeAnswerFooterTiledGrids(
-                                        pageBitmap
+                                        pageBitmap, pageOcrReader
                                     )
                                     if (highResolutionFooter.isNotEmpty()) {
                                         pageLayout = pageLayout.copy(
@@ -1675,6 +1668,12 @@ class AiSolverViewModel : ViewModel() {
                                 kotlinx.coroutines.yield()
                             }
                         }
+                    }
+                    } finally {
+                        // Always release the page model after successful,
+                        // failed or cancelled imports. Cropped-question OCR
+                        // uses separate readers and is already awaited.
+                        pageOcrReader.close()
                     }
                 }
 

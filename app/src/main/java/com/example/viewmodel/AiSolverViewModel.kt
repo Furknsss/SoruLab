@@ -1022,7 +1022,19 @@ class AiSolverViewModel : ViewModel() {
                                 // usually just a watermark. Validate OCR
                                 // numerals a second time at higher resolution,
                                 // using the two printed column margins.
-                                val paddleEvidence = if (!sourceBackedPage &&
+                                // A selectable-text PDF is independent native-key
+                                // evidence, but the whole-page ML Kit reader may miss
+                                // its tiny printed footer. A second *image* reader
+                                // (Paddle PP-OCRv6) can be compared with the native
+                                // keys without treating the PDF labels as their
+                                // own confirmation.
+                                val nativeFooterEvidence =
+                                    (localBlueprint.pageTextFooterKeys[pageIdx]?.size ?: 0) >= 4
+                                val needsNativeImageKeyVerification =
+                                    sourceBackedPage && nativeFooterEvidence &&
+                                        ocrPageLayout.answerGrids.isEmpty()
+                                val paddleEvidence = if ((!sourceBackedPage ||
+                                        needsNativeImageKeyVerification) &&
                                     android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
                                 ) {
                                     try { PdfPaddleMobileOcr.readPage(context, pageBitmap) }
@@ -1087,6 +1099,16 @@ class AiSolverViewModel : ViewModel() {
                                             ).distinctBy { it.top / 10 to it.answers }
                                         )
                                     }
+                                }
+                                if (independentFooterCount >= 4) {
+                                    android.util.Log.i("SoruLabPdfKeyQA",
+                                        "page=${pageIdx + 1} nativeFooter=${localBlueprint.pageTextFooterKeys[pageIdx]?.size ?: 0}" +
+                                            " mlkitGrid=${ocrPageLayout.answerGrids.maxOfOrNull { it.answers.size } ?: 0}" +
+                                            " tiledGrid=${pageLayout.answerGrids.maxOfOrNull { it.answers.size } ?: 0}" +
+                                            " paddleGrid=${paddleGrids.maxOfOrNull { it.answers.size } ?: 0}" +
+                                            " nativeQuestionAnchors=${nativeAnchors.size}" +
+                                            " nativeTrusted=$sourceBackedPage"
+                                    )
                                 }
                                 val primaryChoiceCount = pageLayout.optionAnchors
                                     .map { it.option.uppercase() }.distinct().size
@@ -1301,7 +1323,16 @@ class AiSolverViewModel : ViewModel() {
                                     pendingHorizontalGrids += pageAnswerScope to grid
                                 }
                                 if (pageAnswerScope != null) paddleGrids.forEach { grid ->
-                                    pendingSecondaryGrids += pageAnswerScope to grid
+                                    // When the independent reference is already
+                                    // native PDF text, Paddle belongs to the
+                                    // image-reader channel, NOT the native one.
+                                    // For image-only pages Paddle remains the
+                                    // independent second channel behind ML Kit.
+                                    if (sourceBackedPage && nativeFooterEvidence) {
+                                        pendingHorizontalGrids += pageAnswerScope to grid
+                                    } else {
+                                        pendingSecondaryGrids += pageAnswerScope to grid
+                                    }
                                 }
 
                                 var croppedBoxes = try {

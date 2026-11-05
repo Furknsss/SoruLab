@@ -73,7 +73,12 @@ class PdfOfflineImportDeviceTest {
             val rows = requireNotNull(imported)
             assertEquals(4, rows.size)
             assertEquals(listOf("A", "B", "C", "D"), rows.sortedBy { it.questionNumberInTest }.map { it.correctOption })
-            assertTrue(rows.all { it.answerKeyMatched && File(it.croppedImagePath).isFile })
+            assertTrue("Offline import may only accept complete, nonempty crop files", rows.all {
+                it.answerKeyMatched && File(it.croppedImagePath).isFile &&
+                    File(it.croppedImagePath).length() > 0L &&
+                    it.boxNormalized.size == 4 &&
+                    it.normTop < it.normBottom && it.normLeft < it.normRight
+            })
         } finally {
             imported.orEmpty().forEach { File(it.croppedImagePath).delete() }
             pdf.delete()

@@ -1,6 +1,9 @@
 package com.example.ui
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -122,6 +125,58 @@ class SoruLabStylusViewportDeviceTest {
             assertTrue(ink["q_stylus_2"].isNullOrEmpty())
         }
         screenshot("single-question-phone.png")
+    }
+
+    @Test fun tallCroppedImageKeepsItsLastInkVisibleInFocusedView() {
+        checkTallImage(BoardViewMode.SINGLE_QUESTION, "single-question-tall-image.png")
+    }
+
+    @Test fun tallCroppedImageKeepsItsLastInkVisibleOnBookPage() {
+        checkTallImage(BoardViewMode.FULL_PAGE, "book-page-tall-image.png")
+    }
+
+    private fun checkTallImage(mode: BoardViewMode, snapshot: String) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File(context.cacheDir, "original-tall-question.png")
+        val bitmap = Bitmap.createBitmap(800, 2400, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(Color.WHITE)
+        val canvas = Canvas(bitmap)
+        val paint = Paint().apply { color = Color.MAGENTA }
+        canvas.drawRect(0f, 0f, 800f, 100f, paint)
+        paint.color = Color.rgb(0, 170, 170)
+        canvas.drawRect(0f, 2300f, 800f, 2400f, paint)
+        paint.color = Color.BLACK
+        paint.textSize = 48f
+        canvas.drawText("ORIGINAL QUESTION", 40f, 240f, paint)
+        canvas.drawText("E) LAST PRINTED CHOICE", 40f, 2230f, paint)
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+        try {
+            session = fixtureSession().let { fixture -> fixture.copy(
+                viewMode = mode,
+                testItem = fixture.testItem.copy(questions = fixture.testItem.questions.map {
+                    it.copy(croppedImagePath = file.absolutePath)
+                })
+            ) }
+            showBoard()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("1. Soru").fetchSemanticsNodes().isNotEmpty()
+            }
+            val image = compose.onNodeWithContentDescription("1. Soru").assertIsDisplayed()
+                .captureToImage().toPixelMap()
+            var topInk = 0
+            var lastInk = 0
+            for (y in 0 until image.height step 2) for (x in 0 until image.width step 2) {
+                val color = image[x, y]
+                if (color.red > .8f && color.blue > .8f && color.green < .15f) topInk++
+                if (color.red < .15f && color.green > .5f && color.blue > .5f) lastInk++
+            }
+            assertTrue("The question's top was clipped", topInk > 3)
+            assertTrue("The question's last printed choice/diagram was clipped", lastInk > 3)
+            screenshot(snapshot)
+        } finally {
+            file.delete()
+        }
     }
 
     private fun showBoard() {

@@ -965,9 +965,21 @@ class AiSolverViewModel : ViewModel() {
                                 val pageLayout = if (sourceBackedPage) {
                                     ocrPageLayout.copy(questionNumberAnchors = nativeAnchors)
                                 } else ocrPageLayout.copy(questionNumberAnchors = imageOnlyAnchors)
+                                // A second OCR reader is useful only when its actual
+                                // spatial A-E coordinates reach the cropper. Previously
+                                // we accepted Paddle-only choices as proof of a question
+                                // but passed the missing ML Kit choices to the cropper.
+                                val primaryChoiceCount = pageLayout.optionAnchors
+                                    .map { it.option.uppercase() }.distinct().size
+                                val paddleChoices = paddleEvidence?.optionAnchors.orEmpty()
+                                val paddleChoiceCount = paddleChoices
+                                    .map { it.option.uppercase() }.distinct().size
+                                val cropOptionAnchors = if (!sourceBackedPage &&
+                                    paddleChoiceCount >= 3 &&
+                                    paddleChoiceCount > primaryChoiceCount
+                                ) paddleChoices else pageLayout.optionAnchors
                                 val hasQuestionOptions = sourceBackedPage ||
-                                    pageLayout.optionAnchors.map { it.option }.distinct().size >= 3 ||
-                                    paddleEvidence?.optionAnchors?.map { it.option }?.distinct()?.size?.let { it >= 3 } == true
+                                    cropOptionAnchors.map { it.option.uppercase() }.distinct().size >= 3
                                 val hasAnswerKeyMarker =
                                     StudioImageAndPdfEngine.hasAnswerKeyMarker(pageLayout.text)
                                 val isAnswerTablePage =
@@ -1032,8 +1044,17 @@ class AiSolverViewModel : ViewModel() {
                                         pageLayout.questionNumberAnchors.isNotEmpty()
                                     if (!hasQuestionEvidence) {
                                         // A separate key page needs its own explicit heading.
-                                        if (gridHeaderScope != null) pageLayout.answerGrids.forEach {
-                                            pendingHorizontalGrids += gridHeaderScope to it
+                                        if (gridHeaderScope != null) {
+                                            pageLayout.answerGrids.forEach {
+                                                pendingHorizontalGrids += gridHeaderScope to it
+                                            }
+                                            // On a dedicated key page we used to
+                                            // skip Paddle's spatial table entirely,
+                                            // so a legitimate printed key could
+                                            // never achieve independent consensus.
+                                            paddleGrids.forEach {
+                                                pendingSecondaryGrids += gridHeaderScope to it
+                                            }
                                         }
                                         continue
                                     }
@@ -1172,7 +1193,7 @@ class AiSolverViewModel : ViewModel() {
                                         totalPages = rendererTotal,
                                         reusablePixelsRef = reusablePixelsRef,
                                         questionNumberAnchors = pageLayout.questionNumberAnchors,
-                                        optionAnchors = pageLayout.optionAnchors,
+                                        optionAnchors = cropOptionAnchors,
                                         maxQuestionBottomY = pageLayout.answerGrids
                                             .filter { grid ->
                                                 grid.top > (pageLayout.questionNumberAnchors
@@ -1216,7 +1237,7 @@ class AiSolverViewModel : ViewModel() {
                                             totalPages = rendererTotal,
                                             reusablePixelsRef = reusablePixelsRef,
                                             questionNumberAnchors = nativeAnchors,
-                                            optionAnchors = pageLayout.optionAnchors,
+                                            optionAnchors = cropOptionAnchors,
                                             maxQuestionBottomY = pageLayout.answerGrids
                                                 .filter { grid ->
                                                     grid.top > (nativeAnchors.maxOfOrNull { it.top }
@@ -1644,6 +1665,11 @@ class AiSolverViewModel : ViewModel() {
                         "${sourceKeyCoverage.duplicateImportedQuestions.size} mükerrer soru, " +
                         "${sourceKeyCoverage.unexpectedImportedQuestions.size} kaynak anahtarda bulunmayan soru, " +
                         "${allExtractedQuestions.count { !it.answerKeyMatched }} cevabı doğrulanmayan soru. " +
+                        "Cevap kaynakları: ML Kit ${scopedAnswers.answerCount}, " +
+                        "bağımsız PDF/Paddle ${secondaryAnswers.answerCount}, " +
+                        "iki kaynaktan doğrulanan ${printedKeyConsensus.confirmed.size}, " +
+                        "çelişkili ${printedKeyConsensus.disputed.size}, " +
+                        "tek kaynaktan okunan ${printedKeyConsensus.unsupported.size}. " +
                         "Hatalı kitabı otomatik kaydetmedik; önce bunları düzeltmek gerekir."
                     // These cropped files were staged only for this import.
                     // Do not delete previously saved library images.

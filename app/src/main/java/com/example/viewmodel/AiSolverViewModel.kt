@@ -1358,6 +1358,33 @@ class AiSolverViewModel : ViewModel() {
                                     }
                                 }
 
+                                // The last printed question must end ABOVE
+                                // the answer strip. ML Kit may miss its tiny
+                                // cells even when the independent Paddle image
+                                // reader finds them. Only use Paddle geometry
+                                // when EVERY grid cell exactly agrees with this
+                                // page's native printed key; never crop at an
+                                // unverified graph or options table.
+                                val lastPrintedQuestionTop =
+                                    pageLayout.questionNumberAnchors.maxOfOrNull { it.top }
+                                        ?: Int.MAX_VALUE
+                                val nativeCorroboratedFooterTop =
+                                    footerFromTextLayer?.let { native ->
+                                        paddleGrids.filter { grid ->
+                                            grid.answers.size >= 4 &&
+                                                grid.answers.size == native.size &&
+                                                grid.answers.all { (n, option) ->
+                                                    native[n] == option
+                                                } &&
+                                                grid.top > lastPrintedQuestionTop
+                                        }.minOfOrNull { it.top }
+                                    }
+                                val mlKitFooterTop = pageLayout.answerGrids
+                                    .filter { it.top > lastPrintedQuestionTop }
+                                    .minOfOrNull { it.top }
+                                val printedFooterCropLimit = listOfNotNull(
+                                    nativeCorroboratedFooterTop, mlKitFooterTop
+                                ).minOrNull()
                                 var croppedBoxes = try {
                                     StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
                                         context = context,
@@ -1367,11 +1394,7 @@ class AiSolverViewModel : ViewModel() {
                                         reusablePixelsRef = reusablePixelsRef,
                                         questionNumberAnchors = pageLayout.questionNumberAnchors,
                                         optionAnchors = cropOptionAnchors,
-                                        maxQuestionBottomY = pageLayout.answerGrids
-                                            .filter { grid ->
-                                                grid.top > (pageLayout.questionNumberAnchors
-                                                    .maxOfOrNull { it.top } ?: Int.MAX_VALUE)
-                                            }.minOfOrNull { it.top }
+                                        maxQuestionBottomY = printedFooterCropLimit
                                     )
                                 } catch (e: CancellationException) {
                                     throw e
@@ -1411,11 +1434,7 @@ class AiSolverViewModel : ViewModel() {
                                             reusablePixelsRef = reusablePixelsRef,
                                             questionNumberAnchors = nativeAnchors,
                                             optionAnchors = cropOptionAnchors,
-                                            maxQuestionBottomY = pageLayout.answerGrids
-                                                .filter { grid ->
-                                                    grid.top > (nativeAnchors.maxOfOrNull { it.top }
-                                                        ?: Int.MAX_VALUE)
-                                                }.minOfOrNull { it.top }
+                                            maxQuestionBottomY = printedFooterCropLimit
                                         )
                                     } catch (e: CancellationException) {
                                         throw e

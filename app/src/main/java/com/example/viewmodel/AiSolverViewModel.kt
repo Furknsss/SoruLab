@@ -949,17 +949,18 @@ class AiSolverViewModel : ViewModel() {
                                 }
                                 val imageOnlyAnchors = if (!sourceBackedPage) {
                                     val secondPass = recognizeSupplementalNumberAnchors(pageBitmap)
-                                    val mlKitAnchors = com.example.util.PdfPrintedAnchorConsensus.reconcile(
-                                        ocrPageLayout.questionNumberAnchors, secondPass,
-                                        pageBitmap.width, pageBitmap.height
-                                    )
-                                    // Real free on-device PP-OCRv6 proposes independent
-                                    // printed starts; never let it silently invent
-                                    // numbers or substitute for a printed answer key.
+                                    // A false primary graph number must not block
+                                    // genuinely independent ML Kit margin + Paddle
+                                    // evidence of the complete printed sequence.
+                                    // A printed start remains source-backed and no
+                                    // reader may invent a question number.
                                     val paddleNumbers = paddleEvidence?.questionNumberAnchors.orEmpty()
-                                    com.example.util.PdfPrintedAnchorConsensus.reconcile(
-                                        mlKitAnchors, paddleNumbers,
-                                        pageBitmap.width, pageBitmap.height
+                                    com.example.util.PdfPrintedAnchorConsensus.reconcileThree(
+                                        primary = ocrPageLayout.questionNumberAnchors,
+                                        marginPass = secondPass,
+                                        paddlePass = paddleNumbers,
+                                        pageWidth = pageBitmap.width,
+                                        pageHeight = pageBitmap.height
                                     )
                                 } else emptyList()
                                 val pageLayout = if (sourceBackedPage) {

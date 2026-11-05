@@ -36,4 +36,46 @@ class PdfNativeQuestionEvidenceTest {
             hasTwoPrintedColumns = false, hasNativeChoiceEvidence = true
         ))
     }
+
+    private fun printed(n: Int, x: Int, y: Int) =
+        QuestionNumberAnchor(n, x, y, x + 16, y + 19)
+
+    @Test fun imageCorroboratedNativeStartsSurviveExtraOCRGraphNumbers() {
+        val native = listOf(
+            printed(1, 95, 160), printed(2, 95, 650),
+            printed(3, 95, 1170), printed(4, 95, 1680)
+        )
+        val noisy = listOf(native[0], native[1], native[2]) +
+            (1..7).map { printed(it, 395, 730 + it * 80) }
+        assertTrue(PdfNativeQuestionEvidence.hasIndependentSpatialSupport(
+            native, noisy, 1800, 2400
+        ))
+    }
+
+    @Test fun oneMatchingGraphLabelCannotCertifyEntireNativeRun() {
+        val native = listOf(
+            printed(1, 95, 160), printed(2, 95, 650),
+            printed(3, 95, 1170), printed(4, 95, 1680)
+        )
+        val suspicious = listOf(native.first()) +
+            (1..7).map { printed(it, 450, 800 + it * 60) }
+        assertFalse(PdfNativeQuestionEvidence.hasIndependentSpatialSupport(
+            native, suspicious, 1800, 2400
+        ))
+    }
+
+    @Test fun repeatedNativeQuestionNumbersAndFarOffLabelsAreNotTrusted() {
+        val repeated = listOf(
+            printed(1, 82, 190), printed(2, 82, 740),
+            printed(1, 920, 195), printed(2, 920, 730)
+        )
+        assertFalse(PdfNativeQuestionEvidence.hasIndependentSpatialSupport(
+            repeated, repeated, 1800, 2400
+        ))
+        val native = repeated.take(2) + printed(3, 82, 1200)
+        val shifted = native.map { it.copy(left = it.left + 250, right = it.right + 250) }
+        assertFalse(PdfNativeQuestionEvidence.hasIndependentSpatialSupport(
+            native, shifted, 1800, 2400
+        ))
+    }
 }

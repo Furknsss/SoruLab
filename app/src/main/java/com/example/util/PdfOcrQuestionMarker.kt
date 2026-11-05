@@ -6,7 +6,11 @@ package com.example.util
  * may number questions far beyond that threshold.
  */
 internal object PdfOcrQuestionMarker {
-    private val atStart = Regex("""^\s*([1-9][0-9]{0,2})\s*[.):\-](?:\s|$)""")
+    // ML Kit frequently fuses a printed "1." number and first stem word
+    // into one element ("1.Soru" / "12.Aşağıdaki"). It is still a real
+    // printed start, but "1.25" is a decimal and must never be accepted.
+    // Keep the existing chapter/unit heading rejection below.
+    private val atStart = Regex("""^\s*([1-9][0-9]{0,2})\s*[.):\-](?=\s|$|[A-Za-zÇĞİÖŞÜçğıöşü])""")
     private val standalone = Regex("""^\s*[1-9][0-9]{0,2}\s*[.):\-]?\s*$""")
     private val nonQuestionHeading = Regex(
         """(?i)^\s*(?:ÜNİTE|UNITE|BÖLÜM|BOLUM|SINIF|CHAPTER|KONU)\b"""

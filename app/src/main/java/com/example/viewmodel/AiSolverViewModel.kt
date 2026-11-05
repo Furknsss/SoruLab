@@ -564,8 +564,14 @@ class AiSolverViewModel : ViewModel() {
         val top = (bitmap.height * .65f).toInt()
             .coerceIn(0, bitmap.height - 1)
         try {
+            // The source key of a real 272-page textbook spans ~25%..77%
+            // of the page width. Neither 0..72% nor 28..100% contains
+            // its entire 1..12 sequence, and the grid validator rightly
+            // refuses to invent the missing first/last cells. Always read
+            // the WHOLE footer at high resolution first; the overlapping
+            // tiles remain supplemental evidence for tiny printed letters.
             for ((leftFraction, rightFraction) in
-                listOf(0f to .72f, .28f to 1f)
+                listOf(0f to 1f, 0f to .72f, .28f to 1f)
             ) {
                 val left = (bitmap.width * leftFraction).toInt()
                     .coerceIn(0, bitmap.width - 1)

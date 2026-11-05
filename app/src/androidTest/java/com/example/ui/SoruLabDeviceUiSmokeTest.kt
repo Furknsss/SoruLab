@@ -143,7 +143,13 @@ class SoruLabDeviceUiSmokeTest {
         compose.runOnIdle { assertEquals(mapOf(1 to "B", 2 to "E"), latestAnswers) }
         // Visual acceptance evidence: capture the drawer OPEN, not merely the
         // underlying book page after closing it.
-        compose.onNodeWithTag("optical_form_drawer").assertIsDisplayed()
+        val panel = compose.onNodeWithTag("optical_form_drawer").assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        val viewport = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            "Two-question optical form expands into excessive unused tablet height",
+            panel.height < viewport.height * 0.60f
+        )
         captureOnlySyntheticScreen("optical-form-open.png")
         compose.onNodeWithTag("optical_form_tab").performClick()
         compose.onNodeWithTag("optical_form_drawer").assertDoesNotExist()
@@ -169,6 +175,7 @@ class SoruLabDeviceUiSmokeTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithTag("full_screen_report_card").assertIsDisplayed()
+        compose.onNodeWithTag("result_topic_success_card").assertExists()
         captureOnlySyntheticScreen("test-results-open.png")
         compose.onNodeWithTag("show_in_book_btn").performClick()
         compose.onNodeWithTag("stats_drawer_tab").assertIsDisplayed().performClick()

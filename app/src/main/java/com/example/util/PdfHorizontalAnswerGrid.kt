@@ -71,7 +71,12 @@ internal object PdfHorizontalAnswerGridReader {
                 val middleY = sequence.map { it.middleY }.average()
                 val minX = sequence.minOf { it.middleX }
                 val maxX = sequence.maxOf { it.middleX }
-                if (maxX - minX < pageWidth * 0.08) continue
+                // Four tightly printed answer cells can span only 7-8% of
+                // a wide page (including the Android offline fixture). The
+                // old 8% minimum silently discarded otherwise coherent
+                // four-cell grids. Keep the strict 1..N numbering, vertical
+                // alignment, per-cell X matching and >=4-letter safeguards.
+                if (maxX - minX < pageWidth * 0.055) continue
                 val gap = sequence.zipWithNext { a, b -> b.middleX - a.middleX }
                     .filter { it > 0 }.sorted()
                     .let { if (it.isEmpty()) 0.0 else it[it.size / 2].toDouble() }

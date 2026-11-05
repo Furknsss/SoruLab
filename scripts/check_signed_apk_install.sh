@@ -12,7 +12,7 @@ python3 scripts/check_apk_integrity.py "$apk_path"
 adb install --no-streaming -r "$apk_path" | tee "$report_dir/install.txt"
 adb logcat -c
 adb shell am start -W -n "$component_name" | tee "$report_dir/launch.txt"
-if ! rg -q 'Status: ok' "$report_dir/launch.txt"; then
+if ! grep -Fq 'Status: ok' "$report_dir/launch.txt"; then
   echo 'Signed APK did not launch successfully' >&2
   exit 1
 fi
@@ -26,14 +26,14 @@ for sample in {1..10}; do
   fi
 done
 adb logcat -b crash -d > "$report_dir/crash.txt"
-if rg -q "Process: $package_name" "$report_dir/crash.txt"; then
+if grep -Fq "Process: $package_name" "$report_dir/crash.txt"; then
   echo 'Signed APK crashed during startup' >&2
   exit 1
 fi
 adb exec-out screencap -p > "$report_dir/release-launch.png"
 adb shell uiautomator dump /sdcard/sorulab-launch.xml
 adb pull /sdcard/sorulab-launch.xml "$report_dir/release-launch.xml"
-if ! rg -q "package=\"$package_name\"" "$report_dir/release-launch.xml"; then
+if ! grep -Fq "package=\"$package_name\"" "$report_dir/release-launch.xml"; then
   echo 'App UI is not visible after launch' >&2
   exit 1
 fi

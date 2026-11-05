@@ -43,7 +43,7 @@ class PdfVisionGeminiLiveDeviceTest {
         }
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         check(ensureFirebaseInitialized(context)) { "Firebase configuration is unavailable" }
-        DebugAppCheckTestHelper.fromInstrumentationArgs().withDebugProvider {
+        DebugAppCheckTestHelper.fromInstrumentationArgs().withDebugProvider<Throwable> {
             runBlocking {
                 // Isolate token exchange from the Gemini call: an attestation
                 // failure must not masquerade as a model/schema failure.

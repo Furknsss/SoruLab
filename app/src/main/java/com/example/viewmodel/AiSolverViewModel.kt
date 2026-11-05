@@ -1419,7 +1419,8 @@ class AiSolverViewModel : ViewModel() {
                                         reusablePixelsRef = reusablePixelsRef,
                                         questionNumberAnchors = pageLayout.questionNumberAnchors,
                                         optionAnchors = cropOptionAnchors,
-                                        maxQuestionBottomY = printedFooterCropLimit
+                                        maxQuestionBottomY = printedFooterCropLimit,
+                                        embedImageBase64 = false // persisted JPEG is the single source of image bytes
                                     )
                                 } catch (e: CancellationException) {
                                     throw e
@@ -1459,7 +1460,8 @@ class AiSolverViewModel : ViewModel() {
                                             reusablePixelsRef = reusablePixelsRef,
                                             questionNumberAnchors = nativeAnchors,
                                             optionAnchors = cropOptionAnchors,
-                                            maxQuestionBottomY = printedFooterCropLimit
+                                            maxQuestionBottomY = printedFooterCropLimit,
+                                        embedImageBase64 = false // persisted JPEG is the single source of image bytes
                                         )
                                     } catch (e: CancellationException) {
                                         throw e

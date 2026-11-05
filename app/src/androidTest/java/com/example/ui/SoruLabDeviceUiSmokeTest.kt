@@ -117,9 +117,16 @@ class SoruLabDeviceUiSmokeTest {
                             isOpticalFormDrawerOpen = !session.isOpticalFormDrawerOpen
                         )
                     },
-                    onToggleStatsDrawer = {},
+                    onToggleStatsDrawer = {
+                        session = session.copy(
+                            isStatsDrawerOpen = !session.isStatsDrawerOpen
+                        )
+                    },
                     onToggleQuestionMap = {},
-                    onFinishTest = { confirmedFinishes++ },
+                    onFinishTest = {
+                        confirmedFinishes++
+                        session = session.copy(isReviewMode = true)
+                    },
                     onGoToStatsTab = {},
                     onAskAiForQuestion = {}
                 )
@@ -133,6 +140,10 @@ class SoruLabDeviceUiSmokeTest {
         compose.runOnIdle { assertEquals("E", latestAnswers[2]) }
         compose.onNodeWithTag("optic_q1_B").performClick()
         compose.runOnIdle { assertEquals(mapOf(1 to "B", 2 to "E"), latestAnswers) }
+        // Visual acceptance evidence: capture the drawer OPEN, not merely the
+        // underlying book page after closing it.
+        compose.onNodeWithTag("optical_form_drawer").assertIsDisplayed()
+        captureOnlySyntheticScreen("optical-form-open.png")
         compose.onNodeWithTag("optical_form_tab").performClick()
         compose.onNodeWithTag("optical_form_drawer").assertDoesNotExist()
 
@@ -151,6 +162,17 @@ class SoruLabDeviceUiSmokeTest {
         compose.onNodeWithTag("top_finish_test_btn").performClick()
         compose.onNodeWithTag("confirm_finish_test_btn").performClick()
         compose.runOnIdle { assertEquals(1, confirmedFinishes) }
+        // Archive actual pixels of the report and stats on phone + tablet.
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithTag("full_screen_report_card")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("full_screen_report_card").assertIsDisplayed()
+        captureOnlySyntheticScreen("test-results-open.png")
+        compose.onNodeWithTag("show_in_book_btn").performClick()
+        compose.onNodeWithTag("stats_drawer_tab").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("stats_drawer_panel").assertIsDisplayed()
+        captureOnlySyntheticScreen("test-statistics-open.png")
     }
 
     private fun captureOnlySyntheticScreen(filename: String) {

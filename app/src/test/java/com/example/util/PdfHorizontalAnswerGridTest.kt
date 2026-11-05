@@ -133,4 +133,27 @@ class PdfHorizontalAnswerGridTest {
         assertEquals("C", detected.single().answers[10])
     }
 
+
+    @Test
+    fun `narrow four cell printed key on a wide page remains readable`() {
+        // Matches the 1600 x 2200 Android offline import layout. A genuine
+        // short 1..4 strip must not be mistaken for a missing answer key.
+        val cells = listOf(
+            PdfOcrTextCell("1", 360, 1990, 377, 2022),
+            PdfOcrTextCell("2", 400, 1990, 417, 2022),
+            PdfOcrTextCell("3", 440, 1990, 457, 2022),
+            PdfOcrTextCell("4", 480, 1990, 497, 2022),
+            PdfOcrTextCell("A", 360, 2070, 377, 2102),
+            PdfOcrTextCell("B", 400, 2070, 417, 2102),
+            PdfOcrTextCell("C", 440, 2070, 457, 2102),
+            PdfOcrTextCell("D", 480, 2070, 497, 2102)
+        )
+        val actual = PdfHorizontalAnswerGridReader.find(cells, 1600, 2200)
+        assertEquals(mapOf(1 to "A", 2 to "B", 3 to "C", 4 to "D"),
+            actual.single().answers)
+        assertTrue(PdfHorizontalAnswerGridReader.find(
+            cells.filter { it.text != "D" }, 1600, 2200
+        ).isEmpty())
+    }
+
 }

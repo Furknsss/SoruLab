@@ -9,7 +9,8 @@ import os
 from pathlib import Path
 import time
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
+from urllib.parse import quote
 import zipfile
 
 from cryptography.hazmat.primitives import hashes, serialization
@@ -58,13 +59,26 @@ def encrypt(public_path, input_zip, output_dir):
 def receive(private_path, public_path, destination, repository, branch):
     public_bytes = public_path.read_bytes()
     label = key_id(public_bytes)
-    url = f"https://raw.githubusercontent.com/{repository}/{branch}/.qa-encrypted/{label}.json"
+    # The repository is PRIVATE: unauthenticated raw.githubusercontent.com
+    # returns 404 even for a valid file. Use a read-only Actions token via
+    # GitHub's official Contents API; never include the token in logs/URLs.
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        raise SystemExit("Private QA transport requires GITHUB_TOKEN")
+    url = (f"https://api.github.com/repos/{repository}/contents/"
+        f".qa-encrypted/{label}.json?ref={quote(branch, safe='')}")
     deadline = time.monotonic() + 1200
     payload = None
     while time.monotonic() < deadline:
         try:
-            with urlopen(url, timeout=25) as response:
-                payload = json.load(response)
+            request = Request(url, headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "SoruLab-private-fixture-acceptance",
+            })
+            with urlopen(request, timeout=25) as response:
+                metadata = json.load(response)
+            payload = json.loads(base64.b64decode(metadata["content"]))
             break
         except HTTPError as error:
             if error.code != 404:
@@ -80,11 +94,13 @@ def receive(private_path, public_path, destination, repository, branch):
     plain = AESGCM(secret).decrypt(base64.b64decode(payload["nonce"]),
         base64.b64decode(payload["ciphertext"]), label.encode())
     destination.mkdir(parents=True, exist_ok=True)
-    allowed = {"native.pdf", "scanned.pdf", "reference.json"}
+    page_pair = {"native.pdf", "scanned.pdf", "reference.json"}
+    full_book = {"full.pdf", "full-reference.json"}
     with zipfile.ZipFile(io.BytesIO(plain)) as archive:
-        if set(archive.namelist()) != allowed:
+        members = set(archive.namelist())
+        if members not in (page_pair, full_book):
             raise SystemExit("Unexpected private fixture names")
-        for name in allowed:
+        for name in members:
             data = archive.read(name)
             if len(data) > 45_000_000:
                 raise SystemExit("Private fixture too large")

@@ -4,8 +4,10 @@ package com.example.util
  * A strict, publisher-independent native-PDF candidate for avoiding expensive
  * whole-page raster OCR. It NEVER validates an answer by itself.
  *
- * The real rendered footer must also be read by ML Kit and exactly agree with
- * the native key; otherwise the caller must do the original full OCR path.
+ * If this page has a native answer strip, its rendered image must also be
+ * read by ML Kit and agree exactly. Continuation pages without a footer are
+ * allowed ONLY when their printed start positions independently match image
+ * OCR and their explicit test identity/choices are available.
  * Scanned/image-only pages have no trustworthy native text and stay unchanged.
  */
 internal object PdfNativePageFastPath {
@@ -21,13 +23,26 @@ internal object PdfNativePageFastPath {
         val count = printedQuestionStarts.size
         if (!hasNativeChoices || !hasPrintedTestIdentity || !hasPageText ||
             pageWidth < 300 || pageHeight < 400 ||
-            count !in 4..40 || nativeFooterAnswers.size != count
+            count !in 3..20
         ) return false
-        val expected = (1..count).toSet()
-        if (printedQuestionStarts.map { it.number }.toSet() != expected ||
-            nativeFooterAnswers.keys != expected ||
-            nativeFooterAnswers.values.any { it !in setOf("A", "B", "C", "D", "E") }
+        // A publisher's single test often spans TWO PDF pages:
+        // first page: questions 1..7, no answer strip
+        // second page: questions 8..14, full 1..14 answer strip.
+        // Never assume every question page has a local 1..N key.
+        val numbers = printedQuestionStarts.map { it.number }
+        val start = numbers.minOrNull() ?: return false
+        val expected = (start until start + count).toSet()
+        if (start !in 1..200 || numbers.toSet() != expected ||
+            numbers.size != numbers.distinct().size
         ) return false
+        if (nativeFooterAnswers.isNotEmpty()) {
+            val keyNumbers = (1..nativeFooterAnswers.size).toSet()
+            if (nativeFooterAnswers.size < 4 ||
+                nativeFooterAnswers.keys != keyNumbers ||
+                !nativeFooterAnswers.keys.containsAll(expected) ||
+                nativeFooterAnswers.values.any { it !in setOf("A", "B", "C", "D", "E") }
+            ) return false
+        }
         return printedQuestionStarts.all { anchor ->
             anchor.left >= 0 && anchor.right <= pageWidth &&
                 anchor.top >= (pageHeight * .04f).toInt() &&

@@ -11,7 +11,56 @@ package com.example.util
  * This supplies classification text only; it NEVER assigns a question number,
  * section, test, answer key or crop confidence.
  */
+/**
+ * Selectable PDF text already decoded by PDFBox once for the blueprint.
+ * Coordinates are in the original PDF page units, not rendered pixels.
+ * A crop is still required for the visible original artwork and equations.
+ */
+data class PdfSourceTextFragment(
+    val text: String,
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float
+)
+
 internal object PdfPageQuestionTextReuse {
+    /**
+     * PDFBox decodes searchable question text without model inference.
+     * Reuse it only when every original A-E choice is inside the crop.
+     * If layout/text extraction is weak, the existing independent ML Kit
+     * question OCR is still required.
+     */
+    fun readNativeIfComplete(
+        fragments: List<PdfSourceTextFragment>,
+        normalizedCrop: List<Float>,
+        pdfPageWidth: Float,
+        pdfPageHeight: Float
+    ): String? {
+        if (pdfPageWidth <= 0f || pdfPageHeight <= 0f ||
+            fragments.isEmpty()) return null
+        // Fixed precision retains actual PDF geometry: rendering resolution
+        // should not affect whether a fragment belongs to a question.
+        val pageWidth = (pdfPageWidth * 100f).toInt()
+        val pageHeight = (pdfPageHeight * 100f).toInt()
+        if (pageWidth <= 0 || pageHeight <= 0) return null
+        val cells = fragments.filter { f ->
+            f.text.isNotBlank() && f.text.length <= 800 &&
+                f.left >= 0f && f.top >= 0f &&
+                f.right <= pdfPageWidth && f.bottom <= pdfPageHeight &&
+                f.right > f.left && f.bottom > f.top
+        }.map { f ->
+            PdfOcrTextCell(
+                text = f.text,
+                left = (f.left * 100f).toInt(),
+                top = (f.top * 100f).toInt(),
+                right = (f.right * 100f).toInt(),
+                bottom = (f.bottom * 100f).toInt()
+            )
+        }
+        return readIfComplete(cells, normalizedCrop, pageWidth, pageHeight)
+    }
+
     private val printedOption = Regex(
         """(?i)(?<![A-ZÇĞİÖŞÜ])([A-E])\s*[).:]"""
     )

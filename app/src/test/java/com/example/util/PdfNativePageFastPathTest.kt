@@ -7,7 +7,7 @@ import org.junit.Test
 class PdfNativePageFastPathTest {
     private val positions = (1..6).map { n ->
         val x = if (n < 4) 120 else 900
-        QuestionNumberAnchor(n, x, 160 + (n % 3) * 400, x + 28, 194 + (n % 3) * 400)
+        QuestionNumberAnchor(n, x, 160 + ((n - 1) % 3) * 400, x + 28, 194 + ((n - 1) % 3) * 400)
     }
     private val answers = (1..6).associateWith { "ABCDE"[(it - 1) % 5].toString() }
     private fun candidate(
@@ -36,6 +36,24 @@ class PdfNativePageFastPathTest {
         assertFalse(candidate(anchors = positions.mapIndexed { index, a ->
             if (index == 5) a.copy(number = 9) else a
         }))
+    }
+
+    @Test fun twoPageTestAllowsFirstPageWithoutKeysAndLastPageWithFullKeys() {
+        assertTrue(candidate(keys = emptyMap()))
+        val continued = (8..14).map { n ->
+            val x = if (n < 11) 120 else 900
+            val top = 170 + ((n - 8) % 4) * 370
+            QuestionNumberAnchor(n, x, top, x + 28, top + 35)
+        }
+        val entireTestKeys = (1..14).associateWith { "ABCDE"[(it - 1) % 5].toString() }
+        assertTrue(candidate(anchors = continued, keys = entireTestKeys))
+        assertFalse(candidate(anchors = continued, keys = entireTestKeys - 14))
+    }
+
+    @Test fun printedNumbersAtSamePhysicalPositionCannotBeDifferentQuestions() {
+        val duplicatedPhysical = positions.toMutableList()
+        duplicatedPhysical[1] = duplicatedPhysical[0].copy(number = 2)
+        assertFalse(candidate(anchors = duplicatedPhysical))
     }
 
     @Test fun missingChoiceMarkerAndTextRejectRasterWatermark() {

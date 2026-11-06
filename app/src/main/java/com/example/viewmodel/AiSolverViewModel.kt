@@ -934,6 +934,7 @@ class AiSolverViewModel : ViewModel() {
 
                             for ((scanPos, pageIdx) in pageIndicesToScan.withIndex()) {
                                 if (pageIdx >= rendererTotal) continue
+                                val pageStartMs = android.os.SystemClock.elapsedRealtime()
                                 val pageInfo = mergedPageMap[pageIdx] ?: StudioImageAndPdfEngine.LocalPageMapEntry(
                                     pageIndex = pageIdx,
                                     examType = defaultExamType,
@@ -1574,13 +1575,33 @@ class AiSolverViewModel : ViewModel() {
                                                 // this bitmap. If its spatial text is
                                                 // complete, skip a second bitmap load,
                                                 // JPEG decode and ML Kit model invocation.
-                                                val reused = com.example.util.PdfPageQuestionTextReuse
-                                                    .readIfComplete(
+                                                // Selectable PDFs already contain
+                                                // OCR-free decoded text with physical
+                                                // line coordinates from PDFBox.
+                                                // A complete, crop-contained A-E
+                                                // run avoids re-decoding its JPEG
+                                                // and re-running ML Kit on the crop.
+                                                val nativeText = if (useNativeQuestionStarts &&
+                                                    source != null
+                                                ) {
+                                                    com.example.util.PdfPageQuestionTextReuse
+                                                        .readNativeIfComplete(
+                                                            fragments = localBlueprint
+                                                                .pageVectorTextFragments[pageIdx].orEmpty(),
+                                                            normalizedCrop = cropBox.boxNormalized,
+                                                            pdfPageWidth = source.pageWidth,
+                                                            pdfPageHeight = source.pageHeight
+                                                        )
+                                                } else null
+                                                val reused = if (nativeText == null) {
+                                                    com.example.util.PdfPageQuestionTextReuse
+                                                        .readIfComplete(
                                                         lines = pageLayout.positionedText,
                                                         normalizedCrop = cropBox.boxNormalized,
                                                         pageWidth = pageBitmap.width,
                                                         pageHeight = pageBitmap.height
                                                     )
+                                                } else nativeText
                                                 if (reused != null) {
                                                     buildQuestionOcrClassification(
                                                         questionText = reused,
@@ -1591,7 +1612,7 @@ class AiSolverViewModel : ViewModel() {
                                                         hasDiagramOrGraph = cropBox.hasDiagramOrGraph,
                                                         lineCountEstimate = cropBox.lineCountEstimate,
                                                         visualDifficultyHint = cropBox.estimatedDifficulty5
-                                                    )
+                                                    ) to if (nativeText != null) 0 else 1
                                                 } else {
                                                     semaphore.withPermit {
                                                         val cropReader = cropOcrPool.receive()
@@ -1607,7 +1628,7 @@ class AiSolverViewModel : ViewModel() {
                                                                 lineCountEstimate = cropBox.lineCountEstimate,
                                                                 processingStatus = processingStatus,
                                                                 reader = cropReader
-                                                            )
+                                                            ) to 2
                                                         } finally {
                                                             cropOcrPool.trySend(cropReader)
                                                         }
@@ -1616,8 +1637,17 @@ class AiSolverViewModel : ViewModel() {
                                             }
                                         }.awaitAll()
                                     }
+                                    android.util.Log.i(
+                                        "SoruLabPdfPerf",
+                                        "page=${pageIdx + 1}" +
+                                            " elapsedMs=${android.os.SystemClock.elapsedRealtime() - pageStartMs}" +
+                                            " crops=${classifications.size}" +
+                                            " nativeText=${classifications.count { it.second == 0 }}" +
+                                            " pageOcrText=${classifications.count { it.second == 1 }}" +
+                                            " extraCropOcr=${classifications.count { it.second == 2 }}"
+                                    )
                                     croppedBoxes.mapIndexed { index, cropBox ->
-                                        val recognized = classifications[index]
+                                        val recognized = classifications[index].first
                                         // Only an explicit current-page heading may fill a missing
                                         // topic. A previous chapter or filename is not evidence.
                                         val classification = when {

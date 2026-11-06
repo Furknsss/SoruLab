@@ -16,12 +16,16 @@ internal object PdfMarginRecoveryPolicy {
         primary: List<QuestionNumberAnchor>,
         paddle: List<QuestionNumberAnchor>,
         pageWidth: Int,
-        pageHeight: Int
+        pageHeight: Int,
+        printedAnswerNumbers: Set<Int>
     ): Boolean {
         if (pageWidth <= 0 || pageHeight <= 0 ||
             primary.size < 4 || primary.size != paddle.size ||
-            primary.size > 30) return false
+            primary.size > 30 || printedAnswerNumbers.size != primary.size) return false
         val expectedNumbers = (1..primary.size).toList()
+        // A printed answer strip is independent completeness evidence. On
+        // books with keys elsewhere, never suppress the third margin reader.
+        if (printedAnswerNumbers != expectedNumbers.toSet()) return false
         if (primary.map { it.number }.sorted() != expectedNumbers ||
             paddle.map { it.number }.sorted() != expectedNumbers) return false
 

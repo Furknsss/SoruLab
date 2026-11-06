@@ -1040,7 +1040,9 @@ class AiSolverViewModel : ViewModel() {
                                         pageWidth = pageBitmap.width,
                                         pageHeight = pageBitmap.height
                                     )
-                                val fastImageFooter = if (canTryNativeFastPath) {
+                                val fastImageFooter = if (canTryNativeFastPath &&
+                                    nativeFooterForFastPath.isNotEmpty()
+                                ) {
                                     recognizeAnswerFooterTiledGrids(
                                         pageBitmap, pageOcrReader, nativeFooterForFastPath
                                     ).firstOrNull { grid ->
@@ -1049,10 +1051,15 @@ class AiSolverViewModel : ViewModel() {
                                         )
                                     }
                                 } else null
-                                val fastImageMargin = if (fastImageFooter != null) {
+                                val independentFooterReady = nativeFooterForFastPath.isEmpty() ||
+                                    fastImageFooter != null
+                                val fastImageMargin = if (canTryNativeFastPath &&
+                                    independentFooterReady
+                                ) {
                                     recognizeSupplementalNumberAnchors(pageBitmap, pageOcrReader)
                                 } else emptyList()
-                                val fastGeometryConfirmed = fastImageFooter != null &&
+                                val fastGeometryConfirmed = canTryNativeFastPath &&
+                                    independentFooterReady &&
                                     com.example.util.PdfNativeQuestionEvidence
                                         .hasIndependentSpatialSupport(
                                             nativeAnchors, fastImageMargin,

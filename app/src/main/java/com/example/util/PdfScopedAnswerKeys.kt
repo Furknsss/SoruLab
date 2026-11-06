@@ -275,6 +275,13 @@ internal class PdfScopedAnswerKeys(
                 if (heading.length > suffix.length + 4 && heading.endsWith(suffix) &&
                     heading[heading.length - suffix.length - 1].isLetter()
                 ) heading = heading.dropLast(suffix.length)
+                // PDF branding is often rendered as one letter per glyph:
+                // "B İ Y O T İ K". Treat six or more isolated letters as a
+                // running banner, not the printed chapter after ANALİZ 8.
+                // Legitimate short labels such as "DNA" are unaffected.
+                val letterTokens = heading.split(' ').filter(String::isNotBlank)
+                val isSpacedLetterBanner = letterTokens.size >= 6 &&
+                    letterTokens.all { it.length == 1 && it[0].isLetter() }
                 val chapterHeading = Regex("""(?:^|\s)(?:unite|bolum|chapter|sinif)(?:\s|$)""")
                     .containsMatchIn(heading)
                 // "1. ÜNİTE: ..." is a running chapter banner, but a
@@ -284,6 +291,7 @@ internal class PdfScopedAnswerKeys(
                     """^(?:unite|bolum|chapter)\s+(?:degerlendirme|genel tekrar|tekrari|review)(?:\s|$)"""
                 ).containsMatchIn(heading)
                 if (heading.length !in 5..65 || !heading.any(Char::isLetter) ||
+                    isSpacedLetterBanner ||
                     (chapterHeading && !assessmentSection) ||
                     containsNonSectionWord(heading) ||
                     heading.startsWith("www") ||

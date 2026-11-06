@@ -2240,7 +2240,10 @@ object StudioImageAndPdfEngine {
         maxQuestionBottomY?.takeIf { gridTop ->
             gridTop > bodyTop + 80 && gridTop < bodyBottom
         }?.let { gridTop ->
-            bodyBottom = min(bodyBottom, gridTop - 7)
+            bodyBottom = min(
+                bodyBottom,
+                PdfAnswerFooterCropBoundary.lastQuestionBottomExclusive(gridTop, height)
+            )
         }
         val bodyH = (bodyBottom - bodyTop).coerceAtLeast(1)
 

@@ -61,4 +61,48 @@ class PdfPageQuestionTextReuseTest {
         assertTrue(source!!.contains("hücre zarından"))
         assertEquals(null, next)
     }
+
+    private fun vectorLines() = question.map { ocr ->
+        PdfSourceTextFragment(
+            text = ocr.text,
+            left = ocr.left / 2f, top = ocr.top / 2f,
+            right = ocr.right / 2f, bottom = ocr.bottom / 2f
+        )
+    }
+
+    @Test fun nativePdfTextCanReplaceAllRedundantQuestionCropOcr() {
+        val native = vectorLines()
+        val selected = PdfPageQuestionTextReuse.readNativeIfComplete(
+            fragments = native + PdfSourceTextFragment(
+                "3. Başka sütunun sorusu", 360f, 120f, 480f, 130f
+            ),
+            normalizedCrop = box,
+            pdfPageWidth = 500f, pdfPageHeight = 800f
+        )
+        assertTrue("PDFBox source text must be reused", selected != null)
+        assertTrue(selected!!.contains("Aşağıdaki şekilde"))
+        assertTrue(selected.contains("E) Her zaman"))
+        assertTrue(!selected.contains("Başka sütunun"))
+    }
+
+    @Test fun nativeTextWithMissingChoiceOrWrongCropCannotBypassOcr() {
+        assertNull(PdfPageQuestionTextReuse.readNativeIfComplete(
+            vectorLines().dropLast(1), box, 500f, 800f
+        ))
+        assertNull(PdfPageQuestionTextReuse.readNativeIfComplete(
+            vectorLines(), listOf(.115f, .07f, .29f, .47f), 500f, 800f
+        ))
+        assertNull(PdfPageQuestionTextReuse.readNativeIfComplete(
+            vectorLines(), listOf(.115f, .52f, .335f, .93f), 500f, 800f
+        ))
+    }
+
+    @Test fun nativeTextOverlappingTwoColumnsIsNotAcceptedAsOneQuestion() {
+        val bad = vectorLines().map {
+            it.copy(right = 460f)
+        }
+        assertNull(PdfPageQuestionTextReuse.readNativeIfComplete(
+            bad, box, 500f, 800f
+        ))
+    }
 }

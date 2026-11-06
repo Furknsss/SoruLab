@@ -834,16 +834,21 @@ class AiSolverViewModel : ViewModel() {
                 val resolvedDisplayName = withContext(Dispatchers.IO) {
                     StudioImageAndPdfEngine.resolvePdfDisplayName(context, pdfUri, fileNameHint)
                 }
-                val pdfDigest = java.security.MessageDigest.getInstance("SHA-256")
-                seekablePdfFile.inputStream().use { input ->
-                    val buffer = ByteArray(65536)
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        pdfDigest.update(buffer, 0, count)
+                // Hashing a 40+ MB textbook on Main freezes Compose input and
+                // animations. Keep the stable content-derived book ID, but stream
+                // the digest on the IO dispatcher with a bounded buffer.
+                val bookId = withContext(Dispatchers.IO) {
+                    val digest = java.security.MessageDigest.getInstance("SHA-256")
+                    seekablePdfFile.inputStream().buffered(65536).use { input ->
+                        val buffer = ByteArray(65536)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            digest.update(buffer, 0, count)
+                        }
                     }
+                    "book_" + digest.digest().joinToString("") { "%02x".format(it) }
                 }
-                val bookId = "book_" + pdfDigest.digest().joinToString("") { "%02x".format(it) }
                 val archivedPdfPath = withContext(Dispatchers.IO) {
                     StudioImageAndPdfEngine.persistBookPdf(context, seekablePdfFile, bookId)
                 }

@@ -34,7 +34,7 @@ class PdfTwoPageBookImportDeviceTest {
     @Test fun twoPagesPerTestMustAssociateAllPrintedQuestionsWithTheirOwnKeys() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         assumeTrue("Offline two-page fixture runs only in QA",
-            instrumentation.arguments.getString("sorulab.twoPageQA") == "true")
+            InstrumentationRegistry.getArguments().getString("sorulab.twoPageQA") == "true")
         val app = instrumentation.targetContext
         val pdf = File(app.cacheDir, "AYT-Biyoloji-TwoPage-Scope-QA.pdf")
         val document = PdfDocument()

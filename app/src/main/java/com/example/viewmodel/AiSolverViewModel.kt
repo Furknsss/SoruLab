@@ -1001,26 +1001,6 @@ class AiSolverViewModel : ViewModel() {
                                 if (pageBitmap == null) continue
                                 val renderFinishedAtMs = android.os.SystemClock.elapsedRealtime()
 
-                                val ocrPageLayout = try {
-                                    recognizePdfPageLayout(
-                                        pageBitmap, pageOcrReader,
-                                        localBlueprint.pageTextFooterKeys[pageIdx].orEmpty()
-                                    )
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (_: OutOfMemoryError) {
-                                    reusablePixelsRef[0] = null
-                                    processingStatus.ocrFailureCount++
-                                    PdfPageOcrLayout()
-                                } catch (_: Exception) {
-                                    processingStatus.ocrFailureCount++
-                                    PdfPageOcrLayout()
-                                }
-                                val primaryOcrFinishedAtMs = android.os.SystemClock.elapsedRealtime()
-                                // Prefer a geometrically validated native text-layer
-                                // question run when OCR lost printed numbers. The
-                                // detector requires a consecutive aligned sequence;
-                                // scanned/image-only pages keep their ML Kit anchors.
                                 val source = localBlueprint.pageVectorQuestionAnchors[pageIdx]
                                 val nativeAnchors = source?.takeIf {
                                     it.pageWidth > 0f && it.pageHeight > 0f
@@ -1037,6 +1017,77 @@ class AiSolverViewModel : ViewModel() {
                                             pageBitmap.height).toInt().coerceIn(1, pageBitmap.height)
                                     )
                                 }.orEmpty()
+
+                                // Native text is a candidate, not an OCR verdict.
+                                // For fully selectable books, only an independent
+                                // rendered FOOTER vote plus physically matching
+                                // image-read question starts may bypass full-page
+                                // ML Kit OCR. Any disagreement uses the old path.
+                                val nativeFooterForFastPath =
+                                    localBlueprint.pageTextFooterKeys[pageIdx].orEmpty()
+                                val nativeHeaderForFastPath =
+                                    localBlueprint.pageSourceHeaders[pageIdx].orEmpty()
+                                val sourceTextFragmentsForFastPath =
+                                    localBlueprint.pageVectorTextFragments[pageIdx].orEmpty()
+                                val canTryNativeFastPath = com.example.util.PdfNativePageFastPath
+                                    .canTry(
+                                        printedQuestionStarts = nativeAnchors,
+                                        nativeFooterAnswers = nativeFooterForFastPath,
+                                        hasNativeChoices = pageIdx in localBlueprint.pageVectorOptionEvidence,
+                                        hasPrintedTestIdentity =
+                                            pageIdx in localBlueprint.pageVectorTestMarkers,
+                                        hasPageText = sourceTextFragmentsForFastPath.isNotEmpty(),
+                                        pageWidth = pageBitmap.width,
+                                        pageHeight = pageBitmap.height
+                                    )
+                                val fastImageFooter = if (canTryNativeFastPath) {
+                                    recognizeAnswerFooterTiledGrids(
+                                        pageBitmap, pageOcrReader, nativeFooterForFastPath
+                                    ).firstOrNull { grid ->
+                                        com.example.util.PdfNativePageFastPath.independentFooterAgrees(
+                                            nativeFooterForFastPath, grid.answers
+                                        )
+                                    }
+                                } else null
+                                val fastImageMargin = if (fastImageFooter != null) {
+                                    recognizeSupplementalNumberAnchors(pageBitmap, pageOcrReader)
+                                } else emptyList()
+                                val fastGeometryConfirmed = fastImageFooter != null &&
+                                    com.example.util.PdfNativeQuestionEvidence
+                                        .hasIndependentSpatialSupport(
+                                            nativeAnchors, fastImageMargin,
+                                            pageBitmap.width, pageBitmap.height
+                                        )
+                                val ocrPageLayout = if (fastGeometryConfirmed) {
+                                    android.util.Log.i(
+                                        "SoruLabPdfPerf",
+                                        "page=${pageIdx + 1} verifiedNativeFastPath=true"
+                                    )
+                                    PdfPageOcrLayout(
+                                        text = sourceTextFragmentsForFastPath.joinToString("\n") {
+                                            it.text
+                                        }.take(12_000),
+                                        headerText = nativeHeaderForFastPath,
+                                        scopeHeaderText = nativeHeaderForFastPath,
+                                        answerGrids = listOfNotNull(fastImageFooter),
+                                        questionNumberAnchors = nativeAnchors
+                                    )
+                                } else try {
+                                    recognizePdfPageLayout(
+                                        pageBitmap, pageOcrReader,
+                                        nativeFooterForFastPath
+                                    )
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: OutOfMemoryError) {
+                                    reusablePixelsRef[0] = null
+                                    processingStatus.ocrFailureCount++
+                                    PdfPageOcrLayout()
+                                } catch (_: Exception) {
+                                    processingStatus.ocrFailureCount++
+                                    PdfPageOcrLayout()
+                                }
+                                val primaryOcrFinishedAtMs = android.os.SystemClock.elapsedRealtime()
                                 // OCR can misread graph labels as extra question
                                 // numbers. Trust a coherent two-column vector
                                 // sequence even when OCR reports more candidates.

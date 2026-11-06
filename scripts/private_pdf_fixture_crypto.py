@@ -67,7 +67,7 @@ def receive(private_path, public_path, destination, repository, branch):
         raise SystemExit("Private QA transport requires GITHUB_TOKEN")
     url = (f"https://api.github.com/repos/{repository}/contents/"
         f".qa-encrypted/{label}.json?ref={quote(branch, safe='')}")
-    deadline = time.monotonic() + 1200
+    deadline = time.monotonic() + 1800
     payload = None
     while time.monotonic() < deadline:
         try:

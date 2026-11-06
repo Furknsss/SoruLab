@@ -15,6 +15,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -31,6 +32,8 @@ import java.util.concurrent.TimeUnit
 class PdfBookScaleOfflineDeviceTest {
     @Test fun twelveRealRenderedPagesHaveEveryQuestionAndPrintedAnswer() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        assumeTrue("Opt-in scale QA runs only once on the offline emulator",
+            InstrumentationRegistry.getArguments().getString("sorulab.bookScale") == "true")
         val context = instrumentation.targetContext
         val count = 12
         val document = PdfDocument()

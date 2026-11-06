@@ -5,6 +5,14 @@ name: RELEASE GATE - real complete textbook Android acceptance
 # complete page/question/answer reference, encrypted for this particular runner.
 on:
   workflow_dispatch:
+  # The linked GitHub interface cannot currently dispatch workflows.
+  # A reviewed workflow-file edit starts this strictly private QA gate.
+  # Uploading encrypted fixture parts does NOT start additional runners.
+  push:
+    branches:
+      - feat/pdf-vision-gemini38-grounded-20261104
+    paths:
+      - .github/workflows/pdf-real-book-acceptance.yml
 
 permissions:
   contents: read

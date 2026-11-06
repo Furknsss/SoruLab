@@ -985,6 +985,7 @@ class AiSolverViewModel : ViewModel() {
                                     null
                                 }
                                 if (pageBitmap == null) continue
+                                val renderFinishedAtMs = android.os.SystemClock.elapsedRealtime()
 
                                 val ocrPageLayout = try {
                                     recognizePdfPageLayout(
@@ -1001,6 +1002,7 @@ class AiSolverViewModel : ViewModel() {
                                     processingStatus.ocrFailureCount++
                                     PdfPageOcrLayout()
                                 }
+                                val primaryOcrFinishedAtMs = android.os.SystemClock.elapsedRealtime()
                                 // Prefer a geometrically validated native text-layer
                                 // question run when OCR lost printed numbers. The
                                 // detector requires a consecutive aligned sequence;
@@ -1086,6 +1088,7 @@ class AiSolverViewModel : ViewModel() {
                                         null
                                     }
                                 } else null
+                                val paddleFinishedAtMs = android.os.SystemClock.elapsedRealtime()
                                 val paddleGrids = paddleEvidence?.let {
                                     PdfHorizontalAnswerGridReader.find(it.textCells, pageBitmap.width, pageBitmap.height)
                                 }.orEmpty()
@@ -1454,6 +1457,7 @@ class AiSolverViewModel : ViewModel() {
                                 val printedFooterCropLimit = listOfNotNull(
                                     nativeCorroboratedFooterTop, mlKitFooterTop
                                 ).minOrNull()
+                                val cropStartedAtMs = android.os.SystemClock.elapsedRealtime()
                                 var croppedBoxes = try {
                                     StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
                                         context = context,
@@ -1541,6 +1545,7 @@ class AiSolverViewModel : ViewModel() {
                                     }
                                 }
 
+                                val cropFinishedAtMs = android.os.SystemClock.elapsedRealtime()
                                 // A successful image save is NOT proof that
                                 // exactly one source question was cropped.
                                 // Validate rectangles against native printed
@@ -1589,6 +1594,7 @@ class AiSolverViewModel : ViewModel() {
                                     pageCoverage.unsafeCropIndexes
                                 mergedOrMisnumberedCropCount += unsafeCropIndexes.size
 
+                                val classificationStartedAtMs = android.os.SystemClock.elapsedRealtime()
                                 val pageCandidates = if (croppedBoxes.isEmpty()) {
                                     emptyList()
                                 } else {
@@ -1689,6 +1695,12 @@ class AiSolverViewModel : ViewModel() {
                                         "SoruLabPdfPerf",
                                         "page=${pageIdx + 1}" +
                                             " elapsedMs=${android.os.SystemClock.elapsedRealtime() - pageStartMs}" +
+                                            " renderMs=${renderFinishedAtMs - pageStartMs}" +
+                                            " primaryOcrMs=${primaryOcrFinishedAtMs - renderFinishedAtMs}" +
+                                            " paddleStageMs=${paddleFinishedAtMs - primaryOcrFinishedAtMs}" +
+                                            " geometryMs=${cropStartedAtMs - paddleFinishedAtMs}" +
+                                            " cropMs=${cropFinishedAtMs - cropStartedAtMs}" +
+                                            " classifyMs=${android.os.SystemClock.elapsedRealtime() - classificationStartedAtMs}" +
                                             " crops=${classifications.size}" +
                                             " nativeText=${classifications.count { it.second == 0 }}" +
                                             " pageOcrText=${classifications.count { it.second == 1 }}" +

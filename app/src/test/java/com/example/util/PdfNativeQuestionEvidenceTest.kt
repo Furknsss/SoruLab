@@ -78,4 +78,53 @@ class PdfNativeQuestionEvidenceTest {
             native, shifted, 1800, 2400
         ))
     }
+
+    @Test fun knownNativeStartsSkipRepeatedFullPagePaddleAndMarginOcr() {
+        val native = listOf(
+            printed(1, 95, 160), printed(2, 95, 650),
+            printed(3, 95, 1170), printed(4, 95, 1680)
+        )
+        val primary = native.take(3) +
+            (1..6).map { printed(it, 430, 800 + it * 70) }
+        assertTrue(
+            PdfNativeQuestionEvidence.canSkipDetailedPageReaders(
+                sourceBackedPage = false,
+                nativeAnchors = native,
+                primaryOcrAnchors = primary,
+                pageWidth = 1800, pageHeight = 2400,
+                needsIndependentAnswerVerification = false
+            )
+        )
+    }
+
+    @Test fun nativePrintedKeyWithoutImageVoteMustStillRunIndependentReader() {
+        val native = listOf(
+            printed(1, 95, 160), printed(2, 95, 650), printed(3, 95, 1170)
+        )
+        assertFalse(PdfNativeQuestionEvidence.canSkipDetailedPageReaders(
+            sourceBackedPage = true, nativeAnchors = native,
+            primaryOcrAnchors = native,
+            pageWidth = 1800, pageHeight = 2400,
+            needsIndependentAnswerVerification = true
+        ))
+    }
+
+    @Test fun scannedPagesAndUnconfirmedNativeGeometryKeepDetailedOcr() {
+        val native = listOf(
+            printed(1, 95, 160), printed(2, 95, 650),
+            printed(3, 95, 1170), printed(4, 95, 1680)
+        )
+        assertFalse(PdfNativeQuestionEvidence.canSkipDetailedPageReaders(
+            sourceBackedPage = false, nativeAnchors = emptyList(),
+            primaryOcrAnchors = native,
+            pageWidth = 1800, pageHeight = 2400,
+            needsIndependentAnswerVerification = false
+        ))
+        assertFalse(PdfNativeQuestionEvidence.canSkipDetailedPageReaders(
+            sourceBackedPage = false, nativeAnchors = native,
+            primaryOcrAnchors = listOf(printed(1, 440, 164)),
+            pageWidth = 1800, pageHeight = 2400,
+            needsIndependentAnswerVerification = false
+        ))
+    }
 }

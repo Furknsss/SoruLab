@@ -22,6 +22,25 @@ internal object PdfNativeQuestionEvidence {
             )
 
     /**
+     * Avoid expensive independent page OCR when a selectable PDF's printed
+     * question run already has geometrically matching image OCR evidence.
+     * Printed answer strips still require the separate image reader when the
+     * primary reader did not recognize them. Never skip scanned pages.
+     */
+    fun canSkipDetailedPageReaders(
+        sourceBackedPage: Boolean,
+        nativeAnchors: List<QuestionNumberAnchor>,
+        primaryOcrAnchors: List<QuestionNumberAnchor>,
+        pageWidth: Int,
+        pageHeight: Int,
+        needsIndependentAnswerVerification: Boolean
+    ): Boolean = !needsIndependentAnswerVerification && (
+        sourceBackedPage || hasIndependentSpatialSupport(
+            nativeAnchors, primaryOcrAnchors, pageWidth, pageHeight
+        )
+    )
+
+    /**
      * Selectable PDFs sometimes contain an exact printed question run while
      * ML Kit adds unrelated chart numbers. Native evidence may be rejected
      * by the old raw-count comparison (4 real native vs 7 noisy OCR).

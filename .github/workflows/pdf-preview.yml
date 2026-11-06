@@ -105,7 +105,16 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 600
           script: bash scripts/check_signed_apk_install.sh app/build/outputs/apk/release/app-release.apk
+      # DO NOT publish a new APK for the active SoruLab work branch merely
+      # because it builds and installs. The complete original-book acceptance
+      # gate is separate and must pass before any user-facing APK delivery.
+      - name: Withhold unaccepted book-import build
+        if: github.ref == 'refs/heads/feat/pdf-vision-gemini38-grounded-20261104'
+        run: |
+          echo "WITHHELD: real-book import, matching and disk reload not certified."
+          rm -f app/build/outputs/apk/release/*.apk
       - uses: actions/upload-artifact@v4
+        if: github.ref != 'refs/heads/feat/pdf-vision-gemini38-grounded-20261104'
         with:
           name: SoruLab-RC9-SIGNED-TEST-NOT-RELEASE
           path: app/build/outputs/apk/release/*.apk

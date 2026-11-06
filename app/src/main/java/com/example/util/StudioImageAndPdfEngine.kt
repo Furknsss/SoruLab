@@ -2434,14 +2434,20 @@ object StudioImageAndPdfEngine {
                     // Ending on 'E)' silently amputates the rest of the source.
                     // The hardEnd excludes the following printed question and
                     // gives the current question all of its intervening space.
-                    val endY = if (nextAnchorTop != null) {
-                        hardEnd
-                    } else {
-                        maxOf(
-                            projectedEnd,
-                            lastObservedOptionBottom?.plus(anchorPadding) ?: projectedEnd
-                        ).coerceIn(startY + 1, hardEnd)
-                    }
+                    val proposedEnd = maxOf(
+                        projectedEnd,
+                        lastObservedOptionBottom?.plus(anchorPadding) ?: projectedEnd
+                    ).coerceIn(startY + 1, hardEnd)
+                    // A small final E) row can be missed by OCR and pixel
+                    // projection. If there is no reliable complete A-E
+                    // sequence, preserve the entire safe question region.
+                    // hardEnd is already clipped before the verified key.
+                    val endY = PdfQuestionTailPolicy.endExclusive(
+                        hasNextPrintedQuestion = nextAnchorTop != null,
+                        completeOptionsLocated = optionBottom != null,
+                        proposedEnd = proposedEnd,
+                        hardEnd = hardEnd
+                    )
                     startY to endY
                 }
 

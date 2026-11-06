@@ -62,7 +62,7 @@ class PdfRealBookAcceptanceDeviceTest {
 
         val pdfFile = File(app.cacheDir, "SoruLab-Real-Book-Acceptance.pdf")
         instrumentation.context.assets.open("private-corpus/full.pdf").use { input ->
-            pdfFile.outputStream().use(input::copyTo)
+            pdfFile.outputStream().use { output -> input.copyTo(output) }
         }
         assertEquals(
             "Source PDF page count differs from the independent reference",

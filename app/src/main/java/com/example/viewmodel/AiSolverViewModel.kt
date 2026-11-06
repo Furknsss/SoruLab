@@ -560,7 +560,8 @@ class AiSolverViewModel : ViewModel() {
      */
     private suspend fun recognizeAnswerFooterTiledGrids(
         bitmap: Bitmap,
-        reader: TextRecognizer
+        reader: TextRecognizer,
+        expectedNativeKeys: Map<Int, String> = emptyMap()
     ): List<PdfHorizontalAnswerGrid> {
         val recovered = mutableListOf<PdfHorizontalAnswerGrid>()
         val top = (bitmap.height * .65f).toInt()
@@ -626,6 +627,19 @@ class AiSolverViewModel : ViewModel() {
                     else PdfHorizontalAnswerGridReader.find(
                         lineCells, bitmap.width, bitmap.height
                     )
+                    // The first full-width image pass is enough only when
+                    // its physical A-E cells EXACTLY match the independent
+                    // native PDF text layer. Save two additional OCR passes.
+                    // Mismatches preserve the original three-pass recovery.
+                    if (leftFraction == 0f && rightFraction == 1f &&
+                        expectedNativeKeys.isNotEmpty()
+                    ) {
+                        val agreed = recovered.firstOrNull { grid ->
+                            com.example.util.PdfNativePageFastPath
+                                .independentFooterAgrees(expectedNativeKeys, grid.answers)
+                        }
+                        if (agreed != null) return listOf(agreed)
+                    }
                 } finally {
                     if (enlarged !== crop) enlarged.recycle()
                     crop.recycle()

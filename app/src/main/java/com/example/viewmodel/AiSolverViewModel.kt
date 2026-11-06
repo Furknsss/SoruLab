@@ -283,7 +283,8 @@ class AiSolverViewModel : ViewModel() {
 
     private suspend fun recognizePdfPageLayout(
         bitmap: Bitmap,
-        reader: TextRecognizer
+        reader: TextRecognizer,
+        nativeFooterKeys: Map<Int, String> = emptyMap()
     ): PdfPageOcrLayout {
         val recognized = reader.process(InputImage.fromBitmap(bitmap, 0)).await()
         val lines = recognized.textBlocks.flatMap { it.lines }
@@ -355,7 +356,12 @@ class AiSolverViewModel : ViewModel() {
         )
         // Small footer text loses accuracy in whole-page OCR. Retry only this
         // region at a larger scale, mapping every box back to source coordinates.
-        if ((answerGrids.isNotEmpty() || Regex("""[A-E]\s*[).]""").containsMatchIn(recognized.text))) {
+        val footerRecoveryNeeded = com.example.util.PdfPrintedFooterRetryPolicy.shouldRetry(
+            nativeKeys = nativeFooterKeys,
+            primaryImageGrids = answerGrids,
+            primaryHasChoiceText = Regex("""[A-E]\s*[).]""").containsMatchIn(recognized.text)
+        )
+        if (footerRecoveryNeeded) {
             val footerCells = recognizeAnswerFooter(bitmap, reader)
             answerGrids = (answerGrids + PdfHorizontalAnswerGridReader.find(footerCells, bitmap.width, bitmap.height)).distinctBy { it.top / 8 to it.answers }
         }
@@ -976,7 +982,10 @@ class AiSolverViewModel : ViewModel() {
                                 if (pageBitmap == null) continue
 
                                 val ocrPageLayout = try {
-                                    recognizePdfPageLayout(pageBitmap, pageOcrReader)
+                                    recognizePdfPageLayout(
+                                        pageBitmap, pageOcrReader,
+                                        localBlueprint.pageTextFooterKeys[pageIdx].orEmpty()
+                                    )
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (_: OutOfMemoryError) {

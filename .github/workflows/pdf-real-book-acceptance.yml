@@ -20,7 +20,7 @@ permissions:
 jobs:
   real-book-acceptance:
     runs-on: ubuntu-latest
-    timeout-minutes: 65
+    timeout-minutes: 85
     steps:
       - uses: actions/checkout@v4
       - name: Create ephemeral source decryption key

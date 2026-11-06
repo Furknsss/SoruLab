@@ -1041,8 +1041,27 @@ class AiSolverViewModel : ViewModel() {
                                 val needsNativeImageKeyVerification =
                                     nativeFooterEvidence &&
                                         ocrPageLayout.answerGrids.isEmpty()
-                                val paddleEvidence = if ((!sourceBackedPage ||
-                                        needsNativeImageKeyVerification) &&
+                                // On selectable-text pages, primary ML Kit can
+                                // independently corroborate the native PDF's
+                                // actual question positions. If so, expensive
+                                // full-page Paddle plus two margin OCR passes
+                                // add no extra certainty. Never skip a needed
+                                // independent read of the printed answer grid.
+                                val nativePrimarySpatiallyConfirmed = !sourceBackedPage &&
+                                    com.example.util.PdfNativeQuestionEvidence
+                                        .hasIndependentSpatialSupport(
+                                            nativeAnchors, ocrPageLayout.questionNumberAnchors,
+                                            pageBitmap.width, pageBitmap.height
+                                        )
+                                val skipDetailedPageReaders =
+                                    com.example.util.PdfNativeQuestionEvidence
+                                        .canSkipDetailedPageReaders(
+                                            sourceBackedPage,
+                                            nativeAnchors, ocrPageLayout.questionNumberAnchors,
+                                            pageBitmap.width, pageBitmap.height,
+                                            needsNativeImageKeyVerification
+                                        )
+                                val paddleEvidence = if (!skipDetailedPageReaders &&
                                     android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
                                 ) {
                                     try { PdfPaddleMobileOcr.readPage(context, pageBitmap) }
@@ -1067,7 +1086,8 @@ class AiSolverViewModel : ViewModel() {
                                         pendingSecondaryAnswerRegions.addAll(paddleRegions)
                                     }
                                 }
-                                val imageOnlyAnchors = if (!sourceBackedPage) {
+                                val imageOnlyAnchors = if (!sourceBackedPage &&
+                                    !skipDetailedPageReaders) {
                                     val secondPass = recognizeSupplementalNumberAnchors(pageBitmap, pageOcrReader)
                                     // A false primary graph number must not block
                                     // genuinely independent ML Kit margin + Paddle
@@ -1088,12 +1108,13 @@ class AiSolverViewModel : ViewModel() {
                                 // diagram numbers. Retain the PDF geometry
                                 // only where independent OCR spatially
                                 // corroborates a majority of actual starts.
-                                val nativeSpatiallyConfirmed = !sourceBackedPage &&
-                                    com.example.util.PdfNativeQuestionEvidence
-                                        .hasIndependentSpatialSupport(
-                                            nativeAnchors, imageOnlyAnchors,
-                                            pageBitmap.width, pageBitmap.height
-                                        )
+                                val nativeSpatiallyConfirmed = nativePrimarySpatiallyConfirmed ||
+                                    (!sourceBackedPage &&
+                                        com.example.util.PdfNativeQuestionEvidence
+                                            .hasIndependentSpatialSupport(
+                                                nativeAnchors, imageOnlyAnchors,
+                                                pageBitmap.width, pageBitmap.height
+                                            ))
                                 val useNativeQuestionStarts =
                                     sourceBackedPage || nativeSpatiallyConfirmed
                                 var pageLayout = if (useNativeQuestionStarts) {

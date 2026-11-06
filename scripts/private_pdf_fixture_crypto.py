@@ -78,7 +78,42 @@ def receive(private_path, public_path, destination, repository, branch):
             })
             with urlopen(request, timeout=25) as response:
                 metadata = json.load(response)
-            payload = json.loads(base64.b64decode(metadata["content"]))
+            if metadata.get("content"):
+                encoded = base64.b64decode(metadata["content"])
+            else:
+                # GitHub Contents API omits inline data for blobs over 1 MiB.
+                # Query the authenticated Git Blob API by the returned SHA.
+                blob_url = f"https://api.github.com/repos/{repository}/git/blobs/{metadata['sha']}"
+                blob_request = Request(blob_url, headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "SoruLab-private-fixture-acceptance",
+                })
+                with urlopen(blob_request, timeout=180) as response:
+                    blob_data = json.load(response)
+                encoded = base64.b64decode(blob_data["content"])
+            manifest = json.loads(encoded)
+            if "parts" in manifest:
+                # Encrypted ciphertext can be larger than the per-file upload
+                # proxy limit. Receive small immutable parts via Git Blob API.
+                # SHA-256 verified before AES-GCM authenticates the reassembly.
+                parts = []
+                for sha in manifest["parts"]:
+                    if not isinstance(sha, str) or len(sha) != 40:
+                        raise SystemExit("Invalid cipher part identity")
+                    part_url = f"https://api.github.com/repos/{repository}/git/blobs/{sha}"
+                    part_req = Request(part_url, headers={
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/vnd.github+json",
+                        "User-Agent": "SoruLab-private-fixture-acceptance",
+                    })
+                    with urlopen(part_req, timeout=180) as response:
+                        part_blob = json.load(response)
+                    parts.append(base64.b64decode(part_blob["content"]))
+                encoded = b"".join(parts)
+                if hashlib.sha256(encoded).hexdigest() != manifest["sha256"]:
+                    raise SystemExit("Encrypted source transfer hash mismatch")
+            payload = json.loads(encoded)
             break
         except HTTPError as error:
             if error.code != 404:

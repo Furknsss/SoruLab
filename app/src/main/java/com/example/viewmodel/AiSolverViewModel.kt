@@ -1602,15 +1602,34 @@ class AiSolverViewModel : ViewModel() {
                                                             pdfPageHeight = source.pageHeight
                                                         )
                                                 } else null
-                                                val reused = if (nativeText == null) {
+                                                val pageText = if (nativeText == null) {
                                                     com.example.util.PdfPageQuestionTextReuse
                                                         .readIfComplete(
-                                                        lines = pageLayout.positionedText,
-                                                        normalizedCrop = cropBox.boxNormalized,
-                                                        pageWidth = pageBitmap.width,
-                                                        pageHeight = pageBitmap.height
-                                                    )
-                                                } else nativeText
+                                                            lines = pageLayout.positionedText,
+                                                            normalizedCrop = cropBox.boxNormalized,
+                                                            pageWidth = pageBitmap.width,
+                                                            pageHeight = pageBitmap.height
+                                                        )
+                                                } else null
+                                                // On scanned books Paddle has ALREADY
+                                                // read this whole page as an independent
+                                                // answer/anchor source. Reuse its
+                                                // crop-contained complete A-E text
+                                                // before firing another ML Kit crop
+                                                // inference; missing options still
+                                                // trigger the original detailed pass.
+                                                val paddleText = if (nativeText == null &&
+                                                    pageText == null && paddleEvidence != null
+                                                ) {
+                                                    com.example.util.PdfPageQuestionTextReuse
+                                                        .readIfComplete(
+                                                            lines = paddleEvidence.textCells,
+                                                            normalizedCrop = cropBox.boxNormalized,
+                                                            pageWidth = pageBitmap.width,
+                                                            pageHeight = pageBitmap.height
+                                                        )
+                                                } else null
+                                                val reused = nativeText ?: pageText ?: paddleText
                                                 if (reused != null) {
                                                     buildQuestionOcrClassification(
                                                         questionText = reused,
@@ -1621,7 +1640,11 @@ class AiSolverViewModel : ViewModel() {
                                                         hasDiagramOrGraph = cropBox.hasDiagramOrGraph,
                                                         lineCountEstimate = cropBox.lineCountEstimate,
                                                         visualDifficultyHint = cropBox.estimatedDifficulty5
-                                                    ) to if (nativeText != null) 0 else 1
+                                                    ) to when {
+                                                        nativeText != null -> 0
+                                                        pageText != null -> 1
+                                                        else -> 2 // independently read Paddle
+                                                    }
                                                 } else {
                                                     semaphore.withPermit {
                                                         val cropReader = cropOcrPool.receive()
@@ -1637,7 +1660,7 @@ class AiSolverViewModel : ViewModel() {
                                                                 lineCountEstimate = cropBox.lineCountEstimate,
                                                                 processingStatus = processingStatus,
                                                                 reader = cropReader
-                                                            ) to 2
+                                                            ) to 3
                                                         } finally {
                                                             cropOcrPool.trySend(cropReader)
                                                         }
@@ -1653,7 +1676,8 @@ class AiSolverViewModel : ViewModel() {
                                             " crops=${classifications.size}" +
                                             " nativeText=${classifications.count { it.second == 0 }}" +
                                             " pageOcrText=${classifications.count { it.second == 1 }}" +
-                                            " extraCropOcr=${classifications.count { it.second == 2 }}"
+                                            " paddleText=${classifications.count { it.second == 2 }}" +
+                                            " extraCropOcr=${classifications.count { it.second == 3 }}"
                                     )
                                     croppedBoxes.mapIndexed { index, cropBox ->
                                         val recognized = classifications[index].first

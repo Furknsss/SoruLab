@@ -1098,7 +1098,18 @@ class AiSolverViewModel : ViewModel() {
                                 }
                                 val imageOnlyAnchors = if (!sourceBackedPage &&
                                     !skipDetailedPageReaders) {
-                                    val secondPass = recognizeSupplementalNumberAnchors(pageBitmap, pageOcrReader)
+                                    // Avoid two extra enlarged OCR reads only when independent ML Kit
+                                    // and Paddle agree on every printed 1..N start at the same
+                                    // physical location. Ambiguous scans retain full recovery.
+                                    val marginAlreadyConfirmed = com.example.util.PdfMarginRecoveryPolicy
+                                        .canSkipMarginPass(
+                                            primary = ocrPageLayout.questionNumberAnchors,
+                                            paddle = paddleEvidence?.questionNumberAnchors.orEmpty(),
+                                            pageWidth = pageBitmap.width,
+                                            pageHeight = pageBitmap.height
+                                        )
+                                    val secondPass = if (marginAlreadyConfirmed) emptyList()
+                                        else recognizeSupplementalNumberAnchors(pageBitmap, pageOcrReader)
                                     // A false primary graph number must not block
                                     // genuinely independent ML Kit margin + Paddle
                                     // evidence of the complete printed sequence.

@@ -45,8 +45,9 @@ adb shell cmd connectivity airplane-mode enable
 adb shell svc wifi disable
 adb shell svc data disable
 bash ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2 \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.example.util.PdfOfflineImportDeviceTest,com.example.util.PdfBookScaleOfflineDeviceTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.example.util.PdfOfflineImportDeviceTest,com.example.util.PdfBookScaleOfflineDeviceTest,com.example.util.PdfTwoPageBookImportDeviceTest \
   -Pandroid.testInstrumentationRunnerArguments.sorulab.requireOffline=true \
   -Pandroid.testInstrumentationRunnerArguments.sorulab.bookScale=true \
+  -Pandroid.testInstrumentationRunnerArguments.sorulab.twoPageQA=true \
   -Pandroid.testInstrumentationRunnerArguments.sorulab.viewportCase=offline
 archive_case offline

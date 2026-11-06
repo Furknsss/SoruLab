@@ -1109,12 +1109,18 @@ class AiSolverViewModel : ViewModel() {
                                     // Avoid two extra enlarged OCR reads only when independent ML Kit
                                     // and Paddle agree on every printed 1..N start at the same
                                     // physical location. Ambiguous scans retain full recovery.
+                                    val corroboratedPrintedNumbers = (paddleGrids + ocrPageLayout.answerGrids)
+                                        .firstOrNull { grid ->
+                                            grid.answers.keys ==
+                                                (1..ocrPageLayout.questionNumberAnchors.size).toSet()
+                                        }?.answers?.keys.orEmpty()
                                     val marginAlreadyConfirmed = com.example.util.PdfMarginRecoveryPolicy
                                         .canSkipMarginPass(
                                             primary = ocrPageLayout.questionNumberAnchors,
                                             paddle = paddleEvidence?.questionNumberAnchors.orEmpty(),
                                             pageWidth = pageBitmap.width,
-                                            pageHeight = pageBitmap.height
+                                            pageHeight = pageBitmap.height,
+                                            printedAnswerNumbers = corroboratedPrintedNumbers
                                         )
                                     val secondPass = if (marginAlreadyConfirmed) emptyList()
                                         else recognizeSupplementalNumberAnchors(pageBitmap, pageOcrReader)

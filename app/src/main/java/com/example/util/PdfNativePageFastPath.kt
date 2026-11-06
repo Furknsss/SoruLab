@@ -39,6 +39,9 @@ internal object PdfNativePageFastPath {
             val keyNumbers = (1..nativeFooterAnswers.size).toSet()
             if (nativeFooterAnswers.size < 4 ||
                 nativeFooterAnswers.keys != keyNumbers ||
+                // The final question on a footer page is exactly N.
+                // If only 1..N-1 was located, never certify completeness.
+                expected.maxOrNull() != nativeFooterAnswers.size ||
                 !nativeFooterAnswers.keys.containsAll(expected) ||
                 nativeFooterAnswers.values.any { it !in setOf("A", "B", "C", "D", "E") }
             ) return false

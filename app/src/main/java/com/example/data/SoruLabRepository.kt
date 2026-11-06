@@ -661,6 +661,11 @@ class SoruLabRepository(
 
     suspend fun saveCustomQuestionsBatch(records: List<CustomQuestionRecord>) {
         if (records.isEmpty()) return
+        // The old implementation downloaded the ENTIRE owner's cloud collection
+        // once for every 350 new questions. For dozens of books, this becomes
+        // increasingly expensive. Cache the original creation dates once for
+        // the normal path; a retry re-queries that chunk after an uncertain write.
+        var initialCreationDates: Map<String, Timestamp>? = null
         records.chunked(350).forEach { chunk ->
             val documentRefs = chunk.map { record ->
                 if (record.id.isNotBlank()) {
@@ -672,10 +677,19 @@ class SoruLabRepository(
             var attempt = 0
             while (true) {
                 try {
-                    // Resolve again after a retry: a timed-out write may already have committed.
-                    val creationDates = existingQuestionCreationDates(
-                        chunk.mapIndexed { index, record -> record.copy(id = documentRefs[index].id) }
-                    )
+                    // A timed-out write may have committed: refresh the current
+                    // chunk on retries to avoid overwriting its original createdAt.
+                    val creationDates = if (attempt > 0) {
+                        existingQuestionCreationDates(
+                            chunk.mapIndexed { index, record ->
+                                record.copy(id = documentRefs[index].id)
+                            }
+                        )
+                    } else {
+                        initialCreationDates ?: existingQuestionCreationDates(records).also {
+                            initialCreationDates = it
+                        }
+                    }
                     val batch = db.batch()
                     chunk.forEachIndexed { index, record ->
                         batch.set(documentRefs[index], customQuestionFirestorePayload(record, creationDates[documentRefs[index].id]))

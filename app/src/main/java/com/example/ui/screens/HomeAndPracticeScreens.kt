@@ -411,18 +411,18 @@ fun AnaSayfaScreen(
         when {
             parts.size >= 2 -> "${parts.first().first().uppercaseChar()}${parts.last().first().uppercaseChar()}"
             parts.size == 1 -> parts.first().take(2).uppercase()
-            else -> "KE"
+            else -> "SL"
         }
     }
 
     val firstName = remember(userName) {
-        userName.trim().split(" ").firstOrNull()?.takeIf { it.isNotBlank() } ?: "Ken"
+        userName.trim().split(" ").firstOrNull()?.takeIf { it.isNotBlank() } ?: "Öğrenci"
     }
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFD))
+            .background(Color(0xFFF6F8FC))
             .testTag("ana_sayfa_list"),
         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -476,7 +476,7 @@ fun AnaSayfaScreen(
                                 border = BorderStroke(1.dp, Color(0xFFBFDBFE))
                             ) {
                                 Text(
-                                    text = "YKS 2026",
+                                    text = "YKS ÇALIŞMA",
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.sp
@@ -487,7 +487,7 @@ fun AnaSayfaScreen(
                             }
                         }
                         Text(
-                            text = "AKILLI HAZIRLIK SİSTEMİ",
+                            text = "KİŞİSEL ÖĞRENME ALANIN",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp,
@@ -573,7 +573,7 @@ fun AnaSayfaScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(26.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF0B1528))
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF111A36))
             ) {
                 Box(
                     modifier = Modifier
@@ -581,9 +581,9 @@ fun AnaSayfaScreen(
                         .background(
                             Brush.linearGradient(
                                 colors = listOf(
-                                    Color(0xFF0B1528),
-                                    Color(0xFF132A55),
-                                    Color(0xFF183870)
+                                    Color(0xFF10152D),
+                                    Color(0xFF1A2E66),
+                                    Color(0xFF333182)
                                 )
                             )
                         )
@@ -614,7 +614,7 @@ fun AnaSayfaScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "HEDEF: İLK 5.000",
+                                text = "HER SORUDA BİR ADIM İLERİ",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 12.sp,
@@ -640,7 +640,7 @@ fun AnaSayfaScreen(
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = "4 Gün Seri",
+                                        text = "$totalSolvedTests test tamamlandı",
                                         color = Color(0xFFFDE68A),
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.5.sp
@@ -651,7 +651,7 @@ fun AnaSayfaScreen(
 
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                text = "Hoş geldin, $firstName",
+                                text = "Merhaba, $firstName",
                                 style = MaterialTheme.typography.headlineMedium.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 24.sp
@@ -659,8 +659,10 @@ fun AnaSayfaScreen(
                                 color = Color.White
                             )
                             Text(
-                                text = "👋",
-                                fontSize = 24.sp
+                                text = "Kitapların, denemelerin ve soruların tek bir çalışma alanında.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFCBD5E1),
+                                maxLines = 2
                             )
                         }
 
@@ -820,6 +822,61 @@ fun AnaSayfaScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Primary content action: import the next book without navigating through
+        // practice screens. No fake streak/goal data is displayed anywhere above.
+        item {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("home_add_book_quick_action")
+                    .clickable(onClick = onOpenPdfCropper),
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFFEAF1FF),
+                border = BorderStroke(1.dp, Color(0xFFCCDDFD))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 17.dp, vertical = 15.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(13.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFF2563EB)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.CollectionsBookmark,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(23.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Kitaplığını büyüt",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 15.sp,
+                            color = Color(0xFF14254C)
+                        )
+                        Text(
+                            text = "PDF soru bankası ekle ve kaldığın yerden çalış",
+                            fontSize = 12.sp,
+                            color = Color(0xFF526784),
+                            maxLines = 2
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = Color(0xFF2563EB),
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
         }

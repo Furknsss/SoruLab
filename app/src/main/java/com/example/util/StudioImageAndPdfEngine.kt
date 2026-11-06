@@ -1373,6 +1373,7 @@ object StudioImageAndPdfEngine {
         val pageSourceHeaders: Map<Int, String> = emptyMap(),
         val pageVectorTestMarkers: Map<Int, PdfPrintedTestMarker> = emptyMap(),
         val pageVectorQuestionAnchors: Map<Int, PdfSourcePageAnchors> = emptyMap(),
+        val pageVectorTextFragments: Map<Int, List<PdfSourceTextFragment>> = emptyMap(),
         val pageVectorOptionEvidence: Set<Int> = emptySet(),
         val pageNativeAnswerRows: Map<Int, List<String>> = emptyMap()
     )
@@ -1408,6 +1409,11 @@ object StudioImageAndPdfEngine {
             page.anchors.takeIf { it.size >= 2 }?.let { anchors ->
                 index to PdfSourcePageAnchors(page.pageWidth, page.pageHeight, anchors)
             }
+        }.toMap()
+        // Decoded once with PDFBox, preserved spatially for fast, complete
+        // per-question text reuse. Do not store page bitmap/JPEG duplicates.
+        val pageVectorTextFragments = sourcePages.mapIndexedNotNull { index, page ->
+            page.fragments.takeIf { it.isNotEmpty() }?.let { index to it }
         }.toMap()
         val pageVectorOptionEvidence = sourcePages.mapIndexedNotNull { index, page ->
             val letters = PdfOptionEvidence.letters(page.text)
@@ -1592,6 +1598,7 @@ object StudioImageAndPdfEngine {
             pageSourceHeaders = pageSourceHeaders,
             pageVectorTestMarkers = pageVectorTestMarkers,
             pageVectorQuestionAnchors = pageVectorQuestionAnchors,
+            pageVectorTextFragments = pageVectorTextFragments,
             pageVectorOptionEvidence = pageVectorOptionEvidence,
             pageNativeAnswerRows = sourcePages.mapIndexedNotNull { index, page ->
                 val rows = page.text.lines()
@@ -1607,6 +1614,7 @@ object StudioImageAndPdfEngine {
         val pageWidth: Float,
         val pageHeight: Float,
         val anchors: List<PdfSourceQuestionAnchor>,
+        val fragments: List<PdfSourceTextFragment>,
         val vectorFooterKeys: Map<Int, String>,
         val printedTestMarker: PdfPrintedTestMarker?,
         val geometryHeaderText: String
@@ -1615,7 +1623,20 @@ object StudioImageAndPdfEngine {
     private class PdfGeometryTextStripper : PDFTextStripper() {
         val glyphs = mutableListOf<PdfSourceGlyph>()
         val headerGlyphs = mutableListOf<PdfSourceGlyph>()
+        val fragments = mutableListOf<PdfSourceTextFragment>()
         override fun writeString(text: String, textPositions: MutableList<TextPosition>) {
+            // Reuse the PDFBox-decoded line text, not the raw glyph values.
+            // Joined cross-column lines span the gutter and fail the strict
+            // crop-containment checks in PdfPageQuestionTextReuse.
+            if (text.isNotBlank() && textPositions.isNotEmpty()) {
+                val left = textPositions.minOf { it.xDirAdj }
+                val top = textPositions.minOf { it.yDirAdj }
+                val right = textPositions.maxOf { it.xDirAdj + it.widthDirAdj }
+                val bottom = textPositions.maxOf { it.yDirAdj + it.heightDir }
+                if (left >= 0f && top >= 0f && right > left && bottom > top) {
+                    fragments.add(PdfSourceTextFragment(text, left, top, right, bottom))
+                }
+            }
             for (p in textPositions) {
                 val value = p.unicode.orEmpty()
                 if (value.isNotEmpty() && value.length <= 3) {
@@ -1657,6 +1678,7 @@ object StudioImageAndPdfEngine {
                         pageWidth = width,
                         pageHeight = height,
                         anchors = printedAnchors,
+                        fragments = stripper.fragments,
                         vectorFooterKeys = PdfVectorAnswerStrip.read(stripper.glyphs, width, height),
                         printedTestMarker = PdfVectorTestMarker.find(stripper.glyphs, width, height),
                         geometryHeaderText = PdfVectorPageHeader.read(
@@ -1668,7 +1690,7 @@ object StudioImageAndPdfEngine {
                     android.util.Log.w(
                         "SoruLabPdfText", "PDF text layer failed at page ${pageIndex + 1}; OCR fallback", e
                     )
-                    SourceTextPage("", width, height, emptyList(), emptyMap(), null, "")
+                    SourceTextPage("", width, height, emptyList(), emptyList(), emptyMap(), null, "")
                 }
             }
         }

@@ -43,11 +43,21 @@ internal object PdfNativePageFastPath {
                 nativeFooterAnswers.values.any { it !in setOf("A", "B", "C", "D", "E") }
             ) return false
         }
-        return printedQuestionStarts.all { anchor ->
-            anchor.left >= 0 && anchor.right <= pageWidth &&
-                anchor.top >= (pageHeight * .04f).toInt() &&
-                anchor.bottom <= (pageHeight * .92f).toInt() &&
-                anchor.right > anchor.left && anchor.bottom > anchor.top
+        if (!printedQuestionStarts.all { anchor ->
+                anchor.left >= 0 && anchor.right <= pageWidth &&
+                    anchor.top >= (pageHeight * .04f).toInt() &&
+                    anchor.bottom <= (pageHeight * .92f).toInt() &&
+                    anchor.right > anchor.left && anchor.bottom > anchor.top
+            }) return false
+        val xTolerance = maxOf(4, (pageWidth * .016f).toInt())
+        val yTolerance = maxOf(6, (pageHeight * .012f).toInt())
+        return printedQuestionStarts.indices.all { i ->
+            (i + 1 until printedQuestionStarts.size).none { j ->
+                val a = printedQuestionStarts[i]
+                val b = printedQuestionStarts[j]
+                kotlin.math.abs(a.left - b.left) < xTolerance &&
+                    kotlin.math.abs(a.top - b.top) < yTolerance
+            }
         }
     }
 

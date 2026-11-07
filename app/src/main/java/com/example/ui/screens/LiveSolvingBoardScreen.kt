@@ -1626,8 +1626,8 @@ private fun RealTwoColumnBookPageSurface(
         // Reserve nearly the entire usable sheet for question crops.
         // Previous 104dp+42dp deductions compressed both rows at the top.
         val maxQuestionImageHeight = (
-            (pageMinHeight - 30.dp).coerceAtLeast(220.dp) /
-                perColumnCount.toFloat() - 18.dp
+            (pageMinHeight - 24.dp).coerceAtLeast(220.dp) /
+                perColumnCount.toFloat() - 24.dp
         ).coerceAtLeast(130.dp)
 
         // Dışarı tıklandığında açık olan `⋮` Popover menüsünü kapatan şeffaf arka plan katmanı
@@ -1667,11 +1667,15 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isLeftPopoverOpen) 60f else 1f)
                         .padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
-                    // Even top/middle/bottom whitespace; not a row stacked
-                    // at the top with hundreds of empty pixels underneath.
-                    verticalArrangement = Arrangement.SpaceEvenly
+                    // Equal-height page slots keep short and tall question
+                    // crops centered within their portion of the paper.
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     leftColumnQuestions.forEachIndexed { idx, q ->
+                        Box(
+                            modifier = Modifier.weight(1f, fill = true).fillMaxWidth(),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
                         BookPageQuestionItem345(
                             question = q,
                             maxImageHeight = maxQuestionImageHeight,
@@ -1686,6 +1690,7 @@ private fun RealTwoColumnBookPageSurface(
                             onOpenTwinScreen = { onOpenTwinScreen(q) },
                             onAddToKumbara = { onAddToKumbara(q) }
                         )
+                        }
                     }
                 }
 
@@ -1705,12 +1710,16 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isRightPopoverOpen) 60f else 1f)
                         .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = Arrangement.SpaceEvenly
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     if (rightColumnQuestions.isEmpty()) {
                         Spacer(modifier = Modifier.height(80.dp))
                     } else {
                         rightColumnQuestions.forEachIndexed { idx, q ->
+                            Box(
+                                modifier = Modifier.weight(1f, fill = true).fillMaxWidth(),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
                             BookPageQuestionItem345(
                                 question = q,
                                 maxImageHeight = maxQuestionImageHeight,
@@ -1725,6 +1734,7 @@ private fun RealTwoColumnBookPageSurface(
                                 onOpenTwinScreen = { onOpenTwinScreen(q) },
                                 onAddToKumbara = { onAddToKumbara(q) }
                             )
+                            }
                         }
                     }
                 }
@@ -2517,13 +2527,16 @@ private fun RightSlidingOpticalFormDrawer345(
     val drawerWidth = (configuration.screenWidthDp.dp - 54.dp).coerceAtMost(320.dp)
     // The drawer stays composed even when hidden. Only its position animates:
     // no costly destruction/recreation of the answer grid on each tap.
-    val drawerSlideX by animateDpAsState(
-        targetValue = if (isOpen) 0.dp else drawerWidth,
-        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+    val drawerSlideProgress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isOpen) 0f else 1f,
+        animationSpec = tween(durationMillis = 190, easing = FastOutSlowInEasing),
         label = "opticalDrawerSlide"
     )
+    val density = LocalDensity.current
     Row(
-        modifier = modifier.offset(x = drawerSlideX),
+        modifier = modifier.graphicsLayer {
+            translationX = with(density) { drawerWidth.toPx() } * drawerSlideProgress
+        },
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (showClosedTab || isOpen) {
@@ -3014,29 +3027,6 @@ private fun BottomDarkNavyDrawingBar345(
                                 tint = Color.White, modifier = Modifier.size(22.dp))
                         }
                     }
-                    // Distinct highlighter control, without a duplicate pen button
-                    val isHighlighterActive = activeTool == DrawingTool.HIGHLIGHTER && !isZoomMagnifierEnabled
-                    Surface(
-                        onClick = {
-                            showColorPalettePopup = false
-                            onSelectTool(DrawingTool.HIGHLIGHTER)
-                        },
-                        shape = CircleShape,
-                        color = if (isHighlighterActive) Color(0xFF3475F5) else Color.Transparent,
-                        modifier = Modifier
-                            .size(38.dp)
-                            .testTag("tool_highlighter_btn")
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Highlight,
-                                contentDescription = "Fosforlu Kalem",
-                                tint = if (isHighlighterActive) Color(0xFFFACC15) else Color.White,
-                                modifier = Modifier.size(19.dp)
-                            )
-                        }
-                    }
-
                     // Akıllı Şekil (Smart Shape)
                     val isSmartShapeActive = activeTool == DrawingTool.SMART_SHAPE && !isZoomMagnifierEnabled
                     Surface(
@@ -3115,11 +3105,16 @@ private fun BottomDarkNavyDrawingBar345(
                         shape = CircleShape,
                         color = if (isEraserActive) Color(0xFF3475F5)
                             else Color.Transparent,
-                        modifier = Modifier.size(42.dp).testTag("tool_eraser_btn")
+                        modifier = Modifier.size(40.dp).testTag("tool_eraser_btn")
                             .semantics { contentDescription = "Silgi" }
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            PremiumEraserGlyph()
+                            Icon(
+                                imageVector = Icons.Default.AutoFixOff,
+                                contentDescription = "Silgi",
+                                tint = Color.White,
+                                modifier = Modifier.size(23.dp)
+                            )
                         }
                     }
 

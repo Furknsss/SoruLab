@@ -53,6 +53,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Dialog
 import com.example.data.*
 import com.example.util.StudioImageAndPdfEngine
+import com.example.util.SoruLabQuestionZipImporter
 import com.example.viewmodel.BatchPdfCropState
 import com.example.viewmodel.ExtractedPdfQuestionItem
 import kotlinx.coroutines.CancellationException
@@ -639,6 +640,7 @@ fun SoruHavuzuAndPdfStudioView(
     var pendingCropReview by remember { mutableStateOf<PendingCropReview?>(null) }
     var showCropReview by remember { mutableStateOf(false) }
     var isSavingImportedBook by remember { mutableStateOf(false) }
+    var isImportingQuestionZip by remember { mutableStateOf(false) }
     var hasSavedReview by remember { mutableStateOf(false) }
     var importSaveError by remember { mutableStateOf<String?>(null) }
     var importSaveSuccess by remember { mutableStateOf<String?>(null) }
@@ -693,6 +695,61 @@ fun SoruHavuzuAndPdfStudioView(
     }
 
     var selectedBookForTestPanel by remember { mutableStateOf<LibraryBookCardModel?>(null) }
+
+
+    val zipPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null && !isSavingImportedBook && !isImportingQuestionZip) {
+            onDismissError()
+            importSaveError = null
+            importSaveSuccess = null
+            isImportingQuestionZip = true
+            isSavingImportedBook = true
+            scope.launch {
+                try {
+                    val pack = withContext(Dispatchers.IO) {
+                        SoruLabQuestionZipImporter.import(context, uri)
+                    }
+                    val publisher = SoruLabPublisherPresets.resolvePublisher(
+                        pack.publisher, customPublishers
+                    )
+                    pendingCropReview = PendingCropReview(
+                        pack.questions, publisher, pack.bookTitle, pack.bookCoverPath
+                    )
+                    hasSavedReview = false
+                    onSaveExtractedPdfBatch(
+                        pack.questions,
+                        pack.publisher,
+                        publisher.customLogoPath,
+                        pack.bookTitle,
+                        pack.bookCoverPath
+                    ) { succeeded, message ->
+                        isImportingQuestionZip = false
+                        isSavingImportedBook = false
+                        if (succeeded) {
+                            hasSavedReview = true
+                            val note = if (pack.unresolvedAnswerCount > 0)
+                                " · ${pack.unresolvedAnswerCount} cevap doğrulanmadı; boş bırakıldı."
+                            else " · Tüm cevaplar pakette doğrulanmış."
+                            importSaveSuccess = message + note
+                        } else {
+                            importSaveError = message
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    isImportingQuestionZip = false
+                    isSavingImportedBook = false
+                    throw e
+                } catch (e: Exception) {
+                    isImportingQuestionZip = false
+                    isSavingImportedBook = false
+                    importSaveError = e.message?.take(240)
+                        ?: "ZIP içe aktarılamadı. SoruLab soru paketi biçimini kontrol edin."
+                }
+            }
+        }
+    }
 
     val pdfPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -861,6 +918,80 @@ fun SoruHavuzuAndPdfStudioView(
                             .padding(if (compact) 16.dp else 24.dp),
                         verticalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
+
+                        // ZIP packets already include image crops, test IDs, and
+                        // verified answer information. No phone-side PDF OCR needed.
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                text = "Hazır soru paketini ZIP'ten yükle",
+                                color = Color(0xFF25205E),
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 15.sp
+                            )
+                            Surface(
+                                onClick = {
+                                    zipPickerLauncher.launch(arrayOf(
+                                        "application/zip",
+                                        "application/x-zip-compressed",
+                                        "application/octet-stream"
+                                    ))
+                                },
+                                enabled = !isImportingQuestionZip &&
+                                    !isSavingImportedBook && !batchCropState.isAnalyzing,
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFFF0FDF4),
+                                border = BorderStroke(1.5.dp, Color(0xFF86EFAC)),
+                                modifier = Modifier.fillMaxWidth()
+                                    .heightIn(min = 74.dp)
+                                    .testTag("import_question_zip_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.FolderZip,
+                                        contentDescription = null,
+                                        tint = Color(0xFF15803D),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Column {
+                                        Text(
+                                            "ZIP'ten Soruları Ekle",
+                                            color = Color(0xFF14532D),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        )
+                                        Text(
+                                            "Hazır kırpmaları ve cevap bilgilerini doğrudan Kitaplığım'a aktar",
+                                            color = Color(0xFF166534),
+                                            fontSize = 11.5.sp,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+                                }
+                            }
+                            if (isImportingQuestionZip) {
+                                LinearProgressIndicator(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = Color(0xFF15803D)
+                                )
+                                Text(
+                                    "ZIP görselleri kontrol ediliyor ve kalıcı kayda alınıyor…",
+                                    color = Color(0xFF166534),
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Text(
+                                "ZIP paketi bu sohbetten hazırlanabilir. PDF işleme ve OCR telefonda çalışmaz.",
+                                color = Color(0xFF64748B),
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        HorizontalDivider(color = Color(0xFFE2E8F0))
+
                         // 1. YAYINEVİ / LOGO SEÇİMİ
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(

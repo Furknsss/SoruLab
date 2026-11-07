@@ -16,6 +16,28 @@ class PdfHorizontalAnswerGridTest {
     }
 
     @Test
+    fun `compact keys near page header and center work without publisher heuristics`() {
+        for (top in listOf(40, 250, 800, 1350)) {
+            val row = PdfOcrTextCell(
+                "1-A 2.C 3 B 4-D 5)E", 120, top, 860, top + 24
+            )
+            val grids = PdfHorizontalAnswerGridReader.find(listOf(row), 1000, 1500)
+            assertEquals("position=$top", 1, grids.size)
+            assertEquals(mapOf(1 to "A", 2 to "C", 3 to "B", 4 to "D", 5 to "E"), grids.single().answers)
+        }
+    }
+
+    @Test
+    fun `ordinary numbered question prose is not interpreted as a compact answer strip`() {
+        val ordinary = listOf(
+            PdfOcrTextCell("Soru 1-A 2-B 3-C 4-D", 100, 100, 900, 130),
+            PdfOcrTextCell("1-A 2-C 2-D 4-E", 100, 300, 900, 330),
+            PdfOcrTextCell("1-A 2-B 3-C", 100, 500, 900, 530)
+        )
+        assertTrue(PdfHorizontalAnswerGridReader.find(ordinary, 1000, 1500).isEmpty())
+    }
+
+    @Test
     fun `analysis and regular tests with same number do not share keys`() {
         val keys = PdfScopedAnswerKeys(setOf("sinir sistemi"))
         keys.addOcrRows(listOf("Sinir Sistemi", "ANALİZ 1 1-A 2-B 3-C", "TEST 1 1-D 2-E 3-A"))

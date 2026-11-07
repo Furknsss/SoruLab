@@ -62,7 +62,7 @@ jobs:
           heap-size: 1024M
           disable-animations: true
           script: |
-            ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2 || echo FAILED > emulator_failed.flag
+            bash ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2 || echo FAILED > emulator_failed.flag
             mkdir -p emulator-out
             adb pull /sdcard/Android/data/com.aistudio.sorulab.ykslab/files emulator-out || true
             cat emulator-out/files/report_*.txt || true

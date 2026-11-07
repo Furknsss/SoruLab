@@ -247,6 +247,12 @@ object SoruLabQuestionZipImporter {
                     unresolvedAnswerCount = count - verifiedCount
                 )
             }
+        } catch (e: java.util.zip.ZipException) {
+            // Android 14+ can reject ZIP-slip entries in ZipFile's native
+            // path validator *before* our per-entry validation executes.
+            // Normalize the platform rejection to the same fail-closed,
+            // user-readable invalid-package outcome on every Android version.
+            throw IllegalArgumentException("ZIP bozuk veya güvenli olmayan dosya yolu içeriyor.", e)
         } finally {
             cacheZip.delete()
             staging?.deleteRecursively()

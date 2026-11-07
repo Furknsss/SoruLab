@@ -135,6 +135,45 @@ class SoruLabQuestionZipImportDeviceTest {
     }
 
     @Test
+    fun twoDifferentBooksWithSameDisplayedTitleNeverOverwriteEachOther() {
+        val firstZip = zip()
+        val secondZip = zip()
+        try {
+            val first = SoruLabQuestionZipImporter.import(context, Uri.fromFile(firstZip))
+            val second = SoruLabQuestionZipImporter.import(context, Uri.fromFile(secondZip))
+            assertNotEquals(first.questions[0].bookId, second.questions[0].bookId)
+            assertNotEquals(first.questions[0].croppedImagePath, second.questions[0].croppedImagePath)
+            val viewModel = SoruLabViewModel(context)
+            for (pack in listOf(first, second)) {
+                val latch = CountDownLatch(1)
+                var result = false
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    viewModel.saveExtractedPdfQuestionsBatch(
+                        pack.questions, pack.publisher, "", pack.bookTitle, pack.bookCoverPath
+                    ) { successful, _ ->
+                        result = successful
+                        latch.countDown()
+                    }
+                }
+                assertTrue("Book save timed out", latch.await(35, TimeUnit.SECONDS))
+                assertTrue("Book save failed", result)
+            }
+            val loaded = SoruLabRepository(context)
+                .loadCachedCustomQuestions(PdfLibraryAccount.GUEST_CACHE_UID)
+            val byBook = loaded.filter { it.bookId in setOf(
+                first.questions.first().bookId, second.questions.first().bookId
+            ) }.groupBy { it.bookId }
+            assertEquals(2, byBook.size)
+            assertEquals(2, byBook[first.questions.first().bookId]?.size)
+            assertEquals(2, byBook[second.questions.first().bookId]?.size)
+            assertTrue(byBook.values.flatten().all { File(it.croppedImagePath).isFile })
+        } finally {
+            firstZip.delete()
+            secondZip.delete()
+        }
+    }
+
+    @Test
     fun alteredImageHashFailsClosed() {
         val file = zip(tamperHash = true)
         try {

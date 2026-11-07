@@ -1,0 +1,68 @@
+name: SoruLab ZIP package Android acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/pdf-vision-gemini38-grounded-20261104
+    paths:
+      - 'app/src/main/java/com/example/util/SoruLabQuestionZipImporter.kt'
+      - 'app/src/main/java/com/example/ui/screens/ExamsAndPdfCropperScreen.kt'
+      - 'app/src/main/java/com/example/viewmodel/SoruLabViewModel.kt'
+      - 'app/src/androidTest/java/com/example/util/SoruLabQuestionZipImportDeviceTest.kt'
+      - '.github/workflows/zip-question-pack-qa.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sorulab-zip-device-qa
+  cancel-in-progress: true
+
+jobs:
+  zip-real-device:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: sdkmanager 'platforms;android-36.1' 'build-tools;36.0.0'
+      - name: Prepare ephemeral Android signing key
+        run: |
+          test -e /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          keytool -genkeypair -noprompt -keystore debug.keystore \
+            -storepass android -keypass androiddebugkey -alias androiddebugkey \
+            -dname 'CN=ZIP Import QA,O=SoruLab,C=TR' -keyalg RSA -keysize 2048 -validity 2
+      - name: Validate ZIP import, tamper checks, and production disk reload on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          emulator-options: '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim'
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: |
+            adb shell cmd connectivity airplane-mode enable
+            adb shell svc wifi disable
+            adb shell svc data disable
+            bash ./gradlew :app:connectedDebugAndroidTest \
+              --no-daemon --no-configuration-cache --max-workers=2 \
+              -Pandroid.testInstrumentationRunnerArguments.class=com.example.util.SoruLabQuestionZipImportDeviceTest
+      - name: Preserve results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sorulab-zip-device-acceptance
+          path: |
+            app/build/outputs/androidTest-results/connected/
+            app/build/reports/androidTests/connected/
+          if-no-files-found: ignore
+          retention-days: 7

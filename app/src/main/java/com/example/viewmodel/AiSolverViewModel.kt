@@ -15,6 +15,8 @@ import com.example.data.YksQuestion
 import com.example.data.resolveAnswerKeyOption
 import com.example.util.QuestionNumberAnchor
 import com.example.util.QuestionOptionAnchor
+import com.example.util.InlineAnswerKey
+import com.example.util.PdfInlineAnswerKeys
 import com.example.util.PdfScopedAnswerKeys
 import com.example.util.StudioImageAndPdfEngine
 import com.google.firebase.Firebase
@@ -876,6 +878,11 @@ class AiSolverViewModel : ViewModel() {
                 val scopedAnswers = PdfScopedAnswerKeys()
                 // A page without its own printed TEST label continues the previous test.
                 var lastPageAnswerScope: com.example.util.PdfAnswerScope? = null
+                // Books that print the answer row inside each test's own pages.
+                val inlineKeysByPage = mutableMapOf<Int, InlineAnswerKey>()
+                val minQuestionByPage = mutableMapOf<Int, Int>()
+                val maxQuestionByPage = mutableMapOf<Int, Int>()
+                val printedNumberByQuestionId = mutableMapOf<String, Int>()
                 val mergedPageMap = localBlueprint.pageMap
                 val finalBookTitle = localBlueprint.detectedBookTitle
                 var defaultExamType = localBlueprint.defaultExamType
@@ -1007,6 +1014,8 @@ class AiSolverViewModel : ViewModel() {
                                     processingStatus.ocrFailureCount++
                                     PdfPageOcrLayout()
                                 }
+                                PdfInlineAnswerKeys.parse(pageLayout.answerRows).firstOrNull()
+                                    ?.let { inlineKeysByPage[pageIdx] = it }
                                 val hasAnswerKeyMarker =
                                     StudioImageAndPdfEngine.hasAnswerKeyMarker(pageLayout.text)
                                 val isAnswerTablePage =
@@ -1173,6 +1182,13 @@ class AiSolverViewModel : ViewModel() {
                                             }.orEmpty()
                                         )
                                     )
+                                    candidate.answerKeyQuestionNumber?.let { printed ->
+                                        printedNumberByQuestionId[allExtractedQuestions.last().id] = printed
+                                        minQuestionByPage[pageIdx] =
+                                            minOf(minQuestionByPage[pageIdx] ?: printed, printed)
+                                        maxQuestionByPage[pageIdx] =
+                                            maxOf(maxQuestionByPage[pageIdx] ?: printed, printed)
+                                    }
                                 }
 
                                 kotlinx.coroutines.yield()
@@ -1195,8 +1211,27 @@ class AiSolverViewModel : ViewModel() {
                     return@launch
                 }
 
+                if (inlineKeysByPage.isNotEmpty()) {
+                    for (index in allExtractedQuestions.indices) {
+                        val item = allExtractedQuestions[index]
+                        if (item.answerKeyMatched) continue
+                        val printed = printedNumberByQuestionId[item.id] ?: continue
+                        val answer = PdfInlineAnswerKeys.keyForQuestion(
+                            item.pageIndex, printed, inlineKeysByPage,
+                            minQuestionByPage, maxQuestionByPage
+                        ) ?: continue
+                        allExtractedQuestions[index] = item.copy(
+                            correctOption = answer,
+                            answerKeyMatched = true,
+                            solutionSummary = item.solutionSummary.replace(
+                                "Cevap anahtarı eşleşmesi bulunamadı", "Doğrulanmış Cevap: $answer"
+                            )
+                        )
+                    }
+                }
+
                 val warnings = buildList {
-                    if (scopedAnswers.answerCount == 0) {
+                    if (scopedAnswers.answerCount == 0 && inlineKeysByPage.isEmpty()) {
                         add("Test bazlı cevap anahtarı okunamadı. Hiçbir cevap tahmin edilmedi.")
                     }
                     val unresolved = allExtractedQuestions.count { !it.answerKeyMatched }

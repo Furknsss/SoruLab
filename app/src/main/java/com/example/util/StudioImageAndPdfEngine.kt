@@ -443,22 +443,24 @@ object StudioImageAndPdfEngine {
                     ignoreCase = true
                 )
         } ?: return null
-        val normalized = text.lowercase()
+        // Capital dotted İ must become plain i first, otherwise "SİNİR" never matches "sinir".
+        val normalized = text.replace('İ', 'i').lowercase()
         val dictionary = when (subject.name.lowercase()) {
             "biyoloji" -> listOf(
-                "Sinir Sistemi" to listOf("nöron", "noron", "impuls", "sinaps", "beyin"),
-                "Endokrin Sistem" to listOf("hormon", "hipofiz", "tiroit", "insülin", "insulin"),
-                "Duyu Organları" to listOf("göz", "goz", "kulak", "reseptör", "reseptor"),
-                "Destek ve Hareket Sistemi" to listOf("kemik", "kas", "aktin", "miyozin"),
-                "Sindirim Sistemi" to listOf("enzim", "mide", "pankreas", "villus"),
-                "Dolaşım ve Bağışıklık Sistemi" to listOf("kalp", "damar", "kan", "antikor"),
-                "Solunum Sistemi" to listOf("alveol", "hemoglobin", "akciğer", "akciger"),
-                "Üriner (Boşaltım) Sistem" to listOf("nefron", "böbrek", "bobrek", "üre", "idrar"),
-                "Üreme Sistemi ve Embriyonik Gelişim" to listOf("folikül", "folikul", "zigot", "embriyo"),
-                "Komünite ve Popülasyon Ekolojisi" to listOf("ekosistem", "rekabet", "süksesyon", "popülasyon"),
-                "Genden Proteine (Nükleik Asitler)" to listOf("dna", "rna", "kodon", "ribozom", "replikasyon", "protein sentezi"),
-                "Fotosentez ve Hücresel Solunum" to listOf("atp", "fotosentez", "kloroplast", "kemosentez", "mitokondri"),
-                "Bitki Biyolojisi" to listOf("ksilem", "floem", "oksin", "stoma", "tohum")
+                "Sinir Sistemi" to listOf("sinir sistemi", "nöron", "noron", "impuls", "sinaps", "beyin"),
+                "Endokrin Sistem" to listOf("endokrin sistem", "hormon", "hipofiz", "tiroit", "insülin", "insulin"),
+                "Duyu Organları" to listOf("duyu organları", "duyu organlari", "göz", "goz", "kulak", "reseptör", "reseptor"),
+                "Destek ve Hareket Sistemi" to listOf("destek ve hareket", "kemik", "kas", "aktin", "miyozin"),
+                "Sindirim Sistemi" to listOf("sindirim sistemi", "enzim", "mide", "pankreas", "villus"),
+                "Dolaşım ve Bağışıklık Sistemi" to listOf("dolaşım sistemi", "dolasim sistemi", "bağışıklık", "kalp", "damar", "kan", "antikor"),
+                "Solunum Sistemi" to listOf("solunum sistemi", "alveol", "hemoglobin", "akciğer", "akciger"),
+                "Üriner (Boşaltım) Sistem" to listOf("üriner sistem", "uriner sistem", "boşaltım", "nefron", "böbrek", "bobrek", "üre", "idrar"),
+                "Üreme Sistemi ve Embriyonik Gelişim" to listOf("üreme sistemi", "embriyonik gelişim", "folikül", "folikul", "zigot", "embriyo"),
+                "Komünite ve Popülasyon Ekolojisi" to listOf("komünite ekolojisi", "popülasyon ekolojisi", "ekosistem", "rekabet", "süksesyon", "popülasyon"),
+                "Genden Proteine (Nükleik Asitler)" to listOf("nükleik asit", "genetik şifre", "biyoteknoloji", "genetik mühendisliği", "dna", "rna", "kodon", "ribozom", "replikasyon", "protein sentezi"),
+                "Fotosentez ve Hücresel Solunum" to listOf("canlılık ve enerji", "hücresel solunum", "fermantasyon", "atp", "fotosentez", "kloroplast", "kemosentez", "mitokondri"),
+                "Bitki Biyolojisi" to listOf("bitkilerin temel", "bitkisel hormon", "bitkilerde beslenme", "çiçekli bitkilerde", "ksilem", "floem", "oksin", "stoma", "tohum"),
+                "Canlılar ve Çevre" to listOf("canlılar ve çevre", "canlilar ve cevre")
             )
             "matematik" -> listOf(
                 "Polinomlar" to listOf("p(x)", "q(x)", "polinom", "başkatsayı", "baskatsayi", "kalan teoremi"),

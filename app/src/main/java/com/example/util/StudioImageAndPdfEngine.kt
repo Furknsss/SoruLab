@@ -2219,21 +2219,22 @@ object StudioImageAndPdfEngine {
             bodyBottom = cleanGapY
         }
 
-        bodyTop = max(bodyTop, (height * 0.065f).roundToInt())
-            .coerceIn(0, (height - 1).coerceAtLeast(0))
-        // Header trimming must not swallow the first printed question. On a
-        // sparse page its first line may fall inside the broad header probe.
-        questionNumberAnchors
-            .filter { it.number in 1..200 && it.top >= (height * 0.06f).roundToInt() }
-            .minOfOrNull { it.top }
-            ?.let { firstQuestionTop ->
-                bodyTop = min(
-                    bodyTop,
-                    (firstQuestionTop - (height * 0.012f).roundToInt()).coerceAtLeast(0)
-                )
-            }
-        bodyBottom = min(bodyBottom, (height * 0.945f).roundToInt())
-            .coerceIn(bodyTop + 1, height)
+        bodyTop = PdfAnchoredBodyBounds.firstQuestionTop(
+            pageHeight = height,
+            defaultTop = max(bodyTop, (height * 0.065f).roundToInt())
+                .coerceIn(0, (height - 1).coerceAtLeast(0)),
+            numbers = questionNumberAnchors
+        )
+        // A real final E choice can be printed below the nominal 94.5% trim.
+        // Only image-backed choice anchors may extend the body, and the
+        // independently detected answer grid is still a hard boundary.
+        bodyBottom = PdfAnchoredBodyBounds.lastOptionBottom(
+            pageHeight = height,
+            defaultBottom = min(bodyBottom, (height * 0.945f).roundToInt())
+                .coerceIn(bodyTop + 1, height),
+            options = optionAnchors,
+            answerGridTop = maxQuestionBottomY
+        )
         // If this PDF prints the answer grid directly under the final
         // multiple-choice question, do not include that key in the crop.
         // The limit is derived from OCR geometry, never a fixed page fraction.

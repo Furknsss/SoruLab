@@ -151,12 +151,13 @@ object SoruLabQuestionZipImporter {
                     "Kalıcı soru görseli klasörü oluşturulamadı."
                 }
                 val destination = File(assetRoot, "zip_" + packKey)
-                staging = File(assetRoot, ".staging_" + packKey + "_" + UUID.randomUUID())
-                require(staging.mkdirs()) { "Geçici dosya alanı oluşturulamadı." }
+                val stagingDirectory = File(assetRoot, ".staging_" + packKey + "_" + UUID.randomUUID())
+                staging = stagingDirectory
+                require(stagingDirectory.mkdirs()) { "Geçici dosya alanı oluşturulamadı." }
                 var totalBytes = 0L
                 val dimensions = HashMap<String, Pair<Int, Int>>(paths.size)
                 for ((name, expectedSha) in paths) {
-                    val target = File(staging, name)
+                    val target = File(stagingDirectory, name)
                     require(target.parentFile!!.isDirectory || target.parentFile!!.mkdirs()) {
                         "Görsel klasörü oluşturulamadı."
                     }
@@ -229,7 +230,7 @@ object SoruLabQuestionZipImporter {
                     }
                     false
                 } else {
-                    require(staging.renameTo(destination)) {
+                    require(stagingDirectory.renameTo(destination)) {
                         "Görseller kalıcı depoya taşınamadı."
                     }
                     staging = null

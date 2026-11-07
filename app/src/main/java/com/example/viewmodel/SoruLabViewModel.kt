@@ -236,6 +236,9 @@ class SoruLabViewModel(
 
     private val _selectedStrokeSizeIndex = MutableStateFlow(1)
     val selectedStrokeSizeIndex: StateFlow<Int> = _selectedStrokeSizeIndex.asStateFlow()
+    // Pen thickness and eraser size are separate tools, not one shared value.
+    private var penStrokeSizeIndex = 1
+    private var eraserStrokeSizeIndex = 1
 
     private val _selectedPenColorHex = MutableStateFlow(0xFF111111L)
     val selectedPenColorHex: StateFlow<Long> = _selectedPenColorHex.asStateFlow()
@@ -1983,17 +1986,30 @@ class SoruLabViewModel(
     }
 
     fun selectDrawingTool(tool: DrawingTool) {
+        val oldTool = _activeTool.value
+        if (oldTool != tool) {
+            if (oldTool == DrawingTool.ERASER) {
+                eraserStrokeSizeIndex = _selectedStrokeSizeIndex.value
+            } else {
+                penStrokeSizeIndex = _selectedStrokeSizeIndex.value
+            }
+            _selectedStrokeSizeIndex.value =
+                if (tool == DrawingTool.ERASER) eraserStrokeSizeIndex else penStrokeSizeIndex
+        }
         _activeTool.value = tool
     }
 
     fun selectStrokeSize(index: Int) {
-        _selectedStrokeSizeIndex.value = index.coerceIn(0, 2)
+        val safe = index.coerceIn(0, 2)
+        _selectedStrokeSizeIndex.value = safe
+        if (_activeTool.value == DrawingTool.ERASER) eraserStrokeSizeIndex = safe
+        else penStrokeSizeIndex = safe
     }
 
     fun selectPenColor(colorHex: Long) {
         _selectedPenColorHex.value = colorHex
         if (_activeTool.value == DrawingTool.ERASER || _activeTool.value == DrawingTool.HAND_PAN) {
-            _activeTool.value = DrawingTool.PEN
+            selectDrawingTool(DrawingTool.PEN)
         }
     }
 
@@ -2025,7 +2041,9 @@ class SoruLabViewModel(
         val currentList = _boardStrokes.value[key].orEmpty()
 
         if (tool == DrawingTool.ERASER) {
-            val eraseRadius = 42f
+            val eraserWidthPx = listOf(18f, 38f, 68f)
+                .getOrElse(_selectedStrokeSizeIndex.value) { 38f }
+            val eraseRadius = eraserWidthPx / 2f + 4f
             val remaining = currentList.filter { stroke ->
                 stroke.isEraser || stroke.points.none { pt ->
                     points.any { erasePt -> (pt - erasePt).getDistance() < eraseRadius }
@@ -2035,7 +2053,7 @@ class SoruLabViewModel(
                 val eraserStroke = DrawStroke(
                     points = points,
                     colorHex = 0x00000000L,
-                    strokeWidthPx = 38f,
+                    strokeWidthPx = eraserWidthPx,
                     isSmartShape = false,
                     isEraser = true
                 )

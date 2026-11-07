@@ -1,6 +1,8 @@
 name: RELEASE GATE - real complete textbook Android acceptance
 
 # No preview APK is eligible for user delivery on unit/synthetic tests alone.
+# 2026-11-07: original 272-page textbook + independently enumerated 1434-question reference.
+# Release prohibited until the full private emulated import/restore gate succeeds.
 # This opt-in job requires the ORIGINAL private full.pdf and an INDEPENDENT,
 # complete page/question/answer reference, encrypted for this particular runner.
 on:

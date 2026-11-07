@@ -36,7 +36,7 @@ internal object PdfHorizontalAnswerGridReader {
             .filter { it.text.trim().trim('.', ')', ':', '-').toIntOrNull() in 1..200 }
             .sortedWith(compareBy({ it.middleY }, { it.middleX }))
         val letters = tokens.filter { optionToken.matches(it.text.trim()) }
-        val inlineGrids = findInlineRows(cells, pageHeight)
+        val inlineGrids = findInlineRows(cells)
         if (numbers.size < 4 || letters.size < 4) return inlineGrids
 
         val bands = mutableListOf<MutableList<PdfOcrTextCell>>()
@@ -131,11 +131,11 @@ internal object PdfHorizontalAnswerGridReader {
         return (grids + inlineGrids).distinctBy { grid -> grid.top / 8 to grid.answers }
     }
 
-    /** Compact footer keys: 1-A 2.C 3 B. Reject all prose and isolated choices. */
-    private fun findInlineRows(cells: List<PdfOcrTextCell>, pageHeight: Int): List<PdfHorizontalAnswerGrid> {
+    /** Compact printed keys: 1-A 2.C 3 B. These can appear at the top, middle or bottom of ANY publisher's page. Reject prose and isolated choices. */
+    private fun findInlineRows(cells: List<PdfOcrTextCell>): List<PdfHorizontalAnswerGrid> {
         val pair = Regex("""([0-9]{1,3})\s*[.:()\-]?\s*([A-E])(?:\))?""", RegexOption.IGNORE_CASE)
         val rows = mutableListOf<MutableList<PdfOcrTextCell>>()
-        for (cell in cells.filter { it.top >= pageHeight * 0.65f }.sortedBy { it.middleY }) {
+        for (cell in cells.sortedWith(compareBy({ it.middleY }, { it.left }))) {
             val row = rows.lastOrNull()
             if (row != null && abs(cell.middleY - row.map { it.middleY }.average()) <=
                 max(5.0, row.map { it.height }.average() * 0.6)) row.add(cell)

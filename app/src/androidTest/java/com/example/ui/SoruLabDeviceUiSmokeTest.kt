@@ -165,12 +165,12 @@ class SoruLabDeviceUiSmokeTest {
         // The deprecated finger-draw pencil must no longer occupy space.
         compose.onNodeWithTag("finger_draw_mode").assertDoesNotExist()
         compose.onNodeWithTag("smart_spen_mode").performClick()
-        compose.onNodeWithTag("tool_eraser_btn").performClick()
+        compose.onNodeWithTag("tool_eraser_btn").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(DrawingTool.ERASER, lastSelectedTool) }
         compose.onNodeWithTag("brush_size_2", useUnmergedTree = true)
             .performScrollTo().performClick()
         compose.runOnIdle { assertEquals(2, lastBrushSize) }
-        compose.onNodeWithTag("smart_spen_mode").performClick()
+        compose.onNodeWithTag("smart_spen_mode").performScrollTo().performClick()
         compose.runOnIdle { assertTrue(smartPenToggles >= 2) }
         captureOnlySyntheticScreen("solving-board-phone.png")
 

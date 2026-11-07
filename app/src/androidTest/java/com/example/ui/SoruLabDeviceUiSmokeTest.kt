@@ -154,7 +154,13 @@ class SoruLabDeviceUiSmokeTest {
         compose.onNodeWithTag("optical_form_tab").performClick()
         compose.onNodeWithTag("optical_form_drawer").assertDoesNotExist()
 
-        compose.onNodeWithTag("finger_draw_mode").performClick()
+        // Premium toolbar has only one pencil: smart S Pen.
+        // The deprecated finger-draw pencil must no longer occupy space.
+        compose.onNodeWithTag("finger_draw_mode").assertDoesNotExist()
+        compose.onNodeWithTag("smart_spen_mode").performClick()
+        compose.onNodeWithTag("tool_eraser_btn").performClick()
+        compose.onNodeWithTag("eraser_size_2").performClick()
+        compose.onNodeWithTag("eraser_size_2").assertIsDisplayed()
         compose.onNodeWithTag("smart_spen_mode").performClick()
         compose.runOnIdle { assertTrue(smartPenToggles >= 2) }
         captureOnlySyntheticScreen("solving-board-phone.png")

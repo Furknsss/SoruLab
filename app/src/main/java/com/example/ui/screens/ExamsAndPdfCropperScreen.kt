@@ -59,6 +59,8 @@ import com.example.viewmodel.ExtractedPdfQuestionItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -641,6 +643,7 @@ fun SoruHavuzuAndPdfStudioView(
     var showCropReview by remember { mutableStateOf(false) }
     var isSavingImportedBook by remember { mutableStateOf(false) }
     var isImportingQuestionZip by remember { mutableStateOf(false) }
+    var zipBatchProgress by remember { mutableStateOf("") }
     var hasSavedReview by remember { mutableStateOf(false) }
     var importSaveError by remember { mutableStateOf<String?>(null) }
     var importSaveSuccess by remember { mutableStateOf<String?>(null) }
@@ -697,55 +700,85 @@ fun SoruHavuzuAndPdfStudioView(
     var selectedBookForTestPanel by remember { mutableStateOf<LibraryBookCardModel?>(null) }
 
 
+    // Multi-file picker is safe: unpack and commit one book at a time.
     val zipPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        if (uri != null && !isSavingImportedBook && !isImportingQuestionZip) {
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty() && !isSavingImportedBook && !isImportingQuestionZip) {
             onDismissError()
             importSaveError = null
             importSaveSuccess = null
+            pendingCropReview = null // Do not retain a second large review list.
             isImportingQuestionZip = true
             isSavingImportedBook = true
             scope.launch {
+                val completed = mutableListOf<String>()
+                val errors = mutableListOf<String>()
+                val seenPackDirectories = hashSetOf<String>()
+                val selectedBookIds = hashMapOf<String, Pair<String, String>>()
+                val chosen = uris.distinct()
                 try {
-                    val pack = withContext(Dispatchers.IO) {
-                        SoruLabQuestionZipImporter.import(context, uri)
-                    }
-                    val publisher = SoruLabPublisherPresets.resolvePublisher(
-                        pack.publisher, customPublishers
-                    )
-                    pendingCropReview = PendingCropReview(
-                        pack.questions, publisher, pack.bookTitle, pack.bookCoverPath
-                    )
-                    hasSavedReview = false
-                    onSaveExtractedPdfBatch(
-                        pack.questions,
-                        pack.publisher,
-                        publisher.customLogoPath,
-                        pack.bookTitle,
-                        pack.bookCoverPath
-                    ) { succeeded, message ->
-                        isImportingQuestionZip = false
-                        isSavingImportedBook = false
-                        if (succeeded) {
-                            hasSavedReview = true
-                            val note = if (pack.unresolvedAnswerCount > 0)
-                                " · ${pack.unresolvedAnswerCount} cevap doğrulanmadı; boş bırakıldı."
-                            else " · Tüm cevaplar pakette doğrulanmış."
-                            importSaveSuccess = message + note
-                        } else {
-                            importSaveError = message
+                    for ((index, uri) in chosen.withIndex()) {
+                        zipBatchProgress = "${index + 1}/${chosen.size} ZIP kontrol ediliyor…"
+                        try {
+                            val pack = withContext(Dispatchers.IO) {
+                                SoruLabQuestionZipImporter.import(context, uri)
+                            }
+                            val bookId = pack.questions.firstOrNull()?.bookId.orEmpty()
+                            val identity = pack.bookTitle.trim().lowercase() to
+                                pack.publisher.trim().lowercase()
+                            require(bookId.isNotBlank()) { "ZIP kitap kimliği eksik." }
+                            val existing = customQuestions.firstOrNull { it.bookId == bookId }
+                            require(existing == null || (
+                                existing.sourceBookTitle.trim().equals(pack.bookTitle.trim(), true) &&
+                                existing.publisherTag.trim().equals(pack.publisher.trim(), true)
+                            )) {
+                                "Kitap kimliği başka kitaba ait: ${pack.bookTitle}."
+                            }
+                            val batchIdentity = selectedBookIds.putIfAbsent(bookId, identity)
+                            require(batchIdentity == null || batchIdentity == identity) {
+                                "Farklı kitapların ZIP kimlikleri aynı: $bookId."
+                            }
+                            if (!seenPackDirectories.add(pack.directory.name)) {
+                                errors.add("${pack.bookTitle}: Aynı ZIP iki kez seçilmiş, tekrar yüklenmedi.")
+                                continue
+                            }
+                            zipBatchProgress = "${index + 1}/${chosen.size} · ${pack.bookTitle} kaydediliyor…"
+                            val pub = SoruLabPublisherPresets.resolvePublisher(
+                                pack.publisher, customPublishers
+                            )
+                            val (saved, message) = suspendCancellableCoroutine<Pair<Boolean, String>> { waiter ->
+                                onSaveExtractedPdfBatch(
+                                    pack.questions, pack.publisher, pub.customLogoPath,
+                                    pack.bookTitle, pack.bookCoverPath
+                                ) { success, report ->
+                                    if (waiter.isActive) waiter.resume(success to report)
+                                }
+                            }
+                            if (saved) {
+                                completed.add("${pack.bookTitle}: ${pack.questions.size} soru")
+                            } else {
+                                errors.add("${pack.bookTitle}: $message")
+                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            errors.add("ZIP ${index + 1}: ${e.message?.take(160) ?: "Açılamadı."}")
                         }
                     }
-                } catch (e: CancellationException) {
+                    hasSavedReview = completed.isNotEmpty()
+                    if (completed.isNotEmpty()) {
+                        importSaveSuccess = "${completed.size} kitap ayrı kaydedildi: " +
+                            completed.joinToString(" · ")
+                    }
+                    if (errors.isNotEmpty()) {
+                        importSaveError = "${errors.size} ZIP aktarılmadı: " +
+                            errors.take(3).joinToString(" · ")
+                    }
+                } finally {
+                    zipBatchProgress = ""
                     isImportingQuestionZip = false
                     isSavingImportedBook = false
-                    throw e
-                } catch (e: Exception) {
-                    isImportingQuestionZip = false
-                    isSavingImportedBook = false
-                    importSaveError = e.message?.take(240)
-                        ?: "ZIP içe aktarılamadı. SoruLab soru paketi biçimini kontrol edin."
                 }
             }
         }
@@ -805,7 +838,7 @@ fun SoruHavuzuAndPdfStudioView(
                     .groupBy { q ->
                         val pub = q.publisherTag.trim().ifBlank { "3D Yayınları" }
                         val book = q.bookOrTestName.trim().ifBlank { "$pub Soru Bankası" }
-                        "${pub.lowercase()}|${book.lowercase()}"
+                        "${pub.lowercase()}|${book.lowercase()}|${q.bookId}"
                     }
                     .map { (groupKey, questionsInBook) ->
                         val first = questionsInBook.first()
@@ -958,13 +991,13 @@ fun SoruHavuzuAndPdfStudioView(
                                     )
                                     Column {
                                         Text(
-                                            "ZIP'ten Soruları Ekle",
+                                            "Birden Fazla ZIP Ekle",
                                             color = Color(0xFF14532D),
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 14.sp
                                         )
                                         Text(
-                                            "Hazır kırpmaları ve cevap bilgilerini doğrudan Kitaplığım'a aktar",
+                                            "Birden fazla ZIP seç; her kitap ayrı ve sırayla kaydedilir",
                                             color = Color(0xFF166534),
                                             fontSize = 11.5.sp,
                                             lineHeight = 16.sp
@@ -978,7 +1011,7 @@ fun SoruHavuzuAndPdfStudioView(
                                     color = Color(0xFF15803D)
                                 )
                                 Text(
-                                    "ZIP görselleri kontrol ediliyor ve kalıcı kayda alınıyor…",
+                                    zipBatchProgress.ifBlank { "ZIP dosyaları sırayla kaydediliyor…" },
                                     color = Color(0xFF166534),
                                     fontSize = 12.sp
                                 )

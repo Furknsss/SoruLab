@@ -54,6 +54,41 @@ jobs:
             adb shell svc wifi disable
             adb shell svc data disable
             bash ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class=com.example.util.SoruLabQuestionZipImportDeviceTest
+      - name: Restore existing app signing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64" && test -n "$STORE_PASSWORD" && test -n "$KEY_PASSWORD"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+          keytool -list -keystore my-upload-key.jks -storepass "$STORE_PASSWORD" -alias upload >/dev/null
+          python3 scripts/check_release_oauth_signing.py
+      - name: Build signed SoruLab APK after successful ZIP device tests
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          bash ./gradlew :app:assembleRelease --no-daemon --no-configuration-cache --max-workers=2
+          test -s app/build/outputs/apk/release/app-release.apk
+      - name: Verify signed app launches on Android
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          emulator-options: '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim'
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash scripts/check_signed_apk_install.sh app/build/outputs/apk/release/app-release.apk
+      - name: Share signed APK only after complete ZIP accept and launch checks
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoruLab-ZIP-IMPORT-SIGNED-APK
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 7
       - name: Preserve results
         if: always()
         uses: actions/upload-artifact@v4

@@ -70,6 +70,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
@@ -2543,7 +2544,10 @@ private fun RightSlidingOpticalFormDrawer345(
                     // two-row optical form expanded to 540dp with dead space.
                     .width(drawerWidth)
                     .height(opticalDrawerHeight)
-                    .testTag("optical_form_drawer")
+                    .then(
+                        if (isOpen) Modifier.testTag("optical_form_drawer")
+                        else Modifier.clearAndSetSemantics { }
+                    )
             ) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

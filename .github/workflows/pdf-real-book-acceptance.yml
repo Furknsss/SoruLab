@@ -10,9 +10,10 @@ on:
   # The linked GitHub interface cannot currently dispatch workflows.
   # A reviewed workflow-file edit starts this strictly private QA gate.
   # Uploading encrypted fixture parts does NOT start additional runners.
+  # Isolated QA branch: no changes to main or standard app builds.
   push:
     branches:
-      - feat/pdf-vision-gemini38-grounded-20261104
+      - qa/real-biyotik-20261107
     paths:
       - .github/workflows/pdf-real-book-acceptance.yml
 
@@ -22,7 +23,7 @@ permissions:
 jobs:
   real-book-acceptance:
     runs-on: ubuntu-latest
-    timeout-minutes: 85
+    timeout-minutes: 110
     steps:
       - uses: actions/checkout@v4
       - name: Create ephemeral source decryption key

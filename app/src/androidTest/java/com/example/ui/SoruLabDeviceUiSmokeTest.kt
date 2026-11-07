@@ -77,16 +77,19 @@ class SoruLabDeviceUiSmokeTest {
         var latestAnswers = emptyMap<Int, String>()
         var smartPenToggles = 0
         var viewToggles = 0
+        var lastSelectedTool = DrawingTool.HAND_PAN
+        var lastBrushSize = -1
         compose.setContent {
             var session by remember { mutableStateOf(fixtureSession()) }
             var tool by remember { mutableStateOf(DrawingTool.HAND_PAN) }
+            var currentBrushSize by remember { mutableStateOf(1) }
             MyApplicationTheme {
                 LiveSolvingBoardScreen(
                     session = session,
                     strokes = emptyList(),
                     currentCanvasKey = "device_qa_page",
                     activeTool = tool,
-                    selectedStrokeSizeIndex = 1,
+                    selectedStrokeSizeIndex = currentBrushSize,
                     selectedPenColorHex = 0xFF1D4ED8L,
                     onExitSession = {},
                     onToggleViewMode = {
@@ -98,9 +101,13 @@ class SoruLabDeviceUiSmokeTest {
                     },
                     onSelectTool = {
                         tool = it
+                        lastSelectedTool = it
                         if (it == DrawingTool.PEN) smartPenToggles++
                     },
-                    onSelectStrokeSize = {},
+                    onSelectStrokeSize = {
+                        currentBrushSize = it
+                        lastBrushSize = it
+                    },
                     onSelectPenColor = {},
                     onAddStroke = { _, _, _ -> },
                     onBookPageChanged = {},
@@ -159,8 +166,10 @@ class SoruLabDeviceUiSmokeTest {
         compose.onNodeWithTag("finger_draw_mode").assertDoesNotExist()
         compose.onNodeWithTag("smart_spen_mode").performClick()
         compose.onNodeWithTag("tool_eraser_btn").performClick()
-        compose.onNodeWithTag("eraser_size_2").performClick()
-        compose.onNodeWithTag("eraser_size_2").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(DrawingTool.ERASER, lastSelectedTool) }
+        compose.onNodeWithTag("brush_size_2", useUnmergedTree = true)
+            .performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(2, lastBrushSize) }
         compose.onNodeWithTag("smart_spen_mode").performClick()
         compose.runOnIdle { assertTrue(smartPenToggles >= 2) }
         captureOnlySyntheticScreen("solving-board-phone.png")

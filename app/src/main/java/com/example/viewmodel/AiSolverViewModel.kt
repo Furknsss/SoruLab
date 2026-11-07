@@ -874,6 +874,8 @@ class AiSolverViewModel : ViewModel() {
                 // A global question-number map is unsafe for books where each test
                 // restarts from question 1. Use a section + test scoped index instead.
                 val scopedAnswers = PdfScopedAnswerKeys()
+                // A page without its own printed TEST label continues the previous test.
+                var lastPageAnswerScope: com.example.util.PdfAnswerScope? = null
                 val mergedPageMap = localBlueprint.pageMap
                 val finalBookTitle = localBlueprint.detectedBookTitle
                 var defaultExamType = localBlueprint.defaultExamType
@@ -1072,9 +1074,9 @@ class AiSolverViewModel : ViewModel() {
                                     topicName = resolvedPageTopic,
                                     isSkipPage = false
                                 )
-                                val pageAnswerScope = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+                                val pageAnswerScope = (PdfScopedAnswerKeys.scopeFromQuestionHeader(
                                     pageLayout.scopeHeaderText, scanPageInfo.topicName
-                                )
+                                ) ?: lastPageAnswerScope).also { lastPageAnswerScope = it }
 
                                 val croppedBoxes = try {
                                     StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(

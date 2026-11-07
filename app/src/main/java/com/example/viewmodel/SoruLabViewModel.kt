@@ -2333,7 +2333,13 @@ class SoruLabViewModel(
             for ((idx, item) in cleanItems.withIndex()) {
                 // Reprocessing improves geometry and source headings; neither is an
                 // immutable identity. Reuse an unambiguous printed question's ID.
-                val previous = existingBySource[Triple(item.bookId, item.pageIndex, item.questionNumberInTest)]
+                // Two different tests may use the same question number on one
+                // PDF page. Reuse an old record only when the printed test
+                // identity agrees; otherwise ZIP import can overwrite a
+                // question from an unrelated test.
+                val previous = existingBySource[
+                    Triple(item.bookId, item.pageIndex, item.questionNumberInTest)
+                ]?.takeIf { it.sourceTestId == item.sourceTestId }
                 val identity = "${item.bookId}|${item.sourceTestId}|${item.pageIndex}|${item.questionNumberInTest}|${item.boxNormalized}"
                 val recordId = previous?.id ?: if (item.bookId.isNotBlank()) "cq_" + java.util.UUID.nameUUIDFromBytes(identity.toByteArray(Charsets.UTF_8)) else "cq_${batchTimestamp}_${idx}_${(100..999).random()}"
                 // Page crops are already durable files under filesDir/questions.

@@ -2119,7 +2119,8 @@ private fun SingleQuestionFocusedPageSurface(
             .background(Color.White)
             .padding(horizontal = 16.dp, vertical = 16.dp)
     ) {
-        val fitQuestionHeight = (maxHeight - 196.dp).coerceIn(72.dp, 760.dp)
+        // Give focused questions a full-height, book-like reading area.
+        val fitQuestionHeight = (maxHeight - 96.dp).coerceIn(140.dp, 900.dp)
         if (openThreeDotQuestionNumber != null) {
             Box(
                 modifier = Modifier
@@ -2184,12 +2185,6 @@ private fun SingleQuestionFocusedPageSurface(
                     }
                 }
             }
-            Text(
-                "${session.testItem.questions.indexOfFirst { it.id == question.id } + 1} / ${session.testItem.questions.size}",
-                color = Color(0xFF94A3B8),
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 16.dp)
-            )
         }
     }
 }

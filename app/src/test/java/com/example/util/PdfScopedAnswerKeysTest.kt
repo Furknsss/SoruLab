@@ -390,4 +390,18 @@ class PdfScopedAnswerKeysTest {
         assertEquals("A", index.get(explicitPageScope, 1))
     }
 
+    @Test
+    fun spacedLetterRunningBrandDoesNotReplaceVisibleChapterForTwoPageTest() {
+        val first = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "ANALİZ 8\nB İ Y O T İ K\nSinir Sistemi", ""
+        )
+        val continuation = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "ANALİZ 8\nB İ Y O T İ K\nSinir Sistemi", "Sinir Sistemi"
+        )
+        assertEquals("sinir sistemi", first?.section)
+        assertEquals(first, continuation)
+        assertEquals(8, first?.testNumber)
+    }
+
+
 }

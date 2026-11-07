@@ -1,0 +1,32 @@
+name: Paddle OCR GPU bootstrap and API contract checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/pdf-vision-gemini38-grounded-20261104
+    paths:
+      - 'tools/pdf-vision-lab/**'
+      - '.github/workflows/pdf-paddle-contract.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pdf-paddle-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check GPU bootstrap shell grammar
+        run: bash -n tools/pdf-vision-lab/bootstrap_paddle_vl.sh
+      - name: Unit-test official PaddleOCR HPS API request and response contract
+        run: python3 -m unittest discover -v -s tools/pdf-vision-lab -p 'test_*.py'
+      - name: Explain CI scope
+        run: |
+          echo "This runner has NOT executed PaddleOCR-VL inference."
+          echo "Passing contract tests proves only request/response and setup structure."
+          echo "A real NVIDIA GPU host must run bootstrap_paddle_vl.sh and the live inference canary."

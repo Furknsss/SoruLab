@@ -1,0 +1,97 @@
+name: RELEASE GATE - real complete textbook Android acceptance
+
+# No preview APK is eligible for user delivery on unit/synthetic tests alone.
+# 2026-11-07: original 272-page textbook + independently enumerated 1434-question reference.
+# Release prohibited until the full private emulated import/restore gate succeeds.
+# 2026-11-07: verify one-time encrypted source transfer + actual Android import.\n# This opt-in job requires the ORIGINAL private full.pdf and an INDEPENDENT,
+# complete page/question/answer reference, encrypted for this particular runner.
+on:
+  workflow_dispatch:
+  # The linked GitHub interface cannot currently dispatch workflows.
+  # A reviewed workflow-file edit starts this strictly private QA gate.
+  # Uploading encrypted fixture parts does NOT start additional runners.
+  push:
+    branches:
+      - feat/pdf-vision-gemini38-grounded-20261104
+    paths:
+      - .github/workflows/pdf-real-book-acceptance.yml
+
+permissions:
+  contents: read
+
+jobs:
+  real-book-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create ephemeral source decryption key
+        run: |
+          python3 -m pip install cryptography
+          python3 scripts/private_pdf_fixture_crypto.py generate \
+            "$RUNNER_TEMP/real-book-key.pem" app/build/real-book-public-key
+      - name: Publish only the one-time PUBLIC encryption key
+        uses: actions/upload-artifact@v4
+        with:
+          name: sorulab-real-book-public-key
+          path: app/build/real-book-public-key/
+          retention-days: 1
+      - name: Receive independently prepared encrypted full original book and reference
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/private_pdf_fixture_crypto.py receive \
+            "$RUNNER_TEMP/real-book-key.pem" \
+            app/build/real-book-public-key/public-key.pem \
+            app/src/androidTest/assets/private-corpus \
+            "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME"
+          test -s app/src/androidTest/assets/private-corpus/full.pdf
+          test -s app/src/androidTest/assets/private-corpus/full-reference.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: sdkmanager 'platforms;android-36.1' 'build-tools;36.0.0'
+      - name: Require hardware-accelerated Android emulator
+        run: |
+          test -e /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          keytool -genkeypair -noprompt -keystore debug.keystore \
+            -storepass android -keypass androiddebugkey -alias androiddebugkey \
+            -dname 'CN=Real Book QA,O=SoruLab,C=TR' -keyalg RSA -keysize 2048 -validity 2
+      - name: Run ORIGINAL 272-page book through real ViewModel, save and reopen
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          emulator-options: '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none'
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: |
+            adb shell cmd connectivity airplane-mode enable
+            adb shell svc wifi disable
+            adb shell svc data disable
+            bash ./gradlew :app:connectedDebugAndroidTest \
+              --no-daemon --no-configuration-cache --max-workers=2 \
+              -Pandroid.testInstrumentationRunnerArguments.class=com.example.util.PdfRealBookAcceptanceDeviceTest \
+              -Pandroid.testInstrumentationRunnerArguments.sorulab.realBookAcceptance=true
+      - name: Preserve only pass/fail instrumentation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sorulab-real-book-acceptance-report
+          path: |
+            app/build/outputs/androidTest-results/connected/**/*.xml
+            app/build/reports/androidTests/connected/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Purge plaintext, ephemeral keys and built test APKs
+        if: always()
+        run: |
+          rm -rf app/src/androidTest/assets/private-corpus
+          rm -f "$RUNNER_TEMP/real-book-key.pem"
+          rm -rf app/build/outputs/apk/androidTest app/build/intermediates/assets/

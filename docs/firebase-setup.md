@@ -51,17 +51,31 @@ Firestore App Check enforcement is enabled, verify production app requests
 first; debug builds use the Firebase App Check debug provider and need a
 registered debug token when enforcement is active.
 
-## Free on-device PDF question cropping and answer matching
+## Free offline PDF processing
 
-The PDF import path uses the PDF's embedded text layer when available, on-device
-ML Kit Latin-script text recognition for scanned pages, and SoruLab's local
-dual-column pixel-projection cropper. Page images are not sent to an OCR vendor,
-and the PDF cropping and answer-key extraction path does not use Gemini or a
-paid cloud OCR API.
+PDF import has no Firebase AI dependency, token exchange, HTTP endpoint, cloud
+consent gate, or API quota. The Firebase AI SDK and live-generation canary have
+been removed. Existing account/storage configuration above remains separate.
+AI controls return existing stored solutions or an explicit unavailable message;
+they do not invoke a billed model or fabricate a new solution.
 
-Answer keys are extracted only from pages with a recognized answer-key heading
-and matched by a printed question number detected on the question page. Page
-order is never treated as the printed question number. Conflicting repeated
-numbers are left unmatched; image quality, unusual layouts, and OCR mistakes
-can still require manual verification. The local answer-key parser tests cover
-the supported printed answer-key formats.
+The installed engines are PDFBox/native PDF text extraction, bundled ML Kit
+Latin OCR, official Apache-2.0 PP-OCRv6_small Android ONNX inference, and local
+layout/crop/ink checks. Models are bundled at build time. Question identity
+and printed answer matching use chapter + test kind + test number + question
+number. A separate ML Kit reading must agree with native PDF/Paddle evidence;
+missing and conflicting answers are not guessed. Crop and source-key coverage
+checks still reject an incomplete book rather than falsely marking it complete.
+
+Device QA includes a full original synthetic PDF import with the emulator's
+network disabled. Representative user-source pages may be tested using a
+per-run encrypted fixture; the decryption key and plaintext stay on the ephemeral
+runner and are excluded from artifacts. Do not commit plaintext textbook pages
+or place them in screenshots/test report artifacts.
+
+Neither synthetic tests nor selected real-page checks certify every question
+in every book. Keep per-book evidence and report remaining failures honestly.
+
+Sources:
+- https://developers.google.com/ml-kit/guides
+- https://www.paddleocr.ai/latest/en/version3.x/inference_deployment/cross_platform/android_deployment.html

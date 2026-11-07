@@ -632,6 +632,7 @@ fun SoruHavuzuAndPdfStudioView(
     }
     var selectedPdfUri by remember { mutableStateOf<Uri?>(null) }
     var selectedPdfFileName by remember { mutableStateOf("") }
+
     var totalPdfPages by remember { mutableIntStateOf(0) }
     var isReadingPdf by remember { mutableStateOf(false) }
     var pdfSelectionError by remember { mutableStateOf<String?>(null) }
@@ -1049,6 +1050,11 @@ fun SoruHavuzuAndPdfStudioView(
                                 }
                             }
                             Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "Ücretsiz · Cihaz içinde çalışır. PDF sayfaları buluta gönderilmez; internet, API anahtarı ve kota gerekmez.",
+                                modifier = Modifier.testTag("pdf_offline_processing_info").padding(vertical = 8.dp),
+                                color = Color(0xFF475569), fontSize = 12.sp, lineHeight = 17.sp
+                            )
 
                             // TAM GENİŞLİKLİ FERAH "BAŞLAT VE SİSTEME AKTAR" BUTONU (ASLA EZİLMEZ)
                             Button(

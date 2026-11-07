@@ -24,4 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "SoruLab"
 
-include(":app")
+include(":app", ":ppocr-sdk")

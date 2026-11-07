@@ -2470,9 +2470,14 @@ class SoruLabViewModel(
                 )
             }
 
-            val updatedList = ArrayList<CustomQuestionRecord>(newRecords.size + _userCustomQuestions.value.size)
+            // One HashSet membership check per existing record: adding the 50th
+            // textbook must not compare every old question with every new one.
+            // Snapshot the old pool once before constructing the merged list.
+            val cachedBeforeImport = _userCustomQuestions.value
+            val importedQuestionIds = newRecords.mapTo(HashSet<String>(newRecords.size)) { it.id }
+            val updatedList = ArrayList<CustomQuestionRecord>(newRecords.size + cachedBeforeImport.size)
             updatedList.addAll(newRecords)
-            updatedList.addAll(_userCustomQuestions.value.filterNot { old -> newRecords.any { it.id == old.id } })
+            updatedList.addAll(cachedBeforeImport.filterNot { it.id in importedQuestionIds })
 
             // A successful scan is not a successful import until an atomic
             // file write and read-back both succeed.

@@ -1,0 +1,72 @@
+name: PaddleOCR VL actual CPU inference experiment
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/pdf-vision-gemini38-grounded-20261104
+    paths:
+      - '.github/workflows/pdf-paddle-cpu-inference.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: paddle-vl-cpu-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actual-paddle-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check available CPU and storage
+        run: |
+          free -h
+          df -h .
+          python3 - <<'PY'
+          import importlib.machinery, pathlib
+          path='tools/pdf-vision-lab/smoke_paddle_endpoint.py'
+          m=importlib.machinery.SourceFileLoader('synthetic_paddle',path).load_module()
+          p=pathlib.Path('/tmp/sorulab-original-synthetic-page.png')
+          p.write_bytes(m.demo_png())
+          print('Original synthetic input:',p,p.stat().st_size)
+          PY
+      - name: Install official CPU PaddlePaddle and PaddleOCR-VL-1.6 parser
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install paddlepaddle==3.2.1 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+          python3 -m pip install 'paddleocr[doc-parser]==3.6.0'
+      - name: Invoke ACTUAL PaddleOCR-VL-1.6 inference on synthetic page
+        run: |
+          mkdir -p /tmp/sorulab-paddle-cpu-results
+          python3 - <<'PY'
+          from pathlib import Path
+          from paddleocr import PaddleOCRVL
+          p='/tmp/sorulab-original-synthetic-page.png'
+          parser=PaddleOCRVL(
+              pipeline_version='v1.6',
+              device='cpu',
+              use_doc_orientation_classify=False,
+              use_doc_unwarping=False
+          )
+          results=list(parser.predict(input=p))
+          assert len(results)==1, f'Expected 1 source page, got {len(results)}'
+          for page in results:
+              page.save_to_json(save_path='/tmp/sorulab-paddle-cpu-results')
+          files=list(Path('/tmp/sorulab-paddle-cpu-results').rglob('*.json'))
+          assert files, 'Paddle model ran but no structured JSON was saved'
+          print('Actual PaddleOCR CPU inference successfully saved:',[x.name for x in files])
+          PY
+      - name: Keep synthetic structured results (not publisher content)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sorulab-paddle-cpu-synthetic-inference
+          path: /tmp/sorulab-paddle-cpu-results/*.json
+          if-no-files-found: ignore
+          retention-days: 5

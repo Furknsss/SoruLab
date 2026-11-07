@@ -23,15 +23,15 @@ import com.example.util.PdfOcrTextCell
 import com.example.util.verifiedPrintedQuestionNumber
 import com.example.util.PdfScopedAnswerKeys
 import com.example.util.StudioImageAndPdfEngine
-import com.google.firebase.Firebase
-import com.google.firebase.ai.ai
-import com.google.firebase.ai.type.Schema
-import com.google.firebase.ai.type.content
-import com.google.firebase.ai.type.generationConfig
+import com.example.util.PdfPaddleMobileOcr
+import com.example.util.PdfPrintedKeyCoverageAudit
+import com.example.util.PdfAnswerId
 import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
@@ -43,10 +43,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import org.json.JSONObject
 
 data class AiChatMessage(
     val id: String,
@@ -147,7 +145,8 @@ private data class PdfPageOcrLayout(
     val answerRegions: List<List<String>> = emptyList(),
     val answerGrids: List<PdfHorizontalAnswerGrid> = emptyList(),
     val questionNumberAnchors: List<QuestionNumberAnchor> = emptyList(),
-    val optionAnchors: List<QuestionOptionAnchor> = emptyList()
+    val optionAnchors: List<QuestionOptionAnchor> = emptyList(),
+    val positionedText: List<PdfOcrTextCell> = emptyList()
 )
 
 @Immutable
@@ -165,37 +164,10 @@ private data class PdfLocalProcessingStatus(
 
 class AiSolverViewModel : ViewModel() {
 
-    private val generativeModel by lazy {
-        Firebase.ai.generativeModel("gemini-3.8-flash")
-    }
-
-    private val twinQuestionSchema = Schema.obj(
-        mapOf(
-            "questionStem" to Schema.string("Orijinal sorunun kazanımına birebir paralel yeni İkiz Soru metni"),
-            "optionA" to Schema.string("A şıkkı"),
-            "optionB" to Schema.string("B şıkkı"),
-            "optionC" to Schema.string("C şıkkı"),
-            "optionD" to Schema.string("D şıkkı"),
-            "optionE" to Schema.string("E şıkkı"),
-            "correctOption" to Schema.enumeration(listOf("A", "B", "C", "D", "E"), "Doğru seçenek"),
-            "solutionExplanation" to Schema.string("İkiz sorunun adım adım net çözümü")
-        )
-    )
-
-    private val twinQuestionGeneratorModel by lazy {
-        Firebase.ai.generativeModel(
-            modelName = "gemini-3.8-flash",
-            generationConfig = generationConfig {
-                responseMimeType = "application/json"
-                responseSchema = twinQuestionSchema
-            }
-        )
-    }
-
     private val initialWelcomeMessage = AiChatMessage(
         id = "welcome",
         isUser = false,
-        text = "Merhaba! Ben SoruLab AI Asistan. Takıldığın YKS (TYT & AYT) sorularını adım adım çözebilir, kritik teoremleri ve ÖSYM tuzak notlarını açıklayabilirim. Hangi soru üzerinde çalışalım?"
+        text = "PDF soruların cihazında ücretsiz işlenir. Kayıtlı soru çözümlerini burada görüntüleyebilirsin. Bu sürümde bulutla soru çözümü ve üretimi kapalıdır."
     )
 
     private val _messages = MutableStateFlow(listOf(initialWelcomeMessage))
@@ -231,279 +203,30 @@ class AiSolverViewModel : ViewModel() {
         _messages.value = listOf(initialWelcomeMessage)
     }
 
-    fun askAboutQuestion(
-        question: YksQuestion,
-        context: Context,
-        customPrompt: String = ""
-    ) {
-        if (customPrompt.isBlank() && lastAskedQuestionId == question.id && _messages.value.size > 1) {
-            return
-        }
-        lastAskedQuestionId = question.id
-
-        val promptToDisplay = if (customPrompt.isNotBlank()) {
-            customPrompt
-        } else {
-            "${question.topicHeader} • Soru ${question.number} için Kritik Bilgi, Adım Adım Çözüm ve ÖSYM Tuzak Notunu anlatır mısın?"
-        }
-
-        val userMsg = AiChatMessage(
-            id = "u_${System.currentTimeMillis()}",
-            isUser = true,
-            text = promptToDisplay,
+    fun askAboutQuestion(question: YksQuestion, context: Context, customPrompt: String = "") {
+        _messages.value = _messages.value + AiChatMessage(
+            id = "local_${System.currentTimeMillis()}", isUser = false,
+            text = buildStructuredSolutionForQuestion(question),
             attachedQuestionTitle = "${question.topicHeader} • Soru ${question.number}"
         )
-        _messages.value = _messages.value + userMsg
-        _isLoading.value = true
-
-        viewModelScope.launch {
-            val fullPrompt = buildString {
-                appendLine(SorulabAiQuality.SYSTEM_INSTRUCTION)
-                appendLine("Yanıt formatı: 1) Kritik Bilgi & Teorem 2) Adım Adım Çözüm 3) ÖSYM Tuzak Notu")
-                appendLine(SorulabAiQuality.questionContext(question))
-                if (customPrompt.isNotBlank()) {
-                    appendLine("Öğrencinin Özel Sorusu: $customPrompt")
-                }
-            }
-
-            val questionBmp = withContext(Dispatchers.IO) {
-                StudioImageAndPdfEngine.getCachedBitmap(
-                    context = context,
-                    path = question.imagePath,
-                    maxDimension = 1600
-                )
-            }
-
-            try {
-                val response = withTimeout(60_000L) {
-                    if (questionBmp != null) {
-                        generativeModel.generateContent(
-                            content {
-                                image(questionBmp)
-                                text(fullPrompt)
-                            }
-                        )
-                    } else {
-                        generativeModel.generateContent(fullPrompt)
-                    }
-                }
-                val replyText = response.text?.takeIf { it.isNotBlank() }
-                    ?: ("Adım Adım Çözüm (${question.topicHeader} - Soru ${question.number}):\n\n" +
-                        question.stepByStepSolution +
-                        "\n\nDoğru Cevap: ${question.correctOption}")
-
-                _messages.value = _messages.value + AiChatMessage(
-                    id = "ai_${System.currentTimeMillis()}",
-                    isUser = false,
-                    text = replyText
-                )
-            } catch (_: TimeoutCancellationException) {
-                _messages.value = _messages.value + AiChatMessage(
-                    id = "ai_${System.currentTimeMillis()}",
-                    isUser = false,
-                        text = SorulabAiQuality.fallbackNotice(question)
-                )
-            } catch (_: Exception) {
-                _messages.value = _messages.value + AiChatMessage(
-                    id = "ai_${System.currentTimeMillis()}",
-                    isUser = false,
-                    text = "Adım Adım Çözüm (${question.topicHeader} - Soru ${question.number}):\n\n" +
-                        "${question.stepByStepSolution}\n\nDoğru Seçenek: ${question.correctOption}"
-                )
-            } finally {
-                _isLoading.value = false
-            }
-        }
     }
 
-    /**
-     * Generates or retrieves the step-by-step solution on-demand when the user clicks
-     * "Soru Çözümü" inside the `⋮` (Three-Dot) menu in Review Mode.
-     */
     fun generateQuestionSolutionOnDemand(
-        question: YksQuestion,
-        context: Context,
-        onResult: (String) -> Unit
+        question: YksQuestion, context: Context, onResult: (String) -> Unit
     ) {
-        viewModelScope.launch {
-            val questionBmp = withContext(Dispatchers.IO) {
-                StudioImageAndPdfEngine.getCachedBitmap(
-                    context = context,
-                    path = question.imagePath,
-                    maxDimension = 1600
-                )
-            }
-
-            val prompt = buildString {
-                appendLine(SorulabAiQuality.SYSTEM_INSTRUCTION)
-                appendLine(SorulabAiQuality.questionContext(question))
-                appendLine("Görseldeki soruyu dikkatle incele ve çözümü kesinlikle şu 3 aşamalı formatta net Türkçe ile yaz:")
-                appendLine("📌 Kritik Bilgi & Teorem: [Sorunun çözümünde kullanılan temel formül, kazanım ve teorem]")
-                appendLine("✏️ Adım Adım Çözüm: [1. Adım, 2. Adım ve 3. Adım olarak sonucun neden ${question.correctOption} seçeneği olduğunu işlemli göster]")
-                appendLine("⚠️ ÖSYM Tuzak Notu: [Öğrencilerin bu soru tipinde sık düştüğü çeldirici ve dikkat edilmesi gereken nokta]")
-            }
-
-            val defaultStructuredText = buildStructuredSolutionForQuestion(question)
-
-            try {
-                val response = withTimeout(45_000L) {
-                    if (questionBmp != null) {
-                        generativeModel.generateContent(
-                            content {
-                                image(questionBmp)
-                                text(prompt)
-                            }
-                        )
-                    } else {
-                        generativeModel.generateContent(prompt)
-                    }
-                }
-                val text = response.text?.trim().orEmpty()
-                if (text.isNotBlank()) {
-                    onResult(text)
-                } else {
-                    onResult(defaultStructuredText)
-                }
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException && e !is TimeoutCancellationException) throw e
-                onResult(defaultStructuredText)
-            }
-        }
+        onResult(buildStructuredSolutionForQuestion(question))
     }
 
-    private fun buildStructuredSolutionForQuestion(question: YksQuestion): String {
-        val rawExisting = question.stepByStepSolution.trim()
-        if (rawExisting.contains("Kritik Bilgi") && rawExisting.contains("Adım Adım")) {
-            return rawExisting
-        }
-        val topic = question.topicHeader.ifBlank { "YKS Kazanımı" }
-        val ans = question.correctOption
-        return AiStructuredSolution(
-            kritikBilgiTeorem = "$topic kazanımında verilen bağıntıdaki sınır koşulları ve temel denklem eşitliği doğrudan uygulanır.",
-            adimAdimCozum = "1. Adım: Soruda verilen öncül ve sayısal değerler standart $topic bağıntısında yerine yazılır.\n" +
-                "2. Adım: İfade sadeleştirilip bilinmeyen büyüklük yalnız bırakıldığında aranan değer elde edilir.\n" +
-                "3. Adım: Elde edilen sonuç şıklarla eşleştirildiğinde doğru yanıt $ans seçeneği olarak bulunur.",
-            osymTuzakNotu = "Birim dönüşümleri, işaret değişimleri ve tanım kümesi sınır değerleri işlem sonunda mutlaka kontrol edilmelidir."
-        ).toFormattedText()
-    }
+    private fun buildStructuredSolutionForQuestion(question: YksQuestion): String =
+        question.stepByStepSolution.trim().takeIf { it.isNotBlank() }
+            ?: "Bu soru için kayıtlı çözüm bulunmuyor. Ücretsiz sürümde bulutla çözüm üretilmez."
 
-    /**
-     * Generates a 1-to-1 Twin Question ("İkiz Soru") on-demand when the user clicks
-     * "İkiz Soru" inside the `⋮` (Three-Dot) menu in Review Mode.
-     */
     fun generateTwinQuestionOnDemand(
-        question: YksQuestion,
-        context: Context,
-        onResult: (TwinQuestionModalData) -> Unit
+        question: YksQuestion, context: Context, onResult: (TwinQuestionModalData) -> Unit
     ) {
-        viewModelScope.launch {
-            val questionBmp = withContext(Dispatchers.IO) {
-                StudioImageAndPdfEngine.loadGuaranteedQuestionBitmap(
-                    context = context,
-                    questionId = question.id,
-                    imagePath = question.imagePath,
-                    imageBase64 = question.imageBase64,
-                    pdfFilePath = question.pdfFilePath,
-                    pageIndex = question.pageIndex,
-                    normLeft = question.normLeft,
-                    normTop = question.normTop,
-                    normRight = question.normRight,
-                    normBottom = question.normBottom
-                )?.copy(Bitmap.Config.ARGB_8888, false)
-            }
-            if (questionBmp == null) {
-                onResult(
-                    TwinQuestionModalData(
-                        topicTitle = question.topicHeader,
-                        difficultyLabel = question.difficulty.label,
-                        errorMessage = "Orijinal sorunun kırpılmış görseli bulunamadı; ikiz soru üretilemedi."
-                    )
-                )
-                return@launch
-            }
-
-            try {
-                val subjectName = SoruLabCatalog.subjectNameForTopic(question.topicHeader)
-                    ?: "Konu başlığından belirlenemedi"
-                val prompt = buildString {
-                    appendLine("Sen uzman bir ÖSYM YKS soru yazarısın.")
-                    appendLine("Görev: Görseldeki soruyu önce tamamen çözümle; sonra aynı kazanımı ölçen, aynı zorlukta ve aynı temel çözüm yöntemini gerektiren yeni bir ikiz soru yaz.")
-                    appendLine("Yeni soruda yalnızca sayıları/nesneleri rastgele değiştirme. Verilenler ve şıklar yeni soruya göre tutarlı olsun; öğrenci aynı beceriyi yeni veriler üzerinde uygulamak zorunda kalsın.")
-                    appendLine("Soru kökünü ve şıkları kopyalama. En az bir önemli niceliği veya koşulu değiştir; yeni sorunun cevabını sıfırdan hesapla. Orijinal sorunun doğru şıkkını yeni sorunun cevabı olarak varsayma.")
-                    appendLine("Önce şu iç kontrolleri yap, çıktıya yalnızca son sonucu yaz: kazanım aynı mı, çözüm yolu ve zorluk paralel mi, verilenler yeterli mi, tam olarak bir doğru şık var mı, çözüm hesapla tutarlı mı?")
-                    appendLine("A-E şıklarının beşi de dolu ve birbirinden farklı olmalı. Çeldiriciler yaygın işlem/kavram hatalarına dayansın; doğru cevap ve çözüm adımları birbiriyle uyuşsun.")
-                    appendLine("Orijinal soru şekil, grafik veya tablo gerektiriyorsa yeni soru için gereken tüm bilgileri soru metninde açıkça tarif et; var olmayan bir görsele atıf yapma.")
-                    appendLine("Matematiksel gösterimi ve Türkçe karakterleri koru. Yeni soru bağımsız, anlaşılır ve YKS sınav dilinde olsun.")
-                    appendLine("Konu bağlamı: ${question.topicHeader}")
-                    appendLine("Zorluk seviyesi: ${question.difficulty.label}")
-                    appendLine("Orijinal soru kökü: ${question.stemTop}")
-                    appendLine("Ders: ${question.subject.ifBlank { subjectName }}")
-                    appendLine("Konu: ${question.topicHeader}")
-                    if (question.bulletsOrSteps.isNotEmpty()) {
-                        appendLine("Orijinal veriler/öncüller: ${question.bulletsOrSteps.joinToString(" | ")}")
-                    }
-                    if (question.stemBottom.isNotBlank()) {
-                        appendLine("Orijinal yönerge: ${question.stemBottom}")
-                    }
-                    appendLine("Orijinal şıklar: ${question.options.entries.sortedBy { it.key }.joinToString(" | ") { "${it.key}) ${it.value}" }}")
-                    appendLine("Orijinal cevabın doğru şıkkı: ${question.correctOption} (yeni sorunun cevabı değildir)")
-                    if (question.stepByStepSolution.isNotBlank()) {
-                        appendLine("Orijinal çözüm yöntemi/kazanım ipucu: ${question.stepByStepSolution.take(1200)}")
-                    }
-                    appendLine("JSON şemasındaki alanları doldur; solutionExplanation yeni sorunun çözümünü işlem işlem doğrulasın.")
-                }
-                val response = withTimeout(45_000L) {
-                    twinQuestionGeneratorModel.generateContent(
-                        content {
-                            image(questionBmp)
-                            text(prompt)
-                        }
-                    )
-                }
-                val obj = JSONObject(cleanJsonResponse(response.text.orEmpty()))
-                val stem = obj.optString("questionStem", "").trim()
-                val options = mapOf(
-                    "A" to obj.optString("optionA", "").trim(),
-                    "B" to obj.optString("optionB", "").trim(),
-                    "C" to obj.optString("optionC", "").trim(),
-                    "D" to obj.optString("optionD", "").trim(),
-                    "E" to obj.optString("optionE", "").trim()
-                )
-                val correct = obj.optString("correctOption", "").uppercase()
-                val explanation = obj.optString("solutionExplanation", "").trim()
-                val distinctOptions = options.values
-                    .map { it.trim().lowercase().replace(Regex("\\s+"), " ") }
-                    .distinct()
-                if (stem.length < 25 || options.values.any(String::isBlank) ||
-                    distinctOptions.size != options.size ||
-                    correct !in options.keys || explanation.length < 20
-                ) {
-                    throw IllegalStateException("Gemini tutarlı ve birbirinden farklı A-E şıkları olan geçerli bir ikiz soru döndürmedi.")
-                }
-
-                onResult(
-                    TwinQuestionModalData(
-                        topicTitle = question.topicHeader,
-                        difficultyLabel = question.difficulty.label,
-                        questionStem = stem,
-                        options = options,
-                        correctOption = correct,
-                        solutionExplanation = explanation
-                    )
-                )
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException && e !is TimeoutCancellationException) throw e
-                onResult(
-                    TwinQuestionModalData(
-                        topicTitle = question.topicHeader,
-                        difficultyLabel = question.difficulty.label,
-                        errorMessage = "İkiz soru üretilemedi: ${e.localizedMessage ?: "Gemini yanıt hatası"}"
-                    )
-                )
-            } finally {
-                questionBmp.recycle()
-            }
-        }
+        onResult(TwinQuestionModalData(
+            errorMessage = "Ücretsiz sürümde bulutla ikiz soru üretimi kapalıdır."
+        ))
     }
 
     private suspend fun classifyCroppedQuestion(
@@ -515,7 +238,8 @@ class AiSolverViewModel : ViewModel() {
         visualDifficultyHint: String,
         hasDiagramOrGraph: Boolean,
         lineCountEstimate: Int,
-        processingStatus: PdfLocalProcessingStatus
+        processingStatus: PdfLocalProcessingStatus,
+        reader: TextRecognizer
     ): QuestionOcrClassification {
         val questionBitmap = withContext(Dispatchers.IO) {
             StudioImageAndPdfEngine.getCachedBitmap(context, imagePath, maxDimension = 1440)
@@ -535,7 +259,7 @@ class AiSolverViewModel : ViewModel() {
         }
 
         val localText = try {
-            recognizeQuestionText(questionBitmap)
+            recognizeQuestionText(questionBitmap, reader)
         } catch (e: CancellationException) {
             throw e
         } catch (_: OutOfMemoryError) {
@@ -557,14 +281,20 @@ class AiSolverViewModel : ViewModel() {
         )
     }
 
-    private suspend fun recognizePdfPageLayout(bitmap: Bitmap): PdfPageOcrLayout {
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        val recognized = try {
-            recognizer.process(InputImage.fromBitmap(bitmap, 0)).await()
-        } finally {
-            recognizer.close()
-        }
+    private suspend fun recognizePdfPageLayout(
+        bitmap: Bitmap,
+        reader: TextRecognizer,
+        nativeFooterKeys: Map<Int, String> = emptyMap()
+    ): PdfPageOcrLayout {
+        val recognized = reader.process(InputImage.fromBitmap(bitmap, 0)).await()
         val lines = recognized.textBlocks.flatMap { it.lines }
+        // Reuse these physical OCR lines for complete question regions.
+        // Avoid re-running ML Kit on each resulting JPEG unnecessarily.
+        val positionedText = lines.mapNotNull { line ->
+            line.boundingBox?.let { box ->
+                PdfOcrTextCell(line.text, box.left, box.top, box.right, box.bottom)
+            }
+        }
         val headerText = lines
             .filter { (it.boundingBox?.top ?: Int.MAX_VALUE) <= bitmap.height * 0.07f }
             .joinToString("\n") { it.text }
@@ -586,15 +316,7 @@ class AiSolverViewModel : ViewModel() {
         // Use this PDF's actual OCR geometry. Independent answer-key
         // columns must not share cells just because they have the same Y.
         var answerRegions = PdfAdaptiveAnswerRows.regions(
-            cells = lines.mapNotNull { line ->
-                line.boundingBox?.let {
-                    PdfOcrTextCell(
-                        text = line.text,
-                        left = it.left, top = it.top,
-                        right = it.right, bottom = it.bottom
-                    )
-                }
-            },
+            cells = positionedText,
             pageWidth = bitmap.width
         )
         // Dense answer-key pages are frequently fully rasterized. A normal
@@ -607,7 +329,7 @@ class AiSolverViewModel : ViewModel() {
         if (StudioImageAndPdfEngine.hasAnswerKeyMarker(recognized.text) ||
             sourceTestHeadings >= 3
         ) {
-            val detailedCells = recognizeDenseAnswerPage(bitmap)
+            val detailedCells = recognizeDenseAnswerPage(bitmap, reader)
             val detailedRegions = PdfAdaptiveAnswerRows.regions(
                 cells = detailedCells, pageWidth = bitmap.width
             )
@@ -634,9 +356,14 @@ class AiSolverViewModel : ViewModel() {
         )
         // Small footer text loses accuracy in whole-page OCR. Retry only this
         // region at a larger scale, mapping every box back to source coordinates.
-        if (answerGrids.isEmpty() && Regex("""[A-E]\s*[).]""").containsMatchIn(recognized.text)) {
-            val footerCells = recognizeAnswerFooter(bitmap)
-            answerGrids = PdfHorizontalAnswerGridReader.find(footerCells, bitmap.width, bitmap.height)
+        val footerRecoveryNeeded = com.example.util.PdfPrintedFooterRetryPolicy.shouldRetry(
+            nativeKeys = nativeFooterKeys,
+            primaryImageGrids = answerGrids,
+            primaryHasChoiceText = Regex("""[A-E]\s*[).]""").containsMatchIn(recognized.text)
+        )
+        if (footerRecoveryNeeded) {
+            val footerCells = recognizeAnswerFooter(bitmap, reader)
+            answerGrids = (answerGrids + PdfHorizontalAnswerGridReader.find(footerCells, bitmap.width, bitmap.height)).distinctBy { it.top / 8 to it.answers }
         }
         val optionRegex = Regex("""^\s*([A-E])\s*[).:]\s*""", RegexOption.IGNORE_CASE)
         val anchors = lines.mapNotNull { line ->
@@ -691,7 +418,8 @@ class AiSolverViewModel : ViewModel() {
             answerRegions = answerRegions,
             answerGrids = answerGrids,
             questionNumberAnchors = anchors,
-            optionAnchors = options
+            optionAnchors = options,
+            positionedText = positionedText
         )
     }
 
@@ -705,14 +433,13 @@ class AiSolverViewModel : ViewModel() {
      * The consensus detector, not this raw OCR output, decides if a recovered
      * number is trustworthy.
      */
-    private suspend fun recognizeSupplementalNumberAnchors(bitmap: Bitmap): List<QuestionNumberAnchor> {
+    private suspend fun recognizeSupplementalNumberAnchors(bitmap: Bitmap, reader: TextRecognizer): List<QuestionNumberAnchor> {
         val w = bitmap.width
         val h = bitmap.height
         if (w < 300 || h < 300) return emptyList()
         val startY = (h * .065f).toInt()
         val endY = (h * .935f).toInt().coerceAtMost(h)
         val margins = listOf(.025f to .35f, .435f to .80f)
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         val results = mutableListOf<QuestionNumberAnchor>()
         try {
             for ((startXFraction, endXFraction) in margins) {
@@ -729,7 +456,7 @@ class AiSolverViewModel : ViewModel() {
                     (crop.height * scale).toInt().coerceAtLeast(1), true
                 ) else crop
                 try {
-                    val recognized = recognizer.process(InputImage.fromBitmap(enlarged, 0)).await()
+                    val recognized = reader.process(InputImage.fromBitmap(enlarged, 0)).await()
                     for (line in recognized.textBlocks.flatMap { it.lines }) {
                         val printed = com.example.util.PdfOcrQuestionMarker
                             .numberAtStart(line.text)
@@ -765,15 +492,12 @@ class AiSolverViewModel : ViewModel() {
             android.util.Log.w("SoruLabPdfOCR", "Margin OCR memory limit; primary pass retained")
         } catch (error: Exception) {
             android.util.Log.w("SoruLabPdfOCR", "Margin OCR unavailable; primary pass retained", error)
-        } finally {
-            recognizer.close()
         }
         return results
     }
 
     /** High-resolution, on-device fallback for dense scanned answer tables. */
-    private suspend fun recognizeDenseAnswerPage(bitmap: Bitmap): List<PdfOcrTextCell> {
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    private suspend fun recognizeDenseAnswerPage(bitmap: Bitmap, reader: TextRecognizer): List<PdfOcrTextCell> {
         val cells = mutableListOf<PdfOcrTextCell>()
         try {
             // Overlap preserves test headers located exactly on a tile edge.
@@ -790,7 +514,7 @@ class AiSolverViewModel : ViewModel() {
                     (cropped.height * scale).toInt().coerceAtLeast(1), true
                 ) else cropped
                 try {
-                    val recognized = recognizer.process(
+                    val recognized = reader.process(
                         InputImage.fromBitmap(enlarged, 0)
                     ).await()
                     for (line in recognized.textBlocks.flatMap { it.lines }) {
@@ -815,23 +539,132 @@ class AiSolverViewModel : ViewModel() {
         } catch (error: Exception) {
             android.util.Log.w("SoruLabPdfOCR",
                 "Dense answer OCR fallback unavailable", error)
-        } finally {
-            recognizer.close()
         }
         return cells.distinctBy { cell ->
             Triple(cell.text, cell.left / 9, cell.top / 9)
         }
     }
 
-    private suspend fun recognizeAnswerFooter(bitmap: Bitmap): List<PdfOcrTextCell> {
+
+    /**
+     * High-detail, independent ML Kit recovery for a printed number/letter
+     * footer that is already present in the PDF text layer or in Paddle OCR.
+     *
+     * Full-page text recognition can see a 1..N strip as one tiny undeciphered
+     * blob. Two overlapping horizontal tiles give ML Kit ~3x the pixels while
+     * preserving physical answer-cell coordinates. Read the line and element
+     * interpretations separately; merging them creates duplicate numbers.
+     *
+     * This is OCR of the actual page image, not a copy of the PDF native
+     * answer labels. Failed reads remain unverified.
+     */
+    private suspend fun recognizeAnswerFooterTiledGrids(
+        bitmap: Bitmap,
+        reader: TextRecognizer,
+        expectedNativeKeys: Map<Int, String> = emptyMap()
+    ): List<PdfHorizontalAnswerGrid> {
+        val recovered = mutableListOf<PdfHorizontalAnswerGrid>()
+        val top = (bitmap.height * .65f).toInt()
+            .coerceIn(0, bitmap.height - 1)
+        try {
+            // The source key of a real 272-page textbook spans ~25%..77%
+            // of the page width. Neither 0..72% nor 28..100% contains
+            // its entire 1..12 sequence, and the grid validator rightly
+            // refuses to invent the missing first/last cells. Always read
+            // the WHOLE footer at high resolution first; the overlapping
+            // tiles remain supplemental evidence for tiny printed letters.
+            for ((leftFraction, rightFraction) in
+                listOf(0f to 1f, 0f to .72f, .28f to 1f)
+            ) {
+                val left = (bitmap.width * leftFraction).toInt()
+                    .coerceIn(0, bitmap.width - 1)
+                val right = (bitmap.width * rightFraction).toInt()
+                    .coerceIn(left + 1, bitmap.width)
+                val crop = Bitmap.createBitmap(
+                    bitmap, left, top, right - left, bitmap.height - top
+                )
+                val scale = minOf(
+                    3.25f, 3100f / crop.width, 2500f / crop.height
+                ).coerceAtLeast(1f)
+                val enlarged = if (scale > 1.01f) Bitmap.createScaledBitmap(
+                    crop,
+                    (crop.width * scale).toInt().coerceAtLeast(1),
+                    (crop.height * scale).toInt().coerceAtLeast(1),
+                    true
+                ) else crop
+                try {
+                    val recognized = reader.process(
+                        InputImage.fromBitmap(enlarged, 0)
+                    ).await()
+                    val lines = recognized.textBlocks.flatMap { it.lines }
+                    val elementCells = lines.flatMap { it.elements }
+                        .mapNotNull { element ->
+                            element.boundingBox?.let { box ->
+                                PdfOcrTextCell(
+                                    element.text,
+                                    left + (box.left / scale).toInt(),
+                                    top + (box.top / scale).toInt(),
+                                    left + (box.right / scale).toInt(),
+                                    top + (box.bottom / scale).toInt()
+                                )
+                            }
+                        }
+                    val lineCells = lines.mapNotNull { line ->
+                        line.boundingBox?.let { box ->
+                            PdfOcrTextCell(
+                                line.text,
+                                left + (box.left / scale).toInt(),
+                                top + (box.top / scale).toInt(),
+                                left + (box.right / scale).toInt(),
+                                top + (box.bottom / scale).toInt()
+                            )
+                        }
+                    }
+                    val elementGrids = PdfHorizontalAnswerGridReader.find(
+                        elementCells, bitmap.width, bitmap.height
+                    )
+                    recovered += if (elementGrids.isNotEmpty()) elementGrids
+                    else PdfHorizontalAnswerGridReader.find(
+                        lineCells, bitmap.width, bitmap.height
+                    )
+                    // The first full-width image pass is enough only when
+                    // its physical A-E cells EXACTLY match the independent
+                    // native PDF text layer. Save two additional OCR passes.
+                    // Mismatches preserve the original three-pass recovery.
+                    if (leftFraction == 0f && rightFraction == 1f &&
+                        expectedNativeKeys.isNotEmpty()
+                    ) {
+                        val agreed = recovered.firstOrNull { grid ->
+                            com.example.util.PdfNativePageFastPath
+                                .independentFooterAgrees(expectedNativeKeys, grid.answers)
+                        }
+                        if (agreed != null) return listOf(agreed)
+                    }
+                } finally {
+                    if (enlarged !== crop) enlarged.recycle()
+                    crop.recycle()
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (oom: OutOfMemoryError) {
+            android.util.Log.w("SoruLabPdfOCR", "Tiled footer OCR exceeds device memory")
+        } catch (error: Exception) {
+            android.util.Log.w("SoruLabPdfOCR", "Tiled footer OCR unavailable", error)
+        }
+        return recovered.distinctBy { grid ->
+            grid.top / 10 to grid.answers
+        }
+    }
+
+    private suspend fun recognizeAnswerFooter(bitmap: Bitmap, reader: TextRecognizer): List<PdfOcrTextCell> {
         val top = (bitmap.height * 0.7f).toInt()
         val crop = Bitmap.createBitmap(bitmap, 0, top, bitmap.width, bitmap.height - top)
         val targetWidth = (bitmap.width * 2).coerceAtMost(3600)
         val scale = targetWidth.toFloat() / crop.width
         val enlarged = Bitmap.createScaledBitmap(crop, targetWidth, (crop.height * scale).toInt(), true)
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         return try {
-            val result = recognizer.process(InputImage.fromBitmap(enlarged, 0)).await()
+            val result = reader.process(InputImage.fromBitmap(enlarged, 0)).await()
             result.textBlocks.flatMap { it.lines }.flatMap { it.elements }.mapNotNull { element ->
                 element.boundingBox?.let { box ->
                     PdfOcrTextCell(element.text, (box.left / scale).toInt(), top + (box.top / scale).toInt(),
@@ -843,21 +676,14 @@ class AiSolverViewModel : ViewModel() {
         } catch (_: Exception) {
             emptyList()
         } finally {
-            recognizer.close()
             if (enlarged !== crop) enlarged.recycle()
             crop.recycle()
         }
     }
 
-    private suspend fun recognizeQuestionText(bitmap: Bitmap): String =
+    private suspend fun recognizeQuestionText(bitmap: Bitmap, reader: TextRecognizer): String =
         withContext(Dispatchers.IO) {
-            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-            val recognizedText = try {
-                recognizer.process(InputImage.fromBitmap(bitmap, 0)).await()
-            } finally {
-                recognizer.close()
-            }
-            recognizedText.text
+            reader.process(InputImage.fromBitmap(bitmap, 0)).await().text
         }
 
     private fun buildQuestionOcrClassification(
@@ -955,62 +781,10 @@ class AiSolverViewModel : ViewModel() {
 
     fun sendFreeMessage(userText: String, bitmap: Bitmap? = null) {
         if (userText.isBlank() && bitmap == null) return
-        val trimmedText = userText.trim()
-        val historyContext = _messages.value
-            .takeLast(6)
-            .joinToString("\n") { msg ->
-                if (msg.isUser) "Öğrenci: ${msg.text}" else "SoruLab AI: ${msg.text}"
-            }
-
-        val userMsg = AiChatMessage(
-            id = "u_${System.currentTimeMillis()}",
-            isUser = true,
-            text = if (trimmedText.isBlank()) "Görseldeki soruyu adım adım çözer misin?" else trimmedText,
-            attachedQuestionTitle = if (bitmap != null) "Görsel Soru Eklendi" else null
+        _messages.value = _messages.value + AiChatMessage(
+            id = "local_${System.currentTimeMillis()}", isUser = false,
+            text = "Bu ücretsiz sürümde bulut AI çağrısı yapılmaz. PDF kırpma, basılı cevap anahtarı okuma ve soru çözme ekranı cihazında çalışır."
         )
-        _messages.value = _messages.value + userMsg
-        _isLoading.value = true
-
-        viewModelScope.launch {
-            val systemInstruction = buildString {
-                appendLine("Sen SoruLab AI adında uzman bir YKS (TYT-AYT) akademik koç ve soru çözüm asistanısın.")
-                appendLine("Soruları adım adım net Türkçe ile yanıtla.")
-                if (historyContext.isNotBlank()) {
-                    appendLine("\nÖnceki Sohbet Bağlamı:")
-                    appendLine(historyContext)
-                }
-                appendLine("\nÖğrencinin Yeni Mesajı: $trimmedText")
-            }
-
-            try {
-                val response = withTimeout(60_000L) {
-                    if (bitmap != null) {
-                        val inputContent = content {
-                            image(bitmap)
-                            text(systemInstruction)
-                        }
-                        generativeModel.generateContent(inputContent)
-                    } else {
-                        generativeModel.generateContent(systemInstruction)
-                    }
-                }
-                val reply = response.text?.takeIf { it.isNotBlank() }
-                    ?: "Mesajınızı aldım, ancak şu an yanıt üretilemedi. Lütfen sorunuzu biraz daha detaylandırarak tekrar gönderin."
-                _messages.value = _messages.value + AiChatMessage(
-                    id = "ai_${System.currentTimeMillis()}",
-                    isUser = false,
-                    text = reply
-                )
-            } catch (e: Exception) {
-                _messages.value = _messages.value + AiChatMessage(
-                    id = "ai_${System.currentTimeMillis()}",
-                    isUser = false,
-                    text = "Bağlantı zaman aşımına uğradı veya AI servisine şu an erişilemiyor (${e.localizedMessage ?: "Bağlantı hatası"}). Lütfen internet bağlantınızı kontrol edip tekrar deneyin."
-                )
-            } finally {
-                _isLoading.value = false
-            }
-        }
     }
 
     private fun cleanJsonResponse(raw: String): String {
@@ -1039,7 +813,7 @@ class AiSolverViewModel : ViewModel() {
         _batchErrorText.value = null
         _batchWarningText.value = null
         _batchProgressPercent.value = 4
-        _batchStatusText.value = "PDF açılıyor ve yapısal başlıklar ile cevap anahtarı okunuyor..."
+        _batchStatusText.value = "PDF cihazında açılıyor..."
 
         viewModelScope.launch {
             val reusableBitmapRef = arrayOfNulls<Bitmap>(1)
@@ -1074,16 +848,21 @@ class AiSolverViewModel : ViewModel() {
                 val resolvedDisplayName = withContext(Dispatchers.IO) {
                     StudioImageAndPdfEngine.resolvePdfDisplayName(context, pdfUri, fileNameHint)
                 }
-                val pdfDigest = java.security.MessageDigest.getInstance("SHA-256")
-                seekablePdfFile.inputStream().use { input ->
-                    val buffer = ByteArray(65536)
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        pdfDigest.update(buffer, 0, count)
+                // Hashing a 40+ MB textbook on Main freezes Compose input and
+                // animations. Keep the stable content-derived book ID, but stream
+                // the digest on the IO dispatcher with a bounded buffer.
+                val bookId = withContext(Dispatchers.IO) {
+                    val digest = java.security.MessageDigest.getInstance("SHA-256")
+                    seekablePdfFile.inputStream().buffered(65536).use { input ->
+                        val buffer = ByteArray(65536)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            digest.update(buffer, 0, count)
+                        }
                     }
+                    "book_" + digest.digest().joinToString("") { "%02x".format(it) }
                 }
-                val bookId = "book_" + pdfDigest.digest().joinToString("") { "%02x".format(it) }
                 val archivedPdfPath = withContext(Dispatchers.IO) {
                     StudioImageAndPdfEngine.persistBookPdf(context, seekablePdfFile, bookId)
                 }
@@ -1123,7 +902,7 @@ class AiSolverViewModel : ViewModel() {
                 // STEP 2: Use the local PDF text layer and curriculum dictionary.
                 _batchProgressPercent.value = 14
                 _batchStatusText.value =
-                    "Yerel PDF metin haritası hazırlandı • ML Kit OCR ve SoruLab kırpma motoru başlatılıyor..."
+                    "PDF metin haritası hazırlandı • Ücretsiz cihaz içi OCR ve kırpma başlatılıyor..."
 
                 // STEP 3: On-device ML Kit OCR anchors plus SoruLab's local question-region cropper.
                 val resolvedPub = SoruLabPublisherPresets.resolvePublisher(publisherName, customPublishers)
@@ -1139,6 +918,9 @@ class AiSolverViewModel : ViewModel() {
                 var pageCoveragePagesAudited = 0
                 val pendingHorizontalGrids = mutableListOf<Pair<PdfAnswerScope, PdfHorizontalAnswerGrid>>()
                 val pendingVectorFooterKeys = mutableListOf<Pair<PdfAnswerScope, Map<Int, String>>>()
+                val pendingSecondaryAnswerRegions = mutableListOf<List<String>>()
+                val pendingSecondaryGrids = mutableListOf<Pair<PdfAnswerScope, com.example.util.PdfHorizontalAnswerGrid>>()
+                var offlineRejectedQuestionPages = 0
                 var detectedAnswerPages = 0
                 var pageRenderFailureCount = 0
                 val suspectedSkippedQuestionPages = linkedSetOf<Int>()
@@ -1147,6 +929,18 @@ class AiSolverViewModel : ViewModel() {
                 val pageIndicesToScan = 0 until totalPdfPages
 
                 withContext(Dispatchers.IO) {
+                    val pageOcrReader = TextRecognition.getClient(
+                        TextRecognizerOptions.DEFAULT_OPTIONS
+                    )
+                    // At most two simultaneous crop OCR calls. Keep each
+                    // reader hot for the whole import; never process two
+                    // bitmap crops concurrently on one native recognizer.
+                    val cropOcrReaders = Array(2) {
+                        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                    }
+                    val cropOcrPool = Channel<TextRecognizer>(cropOcrReaders.size)
+                    cropOcrReaders.forEach { cropOcrPool.trySend(it) }
+                    try {
                     android.os.ParcelFileDescriptor.open(
                         seekablePdfFile,
                         android.os.ParcelFileDescriptor.MODE_READ_ONLY
@@ -1165,6 +959,7 @@ class AiSolverViewModel : ViewModel() {
 
                             for ((scanPos, pageIdx) in pageIndicesToScan.withIndex()) {
                                 if (pageIdx >= rendererTotal) continue
+                                val pageStartMs = android.os.SystemClock.elapsedRealtime()
                                 val pageInfo = mergedPageMap[pageIdx] ?: StudioImageAndPdfEngine.LocalPageMapEntry(
                                     pageIndex = pageIdx,
                                     examType = defaultExamType,
@@ -1204,23 +999,8 @@ class AiSolverViewModel : ViewModel() {
                                     null
                                 }
                                 if (pageBitmap == null) continue
+                                val renderFinishedAtMs = android.os.SystemClock.elapsedRealtime()
 
-                                val ocrPageLayout = try {
-                                    recognizePdfPageLayout(pageBitmap)
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (_: OutOfMemoryError) {
-                                    reusablePixelsRef[0] = null
-                                    processingStatus.ocrFailureCount++
-                                    PdfPageOcrLayout()
-                                } catch (_: Exception) {
-                                    processingStatus.ocrFailureCount++
-                                    PdfPageOcrLayout()
-                                }
-                                // Prefer a geometrically validated native text-layer
-                                // question run when OCR lost printed numbers. The
-                                // detector requires a consecutive aligned sequence;
-                                // scanned/image-only pages keep their ML Kit anchors.
                                 val source = localBlueprint.pageVectorQuestionAnchors[pageIdx]
                                 val nativeAnchors = source?.takeIf {
                                     it.pageWidth > 0f && it.pageHeight > 0f
@@ -1237,6 +1017,84 @@ class AiSolverViewModel : ViewModel() {
                                             pageBitmap.height).toInt().coerceIn(1, pageBitmap.height)
                                     )
                                 }.orEmpty()
+
+                                // Native text is a candidate, not an OCR verdict.
+                                // For fully selectable books, only an independent
+                                // rendered FOOTER vote plus physically matching
+                                // image-read question starts may bypass full-page
+                                // ML Kit OCR. Any disagreement uses the old path.
+                                val nativeFooterForFastPath =
+                                    localBlueprint.pageTextFooterKeys[pageIdx].orEmpty()
+                                val nativeHeaderForFastPath =
+                                    localBlueprint.pageSourceHeaders[pageIdx].orEmpty()
+                                val sourceTextFragmentsForFastPath =
+                                    localBlueprint.pageVectorTextFragments[pageIdx].orEmpty()
+                                val canTryNativeFastPath = com.example.util.PdfNativePageFastPath
+                                    .canTry(
+                                        printedQuestionStarts = nativeAnchors,
+                                        nativeFooterAnswers = nativeFooterForFastPath,
+                                        hasNativeChoices = pageIdx in localBlueprint.pageVectorOptionEvidence,
+                                        hasPrintedTestIdentity =
+                                            pageIdx in localBlueprint.pageVectorTestMarkers,
+                                        hasPageText = sourceTextFragmentsForFastPath.isNotEmpty(),
+                                        pageWidth = pageBitmap.width,
+                                        pageHeight = pageBitmap.height
+                                    )
+                                val fastImageFooter = if (canTryNativeFastPath &&
+                                    nativeFooterForFastPath.isNotEmpty()
+                                ) {
+                                    recognizeAnswerFooterTiledGrids(
+                                        pageBitmap, pageOcrReader, nativeFooterForFastPath
+                                    ).firstOrNull { grid ->
+                                        com.example.util.PdfNativePageFastPath.independentFooterAgrees(
+                                            nativeFooterForFastPath, grid.answers
+                                        )
+                                    }
+                                } else null
+                                val independentFooterReady = nativeFooterForFastPath.isEmpty() ||
+                                    fastImageFooter != null
+                                val fastImageMargin = if (canTryNativeFastPath &&
+                                    independentFooterReady
+                                ) {
+                                    recognizeSupplementalNumberAnchors(pageBitmap, pageOcrReader)
+                                } else emptyList()
+                                val fastGeometryConfirmed = canTryNativeFastPath &&
+                                    independentFooterReady &&
+                                    com.example.util.PdfNativeQuestionEvidence
+                                        .hasIndependentSpatialSupport(
+                                            nativeAnchors, fastImageMargin,
+                                            pageBitmap.width, pageBitmap.height
+                                        )
+                                val ocrPageLayout = if (fastGeometryConfirmed) {
+                                    android.util.Log.i(
+                                        "SoruLabPdfPerf",
+                                        "page=${pageIdx + 1} verifiedNativeFastPath=true"
+                                    )
+                                    PdfPageOcrLayout(
+                                        text = sourceTextFragmentsForFastPath.joinToString("\n") {
+                                            it.text
+                                        }.take(12_000),
+                                        headerText = nativeHeaderForFastPath,
+                                        scopeHeaderText = nativeHeaderForFastPath,
+                                        answerGrids = listOfNotNull(fastImageFooter),
+                                        questionNumberAnchors = nativeAnchors
+                                    )
+                                } else try {
+                                    recognizePdfPageLayout(
+                                        pageBitmap, pageOcrReader,
+                                        nativeFooterForFastPath
+                                    )
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: OutOfMemoryError) {
+                                    reusablePixelsRef[0] = null
+                                    processingStatus.ocrFailureCount++
+                                    PdfPageOcrLayout()
+                                } catch (_: Exception) {
+                                    processingStatus.ocrFailureCount++
+                                    PdfPageOcrLayout()
+                                }
+                                val primaryOcrFinishedAtMs = android.os.SystemClock.elapsedRealtime()
                                 // OCR can misread graph labels as extra question
                                 // numbers. Trust a coherent two-column vector
                                 // sequence even when OCR reports more candidates.
@@ -1257,18 +1115,167 @@ class AiSolverViewModel : ViewModel() {
                                 // usually just a watermark. Validate OCR
                                 // numerals a second time at higher resolution,
                                 // using the two printed column margins.
-                                val imageOnlyAnchors = if (!sourceBackedPage) {
-                                    val secondPass = recognizeSupplementalNumberAnchors(pageBitmap)
-                                    com.example.util.PdfPrintedAnchorConsensus.reconcile(
-                                        ocrPageLayout.questionNumberAnchors, secondPass,
-                                        pageBitmap.width, pageBitmap.height
+                                // A selectable-text PDF is independent native-key
+                                // evidence, but the whole-page ML Kit reader may miss
+                                // its tiny printed footer. A second *image* reader
+                                // (Paddle PP-OCRv6) can be compared with the native
+                                // keys without treating the PDF labels as their
+                                // own confirmation.
+                                val nativeFooterEvidence =
+                                    (localBlueprint.pageTextFooterKeys[pageIdx]?.size ?: 0) >= 4
+                                // Native *key* evidence is independent of
+                                // whether native *question starts* are strong
+                                // enough to drive cropping. Trust the printed
+                                // key as a second reading even on mixed pages.
+                                val needsNativeImageKeyVerification =
+                                    nativeFooterEvidence &&
+                                        ocrPageLayout.answerGrids.isEmpty()
+                                // On selectable-text pages, primary ML Kit can
+                                // independently corroborate the native PDF's
+                                // actual question positions. If so, expensive
+                                // full-page Paddle plus two margin OCR passes
+                                // add no extra certainty. Never skip a needed
+                                // independent read of the printed answer grid.
+                                val nativePrimarySpatiallyConfirmed = !sourceBackedPage &&
+                                    com.example.util.PdfNativeQuestionEvidence
+                                        .hasIndependentSpatialSupport(
+                                            nativeAnchors, ocrPageLayout.questionNumberAnchors,
+                                            pageBitmap.width, pageBitmap.height
+                                        )
+                                val skipDetailedPageReaders =
+                                    com.example.util.PdfNativeQuestionEvidence
+                                        .canSkipDetailedPageReaders(
+                                            sourceBackedPage,
+                                            nativeAnchors, ocrPageLayout.questionNumberAnchors,
+                                            pageBitmap.width, pageBitmap.height,
+                                            needsNativeImageKeyVerification
+                                        )
+                                val paddleEvidence = if (!skipDetailedPageReaders &&
+                                    android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
+                                ) {
+                                    try { PdfPaddleMobileOcr.readPage(context, pageBitmap) }
+                                    catch (e: CancellationException) { throw e }
+                                    catch (e: Exception) {
+                                        android.util.Log.w("SoruLabPaddle", "Independent on-device OCR unavailable", e)
+                                        null
+                                    }
+                                } else null
+                                val paddleFinishedAtMs = android.os.SystemClock.elapsedRealtime()
+                                val paddleGrids = paddleEvidence?.let {
+                                    PdfHorizontalAnswerGridReader.find(it.textCells, pageBitmap.width, pageBitmap.height)
+                                }.orEmpty()
+                                val paddleRegions = paddleEvidence?.let {
+                                    PdfAdaptiveAnswerRows.regions(it.textCells, pageBitmap.width)
+                                }.orEmpty()
+                                if (PdfScopedAnswerKeys.looksLikeAnswerPage(paddleRegions.flatten())) {
+                                    if (nativeFooterEvidence) {
+                                        // Paddle is image OCR; native PDF is the
+                                        // independent source, not the same reader.
+                                        pendingAnswerRegions.addAll(paddleRegions)
+                                    } else {
+                                        pendingSecondaryAnswerRegions.addAll(paddleRegions)
+                                    }
+                                }
+                                val imageOnlyAnchors = if (!sourceBackedPage &&
+                                    !skipDetailedPageReaders) {
+                                    // Avoid two extra enlarged OCR reads only when independent ML Kit
+                                    // and Paddle agree on every printed 1..N start at the same
+                                    // physical location. Ambiguous scans retain full recovery.
+                                    val corroboratedPrintedNumbers = (paddleGrids + ocrPageLayout.answerGrids)
+                                        .firstOrNull { grid ->
+                                            grid.answers.keys ==
+                                                (1..ocrPageLayout.questionNumberAnchors.size).toSet()
+                                        }?.answers?.keys.orEmpty()
+                                    val marginAlreadyConfirmed = com.example.util.PdfMarginRecoveryPolicy
+                                        .canSkipMarginPass(
+                                            primary = ocrPageLayout.questionNumberAnchors,
+                                            paddle = paddleEvidence?.questionNumberAnchors.orEmpty(),
+                                            pageWidth = pageBitmap.width,
+                                            pageHeight = pageBitmap.height,
+                                            printedAnswerNumbers = corroboratedPrintedNumbers
+                                        )
+                                    val secondPass = if (marginAlreadyConfirmed) emptyList()
+                                        else recognizeSupplementalNumberAnchors(pageBitmap, pageOcrReader)
+                                    // A false primary graph number must not block
+                                    // genuinely independent ML Kit margin + Paddle
+                                    // evidence of the complete printed sequence.
+                                    // A printed start remains source-backed and no
+                                    // reader may invent a question number.
+                                    val paddleNumbers = paddleEvidence?.questionNumberAnchors.orEmpty()
+                                    com.example.util.PdfPrintedAnchorConsensus.reconcileThree(
+                                        primary = ocrPageLayout.questionNumberAnchors,
+                                        marginPass = secondPass,
+                                        paddlePass = paddleNumbers,
+                                        pageWidth = pageBitmap.width,
+                                        pageHeight = pageBitmap.height
                                     )
                                 } else emptyList()
-                                val pageLayout = if (sourceBackedPage) {
+                                // Single-column textbook pages can have a
+                                // clean native printed run plus stray OCR
+                                // diagram numbers. Retain the PDF geometry
+                                // only where independent OCR spatially
+                                // corroborates a majority of actual starts.
+                                val nativeSpatiallyConfirmed = nativePrimarySpatiallyConfirmed ||
+                                    (!sourceBackedPage &&
+                                        com.example.util.PdfNativeQuestionEvidence
+                                            .hasIndependentSpatialSupport(
+                                                nativeAnchors, imageOnlyAnchors,
+                                                pageBitmap.width, pageBitmap.height
+                                            ))
+                                val useNativeQuestionStarts =
+                                    sourceBackedPage || nativeSpatiallyConfirmed
+                                var pageLayout = if (useNativeQuestionStarts) {
                                     ocrPageLayout.copy(questionNumberAnchors = nativeAnchors)
                                 } else ocrPageLayout.copy(questionNumberAnchors = imageOnlyAnchors)
-                                val hasQuestionOptions = sourceBackedPage ||
-                                    pageLayout.optionAnchors.map { it.option }.distinct().size >= 3
+                                // A second OCR reader is useful only when its actual
+                                // spatial A-E coordinates reach the cropper. Previously
+                                // we accepted Paddle-only choices as proof of a question
+                                // but passed the missing ML Kit choices to the cropper.
+                                // The native text layer or independent Paddle
+                                // reader can establish that a real footer exists,
+                                // but it cannot replace ML Kit's independent vote.
+                                // Retry ONLY when ML Kit missed printed cells.
+                                val independentFooterCount = maxOf(
+                                    localBlueprint.pageTextFooterKeys[pageIdx]?.size ?: 0,
+                                    paddleGrids.maxOfOrNull { it.answers.size } ?: 0
+                                )
+                                val primaryFooterCount =
+                                    pageLayout.answerGrids.maxOfOrNull { it.answers.size } ?: 0
+                                if (independentFooterCount >= 4 &&
+                                    primaryFooterCount < independentFooterCount
+                                ) {
+                                    val highResolutionFooter = recognizeAnswerFooterTiledGrids(
+                                        pageBitmap, pageOcrReader
+                                    )
+                                    if (highResolutionFooter.isNotEmpty()) {
+                                        pageLayout = pageLayout.copy(
+                                            answerGrids = (
+                                                pageLayout.answerGrids + highResolutionFooter
+                                            ).distinctBy { it.top / 10 to it.answers }
+                                        )
+                                    }
+                                }
+                                if (independentFooterCount >= 4) {
+                                    android.util.Log.i("SoruLabPdfKeyQA",
+                                        "page=${pageIdx + 1} nativeFooter=${localBlueprint.pageTextFooterKeys[pageIdx]?.size ?: 0}" +
+                                            " mlkitGrid=${ocrPageLayout.answerGrids.maxOfOrNull { it.answers.size } ?: 0}" +
+                                            " tiledGrid=${pageLayout.answerGrids.maxOfOrNull { it.answers.size } ?: 0}" +
+                                            " paddleGrid=${paddleGrids.maxOfOrNull { it.answers.size } ?: 0}" +
+                                            " nativeQuestionAnchors=${nativeAnchors.size}" +
+                                            " nativeTrusted=$sourceBackedPage"
+                                    )
+                                }
+                                val primaryChoiceCount = pageLayout.optionAnchors
+                                    .map { it.option.uppercase() }.distinct().size
+                                val paddleChoices = paddleEvidence?.optionAnchors.orEmpty()
+                                val paddleChoiceCount = paddleChoices
+                                    .map { it.option.uppercase() }.distinct().size
+                                val cropOptionAnchors = if (!useNativeQuestionStarts &&
+                                    paddleChoiceCount >= 3 &&
+                                    paddleChoiceCount > primaryChoiceCount
+                                ) paddleChoices else pageLayout.optionAnchors
+                                val hasQuestionOptions = useNativeQuestionStarts ||
+                                    cropOptionAnchors.map { it.option.uppercase() }.distinct().size >= 3
                                 val hasAnswerKeyMarker =
                                     StudioImageAndPdfEngine.hasAnswerKeyMarker(pageLayout.text)
                                 val isAnswerTablePage =
@@ -1329,23 +1336,34 @@ class AiSolverViewModel : ViewModel() {
                                     // printed above or below actual questions.
                                     // Skip only when there is NO valid A-E
                                     // multiple-choice question evidence.
-                                    val hasQuestionEvidence =
-                                        pageLayout.questionNumberAnchors.isNotEmpty() &&
-                                            hasQuestionOptions
+                                    val hasQuestionEvidence = hasQuestionOptions &&
+                                        pageLayout.questionNumberAnchors.isNotEmpty()
                                     if (!hasQuestionEvidence) {
                                         // A separate key page needs its own explicit heading.
-                                        if (gridHeaderScope != null) pageLayout.answerGrids.forEach {
-                                            pendingHorizontalGrids += gridHeaderScope to it
+                                        if (gridHeaderScope != null) {
+                                            pageLayout.answerGrids.forEach {
+                                                pendingHorizontalGrids += gridHeaderScope to it
+                                            }
+                                            // On a dedicated key page we used to
+                                            // skip Paddle's spatial table entirely,
+                                            // so a legitimate printed key could
+                                            // never achieve independent consensus.
+                                            paddleGrids.forEach {
+                                                pendingSecondaryGrids += gridHeaderScope to it
+                                            }
                                         }
                                         continue
                                     }
                                 }
-                                if (skipPage && !sourceBackedPage) {
+                                if (skipPage && !useNativeQuestionStarts && !hasQuestionOptions) {
                                     // A skip heuristic must never silently hide
                                     // a page with credible printed question and
                                     // multiple-choice evidence.
-                                    if (pageLayout.questionNumberAnchors.isNotEmpty() &&
-                                        hasQuestionOptions
+                                    if (com.example.util.PdfQuestionPagePresence.needsCropReview(
+                                            pageLayout.questionNumberAnchors,
+                                            cropOptionAnchors,
+                                            useNativeQuestionStarts
+                                        )
                                     ) suspectedSkippedQuestionPages.add(pageIdx)
                                     continue
                                 }
@@ -1353,11 +1371,12 @@ class AiSolverViewModel : ViewModel() {
                                 // printed number or the A-E row from whole-page
                                 // OCR. Do not invent missing anchors: mark this
                                 // page for review instead of reporting 100%.
-                                if (pageLayout.questionNumberAnchors.isEmpty() ||
-                                    !hasQuestionOptions) {
-                                    if (pageLayout.questionNumberAnchors.isNotEmpty() ||
-                                        pageLayout.optionAnchors.map { it.option }
-                                            .distinct().size >= 3
+                                if (pageLayout.questionNumberAnchors.isEmpty() || !hasQuestionOptions) {
+                                    if (com.example.util.PdfQuestionPagePresence.needsCropReview(
+                                            pageLayout.questionNumberAnchors,
+                                            cropOptionAnchors,
+                                            useNativeQuestionStarts
+                                        )
                                     ) suspectedSkippedQuestionPages.add(pageIdx)
                                     continue
                                 }
@@ -1400,7 +1419,20 @@ class AiSolverViewModel : ViewModel() {
                                         examType = examTypeForPage,
                                         subjectName = subjectForPage,
                                         header = pageLayout.scopeHeaderText
-                                    )
+                                    ) ?: (vectorHeaderScope ?: gridHeaderScope)?.section
+                                        ?.takeIf { section ->
+                                            // The chapter was physically printed on
+                                            // THIS page and parsed with the actual
+                                            // test number. Do not invent a topic
+                                            // from unrelated stem keywords or a
+                                            // PDF filename.
+                                            section.isNotBlank() &&
+                                                !section.startsWith("pdf-page-") &&
+                                                section.length >= 4
+                                        }?.split(Regex("""\s+"""))
+                                        ?.joinToString(" ") { word ->
+                                            word.replaceFirstChar { it.titlecase() }
+                                        }
                                 val explicitHeaderTopic = printedHeaderTopic
                                     ?: StudioImageAndPdfEngine.detectTopicNameFromText(
                                         examType = examTypeForPage,
@@ -1463,7 +1495,47 @@ class AiSolverViewModel : ViewModel() {
                                 if (pageAnswerScope != null) pageLayout.answerGrids.forEach { grid ->
                                     pendingHorizontalGrids += pageAnswerScope to grid
                                 }
+                                if (pageAnswerScope != null) paddleGrids.forEach { grid ->
+                                    // When the independent reference is already
+                                    // native PDF text, Paddle belongs to the
+                                    // image-reader channel, NOT the native one.
+                                    // For image-only pages Paddle remains the
+                                    // independent second channel behind ML Kit.
+                                    if (nativeFooterEvidence) {
+                                        pendingHorizontalGrids += pageAnswerScope to grid
+                                    } else {
+                                        pendingSecondaryGrids += pageAnswerScope to grid
+                                    }
+                                }
 
+                                // The last printed question must end ABOVE
+                                // the answer strip. ML Kit may miss its tiny
+                                // cells even when the independent Paddle image
+                                // reader finds them. Only use Paddle geometry
+                                // when EVERY grid cell exactly agrees with this
+                                // page's native printed key; never crop at an
+                                // unverified graph or options table.
+                                val lastPrintedQuestionTop =
+                                    pageLayout.questionNumberAnchors.maxOfOrNull { it.top }
+                                        ?: Int.MAX_VALUE
+                                val nativeCorroboratedFooterTop =
+                                    footerFromTextLayer?.let { native ->
+                                        paddleGrids.filter { grid ->
+                                            grid.answers.size >= 4 &&
+                                                grid.answers.size == native.size &&
+                                                grid.answers.all { (n, option) ->
+                                                    native[n] == option
+                                                } &&
+                                                grid.top > lastPrintedQuestionTop
+                                        }.minOfOrNull { it.top }
+                                    }
+                                val mlKitFooterTop = pageLayout.answerGrids
+                                    .filter { it.top > lastPrintedQuestionTop }
+                                    .minOfOrNull { it.top }
+                                val printedFooterCropLimit = listOfNotNull(
+                                    nativeCorroboratedFooterTop, mlKitFooterTop
+                                ).minOrNull()
+                                val cropStartedAtMs = android.os.SystemClock.elapsedRealtime()
                                 var croppedBoxes = try {
                                     StudioImageAndPdfEngine.cropRenderedPageLocalDualColumn(
                                         context = context,
@@ -1472,12 +1544,9 @@ class AiSolverViewModel : ViewModel() {
                                         totalPages = rendererTotal,
                                         reusablePixelsRef = reusablePixelsRef,
                                         questionNumberAnchors = pageLayout.questionNumberAnchors,
-                                        optionAnchors = pageLayout.optionAnchors,
-                                        maxQuestionBottomY = pageLayout.answerGrids
-                                            .filter { grid ->
-                                                grid.top > (pageLayout.questionNumberAnchors
-                                                    .maxOfOrNull { it.top } ?: Int.MAX_VALUE)
-                                            }.minOfOrNull { it.top }
+                                        optionAnchors = cropOptionAnchors,
+                                        maxQuestionBottomY = printedFooterCropLimit,
+                                        embedImageBase64 = false // persisted JPEG is the single source of image bytes
                                     )
                                 } catch (e: CancellationException) {
                                     throw e
@@ -1516,12 +1585,9 @@ class AiSolverViewModel : ViewModel() {
                                             totalPages = rendererTotal,
                                             reusablePixelsRef = reusablePixelsRef,
                                             questionNumberAnchors = nativeAnchors,
-                                            optionAnchors = pageLayout.optionAnchors,
-                                            maxQuestionBottomY = pageLayout.answerGrids
-                                                .filter { grid ->
-                                                    grid.top > (nativeAnchors.maxOfOrNull { it.top }
-                                                        ?: Int.MAX_VALUE)
-                                                }.minOfOrNull { it.top }
+                                            optionAnchors = cropOptionAnchors,
+                                            maxQuestionBottomY = printedFooterCropLimit,
+                                        embedImageBase64 = false // persisted JPEG is the single source of image bytes
                                         )
                                     } catch (e: CancellationException) {
                                         throw e
@@ -1557,12 +1623,17 @@ class AiSolverViewModel : ViewModel() {
                                     }
                                 }
 
+                                val cropFinishedAtMs = android.os.SystemClock.elapsedRealtime()
                                 // A successful image save is NOT proof that
                                 // exactly one source question was cropped.
                                 // Validate rectangles against native printed
                                 // question coordinates when available.
+                                if (croppedBoxes.isEmpty()) {
+                                    offlineRejectedQuestionPages++
+                                    suspectedSkippedQuestionPages.add(pageIdx)
+                                }
                                 val auditSourceNumbers = when {
-                                    sourceBackedPage -> nativeAnchors
+                                    useNativeQuestionStarts -> nativeAnchors
                                     pageLayout.questionNumberAnchors.size >= 3 &&
                                         com.example.util.PdfColumnLayoutEvidence
                                             .hasTwoPrintedColumns(
@@ -1601,6 +1672,7 @@ class AiSolverViewModel : ViewModel() {
                                     pageCoverage.unsafeCropIndexes
                                 mergedOrMisnumberedCropCount += unsafeCropIndexes.size
 
+                                val classificationStartedAtMs = android.os.SystemClock.elapsedRealtime()
                                 val pageCandidates = if (croppedBoxes.isEmpty()) {
                                     emptyList()
                                 } else {
@@ -1608,24 +1680,113 @@ class AiSolverViewModel : ViewModel() {
                                         val semaphore = Semaphore(2)
                                         croppedBoxes.map { cropBox ->
                                             async {
-                                                semaphore.withPermit {
-                                                    classifyCroppedQuestion(
-                                                        context = context,
-                                                        imagePath = cropBox.croppedImagePath,
+                                                // Whole-page ML Kit has already run on
+                                                // this bitmap. If its spatial text is
+                                                // complete, skip a second bitmap load,
+                                                // JPEG decode and ML Kit model invocation.
+                                                // Selectable PDFs already contain
+                                                // OCR-free decoded text with physical
+                                                // line coordinates from PDFBox.
+                                                // A complete, crop-contained A-E
+                                                // run avoids re-decoding its JPEG
+                                                // and re-running ML Kit on the crop.
+                                                val nativeText = if (useNativeQuestionStarts &&
+                                                    source != null
+                                                ) {
+                                                    com.example.util.PdfPageQuestionTextReuse
+                                                        .readNativeIfComplete(
+                                                            fragments = localBlueprint
+                                                                .pageVectorTextFragments[pageIdx].orEmpty(),
+                                                            normalizedCrop = cropBox.boxNormalized,
+                                                            pdfPageWidth = source.pageWidth,
+                                                            pdfPageHeight = source.pageHeight
+                                                        )
+                                                } else null
+                                                val pageText = if (nativeText == null) {
+                                                    com.example.util.PdfPageQuestionTextReuse
+                                                        .readIfComplete(
+                                                            lines = pageLayout.positionedText,
+                                                            normalizedCrop = cropBox.boxNormalized,
+                                                            pageWidth = pageBitmap.width,
+                                                            pageHeight = pageBitmap.height
+                                                        )
+                                                } else null
+                                                // On scanned books Paddle has ALREADY
+                                                // read this whole page as an independent
+                                                // answer/anchor source. Reuse its
+                                                // crop-contained complete A-E text
+                                                // before firing another ML Kit crop
+                                                // inference; missing options still
+                                                // trigger the original detailed pass.
+                                                val paddleText = if (nativeText == null &&
+                                                    pageText == null && paddleEvidence != null
+                                                ) {
+                                                    com.example.util.PdfPageQuestionTextReuse
+                                                        .readIfComplete(
+                                                            lines = paddleEvidence.textCells,
+                                                            normalizedCrop = cropBox.boxNormalized,
+                                                            pageWidth = pageBitmap.width,
+                                                            pageHeight = pageBitmap.height
+                                                        )
+                                                } else null
+                                                val reused = nativeText ?: pageText ?: paddleText
+                                                if (reused != null) {
+                                                    buildQuestionOcrClassification(
+                                                        questionText = reused,
                                                         examTypeHint = scanPageInfo.examType,
                                                         subjectNameHint = scanPageInfo.subjectName,
-                                                        pageTopicHint = scanPageInfo.topicName,
-                                                        visualDifficultyHint = cropBox.estimatedDifficulty5,
+                                                        suggestedTopicName = scanPageInfo.topicName,
+                                                        trustSuggestedTopic = false,
                                                         hasDiagramOrGraph = cropBox.hasDiagramOrGraph,
                                                         lineCountEstimate = cropBox.lineCountEstimate,
-                                                        processingStatus = processingStatus
-                                                    )
+                                                        visualDifficultyHint = cropBox.estimatedDifficulty5
+                                                    ) to when {
+                                                        nativeText != null -> 0
+                                                        pageText != null -> 1
+                                                        else -> 2 // independently read Paddle
+                                                    }
+                                                } else {
+                                                    semaphore.withPermit {
+                                                        val cropReader = cropOcrPool.receive()
+                                                        try {
+                                                            classifyCroppedQuestion(
+                                                                context = context,
+                                                                imagePath = cropBox.croppedImagePath,
+                                                                examTypeHint = scanPageInfo.examType,
+                                                                subjectNameHint = scanPageInfo.subjectName,
+                                                                pageTopicHint = scanPageInfo.topicName,
+                                                                visualDifficultyHint = cropBox.estimatedDifficulty5,
+                                                                hasDiagramOrGraph = cropBox.hasDiagramOrGraph,
+                                                                lineCountEstimate = cropBox.lineCountEstimate,
+                                                                processingStatus = processingStatus,
+                                                                reader = cropReader
+                                                            ) to 3
+                                                        } finally {
+                                                            cropOcrPool.trySend(cropReader)
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }.awaitAll()
                                     }
+                                    android.util.Log.i(
+                                        "SoruLabPdfPerf",
+                                        "page=${pageIdx + 1}" +
+                                            " elapsedMs=${android.os.SystemClock.elapsedRealtime() - pageStartMs}" +
+                                            " renderMs=${renderFinishedAtMs - pageStartMs}" +
+                                            " primaryOcrMs=${primaryOcrFinishedAtMs - renderFinishedAtMs}" +
+                                            " paddleStageMs=${paddleFinishedAtMs - primaryOcrFinishedAtMs}" +
+                                            " geometryMs=${cropStartedAtMs - paddleFinishedAtMs}" +
+                                            " cropMs=${cropFinishedAtMs - cropStartedAtMs}" +
+                                            " classifyMs=${android.os.SystemClock.elapsedRealtime() - classificationStartedAtMs}" +
+                                            " crops=${classifications.size}" +
+                                            " nativeText=${classifications.count { it.second == 0 }}" +
+                                            " pageOcrText=${classifications.count { it.second == 1 }}" +
+                                            " paddleText=${classifications.count { it.second == 2 }}" +
+                                            " extraCropOcr=${classifications.count { it.second == 3 }}"
+                                    )
                                     croppedBoxes.mapIndexed { index, cropBox ->
-                                        val recognized = classifications[index]
+                                        val recognized = classifications[index].first
                                         // Only an explicit current-page heading may fill a missing
                                         // topic. A previous chapter or filename is not evidence.
                                         val classification = when {
@@ -1708,6 +1869,14 @@ class AiSolverViewModel : ViewModel() {
                             }
                         }
                     }
+                    } finally {
+                        // Always release the page model after successful,
+                        // failed or cancelled imports. Cropped-question OCR
+                        // uses separate readers and is already awaited.
+                        pageOcrReader.close()
+                        cropOcrReaders.forEach { it.close() }
+                        cropOcrPool.close()
+                    }
                 }
 
                 // After the full OCR scan, we know the printed chapters used
@@ -1723,9 +1892,31 @@ class AiSolverViewModel : ViewModel() {
                 for ((scope, grid) in pendingHorizontalGrids) {
                     scopedAnswers.addPairs(scope, grid.answers.toList())
                 }
+                val secondaryAnswers = PdfScopedAnswerKeys(observedSections)
+                localBlueprint.pageNativeAnswerRows.values.forEach(secondaryAnswers::addOcrRows)
+                pendingSecondaryAnswerRegions.forEach(secondaryAnswers::addOcrRows)
                 for ((scope, pageKeys) in pendingVectorFooterKeys) {
-                    scopedAnswers.addPairs(scope, pageKeys.toList())
+                    secondaryAnswers.addPairs(scope, pageKeys.toList())
                 }
+                for ((scope, grid) in pendingSecondaryGrids) {
+                    secondaryAnswers.addPairs(scope, grid.answers.toList())
+                }
+                // The printed key must agree between ML Kit and native PDF/Paddle.
+                // No model-generated solution is ever used as an answer key.
+                val printedKeyConsensus = com.example.util.PdfOfflineAnswerConsensus.compare(
+                    scopedAnswers, secondaryAnswers
+                )
+                val sourceKeysForCoverage = scopedAnswers.readings() + secondaryAnswers.readings()
+                val importedSourceIdentities = allExtractedQuestions.mapNotNull { item ->
+                    val scope = expectedScopeByQuestionId[item.id]
+                    val number = item.questionNumberInTest
+                    if (scope != null && number in 1..200) {
+                        PdfAnswerId(scope, number)
+                    } else null
+                }
+                val sourceKeyCoverage = PdfPrintedKeyCoverageAudit.assess(
+                    sourceKeysForCoverage, importedSourceIdentities
+                )
 
                 // Match the completed, per-PDF answer index to the exact
                 // chapter/test/printed-number identity of each extracted question.
@@ -1733,7 +1924,9 @@ class AiSolverViewModel : ViewModel() {
                 for (idx in allExtractedQuestions.indices) {
                     val original = allExtractedQuestions[idx]
                     val scope = expectedScopeByQuestionId[original.id]
-                    val correct = scopedAnswers.get(scope, original.questionNumberInTest)
+                    val correct = printedKeyConsensus.confirmedOption(
+                        scope, original.questionNumberInTest
+                    )
                     if (correct != null && original.id !in unsafeCropQuestionIds) {
                         allExtractedQuestions[idx] = original.copy(
                             correctOption = correct,
@@ -1781,6 +1974,22 @@ class AiSolverViewModel : ViewModel() {
                             (printed - detected).takeIf { it.isNotEmpty() }
                                 ?.let { pageIndex to it }
                         }
+                    if (!sourceKeyCoverage.complete) {
+                        add("KAYNAK TEST BÜTÜNLÜĞÜ: " +
+                            "${sourceKeyCoverage.totalSourceNumbers} kaynak cevap hücresi kimliği, " +
+                            "${sourceKeyCoverage.missingSourceQuestions.size} eksik soru, " +
+                            "${sourceKeyCoverage.duplicateImportedQuestions.size} mükerrer soru, " +
+                            "${sourceKeyCoverage.unexpectedImportedQuestions.size} kaynak anahtarda bulunmayan soru. " +
+                            "Kitap eksiksiz kabul edilemez.")
+                    }
+                    add("CEVAP OKUMA UZLAŞMASI: " +
+                        "${printedKeyConsensus.confirmed.size} hücre iki bağımsız okuyucuda uyuştu, " +
+                        "${printedKeyConsensus.disputed.size} hücre çelişkili, " +
+                        "${printedKeyConsensus.unsupported.size} hücre ikinci kaynakça doğrulanamadı. " +
+                        "Çelişkili ve tek kaynaklı cevaplar doğrulanmış kabul edilmedi.")
+                    if (offlineRejectedQuestionPages > 0) {
+                        add("YEREL BELGE ANALİZİ: $offlineRejectedQuestionPages soru sayfası güvenle kırpılamadı. Eksik sayfalar tamamlanmış kabul edilmedi.")
+                    }
                     if (mergedOrMisnumberedCropCount > 0) {
                         add("KIRPMA BÜTÜNLÜĞÜ: $mergedOrMisnumberedCropCount görüntüde " +
                             "birleşmiş, mükerrer, yanlış numaralı veya kaynağı belirsiz kırpma " +
@@ -1877,8 +2086,55 @@ class AiSolverViewModel : ViewModel() {
                     }
                 }
                 _batchWarningText.value = warnings.takeIf { it.isNotEmpty() }?.joinToString(" ")
+                // Never repeat the old failure: 875 corrupted images persisted
+                // even though the system knew that hundreds were incomplete.
+                // A partially processed book is a FAILED import, not a
+                // successful library entry. Existing library data is untouched.
+                val completePdf = sourceKeyCoverage.complete &&
+                    offlineRejectedQuestionPages == 0 &&
+                    suspectedSkippedQuestionPages.isEmpty() &&
+                    pageRenderFailureCount == 0 &&
+                    processingStatus.ocrFailureCount == 0 &&
+                    mergedOrMisnumberedCropCount == 0 &&
+                    pageCoverageMissingStartCount == 0 &&
+                    pageCoverageDuplicateStartCount == 0 &&
+                    allExtractedQuestions.all {
+                        it.answerKeyMatched && it.topicName.isNotBlank()
+                    }
+                if (!completePdf) {
+                    _batchErrorText.value = "Kitap eksik veya güvensiz: " +
+                        "$offlineRejectedQuestionPages reddedilmiş yerel kırpma sayfası, " +
+                        "${suspectedSkippedQuestionPages.size} şüpheli eksik sayfa, " +
+                        "${sourceKeyCoverage.missingSourceQuestions.size} kaynak cevaba göre eksik soru, " +
+                        "${sourceKeyCoverage.duplicateImportedQuestions.size} mükerrer soru, " +
+                        "${sourceKeyCoverage.unexpectedImportedQuestions.size} kaynak anahtarda bulunmayan soru, " +
+                        "${allExtractedQuestions.count { !it.answerKeyMatched }} cevabı doğrulanmayan soru, " +
+                        "${allExtractedQuestions.count { it.topicName.isBlank() }} basılı konusu belirlenemeyen soru, " +
+                        "$mergedOrMisnumberedCropCount geometrisi güvensiz kırpma, " +
+                        "$pageCoverageMissingStartCount eksik basılı soru başlangıcı, " +
+                        "$pageCoverageDuplicateStartCount mükerrer soru başlangıcı, " +
+                        "$pageRenderFailureCount işlenemeyen PDF sayfası, " +
+                        "${processingStatus.ocrFailureCount} OCR hatası. " +
+                        "Cevap kaynakları: ML Kit ${scopedAnswers.answerCount}, " +
+                        "bağımsız PDF/Paddle ${secondaryAnswers.answerCount}, " +
+                        "iki kaynaktan doğrulanan ${printedKeyConsensus.confirmed.size}, " +
+                        "çelişkili ${printedKeyConsensus.disputed.size}, " +
+                        "tek kaynaktan okunan ${printedKeyConsensus.unsupported.size}. " +
+                        "Hatalı kitabı otomatik kaydetmedik; önce bunları düzeltmek gerekir."
+                    // These cropped files were staged only for this import.
+                    // Do not delete previously saved library images.
+                    allExtractedQuestions.forEach { question ->
+                        if (question.croppedImagePath.isNotBlank()) {
+                            StudioImageAndPdfEngine.deleteQuestionImage(
+                                context, question.croppedImagePath
+                            )
+                        }
+                    }
+                    completeOnce(emptyList(), "", "")
+                    return@launch
+                }
                 _batchProgressPercent.value = 100
-                _batchStatusText.value = "Sayfa $totalPdfPages / $totalPdfPages tamamlandı • Aktarılan Soru: ${allExtractedQuestions.size}"
+                _batchStatusText.value = "Sayfa $totalPdfPages / $totalPdfPages tamamlandı • Doğrulanmış Soru: ${allExtractedQuestions.size}"
                 completeOnce(allExtractedQuestions, coverPath, finalBookTitle)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException && e !is TimeoutCancellationException) throw e

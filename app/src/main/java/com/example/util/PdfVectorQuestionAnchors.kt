@@ -45,7 +45,16 @@ internal object PdfVectorQuestionAnchors {
                 // Publisher margin sizes vary; use a wide physical safety
                 // band, then reject false numbers by aligned sequence tests.
                 it.x > pageWidth * .025f && it.x < pageWidth * .975f &&
-                    it.y > pageHeight * .04f && it.y < pageHeight * .965f
+                    // Bottom answer-key/page-number strips can repeat a real
+                // question number (e.g. a genuine third question at 80%
+                // and a printed "3." in the footer at 94%). They were
+                // previously preferred because the run then spanned more
+                // vertical space, silently discarding the real last crop.
+                // A multiple-choice question cannot START within the last
+                // 8% of a conventional book page and still hold its A-E
+                // options. This is a generic geometry guard, not a
+                // publisher-specific page number or crop coordinate.
+                it.y > pageHeight * .04f && it.y < pageHeight * .92f
             }
         if (tokens.isEmpty()) return emptyList()
         // Align by printed number's LEFT edge, not by the x position of prose.

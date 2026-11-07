@@ -1,6 +1,5 @@
 package com.example.ui
 
-import android.graphics.Bitmap
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -9,13 +8,13 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.DifficultyLevel
 import com.example.data.ExamType
 import com.example.data.YksQuestion
@@ -26,8 +25,6 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.ActiveSolvingSession
 import com.example.viewmodel.BoardViewMode
 import com.example.viewmodel.DrawingTool
-import java.io.File
-import java.io.FileOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -121,9 +118,16 @@ class SoruLabDeviceUiSmokeTest {
                             isOpticalFormDrawerOpen = !session.isOpticalFormDrawerOpen
                         )
                     },
-                    onToggleStatsDrawer = {},
+                    onToggleStatsDrawer = {
+                        session = session.copy(
+                            isStatsDrawerOpen = !session.isStatsDrawerOpen
+                        )
+                    },
                     onToggleQuestionMap = {},
-                    onFinishTest = { confirmedFinishes++ },
+                    onFinishTest = {
+                        confirmedFinishes++
+                        session = session.copy(isReviewMode = true)
+                    },
                     onGoToStatsTab = {},
                     onAskAiForQuestion = {}
                 )
@@ -137,6 +141,16 @@ class SoruLabDeviceUiSmokeTest {
         compose.runOnIdle { assertEquals("E", latestAnswers[2]) }
         compose.onNodeWithTag("optic_q1_B").performClick()
         compose.runOnIdle { assertEquals(mapOf(1 to "B", 2 to "E"), latestAnswers) }
+        // Visual acceptance evidence: capture the drawer OPEN, not merely the
+        // underlying book page after closing it.
+        val panel = compose.onNodeWithTag("optical_form_drawer").assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        val viewport = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            "Two-question optical form expands into excessive unused tablet height",
+            panel.height < viewport.height * 0.60f
+        )
+        captureOnlySyntheticScreen("optical-form-open.png")
         compose.onNodeWithTag("optical_form_tab").performClick()
         compose.onNodeWithTag("optical_form_drawer").assertDoesNotExist()
 
@@ -155,16 +169,22 @@ class SoruLabDeviceUiSmokeTest {
         compose.onNodeWithTag("top_finish_test_btn").performClick()
         compose.onNodeWithTag("confirm_finish_test_btn").performClick()
         compose.runOnIdle { assertEquals(1, confirmedFinishes) }
+        // Archive actual pixels of the report and stats on phone + tablet.
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithTag("full_screen_report_card")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("full_screen_report_card").assertIsDisplayed()
+        compose.onNodeWithTag("result_topic_success_card").assertExists()
+        captureOnlySyntheticScreen("test-results-open.png")
+        compose.onNodeWithTag("show_in_book_btn").performClick()
+        compose.onNodeWithTag("stats_drawer_tab").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("stats_drawer_panel").assertIsDisplayed()
+        captureOnlySyntheticScreen("test-statistics-open.png")
     }
 
     private fun captureOnlySyntheticScreen(filename: String) {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val dest = File(context.getExternalFilesDir(null), "qa-screens")
-        check(dest.exists() || dest.mkdirs()) { "Could not create QA screenshot directory" }
-        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
-        FileOutputStream(File(dest, filename)).use { output ->
-            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
-        }
+        saveSyntheticQaScreenshot(compose.onRoot().captureToImage().asAndroidBitmap(), filename)
     }
 
     private fun fixtureSession(): ActiveSolvingSession {

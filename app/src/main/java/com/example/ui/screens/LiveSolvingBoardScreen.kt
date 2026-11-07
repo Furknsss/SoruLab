@@ -3148,7 +3148,7 @@ private fun BottomDarkNavyDrawingBar345(
                                         "Silgi boyutu ${idx + 1}" else "Kalem kalınlığı ${idx + 1}"
                                     selected = isSelectedSize
                                 }
-                                .testTag(if (isSizingEraser) "eraser_size_$idx" else "pen_size_$idx"),
+                                .testTag("brush_size_$idx"),
                             contentAlignment = Alignment.Center
                         ) {
                             Box(

@@ -33,6 +33,21 @@ class PdfScopedAnswerKeysTest {
     }
 
     @Test
+    fun `two tests printed side by side on one ocr row are split per test`() {
+        val index = PdfScopedAnswerKeys()
+        index.addOcrRows(listOf(
+            "SİNİR SİSTEMİ",
+            "Test 1 1.E 2.B 3.A Test 2 1.C 2.D 3.E"
+        ))
+        val first = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 1\nSinir Sistemi 1", "Sinir Sistemi")
+        val second = PdfScopedAnswerKeys.scopeFromQuestionHeader(
+            "TEST 2\nSinir Sistemi 2", "Sinir Sistemi")
+        assertEquals(listOf("E", "B", "A"), (1..3).map { index.get(first, it) })
+        assertEquals(listOf("C", "D", "E"), (1..3).map { index.get(second, it) })
+    }
+
+    @Test
     fun `same question number in different sections must not collide`() {
         val index = PdfScopedAnswerKeys()
         index.addOcrRows(listOf(

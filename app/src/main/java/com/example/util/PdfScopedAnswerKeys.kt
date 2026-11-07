@@ -34,24 +34,31 @@ internal class PdfScopedAnswerKeys {
                 lastRecognizedSection = detectedSection
                 continue
             }
-            val test = testLabel.find(clean) ?: continue
+            // A side-by-side answer table can put several "TEST n" blocks on one OCR row.
+            // Each block owns only the text up to the next TEST label, otherwise the
+            // second test's answers would collide with the first test's.
+            val tests = testLabel.findAll(clean).toList()
+            if (tests.isEmpty()) continue
             val section = currentSection ?: continue // Never guess the section.
-            val testNum = test.groupValues[2].toIntOrNull() ?: continue
-            val isOsym = normalize(test.groupValues[1]).contains("osym")
-            val tail = clean.substring(test.range.last + 1)
-            val pairs = questionAnswer.findAll(tail).mapNotNull { match ->
-                val n = match.groupValues[1].toIntOrNull() ?: return@mapNotNull null
-                if (n !in 1..200) return@mapNotNull null
-                n to match.groupValues[2].uppercase(Locale.ROOT)
-            }.toList()
-            if (pairs.size < 2) continue // Avoid hallucinated single-character OCR matches.
-            for ((number, option) in pairs) {
-                val id = PdfAnswerId(PdfAnswerScope(section, testNum, isOsym), number)
-                if (id in ambiguous) continue
-                val previous = answers.putIfAbsent(id, option)
-                if (previous != null && previous != option) {
-                    answers.remove(id)
-                    ambiguous.add(id)
+            for ((index, test) in tests.withIndex()) {
+                val testNum = test.groupValues[2].toIntOrNull() ?: continue
+                val isOsym = normalize(test.groupValues[1]).contains("osym")
+                val tailEnd = tests.getOrNull(index + 1)?.range?.first ?: clean.length
+                val tail = clean.substring(test.range.last + 1, tailEnd)
+                val pairs = questionAnswer.findAll(tail).mapNotNull { match ->
+                    val n = match.groupValues[1].toIntOrNull() ?: return@mapNotNull null
+                    if (n !in 1..200) return@mapNotNull null
+                    n to match.groupValues[2].uppercase(Locale.ROOT)
+                }.toList()
+                if (pairs.size < 2) continue // Avoid hallucinated single-character OCR matches.
+                for ((number, option) in pairs) {
+                    val id = PdfAnswerId(PdfAnswerScope(section, testNum, isOsym), number)
+                    if (id in ambiguous) continue
+                    val previous = answers.putIfAbsent(id, option)
+                    if (previous != null && previous != option) {
+                        answers.remove(id)
+                        ambiguous.add(id)
+                    }
                 }
             }
         }

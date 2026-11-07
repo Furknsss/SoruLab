@@ -14,6 +14,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
@@ -239,6 +242,8 @@ fun LiveSolvingBoardScreen(
     val displayedStrokes = if (currentCanvasKey == displayedCanvasKey) strokes else emptyList()
     val pagerScope = rememberCoroutineScope()
     var fingerDrawingEnabled by rememberSaveable(session.testItem.id) { mutableStateOf(false) }
+    // Smart S Pen is the only pen mode. Fingers always pan/swipe/zoom.
+    LaunchedEffect(session.testItem.id) { fingerDrawingEnabled = false }
 
     LaunchedEffect(bookPagerState.settledPage, session.viewMode) {
         if (session.viewMode == BoardViewMode.FULL_PAGE) {
@@ -531,6 +536,8 @@ fun LiveSolvingBoardScreen(
         ) {
             val strokeWidths = listOf(4.5f, 8.0f, 13.0f)
             val currentStrokePx = strokeWidths.getOrElse(selectedStrokeSizeIndex) { 8.0f }
+            val eraserStrokePx = listOf(18f, 38f, 68f)
+                .getOrElse(selectedStrokeSizeIndex) { 38f }
 
             // Zero-latency raw path buffer (mutated directly during S-Pen/Mouse drag without recomposing UI tree!)
             val liveRawPath = remember { Path() }
@@ -973,7 +980,7 @@ fun LiveSolvingBoardScreen(
                                 path = liveRawPath,
                                 color = Color.Transparent,
                                 style = Stroke(
-                                    width = 38f,
+                                    width = eraserStrokePx,
                                     cap = StrokeCap.Round,
                                     join = StrokeJoin.Round
                                 ),
@@ -1615,10 +1622,12 @@ private fun RealTwoColumnBookPageSurface(
         val perColumnCount = maxOf(
             leftColumnQuestions.size, rightColumnQuestions.size, 1
         )
+        // Reserve nearly the entire usable sheet for question crops.
+        // Previous 104dp+42dp deductions compressed both rows at the top.
         val maxQuestionImageHeight = (
-            (pageMinHeight - 104.dp).coerceAtLeast(220.dp) /
-                perColumnCount.toFloat() - 42.dp
-        ).coerceAtLeast(120.dp)
+            (pageMinHeight - 30.dp).coerceAtLeast(220.dp) /
+                perColumnCount.toFloat() - 18.dp
+        ).coerceAtLeast(130.dp)
 
         // Dışarı tıklandığında açık olan `⋮` Popover menüsünü kapatan şeffaf arka plan katmanı
         if (openThreeDotQuestionNumber != null) {
@@ -1638,8 +1647,8 @@ private fun RealTwoColumnBookPageSurface(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
-                .padding(horizontal = 28.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 22.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             // ÇİFT SÜTUNLU (SOL SÜTUN & SAĞ SÜTUN) VE ORTADAN İNCE DİKEY ÇİZGİLİ TAM SAYFA DÜZENİ
             Row(
@@ -1657,7 +1666,9 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isLeftPopoverOpen) 60f else 1f)
                         .padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    // Even top/middle/bottom whitespace; not a row stacked
+                    // at the top with hundreds of empty pixels underneath.
+                    verticalArrangement = Arrangement.SpaceEvenly
                 ) {
                     leftColumnQuestions.forEachIndexed { idx, q ->
                         BookPageQuestionItem345(
@@ -1693,7 +1704,7 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isRightPopoverOpen) 60f else 1f)
                         .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.SpaceEvenly
                 ) {
                     if (rightColumnQuestions.isEmpty()) {
                         Spacer(modifier = Modifier.height(80.dp))
@@ -1718,37 +1729,7 @@ private fun RealTwoColumnBookPageSurface(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                FilledIconButton(
-                    onClick = onPrevBookPage,
-                    enabled = currentBookPageIndex > 0,
-                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF24205E)),
-                    modifier = Modifier.testTag("previous_book_page")
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Önceki sayfa")
-                }
-                Text(
-                    text = "${session.topicName}  •  ${currentBookPageIndex + 1} / $totalBookPages",
-                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = Color(0xFF74708F),
-                    fontSize = 12.sp
-                )
-                FilledIconButton(
-                    onClick = onNextBookPage,
-                    enabled = currentBookPageIndex < totalBookPages - 1,
-                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF24205E)),
-                    modifier = Modifier.testTag("next_book_page")
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Sonraki sayfa")
-                }
-            }
+
         }
     }
 }
@@ -2537,15 +2518,21 @@ private fun RightSlidingOpticalFormDrawer345(
     val availableHeight = (configuration.screenHeightDp.dp - 96.dp).coerceAtLeast(212.dp)
     val desiredHeight = (154 + questions.size.coerceAtMost(7) * 46).dp
     val opticalDrawerHeight = desiredHeight.coerceIn(212.dp, availableHeight)
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+    val drawerWidth = (configuration.screenWidthDp.dp - 54.dp).coerceAtMost(320.dp)
+    // The drawer stays composed even when hidden. Only its position animates:
+    // no costly destruction/recreation of the answer grid on each tap.
+    val drawerSlideX by animateDpAsState(
+        targetValue = if (isOpen) 0.dp else drawerWidth,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "opticalDrawerSlide"
+    )
+    Row(
+        modifier = modifier.offset(x = drawerSlideX),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         if (showClosedTab || isOpen) {
             VerticalBlueSideTab345("Optik Form", false, onToggleDrawer, "optical_form_tab")
         }
-        AnimatedVisibility(
-            visible = isOpen,
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
-        ) {
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = Color.White,
@@ -2554,7 +2541,7 @@ private fun RightSlidingOpticalFormDrawer345(
                 modifier = Modifier
                     // Height follows actual question count. Previously a
                     // two-row optical form expanded to 540dp with dead space.
-                    .width((configuration.screenWidthDp.dp - 54.dp).coerceAtMost(320.dp))
+                    .width(drawerWidth)
                     .height(opticalDrawerHeight)
                     .testTag("optical_form_drawer")
             ) {
@@ -2622,7 +2609,6 @@ private fun RightSlidingOpticalFormDrawer345(
                     }
                 }
             }
-        }
     }
 }
 
@@ -2906,6 +2892,39 @@ private fun VerticalBlueSideTab345(
  * - En sağda: Gri hap içinde Kronometre (`00:12`)
  */
 @Composable
+private fun PremiumEraserGlyph() {
+    // Clean diagonal eraser silhouette, not a broom or bordered button.
+    Canvas(modifier = Modifier.size(22.dp)) {
+        val w = size.width
+        val h = size.height
+        val body = Path().apply {
+            moveTo(w * 0.12f, h * 0.59f)
+            lineTo(w * 0.48f, h * 0.15f)
+            quadraticTo(w * 0.56f, h * 0.07f, w * 0.65f, h * 0.15f)
+            lineTo(w * 0.91f, h * 0.38f)
+            quadraticTo(w * 0.99f, h * 0.47f, w * 0.91f, h * 0.55f)
+            lineTo(w * 0.58f, h * 0.91f)
+            lineTo(w * 0.36f, h * 0.92f)
+            close()
+        }
+        drawPath(body, Color.White)
+        val seam = Path().apply {
+            moveTo(w * 0.29f, h * 0.43f)
+            lineTo(w * 0.65f, h * 0.75f)
+        }
+        drawPath(seam, Color(0xFF1E295B).copy(alpha = 0.65f),
+            style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round))
+        drawLine(
+            Color.White.copy(alpha = 0.82f),
+            Offset(w * 0.35f, h * 0.94f),
+            Offset(w * 0.92f, h * 0.94f),
+            strokeWidth = 1.3.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
 private fun BottomDarkNavyDrawingBar345(
     viewMode: BoardViewMode,
     activeTool: DrawingTool,
@@ -2973,8 +2992,7 @@ private fun BottomDarkNavyDrawingBar345(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Premium compact controls: icons only. Smart mode inks
-                    // with the S Pen; hand-writing mode also accepts fingers.
+                    // Smart S Pen inks, fingers navigate. No duplicate finger-pencil.
                     val isSmartSelected = !fingerDrawingEnabled &&
                         activeTool == DrawingTool.PEN
                     Surface(
@@ -2997,30 +3015,7 @@ private fun BottomDarkNavyDrawingBar345(
                                 tint = Color.White, modifier = Modifier.size(22.dp))
                         }
                     }
-                    val isFingerSelected = fingerDrawingEnabled &&
-                        activeTool == DrawingTool.PEN
-                    Surface(
-                        onClick = {
-                            showColorPalettePopup = false
-                            onChangeFingerDrawing(true)
-                            onSelectTool(DrawingTool.PEN)
-                        },
-                        shape = CircleShape,
-                        color = if (isFingerSelected) Color(0xFF3475F5)
-                            else Color.White.copy(alpha = 0.10f),
-                        border = BorderStroke(1.dp,
-                            if (isFingerSelected) Color(0xFF93C5FD)
-                            else Color.White.copy(alpha = 0.22f)),
-                        modifier = Modifier.size(42.dp).testTag("finger_draw_mode")
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.BorderColor,
-                                contentDescription = "Parmakla yazma modu",
-                                tint = Color.White, modifier = Modifier.size(21.dp))
-                        }
-                    }
-
-                    // Fosforlu Kalem (Highlighter)
+                    // Distinct highlighter control, without a duplicate pen button
                     val isHighlighterActive = activeTool == DrawingTool.HIGHLIGHTER && !isZoomMagnifierEnabled
                     Surface(
                         onClick = {
@@ -3035,7 +3030,7 @@ private fun BottomDarkNavyDrawingBar345(
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
-                                imageVector = Icons.Default.BorderColor,
+                                imageVector = Icons.Default.Highlight,
                                 contentDescription = "Fosforlu Kalem",
                                 tint = if (isHighlighterActive) Color(0xFFFACC15) else Color.White,
                                 modifier = Modifier.size(19.dp)
@@ -3120,16 +3115,12 @@ private fun BottomDarkNavyDrawingBar345(
                         },
                         shape = CircleShape,
                         color = if (isEraserActive) Color(0xFF3475F5)
-                            else Color.White.copy(alpha = 0.10f),
-                        border = BorderStroke(1.dp,
-                            if (isEraserActive) Color(0xFF93C5FD)
-                            else Color.White.copy(alpha = 0.20f)),
+                            else Color.Transparent,
                         modifier = Modifier.size(42.dp).testTag("tool_eraser_btn")
+                            .semantics { contentDescription = "Silgi" }
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.CleaningServices,
-                                contentDescription = "Silgi",
-                                tint = Color.White, modifier = Modifier.size(22.dp))
+                            PremiumEraserGlyph()
                         }
                     }
 
@@ -3141,15 +3132,24 @@ private fun BottomDarkNavyDrawingBar345(
                             .background(Color.White.copy(alpha = 0.22f))
                     )
 
-                    // 3 Boy Kalem Kalınlığı Noktası (Küçük / Orta / Büyük)
-                    val dotSizes = listOf(7.dp, 11.dp, 15.dp)
+                    // The same three buttons control real eraser radius in
+                    // eraser mode, and pen thickness in smart S Pen mode.
+                    val isSizingEraser = activeTool == DrawingTool.ERASER
+                    val dotSizes = if (isSizingEraser)
+                        listOf(9.dp, 15.dp, 21.dp) else listOf(6.dp, 10.dp, 14.dp)
                     dotSizes.forEachIndexed { idx, dotDp ->
                         val isSelectedSize = selectedStrokeSizeIndex == idx
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(39.dp)
                                 .clip(CircleShape)
-                                .clickable { onSelectStrokeSize(idx) },
+                                .clickable { onSelectStrokeSize(idx) }
+                                .semantics {
+                                    contentDescription = if (isSizingEraser)
+                                        "Silgi boyutu ${idx + 1}" else "Kalem kalınlığı ${idx + 1}"
+                                    selected = isSelectedSize
+                                }
+                                .testTag(if (isSizingEraser) "eraser_size_$idx" else "pen_size_$idx"),
                             contentAlignment = Alignment.Center
                         ) {
                             Box(
@@ -3157,12 +3157,14 @@ private fun BottomDarkNavyDrawingBar345(
                                     .size(dotDp)
                                     .clip(CircleShape)
                                     .background(
-                                        if (isSelectedSize) Color(0xFF38BDF8) else Color.White.copy(alpha = 0.7f)
+                                        if (isSelectedSize) Color(0xFF38BDF8)
+                                        else Color.White.copy(alpha = 0.64f)
                                     )
                             )
                         }
                     }
 
+                    if (activeTool != DrawingTool.ERASER) {
                     // Renk Seçici Daire (Kalem butonuna basınca da aynı menü açılır)
                     Surface(
                         onClick = { showColorPalettePopup = !showColorPalettePopup },
@@ -3174,6 +3176,7 @@ private fun BottomDarkNavyDrawingBar345(
                             .testTag("tool_color_circle_btn")
                     ) {}
 
+                    }
                     // Çöp Kutusu (Sayfa Çizimlerini Temizle)
                     IconButton(
                         onClick = onClearCanvas,
@@ -4413,6 +4416,7 @@ private fun TwinQuestionInkCanvas(
     val drawTick = remember { mutableIntStateOf(0) }
     val latestStrokes by rememberUpdatedState(strokes)
     val strokeWidth = listOf(4.5f, 8.0f, 13.0f).getOrElse(selectedStrokeSizeIndex) { 8.0f }
+    val eraserWidth = listOf(18f, 38f, 68f).getOrElse(selectedStrokeSizeIndex) { 38f }
     val canDraw = activeTool == DrawingTool.PEN ||
         activeTool == DrawingTool.HIGHLIGHTER ||
         activeTool == DrawingTool.SMART_SHAPE ||
@@ -4458,7 +4462,7 @@ private fun TwinQuestionInkCanvas(
                                         points = livePoints.toList(),
                                         colorHex = if (isEraser) 0x00000000L else selectedPenColorHex,
                                         strokeWidthPx = when {
-                                            isEraser -> 38f
+                                            isEraser -> eraserWidth
                                             isHighlighter -> strokeWidth * 2.6f
                                             else -> strokeWidth
                                         },
@@ -4493,7 +4497,7 @@ private fun TwinQuestionInkCanvas(
                 },
                 style = Stroke(
                     width = when {
-                        isEraser -> 38f
+                        isEraser -> eraserWidth
                         isHighlighter -> strokeWidth * 2.6f
                         else -> strokeWidth
                     },

@@ -2417,9 +2417,14 @@ class SoruLabViewModel(
 
                 val resolvedExamType = matchedSubject?.examType?.name ?: item.examType
                 val subjectId = matchedSubject?.id.orEmpty()
-                val resolvedSubjectName = matchedSubject?.name.orEmpty()
+                // ZIP imports can carry authentic subject/topic labels for a
+                // publisher's chapter even when that chapter is not an exact
+                // match for the built-in catalog. Never silently erase them.
+                val resolvedSubjectName = matchedSubject?.name
+                    ?.takeIf { it.isNotBlank() } ?: item.subjectName
                 val topicId = matchedTopic?.id.orEmpty()
-                val resolvedTopicName = matchedTopic?.name.orEmpty()
+                val resolvedTopicName = matchedTopic?.name
+                    ?.takeIf { it.isNotBlank() } ?: item.topicName
 
                 val effectiveCover = bookCoverPath.ifBlank { item.bookCoverPath }
                 val packedSolution = CustomQuestionRecord.packSolutionWithMeta(

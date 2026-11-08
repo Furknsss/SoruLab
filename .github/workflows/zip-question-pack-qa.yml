@@ -11,6 +11,7 @@ on:
       - 'app/src/main/java/com/example/viewmodel/SoruLabViewModel.kt'
       - 'app/src/androidTest/java/com/example/util/SoruLabQuestionZipImportDeviceTest.kt'
       - 'app/src/main/java/com/example/ui/screens/LiveSolvingBoardScreen.kt'
+      - 'app/src/main/java/com/example/ui/screens/PremiumMistakeAnalysisScreen.kt'
       - 'app/src/androidTest/java/com/example/ui/SoruLabDeviceUiSmokeTest.kt'
       - 'app/src/androidTest/java/com/example/ui/SoruLabStylusViewportDeviceTest.kt'
       - '.github/workflows/zip-question-pack-qa.yml'

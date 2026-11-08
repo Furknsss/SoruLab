@@ -614,6 +614,7 @@ fun SoruHavuzuAndPdfStudioView(
         onSaved: (Boolean, String) -> Unit
     ) -> Unit,
     onDeleteLibraryBook: (List<String>) -> Unit,
+    onRestorePreviousQuestions: () -> Unit = {},
     onClearAllData: () -> Unit = {},
     onDismissError: () -> Unit = {},
     onBack: () -> Unit,
@@ -648,6 +649,7 @@ fun SoruHavuzuAndPdfStudioView(
     var importSaveError by remember { mutableStateOf<String?>(null) }
     var importSaveSuccess by remember { mutableStateOf<String?>(null) }
     var showClearConfirmation by remember { mutableStateOf(false) }
+    var showRecoveryConfirmation by remember { mutableStateOf(false) }
     var pendingDeleteBook by remember { mutableStateOf<LibraryBookCardModel?>(null) }
 
     var showAddPublisherModal by remember { mutableStateOf(false) }
@@ -929,6 +931,12 @@ fun SoruHavuzuAndPdfStudioView(
                             }
                             Text("PDF sayfalarını sorulara ayır, kırpmaları incele ve seçtiklerini kitaplığına ekle.", color = Color(0xFFD3D0EB), fontSize = 13.sp, lineHeight = 20.sp)
                             Text("${libraryBooks.size} kitap   ·   ${customQuestions.size} soru", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.testTag("total_active_questions_counter"))
+                            OutlinedButton(
+                                onClick = { showRecoveryConfirmation = true },
+                                modifier = Modifier.fillMaxWidth().testTag("restore_previous_question_bank")
+                            ) {
+                                Text("Eski sorularımı kurtar", color = Color.White)
+                            }
                         }
                     }
                 }
@@ -1651,6 +1659,24 @@ fun SoruHavuzuAndPdfStudioView(
                         }
                     }
                 }
+            }
+        )
+    }
+    if (showRecoveryConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showRecoveryConfirmation = false },
+            title = { Text("Önceki soru kayıtları kurtarılsın mı?") },
+            text = {
+                Text("Bu cihazdaki eski yerel ve misafir oturum soruları taranacak. Bulunan sorular mevcut kitaplığa eklenecek; hiçbir soru silinmeyecek. Misafir oturumundaki sorular giriş yaptığın hesaba da aktarılabilir.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRecoveryConfirmation = false
+                    onRestorePreviousQuestions()
+                }) { Text("Soruları kurtar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRecoveryConfirmation = false }) { Text("Vazgeç") }
             }
         )
     }

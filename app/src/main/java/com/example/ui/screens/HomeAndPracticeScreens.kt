@@ -250,50 +250,41 @@ private fun BottomNavTabIcon(
             }
 
             MainNavTab.SORU_PRATIGI -> {
-                val handlePath = Path().apply {
-                    moveTo(w * 0.36f, h * 0.22f)
-                    cubicTo(w * 0.36f, h * 0.10f, w * 0.64f, h * 0.10f, w * 0.64f, h * 0.22f)
+                // A clean pencil nib replaces the old briefcase symbol.
+                val body = Path().apply {
+                    moveTo(w * 0.29f, h * 0.68f)
+                    lineTo(w * 0.68f, h * 0.18f)
+                    quadraticTo(w * 0.72f, h * 0.12f, w * 0.77f, h * 0.17f)
+                    lineTo(w * 0.86f, h * 0.26f)
+                    quadraticTo(w * 0.90f, h * 0.30f, w * 0.85f, h * 0.35f)
+                    lineTo(w * 0.43f, h * 0.79f)
+                    close()
                 }
                 drawPath(
-                    path = handlePath,
+                    path = body,
                     color = tint,
-                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                    style = if (isSelected) androidx.compose.ui.graphics.drawscope.Fill
+                        else Stroke(width = strokeWidth, join = StrokeJoin.Round)
                 )
-                drawRoundRect(
-                    color = tint,
-                    topLeft = Offset(w * 0.14f, h * 0.24f),
-                    size = Size(w * 0.72f, h * 0.64f),
-                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
-                    style = if (isSelected) androidx.compose.ui.graphics.drawscope.Fill else Stroke(width = strokeWidth)
-                )
-                if (isSelected) {
-                    drawLine(
-                        color = Color(0xFF2563EB),
-                        start = Offset(w * 0.14f, h * 0.48f),
-                        end = Offset(w * 0.86f, h * 0.48f),
-                        strokeWidth = strokeWidth
-                    )
-                    drawRoundRect(
-                        color = Color(0xFF2563EB),
-                        topLeft = Offset(w * 0.42f, h * 0.42f),
-                        size = Size(w * 0.16f, h * 0.14f),
-                        cornerRadius = CornerRadius(1.5.dp.toPx(), 1.5.dp.toPx())
-                    )
-                } else {
-                    drawLine(
-                        color = tint,
-                        start = Offset(w * 0.14f, h * 0.48f),
-                        end = Offset(w * 0.86f, h * 0.48f),
-                        strokeWidth = strokeWidth * 0.8f
-                    )
-                    drawRoundRect(
-                        color = tint,
-                        topLeft = Offset(w * 0.42f, h * 0.42f),
-                        size = Size(w * 0.16f, h * 0.14f),
-                        cornerRadius = CornerRadius(1.5.dp.toPx(), 1.5.dp.toPx()),
-                        style = Stroke(width = strokeWidth * 0.8f)
-                    )
+                val tip = Path().apply {
+                    moveTo(w * 0.29f, h * 0.68f)
+                    lineTo(w * 0.18f, h * 0.90f)
+                    lineTo(w * 0.43f, h * 0.79f)
+                    close()
                 }
+                drawPath(
+                    path = tip,
+                    color = tint,
+                    style = if (isSelected) androidx.compose.ui.graphics.drawscope.Fill
+                        else Stroke(width = strokeWidth * 0.85f, join = StrokeJoin.Round)
+                )
+                drawLine(
+                    color = if (isSelected) Color(0xFF2563EB) else tint,
+                    start = Offset(w * 0.63f, h * 0.25f),
+                    end = Offset(w * 0.80f, h * 0.41f),
+                    strokeWidth = strokeWidth * 0.75f,
+                    cap = StrokeCap.Round
+                )
             }
 
             MainNavTab.DENEMELER -> {

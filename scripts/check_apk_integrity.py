@@ -86,7 +86,7 @@ def main():
                     for lib_name, apk_entry in entries.items():
                         with archive.open(apk_entry) as native:
                             header = native.read(20)
-                            if (len(header) < 20 or header[:4] != b"\\x7fELF"
+                            if (len(header) < 20 or header[:4] != b"\x7fELF"
                                 or header[5] != 1 or header[4] != elf_class
                                 or struct.unpack("<H", header[18:20])[0] != machine):
                                 raise SystemExit(
@@ -103,7 +103,7 @@ def main():
                         if elf_info.returncode:
                             raise SystemExit(f"Invalid native dynamic library: {abi}/{lib_name}")
                         needed = set(re.findall(
-                            r"\\(NEEDED\\).*?\\[([^]]+)\\]", elf_info.stdout
+                            r"\(NEEDED\).*?\[([^]]+)\]", elf_info.stdout
                         ))
                         missing = needed.difference(entries).difference(android_system_libs)
                         if missing:

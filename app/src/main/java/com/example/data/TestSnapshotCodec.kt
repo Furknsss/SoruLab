@@ -33,6 +33,10 @@ object TestSnapshotCodec {
                     .put("stepByStepSolution", question.stepByStepSolution)
                     .put("bookId", question.bookId)
                     .put("sourceQuestionId", question.sourceQuestionId)
+                    .put("sourceBookTitle", question.sourceBookTitle)
+                    .put("sourceTestId", question.sourceTestId)
+                    .put("sourcePageIndex", question.sourcePageIndex)
+                    .put("sourcePrintedQuestionNumber", question.sourcePrintedQuestionNumber)
                     .put("subject", question.subject)
                     .put("learningOutcome", question.learningOutcome)
                     .put("questionType", question.questionType)
@@ -101,6 +105,10 @@ object TestSnapshotCodec {
                 stepByStepSolution = item.optString("stepByStepSolution"),
                 bookId = item.optString("bookId"),
                 sourceQuestionId = item.optString("sourceQuestionId"),
+                sourceBookTitle = item.optString("sourceBookTitle"),
+                sourceTestId = item.optString("sourceTestId"),
+                sourcePageIndex = item.optInt("sourcePageIndex", -1),
+                sourcePrintedQuestionNumber = item.optInt("sourcePrintedQuestionNumber", 0),
                 subject = item.optString("subject"),
                 learningOutcome = item.optString("learningOutcome"),
                 questionType = item.optString("questionType"),

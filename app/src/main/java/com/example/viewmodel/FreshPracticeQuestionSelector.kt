@@ -9,8 +9,11 @@ import com.example.data.YksQuestion
  */
 internal object FreshPracticeQuestionSelector {
     fun identity(question: YksQuestion): String {
-        // Independent ZIP imports of the same book/page/question should have
-        // the same identity even when local record UUIDs differ.
+        // Source IDs persist in all legacy saved snapshots even when
+        // source book/test metadata was not serialized. Prefer this stable
+        // account-scoped key to avoid losing repetition history on restart.
+        if (question.sourceQuestionId.isNotBlank()) return "source:${question.sourceQuestionId}"
+        // Fallback for catalog/legacy questions without a source record.
         if (question.sourceBookTitle.isNotBlank() &&
             question.sourcePrintedQuestionNumber > 0 &&
             question.sourceTestId.isNotBlank()
@@ -19,8 +22,7 @@ internal object FreshPracticeQuestionSelector {
                 "${question.sourceTestId.trim().lowercase()}|" +
                 question.sourcePrintedQuestionNumber
         }
-        return question.sourceQuestionId.takeIf { it.isNotBlank() }?.let { "source:$it" }
-            ?: question.croppedImagePath.takeIf { it.isNotBlank() }?.let { "image:$it" }
+        return question.croppedImagePath.takeIf { it.isNotBlank() }?.let { "image:$it" }
             ?: "id:${question.id}"
     }
 

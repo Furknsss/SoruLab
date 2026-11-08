@@ -40,6 +40,10 @@ class TestSnapshotCodecTest {
                     stepByStepSolution = "Çözüm metni",
                     bookId = "book_123",
                     sourceQuestionId = "custom_123",
+                    sourceBookTitle = "Biyoloji Soru Bankası",
+                    sourceTestId = "sinir_test_3",
+                    sourcePageIndex = 8,
+                    sourcePrintedQuestionNumber = 29,
                     subject = "Biyoloji",
                     imageBase64 = "cXVlc3Rpb24=",
                     pdfFilePath = "/data/books/book_123.pdf",
@@ -63,6 +67,9 @@ class TestSnapshotCodecTest {
         val cloudQuestion = cloudSnapshot?.questions?.getOrNull(0)
         assertTrue(cloudQuestion != null)
         assertEquals("custom_123", cloudQuestion?.sourceQuestionId)
+        assertEquals("Biyoloji Soru Bankası", cloudQuestion?.sourceBookTitle)
+        assertEquals("sinir_test_3", cloudQuestion?.sourceTestId)
+        assertEquals(29, cloudQuestion?.sourcePrintedQuestionNumber)
         assertEquals("", cloudQuestion?.imagePath)
         assertEquals("", cloudQuestion?.imageBase64)
         assertEquals(-1, cloudQuestion?.pageIndex)

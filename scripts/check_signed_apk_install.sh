@@ -30,11 +30,47 @@ if grep -Fq "Process: $package_name" "$report_dir/crash.txt"; then
   echo 'Signed APK crashed during startup' >&2
   exit 1
 fi
-adb exec-out screencap -p > "$report_dir/release-launch.png"
-adb shell uiautomator dump /sdcard/sorulab-launch.xml
-adb pull /sdcard/sorulab-launch.xml "$report_dir/release-launch.xml"
-if ! grep -Fq "package=\"$package_name\"" "$report_dir/release-launch.xml"; then
-  echo 'App UI is not visible after launch' >&2
+# The emulator's Pixel Launcher can show a SYSTEM "isn't responding"
+# dialog over an otherwise healthy SoruLab activity. Recover that OS-owned
+# dialog, then recheck actual SoruLab UI instead of failing a good APK.
+app_ui_visible=false
+for attempt in 1 2 3; do
+  adb exec-out screencap -p > "$report_dir/release-launch.png"
+  adb shell uiautomator dump /sdcard/sorulab-launch.xml
+  adb pull /sdcard/sorulab-launch.xml "$report_dir/release-launch.xml"
+  if grep -Fq "package=\"$package_name\"" "$report_dir/release-launch.xml"; then
+    app_ui_visible=true
+    break
+  fi
+  if grep -Eq "Launcher isn.t responding|System UI isn.t responding" "$report_dir/release-launch.xml"; then
+    # Tap the system-owned ANR dialog's "Wait" button at its actual
+    # accessibility bounds; never tap an arbitrary position in SoruLab.
+    wait_xy="$(python3 - "$report_dir/release-launch.xml" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+try:
+    root = ET.parse(sys.argv[1]).getroot()
+    for node in root.iter('node'):
+        if node.attrib.get('resource-id') == 'android:id/aerr_wait':
+            coords = [int(x) for x in re.findall(r'\d+', node.attrib.get('bounds', ''))]
+            if len(coords) == 4:
+                print((coords[0] + coords[2]) // 2, (coords[1] + coords[3]) // 2)
+                break
+except (ValueError, ET.ParseError, OSError):
+    pass
+PY
+)"
+    if [[ -n "$wait_xy" ]]; then
+      adb shell input tap $wait_xy
+      echo 'Dismissed unrelated emulator launcher ANR using Wait'
+    fi
+  fi
+  adb shell am start -W -n "$component_name" >/dev/null
+  sleep 3
+done
+if [[ "$app_ui_visible" != true ]]; then
+  echo 'SoruLab UI is not visible after emulator recovery' >&2
   exit 1
 fi
 # Exercise the update path without uninstalling or clearing application data.

@@ -29,6 +29,17 @@ internal object PdfPaddleMobileOcr {
             "PP-OCRv6 mobile SDK needs Android 8; ML Kit remains on Android 7"
         }
         require(!bitmap.isRecycled && bitmap.width >= 120 && bitmap.height >= 120)
+        // The vendored OpenCV binary is aligned to 4 KiB ELF pages. On
+        // Android devices with 16 KiB kernel pages it may load unreliably or
+        // abort the process from native code (uncatchable by Kotlin).
+        // Skip this optional OCR engine entirely on those devices so the
+        // independent ML Kit/PDF text pipeline can continue safely.
+        val devicePageSize = runCatching {
+            android.system.Os.sysconf(android.system.OsConstants._SC_PAGESIZE)
+        }.getOrDefault(4096L)
+        check(devicePageSize < 16384L) {
+            "Optional native OCR skipped on 16 KiB page device; continuing with ML Kit"
+        }
         // Reuse native model across hundreds of scanned pages, never race buffers.
         return mutex.withLock {
             val model = engine ?: run {

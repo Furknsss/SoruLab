@@ -282,13 +282,13 @@ fun DenemelerHubScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "PDF Soru Stüdyosu",
+                            "Soru Kitaplığı",
                             fontWeight = FontWeight.ExtraBold,
                             color = Color(0xFF0F172A),
                             fontSize = 15.sp
                         )
                         Text(
-                            "$customQuestionsCount kayıtlı soru · PDF'den soru kırp ve incele",
+                            "$customQuestionsCount kayıtlı soru · Hazır ZIP paketlerini kitaplığa aktar",
                             color = Color(0xFF64748B),
                             fontSize = 12.sp,
                             maxLines = 2
@@ -303,7 +303,7 @@ fun DenemelerHubScreen(
                             contentColor = Color.White
                         )
                     ) {
-                        Text("PDF Aç", fontWeight = FontWeight.Bold)
+                        Text("ZIP Ekle", fontWeight = FontWeight.Bold)
                     }
                 }
             }

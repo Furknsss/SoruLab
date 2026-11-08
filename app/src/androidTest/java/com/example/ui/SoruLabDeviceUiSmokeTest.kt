@@ -201,7 +201,7 @@ class SoruLabDeviceUiSmokeTest {
         compose.onNodeWithTag("stats_open_error_frequency").assertIsDisplayed().performClick()
         compose.onNodeWithTag("premium_error_frequency_screen").assertIsDisplayed()
         compose.onNodeWithTag("frequency_donut_chart").assertIsDisplayed()
-        compose.onNodeWithTag("frequency_strengthen").assertExists()
+        compose.onAllNodesWithTag("frequency_strengthen").onFirst().assertIsDisplayed()
         captureOnlySyntheticScreen("topic-outcome-frequency.png")
     }
 

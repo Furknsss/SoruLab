@@ -328,11 +328,8 @@ fun LiveSolvingBoardScreen(
         }
     }
 
-    var wasReviewMode by remember(session.testItem.id) { mutableStateOf(session.isReviewMode) }
-    LaunchedEffect(session.isReviewMode) {
-        if (session.isReviewMode && !wasReviewMode) showFullReportCardScreen = true
-        wasReviewMode = session.isReviewMode
-    }
+    // Finishing keeps the reviewed book visible. Results open only
+    // from the explicit top-right "Sonuçlar" button.
 
     // 2. Full-Screen Side-by-Side "İkiz Soru" Comparison Screen
     var activeTwinScreenQuestion by remember { mutableStateOf<YksQuestion?>(null) }
@@ -1050,7 +1047,6 @@ fun LiveSolvingBoardScreen(
                     // reference tablet screenshot; never consume book width.
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .padding(end = 8.dp)
                         .zIndex(35f)
                 )
             } else {
@@ -1067,7 +1063,6 @@ fun LiveSolvingBoardScreen(
                     onOpenMistakeAnalysis = { showFrequencyFromDrawer = true },
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .padding(end = 8.dp)
                         .zIndex(35f)
                 )
             }
@@ -2542,24 +2537,30 @@ private fun RightSlidingOpticalFormDrawer345(
     modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
-    val drawerWidth = (configuration.screenWidthDp * 0.66f).dp
-        .coerceIn(236.dp, 400.dp)
+    val drawerWidth = (configuration.screenWidthDp *
+        if (configuration.screenWidthDp >= 600) 0.46f else 0.79f).dp
+        .coerceIn(280.dp, 340.dp)
     // Keep the answer sheet compact on tablets. Additional questions still
     // scroll inside the panel, without a mostly empty full-height drawer.
     val requestedHeight = (125 + questions.size.coerceAtMost(7) * 48).dp
     val availableHeight = (configuration.screenHeightDp - 110).coerceAtLeast(214).dp
     val drawerHeight = requestedHeight.coerceAtMost(availableHeight)
-    val slideProgress by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (isOpen) 0f else 1f,
-        animationSpec = tween(210, easing = FastOutSlowInEasing),
-        label = "premiumOpticalSlide"
-    )
-    val density = LocalDensity.current
+    // Render only the handle while closed; the hidden drawer cannot
+    // peek through or steal touch space along the book edge.
+    if (!isOpen) {
+        if (showClosedTab) {
+            Box(modifier = modifier) {
+                VerticalBlueSideTab345(
+                    "Optik Form", false, onToggleDrawer, "optical_form_tab",
+                    "Optik formu aç"
+                )
+            }
+        }
+        return
+    }
 
     Row(
-        modifier = modifier.graphicsLayer {
-            translationX = with(density) { drawerWidth.toPx() } * slideProgress
-        },
+        modifier = modifier,
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (showClosedTab || isOpen) {
@@ -2707,28 +2708,31 @@ private fun RightSlidingStatsDrawer345(
     modifier: Modifier = Modifier
 ) {
     val config = LocalConfiguration.current
-    val drawerWidth = (config.screenWidthDp * 0.62f).dp
-        .coerceIn(240.dp, 410.dp)
+    val drawerWidth = (config.screenWidthDp *
+        if (config.screenWidthDp >= 600) 0.48f else 0.80f).dp
+        .coerceIn(280.dp, 350.dp)
     val maxHeight = (config.screenHeightDp - 116).coerceAtLeast(230).dp
-    val slideProgress by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (isOpen) 0f else 1f,
-        animationSpec = tween(210, easing = FastOutSlowInEasing),
-        label = "premiumStatsSlide"
-    )
-    val density = LocalDensity.current
+    if (!isOpen) {
+        Box(modifier = modifier) {
+            VerticalBlueSideTab345(
+                "İstatistikler", true, onToggleDrawer, "stats_drawer_tab",
+                "İstatistikleri aç"
+            )
+        }
+        return
+    }
     val graded = questions.count { it.answerKeyVerified }
     val successRatio = if (graded == 0) 0f else correctCount.toFloat() / graded
     val lossNet = String.format(
         java.util.Locale.forLanguageTag("tr-TR"), "%.2f", wrongCount / 4f
     )
     Row(
-        modifier = modifier.graphicsLayer {
-            translationX = with(density) { drawerWidth.toPx() } * slideProgress
-        },
+        modifier = modifier,
         verticalAlignment = Alignment.CenterVertically
     ) {
         VerticalBlueSideTab345(
-            "İstatistikler", true, onToggleDrawer, "stats_drawer_tab"
+            "İstatistikler", true, onToggleDrawer, "stats_drawer_tab",
+            "İstatistikleri kapat"
         )
         Surface(
             shape = RoundedCornerShape(14.dp),
@@ -2757,7 +2761,7 @@ private fun RightSlidingStatsDrawer345(
                     correctCount = correctCount,
                     wrongCount = wrongCount,
                     emptyCount = emptyCount,
-                    circleSizeDp = 80
+                    circleSizeDp = 68
                 )
                 if (ungradedCount > 0) {
                     Text(
@@ -2896,15 +2900,15 @@ private fun VerticalBlueSideTab345(
 ) {
     // Narrow side grips should not dominate the book page on tablets.
     // The full drawer remains accessible with the same single tap.
-    val tabHeight = if (isStatsIcon) 136.dp else 124.dp
-    val innerWidth = if (isStatsIcon) 121.dp else 109.dp
+    val tabHeight = if (isStatsIcon) 114.dp else 104.dp
+    val innerWidth = if (isStatsIcon) 104.dp else 94.dp
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(topStart = 9.dp, bottomStart = 9.dp),
         color = Color(0xFF3475F5),
         shadowElevation = 3.dp,
         modifier = Modifier
-            .width(36.dp)
+            .width(30.dp)
             .height(tabHeight)
             .testTag(testTag)
             .semantics { contentDescription = accessibilityLabel }
@@ -2924,14 +2928,14 @@ private fun VerticalBlueSideTab345(
                     imageVector = if (isStatsIcon) Icons.Default.PieChart else Icons.Default.Apps,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(12.dp)
                 )
-                Spacer(modifier = Modifier.width(5.dp))
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = title,
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     maxLines = 1
                 )
             }

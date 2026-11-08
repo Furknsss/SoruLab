@@ -78,6 +78,53 @@ class QuestionCacheIsolationTest {
     }
 
     @Test
+    fun tenThousandQuestionsSurviveRestartAndPartialCloudSync() {
+        // Simulate 20 separately imported books, including an image path,
+        // metadata and source identity for every question.
+        val all = (1..10000).map { number ->
+            CustomQuestionRecord(
+                id = "question-$number",
+                userId = "student",
+                bookId = "book_${(number - 1) / 500}",
+                sourceBookTitle = "Book ${(number - 1) / 500}",
+                examType = if (number % 2 == 0) "AYT" else "TYT",
+                subjectName = "Matematik",
+                topicName = "Fonksiyonlar",
+                questionText = "Soru $number",
+                pageIndex = number / 5,
+                questionNumberInTest = number % 20 + 1,
+                aiSolutionSummary = CustomQuestionRecord.packSolutionWithMeta(
+                    solutionText = "",
+                    targetLevel = "OSYM",
+                    croppedImagePath = "/data/user/0/com.aistudio.sorulab.ykslab/files/questions/q$number.png",
+                    publisherLogoUri = "",
+                    answerKeyVerified = true,
+                    questionNumberInBook = number,
+                    bookOrTestName = "Book ${(number - 1) / 500}",
+                    bookCoverPath = ""
+                )
+            )
+        }
+        val firstSave = repository.saveCachedCustomQuestions("student", all)
+        assertEquals(10000, firstSave.size)
+        val afterRestart = SoruLabRepository(context).loadCachedCustomQuestions("student")
+        assertEquals(10000, afterRestart.size)
+        assertEquals(10000, afterRestart.map { it.id }.toSet().size)
+        assertEquals(20, afterRestart.map { it.bookId }.toSet().size)
+        assertEquals(
+            "question-10000",
+            afterRestart.firstOrNull { it.id == "question-10000" }?.id
+        )
+        // A delayed cloud listener with one batch of 350 must never shrink
+        // the original 10,000-question student library.
+        repository.saveCachedCustomQuestions("student", all.take(350))
+        val recovered = SoruLabRepository(context).loadCachedCustomQuestions("student")
+        assertEquals(10000, recovered.size)
+        assertEquals(10000, recovered.map { it.id }.toSet().size)
+        assertEquals(20, recovered.map { it.bookId }.toSet().size)
+    }
+
+    @Test
     fun corruptPrimaryCanRecoverPreviousLargeSnapshot() {
         val records = (1..1400).map { CustomQuestionRecord(id = "q-$it", userId = "student") }
         repository.saveCachedCustomQuestions("student", records)

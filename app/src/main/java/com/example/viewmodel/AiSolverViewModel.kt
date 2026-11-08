@@ -1162,6 +1162,17 @@ class AiSolverViewModel : ViewModel() {
                                 ) {
                                     try { PdfPaddleMobileOcr.readPage(context, pageBitmap) }
                                     catch (e: CancellationException) { throw e }
+                                    catch (e: LinkageError) {
+                                        // A native OpenCV/ONNX load failure must never
+                                        // crash book processing. ML Kit and PDF text
+                                        // extraction remain available independently.
+                                        android.util.Log.e(
+                                            "SoruLabPaddle",
+                                            "Paddle native library could not load; using other source OCR",
+                                            e
+                                        )
+                                        null
+                                    }
                                     catch (e: Exception) {
                                         android.util.Log.w("SoruLabPaddle", "Independent on-device OCR unavailable", e)
                                         null

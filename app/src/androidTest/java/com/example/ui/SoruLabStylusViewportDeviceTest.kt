@@ -183,10 +183,11 @@ class SoruLabStylusViewportDeviceTest {
                 })
             ) }
             showBoard()
-            compose.waitUntil(15_000) {
-                compose.onAllNodesWithContentDescription("1. Soru").fetchSemanticsNodes().isNotEmpty()
-            }
-            val image = compose.onNodeWithContentDescription("1. Soru").assertIsDisplayed()
+            // Check rendered question pixels, not an accessibility child that
+            // can be merged into the book-page semantics by Compose. The two
+            // deliberately colored bands prove that both ends survived.
+            compose.onNodeWithTag("book_question_1").assertIsDisplayed()
+            val image = compose.onNodeWithTag("book_question_1")
                 .captureToImage().toPixelMap()
             var topInk = 0
             var lastInk = 0

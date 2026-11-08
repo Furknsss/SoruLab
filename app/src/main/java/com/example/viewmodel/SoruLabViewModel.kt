@@ -1516,6 +1516,90 @@ class SoruLabViewModel(
         )
     }
 
+    /**
+     * Opens a fresh practice test from the exact Hata Frekansı branch the
+     * student chose. Uses only recoverable, answer-key-verified ZIP questions.
+     * Never silently widens a tagged sub-outcome/type to an unrelated topic.
+     */
+    fun startStrengtheningTestFromSession(
+        session: ActiveSolvingSession,
+        target: com.example.util.FrequencyPracticeTarget
+    ) {
+        val subject = SoruLabCatalog.allSubjects.firstOrNull {
+            it.id.equals(session.subjectId, ignoreCase = true)
+        } ?: SoruLabCatalog.allSubjects.firstOrNull {
+            it.name.equals(session.subjectName, ignoreCase = true)
+        }
+        val topicName = target.topicName.trim().ifBlank { session.topicName }
+        val topic = subject?.topics?.firstOrNull {
+            it.name.trim().equals(topicName, ignoreCase = true)
+        } ?: subject?.topics?.firstOrNull {
+            it.id.equals(session.topicId, ignoreCase = true) &&
+                it.name.trim().equals(topicName, ignoreCase = true)
+        }
+        if (topic == null) {
+            showBanner("Bu dalın konusu kitaplıkta doğrulanamadı. Başka bir kazanım seç.")
+            return
+        }
+
+        fun matchesTag(actual: String, selected: String?): Boolean =
+            selected == null || actual.trim().equals(selected.trim(), ignoreCase = true)
+
+        val available = collectQuestionsByTopicSourceAndDifficulty(
+            topic, DifficultyLevel.entries.toSet(), QuestionSourceFilter.TUM_SORULAR
+        ).filter { question ->
+            question.answerKeyVerified &&
+                matchesTag(question.learningOutcome, target.learningOutcome) &&
+                matchesTag(question.questionType, target.questionType)
+        }
+
+        if (available.isEmpty()) {
+            val levelName = target.questionType ?: target.learningOutcome ?: topic.name
+            showBanner("'$levelName' için cevap anahtarı doğrulanmış, etiketli soru yok. Bu kazanıma ait ZIP soruları ekle.")
+            return
+        }
+
+        // Generated-test snapshots track exposure even before the student
+        // finishes a test; solved snapshots track actual repetition.
+        val previousGenerated = _generatedTopicTests.value.values.flatten()
+            .flatMap { it.questions }
+        val previousSolved = _userTestResults.value.filter { it.isSolvedAttempt }
+            .mapNotNull { TestSnapshotCodec.decode(it.testSnapshotJson) }
+            .flatMap { it.questions }
+        val fresh = FreshPracticeQuestionSelector.choose(
+            candidates = available,
+            generatedBefore = previousGenerated,
+            solvedBefore = previousSolved,
+            justSeen = session.testItem.questions,
+            requestedCount = AUTOMATIC_TEST_QUESTION_COUNT
+        )
+        if (fresh.isEmpty()) {
+            showBanner("Bu daldaki bütün sorular mevcut testte kullanıldı. Yeni bir Güçlen testi için aynı kazanımdan başka ZIP soruları ekle.")
+            return
+        }
+
+        val practiceLabel = when {
+            target.questionType != null ->
+                "${target.learningOutcome.orEmpty()} • ${target.questionType}"
+            target.learningOutcome != null -> target.learningOutcome
+            else -> "Güçlen"
+        }
+        val test = generateCustomFilteredTopicTest(
+            topic = topic,
+            level = TopicTestLevel.IKIZ,
+            selectedDifficulties = DifficultyLevel.entries.toSet(),
+            sourceFilter = QuestionSourceFilter.TUM_SORULAR,
+            requestedQuestionCount = fresh.size,
+            verifiedTwinCandidates = fresh,
+            customTestTitle = practiceLabel
+        )
+        if (test == null) {
+            showBanner("Güçlen testi oluşturulamadı; mevcut soruların korundu.")
+            return
+        }
+        startSolvingSession(topic, test, BoardViewMode.FULL_PAGE, isReviewMode = false)
+    }
+
     fun startTwinTestFromSession(session: ActiveSolvingSession) {
         val subject = SoruLabCatalog.allSubjects.firstOrNull {
             it.id.equals(session.subjectId, ignoreCase = true)

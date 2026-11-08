@@ -240,14 +240,14 @@ class SoruLabRepository(
                 .filter(String::isNotBlank)
             val editor = prefs.edit()
             prefs.all.keys.forEach { key ->
-                if (key.startsWith("solved_results_") ||
-                    key.startsWith("gen_tests_") ||
-                    key.startsWith("gen_snapshots_") ||
-                    key.startsWith("gen_snapshot_") ||
-                    key.startsWith("deleted_tests_") ||
-                    key.startsWith("custom_questions_") ||
+                if (key == "solved_results_$userId" ||
+                    key == "gen_tests_$userId" ||
+                    key == "gen_snapshots_$userId" ||
+                    key.startsWith("gen_snapshot_${userId}_") ||
+                    key == "deleted_tests_$userId" ||
+                    key == "custom_questions_$userId" ||
                     key == customPublishersCacheKey(userId) ||
-                    key.startsWith("board_strokes_")
+                    key == "board_strokes_$userId"
                 ) {
                     editor.remove(key)
                 }
@@ -255,11 +255,13 @@ class SoruLabRepository(
             editor.remove("solved_results_$userId")
             editor.remove("gen_tests_$userId")
             editor.remove("gen_snapshots_$userId")
-            editor.remove("gen_tests_global_device")
+            if (userId == com.example.util.PdfLibraryAccount.GUEST_CACHE_UID) {
+                editor.remove("gen_tests_global_device")
+                editor.remove("deleted_tests_global_device")
+                editor.remove("custom_questions_global_device")
+            }
             editor.remove("deleted_tests_$userId")
-            editor.remove("deleted_tests_global_device")
             editor.remove("custom_questions_$userId")
-            editor.remove("custom_questions_global_device")
             editor.remove("board_strokes_$userId")
             editor.apply()
             val cacheDir = java.io.File(ctx.filesDir, "sorulab_question_cache")
@@ -999,9 +1001,13 @@ class SoruLabRepository(
                 archiveFile.delete()
                 // Stale pre-JSON preferences must not resurrect deliberately
                 // removed records when the new cache has fewer questions.
-                ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
-                    .edit().remove("custom_questions_$userId")
-                    .remove("custom_questions_global_device").commit()
+                val editor = ctx.getSharedPreferences(
+                    "sorulab_generated_tests_prefs", Context.MODE_PRIVATE
+                ).edit().remove("custom_questions_$userId")
+                if (userId == com.example.util.PdfLibraryAccount.GUEST_CACHE_UID) {
+                    editor.remove("custom_questions_global_device")
+                }
+                editor.commit()
             } else {
                 LocalQuestionCacheIO.preserveLargerSnapshot(
                     userCacheFile, LocalQuestionCacheIO.readJson(userCacheFile)
@@ -1015,10 +1021,11 @@ class SoruLabRepository(
             // Keep SharedPreferences light (remove oversized old payloads if > 500 questions)
             if (durableRecords.size > 400) {
                 val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
-                prefs.edit()
-                    .remove("custom_questions_$userId")
-                    .remove("custom_questions_global_device")
-                    .apply()
+                val editor = prefs.edit().remove("custom_questions_$userId")
+                if (userId == com.example.util.PdfLibraryAccount.GUEST_CACHE_UID) {
+                    editor.remove("custom_questions_global_device")
+                }
+                editor.apply()
             }
             durableRecords
         } catch (e: Exception) {

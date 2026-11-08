@@ -175,7 +175,10 @@ class SoruLabDeviceUiSmokeTest {
         val opticalGrip = compose.onNodeWithTag("optical_form_tab")
             .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue("Optik tab is still oversized", opticalGrip.height <= 146f * density)
-        assertTrue("Optik tab is too wide", opticalGrip.width <= 51f * density)
+        assertTrue("Optik tab is too wide", opticalGrip.width <= 40f * density)
+        val viewRight = compose.onRoot().fetchSemanticsNode().boundsInRoot.right
+        assertTrue("Closed optical grip must sit flush at the right edge",
+            opticalGrip.right >= viewRight - 3f * density)
         compose.onNodeWithTag("optical_form_tab").performClick()
         compose.onNodeWithTag("optic_q2_E").assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals("E", latestAnswers[2]) }
@@ -217,7 +220,10 @@ class SoruLabDeviceUiSmokeTest {
         compose.onNodeWithTag("top_finish_test_btn").performClick()
         compose.onNodeWithTag("confirm_finish_test_btn").performClick()
         compose.runOnIdle { assertEquals(1, confirmedFinishes) }
-        // Archive actual pixels of the report and stats on phone + tablet.
+        // Finishing keeps the corrected book open; the encouragement and
+        // full report appear only after an explicit "Sonuçlar" tap.
+        compose.onNodeWithTag("full_screen_report_card").assertDoesNotExist()
+        compose.onNodeWithTag("go_to_report_card_btn").assertIsDisplayed().performClick()
         compose.waitUntil(15_000) {
             compose.onAllNodesWithTag("full_screen_report_card")
                 .fetchSemanticsNodes().isNotEmpty()
@@ -229,12 +235,14 @@ class SoruLabDeviceUiSmokeTest {
         val statsGrip = compose.onNodeWithTag("stats_drawer_tab")
             .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue("Statistics tab is still oversized", statsGrip.height <= 150f * density)
-        assertTrue("Statistics tab is too wide", statsGrip.width <= 51f * density)
+        assertTrue("Statistics tab is too wide", statsGrip.width <= 40f * density)
+        assertTrue("Closed statistics grip must sit flush at the right edge",
+            statsGrip.right >= compose.onRoot().fetchSemanticsNode().boundsInRoot.right - 3f * density)
         compose.onNodeWithTag("stats_drawer_tab").performClick()
         val statsPanel = compose.onNodeWithTag("stats_drawer_panel")
             .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue("Statistics drawer is wider than compact tablet spec",
-            statsPanel.width <= 422f * density)
+            statsPanel.width <= 355f * density)
         captureOnlySyntheticScreen("test-statistics-open.png")
         // Hata Frekansı is a real navigation action, not a static icon:
         // it must show the verified, topic-aware frequency tree.

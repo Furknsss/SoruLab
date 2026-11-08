@@ -279,11 +279,24 @@ class SoruLabViewModel(
         SoruLabCatalog.topicByIdMap
     }
 
-    private fun saveCustomQuestionsCacheAsync(uid: String, list: List<CustomQuestionRecord>) {
+    private fun saveCustomQuestionsCacheAsync(
+        uid: String,
+        list: List<CustomQuestionRecord>,
+        allowRemovals: Boolean = false
+    ) {
         cacheSaveJob?.cancel()
         cacheSaveJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                repository.saveCachedCustomQuestions(uid, list)
+                val durable = repository.saveCachedCustomQuestions(uid, list, allowRemovals)
+                withContext(Dispatchers.Main) {
+                    if ((effectiveUserId() ?: com.example.util.PdfLibraryAccount.GUEST_CACHE_UID) == uid &&
+                        durable.size > _userCustomQuestions.value.size
+                    ) {
+                        // A partial cloud listener must not shrink the visible bank.
+                        _userCustomQuestions.value = durable
+                        syncPdfPoolToPracticeTests(durable)
+                    }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -2510,14 +2523,14 @@ class SoruLabViewModel(
 
             // A successful scan is not a successful import until an atomic
             // file write and read-back both succeed.
-            try {
+            val durableList = try {
                 withContext(Dispatchers.IO) {
-                    repository.saveCachedCustomQuestions(uid, updatedList)
-                    val restored = repository.loadCachedCustomQuestions(uid)
+                    val restored = repository.saveCachedCustomQuestions(uid, updatedList)
                     val ids = restored.mapTo(HashSet(restored.size)) { it.id }
                     check(newRecords.all { it.id in ids }) {
                         "Yerel kitaplık yazıldı fakat doğrulanamadı."
                     }
+                    restored
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -2533,7 +2546,10 @@ class SoruLabViewModel(
             }
 
             withContext(Dispatchers.Main) {
-                _userCustomQuestions.value = updatedList
+                if ((effectiveUserId() ?: com.example.util.PdfLibraryAccount.GUEST_CACHE_UID) == uid) {
+                    _userCustomQuestions.value = durableList
+                    syncPdfPoolToPracticeTests(durableList)
+                }
                 val msg = "'$bookOrTestName' kitaplığa eklendi: ${newRecords.size} soru. " +
                     if (imageRekeyFailureCount == 0) "Yerel kayıt doğrulandı."
                     else "$imageRekeyFailureCount görselin dosya adı kontrol edilmeli."
@@ -2541,10 +2557,8 @@ class SoruLabViewModel(
                 onSaved(true, msg)
             }
 
-            syncPdfPoolToPracticeTests(updatedList)
-
             val firebaseUid = _currentUser.value?.uid
-            if (firebaseUid != null) {
+            if (firebaseUid != null && firebaseUid == uid) {
                 launch(Dispatchers.IO) {
                     val cloudBatch = newRecords.map { it.copy(userId = firebaseUid) }
                     try {
@@ -2677,7 +2691,7 @@ class SoruLabViewModel(
             .mapNotNull { it.pdfFilePath.takeIf(String::isNotBlank) }
         val updated = _userCustomQuestions.value.filterNot { it.id in idSet }
         _userCustomQuestions.value = updated
-        saveCustomQuestionsCacheAsync(uid, updated)
+        saveCustomQuestionsCacheAsync(uid, updated, allowRemovals = true)
         syncPdfPoolToPracticeTests(updated)
         viewModelScope.launch(Dispatchers.IO) {
             var failedImageDeletes = 0

@@ -3046,7 +3046,6 @@ private fun TopicTestsDetailView(
                                         test = testItem,
                                         completed = isTestCompleted(testItem),
                                         onOpen = { onTestClicked(testItem) },
-                                        onStart = { onStartTestImmediately(testItem) },
                                         onDelete = { onDeleteTest(testItem) }
                                     )
                                 }
@@ -3125,14 +3124,12 @@ private fun TopicTestsDetailView(
 }
 
 @Composable
-private fun PremiumPracticeTestRow(
+internal fun PremiumPracticeTestRow(
     test: YksTestItem,
     completed: Boolean,
     onOpen: () -> Unit,
-    onStart: () -> Unit,
     onDelete: () -> Unit
 ) {
-    var menuExpanded by remember(test.id) { mutableStateOf(false) }
     var confirmDelete by remember(test.id) { mutableStateOf(false) }
     BoxWithConstraints(modifier = Modifier.fillMaxWidth().background(Color.White)) {
         val compact = maxWidth < 420.dp
@@ -3182,29 +3179,19 @@ private fun PremiumPracticeTestRow(
                 position = test.difficultyPosition,
                 modifier = Modifier.width(if (compact) 82.dp else 110.dp)
             )
-            Box {
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(
-                        Icons.Filled.MoreVert,
-                        contentDescription = "${test.fullTitle} seçenekleri",
-                        tint = Color(0xFF8B84A7),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                    DropdownMenuItem(
-                        text = { Text(if (completed) "Tekrar çöz" else "Testi çöz") },
-                        leadingIcon = { Icon(Icons.Filled.PlayArrow, contentDescription = null) },
-                        onClick = { menuExpanded = false; onStart() },
-                        modifier = Modifier.testTag("solve_test_btn_${test.id}")
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Testi sil", color = Color(0xFFCA3658)) },
-                        leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = Color(0xFFCA3658)) },
-                        onClick = { menuExpanded = false; confirmDelete = true },
-                        modifier = Modifier.testTag("delete_test_btn_${test.id}")
-                    )
-                }
+            // One tap opens the existing safety confirmation; no overflow
+            // menu is needed. The rest of the test row still opens the test.
+            IconButton(
+                onClick = { confirmDelete = true },
+                modifier = Modifier.size(44.dp)
+                    .testTag("delete_test_btn_${test.id}")
+            ) {
+                Icon(
+                    Icons.Outlined.Delete,
+                    contentDescription = "${test.fullTitle} testini sil",
+                    tint = Color(0xFFCA3658),
+                    modifier = Modifier.size(22.dp)
+                )
             }
         }
     }

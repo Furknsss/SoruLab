@@ -16,6 +16,7 @@ on:
       - 'app/build.gradle.kts'
       - 'app/src/androidTest/java/com/example/util/SoruLabQuestionZipImportDeviceTest.kt'
       - 'app/src/main/java/com/example/ui/screens/LiveSolvingBoardScreen.kt'
+      - 'app/src/main/java/com/example/ui/screens/HomeAndPracticeScreens.kt'
       - 'app/src/main/java/com/example/ui/screens/PremiumMistakeAnalysisScreen.kt'
       - 'app/src/androidTest/java/com/example/ui/SoruLabDeviceUiSmokeTest.kt'
       - 'app/src/androidTest/java/com/example/ui/SoruLabStylusViewportDeviceTest.kt'

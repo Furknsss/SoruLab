@@ -48,7 +48,7 @@ def main():
                             f"APK native library is too small for {abi}: {library}"
                         )
                     with archive.open(entry) as native_stream:
-                        if native_stream.read(4) != b"\\x7fELF":
+                        if native_stream.read(4) != b"\x7fELF":
                             raise SystemExit(
                                 f"APK contains invalid ELF for {abi}: {library}"
                             )

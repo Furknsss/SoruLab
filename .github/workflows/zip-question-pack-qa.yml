@@ -61,7 +61,7 @@ jobs:
               if curl --fail --location --silent --show-error \
                   --retry 2 --retry-all-errors --connect-timeout 20 --max-time 240 \
                   --output "$archive" "$url" && \
-                  printf '%s  %s\\n' "$expected" "$archive" | sha256sum --check -; then
+                  printf '%s  %s\n' "$expected" "$archive" | sha256sum --check -; then
                 unzip -q "$archive" -d .ci-gradle
                 fetched=true
                 break
@@ -70,7 +70,7 @@ jobs:
             [[ "$fetched" == true ]]
           fi
           "$gradle_home/bin/gradle" --version
-          printf '%s\\n' "$GITHUB_WORKSPACE/$gradle_home/bin" >> "$GITHUB_PATH"
+          printf '%s\n' "$GITHUB_WORKSPACE/$gradle_home/bin" >> "$GITHUB_PATH"
       - name: Prepare ephemeral Android signing key
         run: |
           test -e /dev/kvm

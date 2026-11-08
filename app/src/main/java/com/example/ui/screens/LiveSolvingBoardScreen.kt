@@ -4167,7 +4167,7 @@ private fun FullScreenSuccessReportCardView(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Bu testin bir ikizi var!\nPekiştirmen için çözmeni öneriyoruz.",
+                            text = "Yanlış ve boşlarını pekiştir.\nHavuzundaki farklı, doğrulanmış sorularla ikiz test oluştur.",
                             color = Color(0xFF1E293B),
                             fontWeight = FontWeight.Medium,
                             fontSize = 13.5.sp,

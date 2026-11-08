@@ -67,6 +67,7 @@ internal fun mergeCloudQuestionsWithLocalMedia(
         val cached = localById[remote.id] ?: return@map remote
         val hasLocalPdf = cached.pdfFilePath.isNotBlank() && cached.pageIndex >= 0
         remote.copy(
+            learningOutcome = remote.learningOutcome.ifBlank { cached.learningOutcome },
             bookId = cached.bookId.ifBlank { remote.bookId },
             imageBase64 = cached.imageBase64.ifBlank { remote.imageBase64 },
             pdfFilePath = if (hasLocalPdf) cached.pdfFilePath else remote.pdfFilePath,
@@ -937,6 +938,7 @@ class SoruLabViewModel(
                 answerKeyVerified = answerKeyVerified,
                 stemTop = if (hasCroppedStemImage) "" else custom.questionText,
                 analyticsText = custom.questionText,
+                learningOutcome = custom.learningOutcome,
                 bulletsOrSteps = emptyList(),
                 stemBottom = if (hasCroppedStemImage) "" else "Buna göre doğru seçenek aşağıdakilerden hangisidir?",
                 options = mapOf(
@@ -1070,6 +1072,7 @@ class SoruLabViewModel(
                 answerKeyVerified = answerKeyVerified,
                 stemTop = if (hasCroppedStemImage) "" else custom.questionText,
                 analyticsText = custom.questionText,
+                learningOutcome = custom.learningOutcome,
                 bulletsOrSteps = emptyList(),
                 stemBottom = if (hasCroppedStemImage) "" else "Buna göre doğru seçenek aşağıdakilerden hangisidir?",
                 options = mapOf(
@@ -1491,7 +1494,9 @@ class SoruLabViewModel(
             croppedImagePath = candidate.croppedImagePath,
             imageBase64 = candidate.imageBase64,
             sourceQuestionId = candidate.id,
-            sourceDescription = sourceName,
+            sourceDescription = sourceName +
+                if (source.learningOutcome.isNotBlank() && candidate.learningOutcome.isNotBlank())
+                    " • Aynı alt kazanım" else " • Aynı konu",
             options = listOf("A", "B", "C", "D", "E").associateWith { it },
             correctOption = answer,
             solutionExplanation = candidate.cleanSolutionSummary.ifBlank {
@@ -2565,6 +2570,7 @@ class SoruLabViewModel(
                         difficulty = firestoreCompatDiff,
                         correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty(),
                         questionText = item.questionText.take(1800),
+                        learningOutcome = item.learningOutcome,
                         publisherTag = finalPubName,
                         publisherId = resolvedPublisher.id,
                         sourceBookTitle = bookOrTestName,

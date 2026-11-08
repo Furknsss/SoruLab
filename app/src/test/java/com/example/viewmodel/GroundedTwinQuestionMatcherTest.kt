@@ -35,12 +35,14 @@ class GroundedTwinQuestionMatcherTest {
         imagePath: String = "/questions/$id.png",
         difficulty: String = "Orta",
         sourceBook: String = "Kitap 2",
-        printedQuestion: Int = 2
+        printedQuestion: Int = 2,
+        learningOutcome: String = ""
     ) = CustomQuestionRecord(
         id = id, userId = "student",
         examType = "AYT", subjectId = subjectId, subjectName = "Matematik",
         topicId = topicId, topicName = topic,
         questionText = "Aşağıdaki ifadeye göre f(2) kaçtır? Soru: $id",
+        learningOutcome = learningOutcome,
         difficulty = difficulty, correctOption = "B",
         sourceBookTitle = sourceBook,
         aiSolutionSummary = CustomQuestionRecord.packSolutionWithMeta(
@@ -96,6 +98,15 @@ class GroundedTwinQuestionMatcherTest {
             isUsable = { it.id != "missing_image" }
         )
         assertEquals("valid", result?.id)
+    }
+
+    @Test fun knownSubOutcomeRequiresSameVerifiedOutcome() {
+        val taggedOriginal = original.copy(learningOutcome = "Fonksiyonların bileşkesi")
+        assertEquals("matching", choose(listOf(
+            record("different", learningOutcome = "Fonksiyonun görüntü kümesi"),
+            record("unknown"),
+            record("matching", learningOutcome = "Fonksiyonların bileşkesi")
+        ), taggedOriginal)?.id)
     }
 
     @Test fun emptyPoolGivesNoInventedQuestion() {

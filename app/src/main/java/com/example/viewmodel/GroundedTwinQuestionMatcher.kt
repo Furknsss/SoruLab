@@ -36,6 +36,7 @@ internal object GroundedTwinQuestionMatcher {
         )
         val originalImage = source.croppedImagePath
         val sourceBook = normalized(source.sourceBookTitle)
+        val verifiedOutcome = normalized(source.learningOutcome)
         val originSubject = normalized(subjectId)
         val originTopicId = normalized(topicId)
         val originTopic = normalized(topicName.ifBlank { source.topicHeader })
@@ -49,6 +50,10 @@ internal object GroundedTwinQuestionMatcher {
                 candidate.answerKeyVerified &&
                 candidate.correctOption.uppercase(Locale.ROOT) in options &&
                 normalized(candidate.subjectId) == originSubject &&
+                // If original has a verified sub-outcome, only an identical
+                // publisher/ZIP outcome tag is allowed; no guessed mapping.
+                (verifiedOutcome.isBlank() ||
+                    normalized(candidate.learningOutcome) == verifiedOutcome) &&
                 (
                     (originTopicId.isNotBlank() && normalized(candidate.topicId) == originTopicId) ||
                         (originTopic.isNotBlank() && normalized(candidate.topicName) == originTopic)

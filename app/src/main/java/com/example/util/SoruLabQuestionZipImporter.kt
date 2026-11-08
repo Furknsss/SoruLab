@@ -199,6 +199,7 @@ object SoruLabQuestionZipImporter {
                         examType = q.optString("examType", exam).uppercase(Locale.ROOT),
                         subjectName = q.optString("subject", subject),
                         topicName = q.optString("topic").ifBlank { "Konu Belirlenemedi" },
+                        learningOutcome = q.optString("learningOutcome").trim().take(220),
                         difficulty = q.optString("difficulty", "Orta"),
                         targetLevel = q.optString("targetLevel", "OSYM"),
                         correctOption = correct,

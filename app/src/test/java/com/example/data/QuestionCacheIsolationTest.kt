@@ -61,6 +61,48 @@ class QuestionCacheIsolationTest {
     }
 
     @Test
+    fun a350QuestionCloudSnapshotCannotErase1400LocalQuestions() {
+        val completeBank = (1..1400).map { number ->
+            CustomQuestionRecord(
+                id = "owned-$number",
+                userId = "student",
+                bookId = "book_${(number - 1) / 100}",
+                questionText = "Original question $number"
+            )
+        }
+        assertEquals(1400, repository.saveCachedCustomQuestions("student", completeBank).size)
+        val result = repository.saveCachedCustomQuestions("student", completeBank.take(350))
+        assertEquals("Partial cloud sync must preserve entire local bank", 1400, result.size)
+        assertEquals(1400, repository.loadCachedCustomQuestions("student").size)
+        assertEquals(1400, repository.loadCachedCustomQuestions("student").distinctBy { it.id }.size)
+    }
+
+    @Test
+    fun corruptPrimaryCanRecoverPreviousLargeSnapshot() {
+        val records = (1..1400).map { CustomQuestionRecord(id = "q-$it", userId = "student") }
+        repository.saveCachedCustomQuestions("student", records)
+        repository.saveCachedCustomQuestions("student", records + CustomQuestionRecord(id = "q-1401", userId = "student"))
+        val ownerFile = File(context.filesDir, "sorulab_question_cache/custom_questions_student.json")
+        val archive = LocalQuestionCacheIO.recoveryFile(ownerFile)
+        assertTrue("Largest previous snapshot should be retained", archive.isFile)
+        ownerFile.writeText("[corrupt")
+        assertEquals(1400, repository.loadCachedCustomQuestions("student").size)
+    }
+
+    @Test
+    fun explicitlyRemovingQuestionsDoesNotResurrectArchivedOrLegacyRecords() {
+        val records = (1..1400).map { CustomQuestionRecord(id = "q-$it", userId = "student") }
+        repository.saveCachedCustomQuestions("student", records)
+        repository.saveCachedCustomQuestions("student", records + CustomQuestionRecord(id = "q-extra", userId = "student"))
+        val retained = repository.saveCachedCustomQuestions(
+            "student", records.take(350), allowRemovals = true
+        )
+        assertEquals(350, retained.size)
+        assertEquals(350, repository.loadCachedCustomQuestions("student").size)
+        assertTrue(repository.loadCachedCustomQuestions("otherStudent").isEmpty())
+    }
+
+    @Test
     fun savingCacheCannotAssignAnotherAccountsQuestionToCurrentAccount() {
         repository.saveCachedCustomQuestions("bob", listOf(
             CustomQuestionRecord(id = "alice-q", userId = "alice"),

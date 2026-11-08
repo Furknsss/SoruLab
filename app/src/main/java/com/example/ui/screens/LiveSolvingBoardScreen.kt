@@ -298,6 +298,7 @@ fun LiveSolvingBoardScreen(
     // Sub-screens inside LiveSolvingBoardScreen:
     // 1. Full-Screen Report Card ("▸ Başarı Durumuna Git" / Karne)
     var showFullReportCardScreen by remember(session.testItem.id) { mutableStateOf(false) }
+    var showFrequencyFromDrawer by remember(session.testItem.id) { mutableStateOf(false) }
     var showFinishConfirmation by remember(session.testItem.id) { mutableStateOf(false) }
     var isImmersive by rememberSaveable(session.testItem.id) { mutableStateOf(false) }
     val screenContext = LocalContext.current
@@ -366,6 +367,9 @@ fun LiveSolvingBoardScreen(
                 activeTwinScreenQuestion = null
                 activeTwinScreenData = null
             }
+            showFrequencyFromDrawer -> {
+                showFrequencyFromDrawer = false
+            }
             showFullReportCardScreen -> {
                 showFullReportCardScreen = false
             }
@@ -422,6 +426,23 @@ fun LiveSolvingBoardScreen(
                 activeTwinScreenData = null
                 showFullReportCardScreen = true
             }
+        )
+        return
+    }
+
+    if (showFrequencyFromDrawer && session.isReviewMode) {
+        val frequencySummary = remember(
+            questions, session.selectedAnswers, session.subjectName, session.topicName
+        ) {
+            TestAnswerAnalyticsEngine.calculate(
+                questions, session.selectedAnswers, session.subjectName, session.topicName
+            )
+        }
+        PremiumMistakeAnalysisScreen(
+            title = session.testItem.fullTitle.ifBlank { session.topicName },
+            summary = frequencySummary,
+            onBack = { showFrequencyFromDrawer = false },
+            onStrengthen = onSolveTwinTest
         )
         return
     }
@@ -1043,6 +1064,7 @@ fun LiveSolvingBoardScreen(
                     emptyCount = emptyCount,
                     ungradedCount = ungradedCount,
                     onToggleDrawer = onToggleStatsDrawer,
+                    onOpenMistakeAnalysis = { showFrequencyFromDrawer = true },
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .padding(end = 8.dp)
@@ -2517,110 +2539,139 @@ private fun RightSlidingOpticalFormDrawer345(
     modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
-    val answered = questions.count { !selectedAnswers[it.number].isNullOrBlank() }
-    // A 2-question test must not show the same tall empty drawer as a
-    // 30-question test. Seven rows can be shown; the rest scroll.
-    // Keep a small vertical margin on compact landscape devices.
-    val availableHeight = (configuration.screenHeightDp.dp - 96.dp).coerceAtLeast(212.dp)
-    val desiredHeight = (154 + questions.size.coerceAtMost(7) * 46).dp
-    val opticalDrawerHeight = desiredHeight.coerceIn(212.dp, availableHeight)
-    val drawerWidth = (configuration.screenWidthDp.dp - 54.dp).coerceAtMost(320.dp)
-    // The drawer stays composed even when hidden. Only its position animates:
-    // no costly destruction/recreation of the answer grid on each tap.
-    val drawerSlideProgress by androidx.compose.animation.core.animateFloatAsState(
+    val drawerWidth = (configuration.screenWidthDp - 62).coerceAtLeast(230).dp
+        .coerceAtMost(460.dp)
+    // Six full-size answer rows fit like the reference; additional questions
+    // scroll in a lazy list without leaving a huge white empty panel.
+    val requestedHeight = (149 + questions.size.coerceAtMost(7) * 57).dp
+    val availableHeight = (configuration.screenHeightDp - 94).coerceAtLeast(220).dp
+    val drawerHeight = requestedHeight.coerceAtMost(availableHeight)
+    val slideProgress by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (isOpen) 0f else 1f,
-        animationSpec = tween(durationMillis = 190, easing = FastOutSlowInEasing),
-        label = "opticalDrawerSlide"
+        animationSpec = tween(210, easing = FastOutSlowInEasing),
+        label = "premiumOpticalSlide"
     )
     val density = LocalDensity.current
+
     Row(
         modifier = modifier.graphicsLayer {
-            translationX = with(density) { drawerWidth.toPx() } * drawerSlideProgress
+            translationX = with(density) { drawerWidth.toPx() } * slideProgress
         },
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (showClosedTab || isOpen) {
-            VerticalBlueSideTab345("Optik Form", false, onToggleDrawer, "optical_form_tab")
+            VerticalBlueSideTab345(
+                "Optik Form", false, onToggleDrawer, "optical_form_tab"
+            )
         }
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Color.White,
-                shadowElevation = 10.dp,
-                border = BorderStroke(1.dp, Color(0xFFE4EAF4)),
-                modifier = Modifier
-                    // Height follows actual question count. Previously a
-                    // two-row optical form expanded to 540dp with dead space.
-                    .width(drawerWidth)
-                    .height(opticalDrawerHeight)
-                    .then(
-                        if (isOpen) Modifier.testTag("optical_form_drawer")
-                        else Modifier.clearAndSetSemantics { }
-                    )
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = Color.White,
+            shadowElevation = 14.dp,
+            modifier = Modifier.width(drawerWidth).height(drawerHeight).then(
+                if (isOpen) Modifier.testTag("optical_form_drawer")
+                else Modifier.clearAndSetSemantics { }
+            )
+        ) {
+            Column(
+                Modifier.fillMaxSize().padding(horizontal = 17.dp, vertical = 17.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Optik Form", color = Color(0xFF25215D), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                "$answered / ${questions.size} yanıtlandı",
-                                color = Color(0xFF74708F), fontSize = 12.sp,
-                                modifier = Modifier.testTag("optical_answer_progress")
-                            )
-                        }
-                        IconButton(onClick = onToggleDrawer) {
-                            Icon(Icons.Default.Close, contentDescription = "Optik formu kapat", tint = Color(0xFF74708F))
-                        }
-                    }
-                    LinearProgressIndicator(
-                        progress = { answered.toFloat() / questions.size.coerceAtLeast(1) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).height(3.dp).clip(CircleShape),
-                        color = Color(0xFF3475F5), trackColor = Color(0xFFEFEEF6)
-                    )
-                    LazyColumn(
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                        contentPadding = PaddingValues(vertical = 5.dp)
-                    ) {
-                        items(questions, key = { it.number }) { q ->
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("${q.number}.", modifier = Modifier.width(24.dp), color = Color(0xFF25215D), fontSize = 13.5.sp)
+                // Reference photo: only a centered title, an open answer grid,
+                // and one big blue Finish Test button. No redundant progress UI.
+                Text(
+                    "Optik Form", color = Color(0xFF181725),
+                    fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(1.dp),
+                    contentPadding = PaddingValues(bottom = 8.dp)
+                ) {
+                    items(questions, key = { it.number }) { question ->
+                        BoxWithConstraints(Modifier.fillMaxWidth()) {
+                            val circleDiameter = (
+                                (maxWidth - 43.dp) / 5f - 6.dp
+                            ).coerceIn(29.dp, 47.dp)
+                            Row(
+                                Modifier.fillMaxWidth().height(56.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "${question.number}.",
+                                    color = Color(0xFF25213A),
+                                    fontSize = 16.sp,
+                                    modifier = Modifier.width(35.dp),
+                                    textAlign = TextAlign.End
+                                )
+                                Spacer(Modifier.width(8.dp))
                                 listOf("A", "B", "C", "D", "E").forEach { option ->
-                                    val checked = selectedAnswers[q.number] == option
+                                    val checked = selectedAnswers[question.number] == option
                                     Box(
-                                        modifier = Modifier.weight(1f).height(44.dp)
+                                        Modifier.weight(1f).height(56.dp)
                                             .semantics {
                                                 selected = checked
-                                                contentDescription = "${q.number}. soru, $option seçeneği"
+                                                contentDescription =
+                                                    "${question.number}. soru $option seçeneği"
                                             }
-                                            .clickable { onSelectOption(q.number, option) }
-                                            .testTag("optic_q${q.number}_$option"),
+                                            .clickable { onSelectOption(question.number, option) }
+                                            .testTag("optic_q${question.number}_$option"),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Box(
-                                            modifier = Modifier.size(30.dp).clip(CircleShape)
-                                                .background(if (checked) Color(0xFF3475F5) else Color.White)
-                                                .border(1.dp, if (checked) Color(0xFF3475F5) else Color(0xFFCED8E7), CircleShape),
+                                            Modifier.size(circleDiameter).clip(CircleShape)
+                                                .background(
+                                                    if (checked) Color(0xFF2C78ED)
+                                                    else Color.White
+                                                )
+                                                .border(
+                                                    1.dp,
+                                                    if (checked) Color(0xFF2C78ED)
+                                                    else Color(0xFFD1D0DB),
+                                                    CircleShape
+                                                ),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Text(option, color = if (checked) Color.White else Color(0xFF64748B), fontSize = 13.sp)
+                                            Text(
+                                                option, fontSize = 15.sp,
+                                                color = if (checked) Color.White
+                                                    else Color(0xFFACADB9),
+                                                fontWeight = if (checked) FontWeight.Bold
+                                                    else FontWeight.Normal
+                                            )
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                    Button(
-                        onClick = onFinishTest,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).testTag("drawer_finish_test_btn"),
-                        shape = CircleShape,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3475F5))
+                }
+                Surface(
+                    onClick = onFinishTest,
+                    shape = CircleShape,
+                    color = Color(0xFF2878E9),
+                    shadowElevation = 3.dp,
+                    modifier = Modifier.fillMaxWidth().height(53.dp)
+                        .testTag("drawer_finish_test_btn")
+                ) {
+                    Row(
+                        Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
                     ) {
-                        Icon(Icons.Default.Flag, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Testi Bitir")
+                        Icon(
+                            Icons.Default.Flag, contentDescription = null,
+                            tint = Color.White, modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(9.dp))
+                        Text(
+                            "Testi Bitir", color = Color.White,
+                            fontSize = 16.sp, fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
+        }
     }
 }
 
@@ -2644,167 +2695,147 @@ private fun RightSlidingStatsDrawer345(
     emptyCount: Int,
     ungradedCount: Int,
     onToggleDrawer: () -> Unit,
+    onOpenMistakeAnalysis: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val config = LocalConfiguration.current
+    val drawerWidth = (config.screenWidthDp - 62).coerceAtLeast(250).dp
+        .coerceAtMost(450.dp)
+    val maxHeight = (config.screenHeightDp - 104).coerceAtLeast(255).dp
+    val slideProgress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isOpen) 0f else 1f,
+        animationSpec = tween(210, easing = FastOutSlowInEasing),
+        label = "premiumStatsSlide"
+    )
+    val density = LocalDensity.current
+    val graded = questions.count { it.answerKeyVerified }
+    val successRatio = if (graded == 0) 0f else correctCount.toFloat() / graded
+    val lossNet = String.format(
+        java.util.Locale.forLanguageTag("tr-TR"), "%.2f", wrongCount / 4f
+    )
     Row(
-        modifier = modifier,
+        modifier = modifier.graphicsLayer {
+            translationX = with(density) { drawerWidth.toPx() } * slideProgress
+        },
         verticalAlignment = Alignment.CenterVertically
     ) {
         VerticalBlueSideTab345(
-            title = "İstatistikler",
-            isStatsIcon = true,
-            onClick = onToggleDrawer,
-            testTag = "stats_drawer_tab"
+            "İstatistikler", true, onToggleDrawer, "stats_drawer_tab"
         )
-
-        AnimatedVisibility(
-            visible = isOpen,
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = Color.White,
+            shadowElevation = 13.dp,
+            modifier = Modifier.width(drawerWidth)
+                .heightIn(max = maxHeight)
+                .then(
+                    if (isOpen) Modifier.testTag("stats_drawer_panel")
+                    else Modifier.clearAndSetSemantics { }
+                )
         ) {
-            Surface(
-                shape = RoundedCornerShape(topStart = 26.dp, bottomStart = 26.dp),
-                color = Color.White,
-                shadowElevation = 16.dp,
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                modifier = Modifier
-                    .width((LocalConfiguration.current.screenWidthDp.dp - 54.dp).coerceAtMost(300.dp))
-                    .heightIn(max = (LocalConfiguration.current.screenHeightDp.dp - 112.dp).coerceAtLeast(240.dp))
-                    .testTag("stats_drawer_panel")
+            Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                    .padding(horizontal = 22.dp, vertical = 26.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(22.dp)
             ) {
+                Text(
+                    testTitle, color = Color(0xFF25215D),
+                    fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
+                ThreeStatCirclesRow345(
+                    correctCount = correctCount,
+                    wrongCount = wrongCount,
+                    emptyCount = emptyCount,
+                    circleSizeDp = 102
+                )
+                if (ungradedCount > 0) {
+                    Text(
+                        "$ungradedCount soru doğrulanmadığı için puanlanmadı",
+                        color = Color(0xFF967148), fontSize = 11.sp
+                    )
+                }
+                HorizontalDivider(
+                    thickness = 0.6.dp, color = Color(0xFFF0EFF4)
+                )
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 15.dp, vertical = 18.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(13.dp)
                 ) {
                     Text(
-                        text = testTitle,
-                        color = Color(0xFF25215D),
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 16.5.sp,
-                        textAlign = TextAlign.Center
+                        "Konu Başarı Oranı", color = Color(0xFF25215D),
+                        fontSize = 16.sp, fontWeight = FontWeight.Bold
                     )
-
-                    ThreeStatCirclesRow345(
-                        correctCount = correctCount,
-                        wrongCount = wrongCount,
-                        emptyCount = emptyCount,
-                        circleSizeDp = 68
+                    LinearProgressIndicator(
+                        progress = { successRatio },
+                        color = Color(0xFF3475F5),
+                        trackColor = Color(0xFFD7D3E3),
+                        modifier = Modifier.fillMaxWidth().height(9.dp).clip(CircleShape)
                     )
-                    if (ungradedCount > 0) {
+                    Text(
+                        if (graded > 0) "%${(successRatio * 100).toInt()}" else "—",
+                        color = Color(0xFF25215D), fontSize = 30.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                HorizontalDivider(
+                    thickness = 0.6.dp, color = Color(0xFFF0EFF4)
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(
+                        Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(15.dp)
+                    ) {
                         Text(
-                            text = "Doğrulanmamış: $ungradedCount",
-                            color = Color(0xFFB45309),
-                            fontWeight = FontWeight.Bold
+                            "Kayıp Net", color = Color(0xFF25215D),
+                            fontSize = 14.sp, fontWeight = FontWeight.Medium
                         )
-                    }
-                    // Compact reference-style success strip. A correct answer
-                    // is only scored when the original printed key is verified.
-                    val graded = questions.count { it.answerKeyVerified }
-                    if (graded > 0) {
-                        val successRatio = correctCount.toFloat() / graded
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(7.dp)
+                        Surface(
+                            shape = CircleShape, color = Color(0xFFE65D48)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    "Konu Başarı Oranı",
-                                    color = Color(0xFF25215D),
-                                    fontSize = 13.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.weight(1f)
+                            Text(
+                                "-$lossNet", color = Color.White,
+                                fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(
+                                    horizontal = 16.dp, vertical = 10.dp
                                 )
-                                Text(
-                                    "%${(successRatio * 100).toInt()}",
-                                    color = Color(0xFF3475F5),
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            LinearProgressIndicator(
-                                progress = { successRatio },
-                                color = Color(0xFF3475F5),
-                                trackColor = Color(0xFFE8ECF4),
-                                modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape)
                             )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    "Net: ${String.format(java.util.Locale.forLanguageTag("tr-TR"), "%.2f", correctCount - wrongCount / 4f)}",
-                                    color = Color(0xFF64748B),
-                                    fontSize = 11.5.sp
-                                )
-                                Text(
-                                    "Yanlış etkisi: -${String.format(java.util.Locale.forLanguageTag("tr-TR"), "%.2f", wrongCount / 4f)} net",
-                                    color = Color(0xFF64748B),
-                                    fontSize = 11.5.sp
-                                )
-                            }
                         }
                     }
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 280.dp),
-                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                    Box(
+                        Modifier.width(1.dp).height(80.dp)
+                            .background(Color(0xFFEEEAF2))
+                    )
+                    Surface(
+                        onClick = onOpenMistakeAnalysis,
+                        color = Color.Transparent,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                            .testTag("stats_open_error_frequency")
                     ) {
-                        items(questions, key = { it.number }) { question ->
-                            val answer = selectedAnswers[question.number]
-                            val isEmpty = answer.isNullOrBlank()
-                            val isCorrect = !isEmpty &&
-                                question.answerKeyVerified &&
-                                answer == question.correctOption
-                            val isWrong = !isEmpty &&
-                                question.answerKeyVerified &&
-                                answer != question.correctOption
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFFF7F9FC), RoundedCornerShape(10.dp))
-                                    .padding(horizontal = 10.dp, vertical = 7.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                when {
-                                    isEmpty -> Box(
-                                        modifier = Modifier
-                                            .size(20.dp)
-                                            .border(2.dp, Color(0xFF94A3B8), CircleShape)
-                                    )
-                                    isCorrect || isWrong -> Icon(
-                                        imageVector = if (isCorrect) Icons.Default.Check else Icons.Default.Close,
-                                        contentDescription = if (isCorrect) "Doğru" else "Yanlış",
-                                        tint = if (isCorrect) Color(0xFF15803D) else Color(0xFFDC2626),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    else -> Icon(
-                                        imageVector = Icons.Default.HelpOutline,
-                                        contentDescription = "Cevap anahtarı doğrulanmadı",
-                                        tint = Color(0xFFB45309),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Text(
-                                    text = "${question.number}. Soru",
-                                    modifier = Modifier.weight(1f),
-                                    color = Color(0xFF334155),
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = answer?.takeIf(String::isNotBlank)?.let { "İşaret: $it" } ?: "Boş",
-                                    color = Color(0xFF64748B),
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
+                        Column(
+                            Modifier.fillMaxWidth().padding(bottom = 9.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(13.dp)
+                        ) {
+                            Text(
+                                "Hata Frekansı", color = Color(0xFF25215D),
+                                fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                                textAlign = TextAlign.Center
+                            )
+                            Icon(
+                                Icons.Default.Visibility,
+                                contentDescription = "Hata frekansını aç",
+                                tint = Color(0xFF3475F5),
+                                modifier = Modifier.size(32.dp)
+                            )
                         }
                     }
                 }
@@ -2854,15 +2885,15 @@ private fun VerticalBlueSideTab345(
     onClick: () -> Unit,
     testTag: String
 ) {
-    val tabHeight = if (isStatsIcon) 104.dp else 88.dp
-    val innerWidth = if (isStatsIcon) 104.dp else 79.dp
+    val tabHeight = if (isStatsIcon) 174.dp else 170.dp
+    val innerWidth = if (isStatsIcon) 155.dp else 143.dp
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(topStart = 11.dp, bottomStart = 11.dp),
         color = Color(0xFF3475F5),
         shadowElevation = 3.dp,
         modifier = Modifier
-            .width(32.dp)
+            .width(44.dp)
             .height(tabHeight)
             .testTag(testTag)
     ) {
@@ -2881,14 +2912,14 @@ private fun VerticalBlueSideTab345(
                     imageVector = if (isStatsIcon) Icons.Default.PieChart else Icons.Default.Apps,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(13.dp)
+                    modifier = Modifier.size(16.dp)
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(7.dp))
                 Text(
                     text = title,
                     color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
                     maxLines = 1
                 )
             }
@@ -3754,7 +3785,8 @@ private fun FullScreenSuccessReportCardView(
         PremiumMistakeAnalysisScreen(
             title = session.testItem.fullTitle.ifBlank { session.topicName },
             summary = mistakeSummary,
-            onBack = { showMistakeAnalysis = false }
+            onBack = { showMistakeAnalysis = false },
+            onStrengthen = onSolveTwinTestForWrongQuestions
         )
         return
     }

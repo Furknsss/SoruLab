@@ -3357,6 +3357,21 @@ private fun FullScreenTwinQuestionComparisonView(
     var twinStrokes by remember(originalQuestion.id) { mutableStateOf<List<DrawStroke>>(emptyList()) }
 
     val originalBitmap = StudioImageAndPdfEngine.rememberGuaranteedQuestionBitmap(originalQuestion)
+    val twinBitmap = twinData?.takeIf {
+        it.errorMessage == null &&
+            (it.croppedImagePath.isNotBlank() || it.imageBase64.isNotBlank())
+    }?.let { verifiedTwin ->
+        StudioImageAndPdfEngine.rememberGuaranteedQuestionBitmap(
+            originalQuestion.copy(
+                id = "twin_${verifiedTwin.sourceQuestionId}",
+                croppedImagePath = verifiedTwin.croppedImagePath,
+                imageBase64 = verifiedTwin.imageBase64,
+                pdfFilePath = "",
+                pageIndex = -1,
+                normLeft = 0f, normTop = 0f, normRight = 1f, normBottom = 1f
+            )
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -3479,12 +3494,47 @@ private fun FullScreenTwinQuestionComparisonView(
                                         .verticalScroll(rememberScrollState()),
                                     verticalArrangement = Arrangement.spacedBy(14.dp)
                                 ) {
+                                    if (twinData.sourceDescription.isNotBlank()) {
+                                        Text(
+                                            text = "Havuzdaki farklı soru • ${twinData.sourceDescription}",
+                                            color = Color(0xFF64748B),
+                                            fontSize = 12.sp,
+                                            modifier = Modifier.testTag("twin_question_provenance")
+                                        )
+                                    }
+                                    if (twinBitmap != null) {
+                                        BoxWithConstraints(Modifier.fillMaxWidth()) {
+                                            val aspect = twinBitmap.width.toFloat() /
+                                                twinBitmap.height.toFloat().coerceAtLeast(1f)
+                                            Image(
+                                                bitmap = twinBitmap.asImageBitmap(),
+                                                contentDescription = "Doğrulanmış farklı ikiz soru",
+                                                contentScale = ContentScale.Fit,
+                                                alignment = Alignment.TopStart,
+                                                modifier = Modifier.fillMaxWidth().aspectRatio(aspect)
+                                                    .testTag("verified_twin_question_image")
+                                            )
+                                        }
+                                    } else if (twinData.croppedImagePath.isNotBlank() ||
+                                        twinData.imageBase64.isNotBlank()) {
+                                        CircularProgressIndicator(
+                                            color = Color(0xFFEA580C),
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Text("Kaynak soru görseli açılıyor...", fontSize = 12.sp)
+                                    } else if (twinData.questionStem.isNotBlank()) {
+                                        Text(
+                                            text = twinData.questionStem,
+                                            color = Color(0xFF1E293B),
+                                            fontSize = 14.5.sp,
+                                            lineHeight = 21.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
                                     Text(
-                                        text = twinData.questionStem,
-                                        color = Color(0xFF1E293B),
-                                        fontSize = 14.5.sp,
-                                        lineHeight = 21.sp,
-                                        fontWeight = FontWeight.Medium
+                                        text = "Cevabını işaretle; ardından kontrol et.",
+                                        color = Color(0xFF64748B),
+                                        fontSize = 12.sp
                                     )
 
                                     Row(
@@ -3499,7 +3549,10 @@ private fun FullScreenTwinQuestionComparisonView(
                                             val isSelected = twinSelectedOption == optKey
                                             val isCorrectOpt = isTwinAnswerRevealed && optKey == twinData.correctOption
                                             Surface(
-                                                onClick = { twinSelectedOption = optKey },
+                                                onClick = {
+                                                    if (!isTwinAnswerRevealed) twinSelectedOption = optKey
+                                                },
+                                                modifier = Modifier.testTag("twin_answer_$optKey"),
                                                 shape = RoundedCornerShape(8.dp),
                                                 color = when {
                                                     isCorrectOpt -> Color(0xFFDCFCE7)
@@ -3538,6 +3591,16 @@ private fun FullScreenTwinQuestionComparisonView(
                                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                                             ) {
                                                 Text(
+                                                    text = when {
+                                                        twinSelectedOption == null -> "Cevap anahtarı"
+                                                        twinSelectedOption == twinData.correctOption -> "Doğru! Kazanımı pekiştirdin."
+                                                        else -> "Bu soruyu tekrar incele."
+                                                    },
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF166534),
+                                                    fontSize = 12.sp
+                                                )
+                                                Text(
                                                     text = "Doğru Cevap: ${twinData.correctOption}",
                                                     color = Color(0xFF15803D),
                                                     fontWeight = FontWeight.ExtraBold,
@@ -3563,6 +3626,7 @@ private fun FullScreenTwinQuestionComparisonView(
                                 ) {
                                     Surface(
                                         onClick = { isTwinAnswerRevealed = !isTwinAnswerRevealed },
+                                        modifier = Modifier.testTag("reveal_twin_answer_btn"),
                                         shape = RoundedCornerShape(50),
                                         color = Color(0xFF3475F5),
                                         shadowElevation = 3.dp

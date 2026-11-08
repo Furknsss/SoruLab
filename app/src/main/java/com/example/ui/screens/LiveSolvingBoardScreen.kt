@@ -3546,8 +3546,13 @@ private fun FullScreenTwinQuestionComparisonView(
                                     ) {
                                         listOf("A", "B", "C", "D", "E").forEach { optKey ->
                                             val optVal = twinData.options[optKey] ?: optKey
+                                            val hasPrintedOptions = twinData.croppedImagePath.isNotBlank() ||
+                                                twinData.imageBase64.isNotBlank()
+                                            val answerLabel = if (hasPrintedOptions) optKey else "$optKey) $optVal"
                                             val isSelected = twinSelectedOption == optKey
                                             val isCorrectOpt = isTwinAnswerRevealed && optKey == twinData.correctOption
+                                            val isWrongSelected = isTwinAnswerRevealed &&
+                                                isSelected && !isCorrectOpt
                                             Surface(
                                                 onClick = {
                                                     if (!isTwinAnswerRevealed) twinSelectedOption = optKey
@@ -3556,18 +3561,23 @@ private fun FullScreenTwinQuestionComparisonView(
                                                 shape = RoundedCornerShape(8.dp),
                                                 color = when {
                                                     isCorrectOpt -> Color(0xFFDCFCE7)
+                                                    isWrongSelected -> Color(0xFFFEE2E2)
                                                     isSelected -> Color(0xFFDBEAFE)
                                                     else -> Color.Transparent
                                                 },
                                                 border = if (isSelected || isCorrectOpt) {
                                                     BorderStroke(
                                                         1.dp,
-                                                        if (isCorrectOpt) Color(0xFF16A34A) else Color(0xFF3475F5)
+                                                        when {
+                                                            isCorrectOpt -> Color(0xFF16A34A)
+                                                            isWrongSelected -> Color(0xFFDC2626)
+                                                            else -> Color(0xFF3475F5)
+                                                        }
                                                     )
                                                 } else null
                                             ) {
                                                 Text(
-                                                    text = "$optKey) $optVal",
+                                                    text = answerLabel,
                                                     color = Color(0xFF1E293B),
                                                     fontWeight = if (isSelected || isCorrectOpt) FontWeight.ExtraBold else FontWeight.SemiBold,
                                                     fontSize = 13.sp,

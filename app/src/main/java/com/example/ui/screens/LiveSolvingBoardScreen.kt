@@ -1093,7 +1093,7 @@ fun LiveSolvingBoardScreen(
                         textAlign = TextAlign.Center
                     )
                     Text(
-                        text = "Testi bitirmek üzeresin. Onayladığında sonuç ekranına yönlendirileceksin. Devam etmek istediğine emin misin?",
+                        text = "Testi bitirdiğinde önce cevapların işaretlendiği kitap sayfasını göreceksin. Sağ üstteki Sonuçlar butonuyla karneni açabilirsin.",
                         color = Color(0xFF475569),
                         fontSize = 14.sp,
                         textAlign = TextAlign.Center

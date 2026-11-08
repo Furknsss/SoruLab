@@ -3,7 +3,6 @@ package com.example.util
 import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import ai.onnxruntime.OrtEnvironment
 import com.paddle.ocr.util.OpenCVUtils
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -25,7 +24,10 @@ class SoruLabNativeLibrariesDeviceTest {
         assertTrue("Native library directory absent for $abi", nativeDir.exists())
         assertTrue("OpenCV failed to load on $abi", OpenCVUtils.init(app))
         // Test the real ONNX Java JNI binding, not only a packaged .so.
-        val environment = OrtEnvironment.getEnvironment()
+        // The OCR module owns the dependency, so invoke ONNX through its
+        // runtime class without leaking implementation deps to app tests.
+        val ortClass = Class.forName("ai.onnxruntime.OrtEnvironment")
+        val environment = ortClass.getMethod("getEnvironment").invoke(null)
         assertTrue("ONNX environment could not initialize on $abi", environment != null)
     }
 }

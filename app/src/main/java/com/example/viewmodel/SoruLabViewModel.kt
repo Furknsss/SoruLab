@@ -846,31 +846,38 @@ class SoruLabViewModel(
             if (baseTopicQuestions.isEmpty()) return emptyList()
 
             val allKnownTests = _generatedTopicTests.value.values.flatten()
-            val collectedTwinQuestions = mutableListOf<YksQuestion>()
-            val seenIdentities = mutableSetOf<String>()
+            val selectedTwinIds = mutableSetOf<String>()
+            val matchedQuestions = mutableListOf<YksQuestion>()
 
             for (record in solvedInTopic) {
-                val answersMap = parseAnswersJson(record.answersMapJson).orEmpty()
                 val sourceQuestions = allKnownTests.firstOrNull {
                     it.id == record.testId && it.topicId.equals(topic.id, ignoreCase = true)
-                }?.questions
-                    ?: baseTopicQuestions
-
+                }?.questions ?: TestSnapshotCodec.decode(record.testSnapshotJson)?.questions
+                // No original snapshot => no safe way to identify the wrong
+                // questions. Never interpret unrelated pool items as mistakes.
+                if (sourceQuestions.isNullOrEmpty()) continue
+                val answers = parseAnswersJson(record.answersMapJson).orEmpty()
                 for (q in sourceQuestions) {
-                    if (!q.answerKeyVerified || !q.topicHeader.equals(topic.name, ignoreCase = true)) continue
-                    val chosen = answersMap[q.number]
-                    val isWrongOrBlank = chosen.isNullOrBlank() || chosen != q.correctOption
-                    if (isWrongOrBlank) {
-                        val identityKey = q.croppedImagePath.ifBlank { "${q.stemTop}|${q.number}" }
-                        if (seenIdentities.add(identityKey)) {
-                            collectedTwinQuestions.add(q)
-                        }
-                    }
+                    if (!q.answerKeyVerified) continue
+                    val selected = answers[q.number]
+                    if (!selected.isNullOrBlank() && selected == q.correctOption) continue
+                    val alternative = GroundedTwinQuestionMatcher.select(
+                        source = q,
+                        subjectId = topic.subjectId,
+                        topicId = topic.id,
+                        topicName = topic.name,
+                        pool = _userCustomQuestions.value,
+                        excludedIds = selectedTwinIds,
+                        isUsable = repository::hasRecoverableQuestionImage
+                    ) ?: continue
+                    val originalDifferent = baseTopicQuestions.firstOrNull {
+                        it.sourceQuestionId == alternative.id && it.answerKeyVerified
+                    } ?: continue
+                    selectedTwinIds.add(alternative.id)
+                    matchedQuestions.add(originalDifferent)
                 }
             }
-            return collectedTwinQuestions.mapIndexed { idx, q ->
-                q.copy(number = idx + 1)
-            }
+            return matchedQuestions.mapIndexed { idx, q -> q.copy(number = idx + 1) }
         }
 
         return buildRealBaseQuestionsForTopic(topic, level)
@@ -1268,11 +1275,14 @@ class SoruLabViewModel(
         level: TopicTestLevel,
         selectedDifficulties: Set<DifficultyLevel>,
         sourceFilter: QuestionSourceFilter,
-        requestedQuestionCount: Int
+        requestedQuestionCount: Int,
+        verifiedTwinCandidates: List<YksQuestion>? = null
     ): YksTestItem? {
         if (requestedQuestionCount <= 0) return null
         val activeDifficulties = selectedDifficulties.ifEmpty { DifficultyLevel.entries.toSet() }
-        val sourceCandidates = if (level == TopicTestLevel.IKIZ && sourceFilter == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
+        val sourceCandidates = if (verifiedTwinCandidates != null) {
+            verifiedTwinCandidates.filter { it.answerKeyVerified && it.difficulty in activeDifficulties }
+        } else if (level == TopicTestLevel.IKIZ && sourceFilter == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
             collectRealPoolQuestionsForTopicAndLevel(topic, level)
                 .filter { it.difficulty in activeDifficulties }
         } else {
@@ -1453,6 +1463,43 @@ class SoruLabViewModel(
         )
     }
 
+    /**
+     * Offline single-question twin: strictly another locally stored and
+     * answer-key-verified question from the exact same subject and topic.
+     * The original crop is never relabeled or offered as a new twin.
+     */
+    fun findGroundedTwinQuestion(source: YksQuestion, session: ActiveSolvingSession): TwinQuestionModalData {
+        val candidate = GroundedTwinQuestionMatcher.select(
+            source = source,
+            subjectId = session.subjectId,
+            topicId = session.topicId,
+            topicName = session.topicName,
+            pool = _userCustomQuestions.value,
+            isUsable = repository::hasRecoverableQuestionImage
+        ) ?: return TwinQuestionModalData(
+            errorMessage = "Aynı konuda farklı ve cevap anahtarı doğrulanmış bir soru henüz yok. İkiz oluşturmak için kitaplığa yeni ZIP soru paketleri ekleyebilirsin."
+        )
+
+        val sourceName = candidate.sourceBookTitle.ifBlank {
+            candidate.bookOrTestName.ifBlank { candidate.publisherTag }
+        }
+        val answer = candidate.correctOption.uppercase(java.util.Locale.ROOT)
+        return TwinQuestionModalData(
+            topicTitle = candidate.topicName,
+            difficultyLabel = candidate.effectiveDifficultyLabel,
+            questionStem = "",
+            croppedImagePath = candidate.croppedImagePath,
+            imageBase64 = candidate.imageBase64,
+            sourceQuestionId = candidate.id,
+            sourceDescription = sourceName,
+            options = listOf("A", "B", "C", "D", "E").associateWith { it },
+            correctOption = answer,
+            solutionExplanation = candidate.cleanSolutionSummary.ifBlank {
+                "Basılı cevap anahtarında doğru seçenek $answer olarak doğrulanmıştır. Ayrıntılı çözüm bu kaynakta kayıtlı değil."
+            }
+        )
+    }
+
     fun startTwinTestFromSession(session: ActiveSolvingSession) {
         val subject = SoruLabCatalog.allSubjects.firstOrNull {
             it.id.equals(session.subjectId, ignoreCase = true)
@@ -1469,15 +1516,43 @@ class SoruLabViewModel(
             return
         }
 
+        // Use the just-finished test immediately, not a Firestore listener
+        // that might not have finished syncing this attempt yet.
+        val sourceQuestions = session.testItem.questions.filter { source ->
+            source.answerKeyVerified && session.selectedAnswers[source.number] != source.correctOption
+        }
+        val poolQuestions = buildRealBaseQuestionsForTopic(topic, null)
+        val selectedIds = mutableSetOf<String>()
+        val twins = sourceQuestions.mapNotNull { source ->
+            val match = GroundedTwinQuestionMatcher.select(
+                source = source,
+                subjectId = topic.subjectId,
+                topicId = topic.id,
+                topicName = topic.name,
+                pool = _userCustomQuestions.value,
+                excludedIds = selectedIds,
+                isUsable = repository::hasRecoverableQuestionImage
+            ) ?: return@mapNotNull null
+            val question = poolQuestions.firstOrNull {
+                it.sourceQuestionId == match.id && it.answerKeyVerified
+            } ?: return@mapNotNull null
+            selectedIds.add(match.id)
+            question
+        }
+        if (twins.isEmpty()) {
+            showBanner("Bu konuda yanlışlarından farklı, cevap anahtarı doğrulanmış ikiz soru bulunamadı. Havuzuna yeni soru ZIP'leri ekleyebilirsin.")
+            return
+        }
         val twinTest = generateCustomFilteredTopicTest(
             topic = topic,
             level = TopicTestLevel.IKIZ,
             selectedDifficulties = DifficultyLevel.entries.toSet(),
             sourceFilter = QuestionSourceFilter.YANLIS_YAPTIKLARIM,
-            requestedQuestionCount = AUTOMATIC_TEST_QUESTION_COUNT
+            requestedQuestionCount = minOf(AUTOMATIC_TEST_QUESTION_COUNT, twins.size),
+            verifiedTwinCandidates = twins
         )
         if (twinTest == null) {
-            showBanner("İkiz test oluşturmak için bu konuda 12 uygun yanlış veya boş soru bulunamadı.")
+            showBanner("Farklı sorulardan ikiz test hazırlanamadı; mevcut test korunuyor.")
             return
         }
 

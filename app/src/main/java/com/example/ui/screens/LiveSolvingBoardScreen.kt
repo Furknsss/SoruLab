@@ -2539,8 +2539,8 @@ private fun RightSlidingOpticalFormDrawer345(
     modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
-    val drawerWidth = (configuration.screenWidthDp - 62).coerceAtLeast(230).dp
-        .coerceAtMost(460.dp)
+    val drawerWidth = (configuration.screenWidthDp * 0.74f).dp
+        .coerceIn(246.dp, 560.dp)
     // Six full-size answer rows fit like the reference; additional questions
     // scroll in a lazy list without leaving a huge white empty panel.
     val requestedHeight = (149 + questions.size.coerceAtMost(7) * 57).dp
@@ -2591,11 +2591,15 @@ private fun RightSlidingOpticalFormDrawer345(
                 ) {
                     items(questions, key = { it.number }) { question ->
                         BoxWithConstraints(Modifier.fillMaxWidth()) {
+                            // The question grid remains centered and book-like,
+                            // even on a wide tablet sheet.
+                            val gridWidth = maxWidth.coerceAtMost(340.dp)
                             val circleDiameter = (
-                                (maxWidth - 43.dp) / 5f - 6.dp
+                                (gridWidth - 43.dp) / 5f - 6.dp
                             ).coerceIn(29.dp, 47.dp)
                             Row(
-                                Modifier.fillMaxWidth().height(56.dp),
+                                Modifier.width(gridWidth).height(56.dp)
+                                    .align(Alignment.Center),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
@@ -2699,8 +2703,8 @@ private fun RightSlidingStatsDrawer345(
     modifier: Modifier = Modifier
 ) {
     val config = LocalConfiguration.current
-    val drawerWidth = (config.screenWidthDp - 62).coerceAtLeast(250).dp
-        .coerceAtMost(450.dp)
+    val drawerWidth = (config.screenWidthDp * 0.73f).dp
+        .coerceIn(258.dp, 540.dp)
     val maxHeight = (config.screenHeightDp - 104).coerceAtLeast(255).dp
     val slideProgress by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (isOpen) 0f else 1f,
@@ -2749,7 +2753,7 @@ private fun RightSlidingStatsDrawer345(
                     correctCount = correctCount,
                     wrongCount = wrongCount,
                     emptyCount = emptyCount,
-                    circleSizeDp = 102
+                    circleSizeDp = 112
                 )
                 if (ungradedCount > 0) {
                     Text(

@@ -2561,7 +2561,8 @@ private fun RightSlidingOpticalFormDrawer345(
     ) {
         if (showClosedTab || isOpen) {
             VerticalBlueSideTab345(
-                "Optik Form", false, onToggleDrawer, "optical_form_tab"
+                "Optik Form", false, onToggleDrawer, "optical_form_tab",
+                if (isOpen) "Optik formu kapat" else "Optik formu aç"
             )
         }
         Surface(
@@ -2887,7 +2888,8 @@ private fun VerticalBlueSideTab345(
     title: String,
     isStatsIcon: Boolean,
     onClick: () -> Unit,
-    testTag: String
+    testTag: String,
+    accessibilityLabel: String = title
 ) {
     val tabHeight = if (isStatsIcon) 174.dp else 170.dp
     val innerWidth = if (isStatsIcon) 155.dp else 143.dp
@@ -2900,6 +2902,7 @@ private fun VerticalBlueSideTab345(
             .width(44.dp)
             .height(tabHeight)
             .testTag(testTag)
+            .semantics { contentDescription = accessibilityLabel }
     ) {
         Box(
             contentAlignment = Alignment.Center,

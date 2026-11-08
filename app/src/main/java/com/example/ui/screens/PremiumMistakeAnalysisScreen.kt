@@ -205,16 +205,51 @@ private fun StrengthenButton(onClick: () -> Unit) {
 
 @Composable
 private fun FrequencyTreeConnector() {
-    Column(
-        Modifier.fillMaxWidth().height(41.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+    BoxWithConstraints(
+        Modifier.fillMaxWidth().height(51.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Box(Modifier.width(1.5.dp).height(21.dp).background(frequencyBlue))
-        Box(
-            Modifier.size(13.dp).background(Color(0xFFE3E4EC), CircleShape)
-                .border(1.dp, Color.White, CircleShape)
-        )
-        Box(Modifier.width(1.5.dp).height(7.dp).background(frequencyBlue))
+        val twoBranches = maxWidth >= 680.dp
+        Canvas(Modifier.fillMaxSize()) {
+            val cx = size.width / 2f
+            val lineColor = Color(0xFF3B78D5)
+            val top = 2.dp.toPx()
+            val joint = 23.dp.toPx()
+            drawLine(
+                color = lineColor,
+                start = Offset(cx, top),
+                end = Offset(cx, joint),
+                strokeWidth = 1.5.dp.toPx()
+            )
+            drawCircle(
+                color = Color(0xFFDBDDE8), radius = 7.dp.toPx(),
+                center = Offset(cx, joint)
+            )
+            if (twoBranches) {
+                val ends = listOf(size.width * .25f, size.width * .75f)
+                ends.forEach { endX ->
+                    val branch = androidx.compose.ui.graphics.Path().apply {
+                        moveTo(cx, joint + 6.dp.toPx())
+                        cubicTo(
+                            cx, size.height * 0.89f,
+                            endX, size.height * 0.74f,
+                            endX, size.height - 2.dp.toPx()
+                        )
+                    }
+                    drawPath(
+                        path = branch, color = lineColor,
+                        style = Stroke(width = 1.2.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                }
+            } else {
+                drawLine(
+                    color = lineColor,
+                    start = Offset(cx, joint + 6.dp.toPx()),
+                    end = Offset(cx, size.height),
+                    strokeWidth = 1.2.dp.toPx()
+                )
+            }
+        }
     }
 }
 

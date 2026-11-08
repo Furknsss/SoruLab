@@ -287,7 +287,7 @@ private fun ActiveSolvingSessionHost(
             onAskAiForQuestion = { q -> mainViewModel.openAiAssistant(q) },
             onSolveTwinTest = { mainViewModel.startTwinTestFromSession(curSession) },
             onGenerateTwinQuestion = { q, cb ->
-                aiViewModel.generateTwinQuestionOnDemand(q, context.applicationContext, cb)
+                cb(mainViewModel.findGroundedTwinQuestion(q, curSession))
             },
             onGenerateSolutionForQuestion = { q, cb ->
                 aiViewModel.generateQuestionSolutionOnDemand(q, context.applicationContext, cb)

@@ -2542,12 +2542,12 @@ private fun RightSlidingOpticalFormDrawer345(
     modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
-    val drawerWidth = (configuration.screenWidthDp * 0.74f).dp
-        .coerceIn(246.dp, 560.dp)
-    // Six full-size answer rows fit like the reference; additional questions
-    // scroll in a lazy list without leaving a huge white empty panel.
-    val requestedHeight = (149 + questions.size.coerceAtMost(7) * 57).dp
-    val availableHeight = (configuration.screenHeightDp - 94).coerceAtLeast(220).dp
+    val drawerWidth = (configuration.screenWidthDp * 0.66f).dp
+        .coerceIn(236.dp, 400.dp)
+    // Keep the answer sheet compact on tablets. Additional questions still
+    // scroll inside the panel, without a mostly empty full-height drawer.
+    val requestedHeight = (125 + questions.size.coerceAtMost(7) * 48).dp
+    val availableHeight = (configuration.screenHeightDp - 110).coerceAtLeast(214).dp
     val drawerHeight = requestedHeight.coerceAtMost(availableHeight)
     val slideProgress by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (isOpen) 0f else 1f,
@@ -2578,46 +2578,46 @@ private fun RightSlidingOpticalFormDrawer345(
             )
         ) {
             Column(
-                Modifier.fillMaxSize().padding(horizontal = 17.dp, vertical = 17.dp),
+                Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Reference photo: only a centered title, an open answer grid,
                 // and one big blue Finish Test button. No redundant progress UI.
                 Text(
                     "Optik Form", color = Color(0xFF181725),
-                    fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 8.dp)
                 )
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     verticalArrangement = Arrangement.spacedBy(1.dp),
-                    contentPadding = PaddingValues(bottom = 8.dp)
+                    contentPadding = PaddingValues(bottom = 4.dp)
                 ) {
                     items(questions, key = { it.number }) { question ->
                         BoxWithConstraints(Modifier.fillMaxWidth()) {
                             // The question grid remains centered and book-like,
                             // even on a wide tablet sheet.
-                            val gridWidth = maxWidth.coerceAtMost(340.dp)
+                            val gridWidth = maxWidth.coerceAtMost(290.dp)
                             val circleDiameter = (
-                                (gridWidth - 43.dp) / 5f - 6.dp
-                            ).coerceIn(29.dp, 47.dp)
+                                (gridWidth - 40.dp) / 5f - 4.dp
+                            ).coerceIn(27.dp, 38.dp)
                             Row(
-                                Modifier.width(gridWidth).height(56.dp)
+                                Modifier.width(gridWidth).height(48.dp)
                                     .align(Alignment.Center),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     "${question.number}.",
                                     color = Color(0xFF25213A),
-                                    fontSize = 16.sp,
-                                    modifier = Modifier.width(35.dp),
+                                    fontSize = 14.sp,
+                                    modifier = Modifier.width(32.dp),
                                     textAlign = TextAlign.End
                                 )
                                 Spacer(Modifier.width(8.dp))
                                 listOf("A", "B", "C", "D", "E").forEach { option ->
                                     val checked = selectedAnswers[question.number] == option
                                     Box(
-                                        Modifier.weight(1f).height(56.dp)
+                                        Modifier.weight(1f).height(48.dp)
                                             .semantics {
                                                 selected = checked
                                                 contentDescription =
@@ -2642,7 +2642,7 @@ private fun RightSlidingOpticalFormDrawer345(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
-                                                option, fontSize = 15.sp,
+                                                option, fontSize = 13.sp,
                                                 color = if (checked) Color.White
                                                     else Color(0xFFACADB9),
                                                 fontWeight = if (checked) FontWeight.Bold
@@ -2660,7 +2660,7 @@ private fun RightSlidingOpticalFormDrawer345(
                     shape = CircleShape,
                     color = Color(0xFF2878E9),
                     shadowElevation = 3.dp,
-                    modifier = Modifier.fillMaxWidth().height(53.dp)
+                    modifier = Modifier.fillMaxWidth().height(44.dp)
                         .testTag("drawer_finish_test_btn")
                 ) {
                     Row(
@@ -2669,12 +2669,12 @@ private fun RightSlidingOpticalFormDrawer345(
                     ) {
                         Icon(
                             Icons.Default.Flag, contentDescription = null,
-                            tint = Color.White, modifier = Modifier.size(20.dp)
+                            tint = Color.White, modifier = Modifier.size(17.dp)
                         )
                         Spacer(Modifier.width(9.dp))
                         Text(
                             "Testi Bitir", color = Color.White,
-                            fontSize = 16.sp, fontWeight = FontWeight.Bold
+                            fontSize = 14.sp, fontWeight = FontWeight.Bold
                         )
                     }
                 }
@@ -2707,9 +2707,9 @@ private fun RightSlidingStatsDrawer345(
     modifier: Modifier = Modifier
 ) {
     val config = LocalConfiguration.current
-    val drawerWidth = (config.screenWidthDp * 0.73f).dp
-        .coerceIn(258.dp, 540.dp)
-    val maxHeight = (config.screenHeightDp - 104).coerceAtLeast(255).dp
+    val drawerWidth = (config.screenWidthDp * 0.62f).dp
+        .coerceIn(240.dp, 410.dp)
+    val maxHeight = (config.screenHeightDp - 116).coerceAtLeast(230).dp
     val slideProgress by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (isOpen) 0f else 1f,
         animationSpec = tween(210, easing = FastOutSlowInEasing),
@@ -2743,13 +2743,13 @@ private fun RightSlidingStatsDrawer345(
         ) {
             Column(
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
-                    .padding(horizontal = 22.dp, vertical = 26.dp),
+                    .padding(horizontal = 16.dp, vertical = 15.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(22.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Text(
                     testTitle, color = Color(0xFF25215D),
-                    fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
+                    fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
                     maxLines = 2, overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center
                 )
@@ -2757,7 +2757,7 @@ private fun RightSlidingStatsDrawer345(
                     correctCount = correctCount,
                     wrongCount = wrongCount,
                     emptyCount = emptyCount,
-                    circleSizeDp = 112
+                    circleSizeDp = 80
                 )
                 if (ungradedCount > 0) {
                     Text(
@@ -2770,11 +2770,11 @@ private fun RightSlidingStatsDrawer345(
                 )
                 Column(
                     Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(13.dp)
+                    verticalArrangement = Arrangement.spacedBy(9.dp)
                 ) {
                     Text(
                         "Konu Başarı Oranı", color = Color(0xFF25215D),
-                        fontSize = 16.sp, fontWeight = FontWeight.Bold
+                        fontSize = 14.sp, fontWeight = FontWeight.Bold
                     )
                     LinearProgressIndicator(
                         progress = { successRatio },
@@ -2784,7 +2784,7 @@ private fun RightSlidingStatsDrawer345(
                     )
                     Text(
                         if (graded > 0) "%${(successRatio * 100).toInt()}" else "—",
-                        color = Color(0xFF25215D), fontSize = 30.sp,
+                        color = Color(0xFF25215D), fontSize = 25.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -2818,7 +2818,7 @@ private fun RightSlidingStatsDrawer345(
                         }
                     }
                     Box(
-                        Modifier.width(1.dp).height(80.dp)
+                        Modifier.width(1.dp).height(64.dp)
                             .background(Color(0xFFEEEAF2))
                     )
                     Surface(
@@ -2842,7 +2842,7 @@ private fun RightSlidingStatsDrawer345(
                                 Icons.Default.Visibility,
                                 contentDescription = "Hata frekansını aç",
                                 tint = Color(0xFF3475F5),
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(25.dp)
                             )
                         }
                     }
@@ -2894,15 +2894,17 @@ private fun VerticalBlueSideTab345(
     testTag: String,
     accessibilityLabel: String = title
 ) {
-    val tabHeight = if (isStatsIcon) 174.dp else 170.dp
-    val innerWidth = if (isStatsIcon) 155.dp else 143.dp
+    // Narrow side grips should not dominate the book page on tablets.
+    // The full drawer remains accessible with the same single tap.
+    val tabHeight = if (isStatsIcon) 136.dp else 124.dp
+    val innerWidth = if (isStatsIcon) 121.dp else 109.dp
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(topStart = 11.dp, bottomStart = 11.dp),
+        shape = RoundedCornerShape(topStart = 9.dp, bottomStart = 9.dp),
         color = Color(0xFF3475F5),
         shadowElevation = 3.dp,
         modifier = Modifier
-            .width(44.dp)
+            .width(36.dp)
             .height(tabHeight)
             .testTag(testTag)
             .semantics { contentDescription = accessibilityLabel }
@@ -2922,14 +2924,14 @@ private fun VerticalBlueSideTab345(
                     imageVector = if (isStatsIcon) Icons.Default.PieChart else Icons.Default.Apps,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(14.dp)
                 )
-                Spacer(modifier = Modifier.width(7.dp))
+                Spacer(modifier = Modifier.width(5.dp))
                 Text(
                     text = title,
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
+                    fontSize = 12.sp,
                     maxLines = 1
                 )
             }

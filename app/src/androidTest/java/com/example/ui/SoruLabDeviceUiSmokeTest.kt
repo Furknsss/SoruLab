@@ -21,6 +21,7 @@ import com.example.data.YksQuestion
 import com.example.data.YksTestItem
 import com.example.ui.screens.DenemelerHubScreen
 import com.example.ui.screens.LiveSolvingBoardScreen
+import com.example.ui.screens.PremiumPracticeTestRow
 import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.ActiveSolvingSession
 import com.example.viewmodel.BoardViewMode
@@ -69,6 +70,32 @@ class SoruLabDeviceUiSmokeTest {
         compose.onNodeWithTag("denemeler_filter_ayt").assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(ExamType.AYT, selected) }
         captureOnlySyntheticScreen("denemeler-phone.png")
+    }
+
+    @Test
+    fun practiceTestRowUsesDirectTrashWithConfirmationAndStillOpensNormally() {
+        var opened = 0
+        var deleted = 0
+        compose.setContent {
+            MyApplicationTheme {
+                PremiumPracticeTestRow(
+                    test = fixtureSession().testItem,
+                    completed = false,
+                    onOpen = { opened++ },
+                    onDelete = { deleted++ }
+                )
+            }
+        }
+        compose.onNodeWithTag("delete_test_btn_device_screen_qa_test")
+            .assertIsDisplayed().performClick()
+        compose.onNodeWithText("Test silinsin mi?").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, deleted); assertEquals(0, opened) }
+        compose.onNodeWithText("Vazgeç").performClick()
+        compose.onNodeWithTag("test_row_device_screen_qa_test").performClick()
+        compose.runOnIdle { assertEquals(1, opened); assertEquals(0, deleted) }
+        compose.onNodeWithTag("delete_test_btn_device_screen_qa_test").performClick()
+        compose.onNodeWithText("Testi sil").performClick()
+        compose.runOnIdle { assertEquals(1, deleted) }
     }
 
     @Test
@@ -143,6 +170,12 @@ class SoruLabDeviceUiSmokeTest {
         compose.onNodeWithTag("live_solving_board").assertIsDisplayed()
         compose.onNodeWithTag("book_horizontal_pager").assertIsDisplayed()
 
+        val density = androidx.test.platform.app.InstrumentationRegistry
+            .getInstrumentation().targetContext.resources.displayMetrics.density
+        val opticalGrip = compose.onNodeWithTag("optical_form_tab")
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("Optik tab is still oversized", opticalGrip.height <= 146f * density)
+        assertTrue("Optik tab is too wide", opticalGrip.width <= 51f * density)
         compose.onNodeWithTag("optical_form_tab").performClick()
         compose.onNodeWithTag("optic_q2_E").assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals("E", latestAnswers[2]) }
@@ -193,8 +226,15 @@ class SoruLabDeviceUiSmokeTest {
         compose.onNodeWithTag("result_topic_success_card").assertExists()
         captureOnlySyntheticScreen("test-results-open.png")
         compose.onNodeWithTag("show_in_book_btn").performClick()
-        compose.onNodeWithTag("stats_drawer_tab").assertIsDisplayed().performClick()
-        compose.onNodeWithTag("stats_drawer_panel").assertIsDisplayed()
+        val statsGrip = compose.onNodeWithTag("stats_drawer_tab")
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("Statistics tab is still oversized", statsGrip.height <= 150f * density)
+        assertTrue("Statistics tab is too wide", statsGrip.width <= 51f * density)
+        compose.onNodeWithTag("stats_drawer_tab").performClick()
+        val statsPanel = compose.onNodeWithTag("stats_drawer_panel")
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("Statistics drawer is wider than compact tablet spec",
+            statsPanel.width <= 422f * density)
         captureOnlySyntheticScreen("test-statistics-open.png")
         // Hata Frekansı is a real navigation action, not a static icon:
         // it must show the verified, topic-aware frequency tree.

@@ -22,3 +22,10 @@ debug.keystore
 *.apk
 /public/downloads/
 *-debug.log
+
+# Copyright-permitted free on-device PP-OCRv6 ONNX weights (fetched at build time).
+/ppocr-sdk/src/main/assets/models/
+
+# Ephemeral plaintext QA fixtures; only per-run ciphertext may be committed.
+app/src/androidTest/assets/private-corpus/
+qa-ephemeral/

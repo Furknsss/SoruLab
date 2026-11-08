@@ -1373,7 +1373,9 @@ object StudioImageAndPdfEngine {
         val pageSourceHeaders: Map<Int, String> = emptyMap(),
         val pageVectorTestMarkers: Map<Int, PdfPrintedTestMarker> = emptyMap(),
         val pageVectorQuestionAnchors: Map<Int, PdfSourcePageAnchors> = emptyMap(),
-        val pageVectorOptionEvidence: Set<Int> = emptySet()
+        val pageVectorTextFragments: Map<Int, List<PdfSourceTextFragment>> = emptyMap(),
+        val pageVectorOptionEvidence: Set<Int> = emptySet(),
+        val pageNativeAnswerRows: Map<Int, List<String>> = emptyMap()
     )
 
     data class LocalCroppedBoxResult(
@@ -1407,6 +1409,11 @@ object StudioImageAndPdfEngine {
             page.anchors.takeIf { it.size >= 2 }?.let { anchors ->
                 index to PdfSourcePageAnchors(page.pageWidth, page.pageHeight, anchors)
             }
+        }.toMap()
+        // Decoded once with PDFBox, preserved spatially for fast, complete
+        // per-question text reuse. Do not store page bitmap/JPEG duplicates.
+        val pageVectorTextFragments = sourcePages.mapIndexedNotNull { index, page ->
+            page.fragments.takeIf { it.isNotEmpty() }?.let { index to it }
         }.toMap()
         val pageVectorOptionEvidence = sourcePages.mapIndexedNotNull { index, page ->
             val letters = PdfOptionEvidence.letters(page.text)
@@ -1591,7 +1598,14 @@ object StudioImageAndPdfEngine {
             pageSourceHeaders = pageSourceHeaders,
             pageVectorTestMarkers = pageVectorTestMarkers,
             pageVectorQuestionAnchors = pageVectorQuestionAnchors,
-            pageVectorOptionEvidence = pageVectorOptionEvidence
+            pageVectorTextFragments = pageVectorTextFragments,
+            pageVectorOptionEvidence = pageVectorOptionEvidence,
+            pageNativeAnswerRows = sourcePages.mapIndexedNotNull { index, page ->
+                val rows = page.text.lines()
+                if (hasAnswerKeyMarker(page.text) || PdfScopedAnswerKeys.looksLikeAnswerPage(rows)) {
+                    index to rows
+                } else null
+            }.toMap()
         )
     }
 
@@ -1600,6 +1614,7 @@ object StudioImageAndPdfEngine {
         val pageWidth: Float,
         val pageHeight: Float,
         val anchors: List<PdfSourceQuestionAnchor>,
+        val fragments: List<PdfSourceTextFragment>,
         val vectorFooterKeys: Map<Int, String>,
         val printedTestMarker: PdfPrintedTestMarker?,
         val geometryHeaderText: String
@@ -1608,7 +1623,20 @@ object StudioImageAndPdfEngine {
     private class PdfGeometryTextStripper : PDFTextStripper() {
         val glyphs = mutableListOf<PdfSourceGlyph>()
         val headerGlyphs = mutableListOf<PdfSourceGlyph>()
+        val fragments = mutableListOf<PdfSourceTextFragment>()
         override fun writeString(text: String, textPositions: MutableList<TextPosition>) {
+            // Reuse the PDFBox-decoded line text, not the raw glyph values.
+            // Joined cross-column lines span the gutter and fail the strict
+            // crop-containment checks in PdfPageQuestionTextReuse.
+            if (text.isNotBlank() && textPositions.isNotEmpty()) {
+                val left = textPositions.minOf { it.xDirAdj }
+                val top = textPositions.minOf { it.yDirAdj }
+                val right = textPositions.maxOf { it.xDirAdj + it.widthDirAdj }
+                val bottom = textPositions.maxOf { it.yDirAdj + it.heightDir }
+                if (left >= 0f && top >= 0f && right > left && bottom > top) {
+                    fragments.add(PdfSourceTextFragment(text, left, top, right, bottom))
+                }
+            }
             for (p in textPositions) {
                 val value = p.unicode.orEmpty()
                 if (value.isNotEmpty() && value.length <= 3) {
@@ -1650,6 +1678,7 @@ object StudioImageAndPdfEngine {
                         pageWidth = width,
                         pageHeight = height,
                         anchors = printedAnchors,
+                        fragments = stripper.fragments,
                         vectorFooterKeys = PdfVectorAnswerStrip.read(stripper.glyphs, width, height),
                         printedTestMarker = PdfVectorTestMarker.find(stripper.glyphs, width, height),
                         geometryHeaderText = PdfVectorPageHeader.read(
@@ -1661,7 +1690,7 @@ object StudioImageAndPdfEngine {
                     android.util.Log.w(
                         "SoruLabPdfText", "PDF text layer failed at page ${pageIndex + 1}; OCR fallback", e
                     )
-                    SourceTextPage("", width, height, emptyList(), emptyMap(), null, "")
+                    SourceTextPage("", width, height, emptyList(), emptyList(), emptyMap(), null, "")
                 }
             }
         }
@@ -1867,7 +1896,10 @@ object StudioImageAndPdfEngine {
         reusablePixelsRef: Array<IntArray?>,
         questionNumberAnchors: List<QuestionNumberAnchor> = emptyList(),
         optionAnchors: List<QuestionOptionAnchor> = emptyList(),
-        maxQuestionBottomY: Int? = null
+        maxQuestionBottomY: Int? = null,
+        // The full-book import already persists JPEGs; base64 is only needed
+        // by legacy single-image callers that have no durable image path.
+        embedImageBase64: Boolean = true
     ): List<LocalCroppedBoxResult> {
         if (pageBitmap.isRecycled) return emptyList()
         val width = pageBitmap.width
@@ -1890,7 +1922,8 @@ object StudioImageAndPdfEngine {
             totalPages = totalPages,
             questionNumberAnchors = questionNumberAnchors,
             optionAnchors = optionAnchors,
-            maxQuestionBottomY = maxQuestionBottomY
+            maxQuestionBottomY = maxQuestionBottomY,
+            embedImageBase64 = embedImageBase64
         )
     }
 
@@ -1973,7 +2006,8 @@ object StudioImageAndPdfEngine {
         totalPages: Int,
         questionNumberAnchors: List<QuestionNumberAnchor>,
         optionAnchors: List<QuestionOptionAnchor>,
-        maxQuestionBottomY: Int?
+        maxQuestionBottomY: Int?,
+        embedImageBase64: Boolean
     ): List<LocalCroppedBoxResult> {
         // 1. Estimate background paper luminance so off-white / gray / yellow backgrounds are ignored
         var highLumSum = 0L
@@ -2185,28 +2219,32 @@ object StudioImageAndPdfEngine {
             bodyBottom = cleanGapY
         }
 
-        bodyTop = max(bodyTop, (height * 0.065f).roundToInt())
-            .coerceIn(0, (height - 1).coerceAtLeast(0))
-        // Header trimming must not swallow the first printed question. On a
-        // sparse page its first line may fall inside the broad header probe.
-        questionNumberAnchors
-            .filter { it.number in 1..200 && it.top >= (height * 0.06f).roundToInt() }
-            .minOfOrNull { it.top }
-            ?.let { firstQuestionTop ->
-                bodyTop = min(
-                    bodyTop,
-                    (firstQuestionTop - (height * 0.012f).roundToInt()).coerceAtLeast(0)
-                )
-            }
-        bodyBottom = min(bodyBottom, (height * 0.945f).roundToInt())
-            .coerceIn(bodyTop + 1, height)
+        bodyTop = PdfAnchoredBodyBounds.firstQuestionTop(
+            pageHeight = height,
+            defaultTop = max(bodyTop, (height * 0.065f).roundToInt())
+                .coerceIn(0, (height - 1).coerceAtLeast(0)),
+            numbers = questionNumberAnchors
+        )
+        // A real final E choice can be printed below the nominal 94.5% trim.
+        // Only image-backed choice anchors may extend the body, and the
+        // independently detected answer grid is still a hard boundary.
+        bodyBottom = PdfAnchoredBodyBounds.lastOptionBottom(
+            pageHeight = height,
+            defaultBottom = min(bodyBottom, (height * 0.945f).roundToInt())
+                .coerceIn(bodyTop + 1, height),
+            options = optionAnchors,
+            answerGridTop = maxQuestionBottomY
+        )
         // If this PDF prints the answer grid directly under the final
         // multiple-choice question, do not include that key in the crop.
         // The limit is derived from OCR geometry, never a fixed page fraction.
         maxQuestionBottomY?.takeIf { gridTop ->
             gridTop > bodyTop + 80 && gridTop < bodyBottom
         }?.let { gridTop ->
-            bodyBottom = min(bodyBottom, gridTop - 7)
+            bodyBottom = min(
+                bodyBottom,
+                PdfAnswerFooterCropBoundary.lastQuestionBottomExclusive(gridTop, height)
+            )
         }
         val bodyH = (bodyBottom - bodyTop).coerceAtLeast(1)
 
@@ -2397,14 +2435,20 @@ object StudioImageAndPdfEngine {
                     // Ending on 'E)' silently amputates the rest of the source.
                     // The hardEnd excludes the following printed question and
                     // gives the current question all of its intervening space.
-                    val endY = if (nextAnchorTop != null) {
-                        hardEnd
-                    } else {
-                        maxOf(
-                            projectedEnd,
-                            lastObservedOptionBottom?.plus(anchorPadding) ?: projectedEnd
-                        ).coerceIn(startY + 1, hardEnd)
-                    }
+                    val proposedEnd = maxOf(
+                        projectedEnd,
+                        lastObservedOptionBottom?.plus(anchorPadding) ?: projectedEnd
+                    ).coerceIn(startY + 1, hardEnd)
+                    // A small final E) row can be missed by OCR and pixel
+                    // projection. If there is no reliable complete A-E
+                    // sequence, preserve the entire safe question region.
+                    // hardEnd is already clipped before the verified key.
+                    val endY = PdfQuestionTailPolicy.endExclusive(
+                        hasNextPrintedQuestion = nextAnchorTop != null,
+                        completeOptionsLocated = optionBottom != null,
+                        proposedEnd = proposedEnd,
+                        hardEnd = hardEnd
+                    )
                     startY to endY
                 }
 
@@ -2566,7 +2610,11 @@ object StudioImageAndPdfEngine {
                         bitmap = cleanedCrop,
                         id = "p${pageIndex + 1}_c${colIdx + 1}_q${qIdx + 1}_${java.util.UUID.randomUUID()}"
                     )
-                    imageBase64 = encodeLightweightQuestionBitmap(cleanedCrop)
+                    // Avoid a second JPEG encode + base64 conversion per
+                    // question when a durable local JPEG is already saved.
+                    imageBase64 = if (embedImageBase64) {
+                        encodeLightweightQuestionBitmap(cleanedCrop)
+                    } else ""
                 } finally {
                     if (!cleanedCrop.isRecycled) cleanedCrop.recycle()
                 }

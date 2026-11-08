@@ -16,6 +16,28 @@ class PdfHorizontalAnswerGridTest {
     }
 
     @Test
+    fun `compact keys near page header and center work without publisher heuristics`() {
+        for (top in listOf(40, 250, 800, 1350)) {
+            val row = PdfOcrTextCell(
+                "1-A 2.C 3 B 4-D 5)E", 120, top, 860, top + 24
+            )
+            val grids = PdfHorizontalAnswerGridReader.find(listOf(row), 1000, 1500)
+            assertEquals("position=$top", 1, grids.size)
+            assertEquals(mapOf(1 to "A", 2 to "C", 3 to "B", 4 to "D", 5 to "E"), grids.single().answers)
+        }
+    }
+
+    @Test
+    fun `ordinary numbered question prose is not interpreted as a compact answer strip`() {
+        val ordinary = listOf(
+            PdfOcrTextCell("Soru 1-A 2-B 3-C 4-D", 100, 100, 900, 130),
+            PdfOcrTextCell("1-A 2-C 2-D 4-E", 100, 300, 900, 330),
+            PdfOcrTextCell("1-A 2-B 3-C", 100, 500, 900, 530)
+        )
+        assertTrue(PdfHorizontalAnswerGridReader.find(ordinary, 1000, 1500).isEmpty())
+    }
+
+    @Test
     fun `analysis and regular tests with same number do not share keys`() {
         val keys = PdfScopedAnswerKeys(setOf("sinir sistemi"))
         keys.addOcrRows(listOf("Sinir Sistemi", "ANALİZ 1 1-A 2-B 3-C", "TEST 1 1-D 2-E 3-A"))
@@ -131,6 +153,29 @@ class PdfHorizontalAnswerGridTest {
         assertEquals(1, detected.size)
         assertEquals(10, detected.single().answers.size)
         assertEquals("C", detected.single().answers[10])
+    }
+
+
+    @Test
+    fun `narrow four cell printed key on a wide page remains readable`() {
+        // Matches the 1600 x 2200 Android offline import layout. A genuine
+        // short 1..4 strip must not be mistaken for a missing answer key.
+        val cells = listOf(
+            PdfOcrTextCell("1", 360, 1990, 377, 2022),
+            PdfOcrTextCell("2", 400, 1990, 417, 2022),
+            PdfOcrTextCell("3", 440, 1990, 457, 2022),
+            PdfOcrTextCell("4", 480, 1990, 497, 2022),
+            PdfOcrTextCell("A", 360, 2070, 377, 2102),
+            PdfOcrTextCell("B", 400, 2070, 417, 2102),
+            PdfOcrTextCell("C", 440, 2070, 457, 2102),
+            PdfOcrTextCell("D", 480, 2070, 497, 2102)
+        )
+        val actual = PdfHorizontalAnswerGridReader.find(cells, 1600, 2200)
+        assertEquals(mapOf(1 to "A", 2 to "B", 3 to "C", 4 to "D"),
+            actual.single().answers)
+        assertTrue(PdfHorizontalAnswerGridReader.find(
+            cells.filter { it.text != "D" }, 1600, 2200
+        ).isEmpty())
     }
 
 }

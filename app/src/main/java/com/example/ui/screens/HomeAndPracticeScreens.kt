@@ -250,50 +250,41 @@ private fun BottomNavTabIcon(
             }
 
             MainNavTab.SORU_PRATIGI -> {
-                val handlePath = Path().apply {
-                    moveTo(w * 0.36f, h * 0.22f)
-                    cubicTo(w * 0.36f, h * 0.10f, w * 0.64f, h * 0.10f, w * 0.64f, h * 0.22f)
+                // A clean pencil nib replaces the old briefcase symbol.
+                val body = Path().apply {
+                    moveTo(w * 0.29f, h * 0.68f)
+                    lineTo(w * 0.68f, h * 0.18f)
+                    quadraticTo(w * 0.72f, h * 0.12f, w * 0.77f, h * 0.17f)
+                    lineTo(w * 0.86f, h * 0.26f)
+                    quadraticTo(w * 0.90f, h * 0.30f, w * 0.85f, h * 0.35f)
+                    lineTo(w * 0.43f, h * 0.79f)
+                    close()
                 }
                 drawPath(
-                    path = handlePath,
+                    path = body,
                     color = tint,
-                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                    style = if (isSelected) androidx.compose.ui.graphics.drawscope.Fill
+                        else Stroke(width = strokeWidth, join = StrokeJoin.Round)
                 )
-                drawRoundRect(
-                    color = tint,
-                    topLeft = Offset(w * 0.14f, h * 0.24f),
-                    size = Size(w * 0.72f, h * 0.64f),
-                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
-                    style = if (isSelected) androidx.compose.ui.graphics.drawscope.Fill else Stroke(width = strokeWidth)
-                )
-                if (isSelected) {
-                    drawLine(
-                        color = Color(0xFF2563EB),
-                        start = Offset(w * 0.14f, h * 0.48f),
-                        end = Offset(w * 0.86f, h * 0.48f),
-                        strokeWidth = strokeWidth
-                    )
-                    drawRoundRect(
-                        color = Color(0xFF2563EB),
-                        topLeft = Offset(w * 0.42f, h * 0.42f),
-                        size = Size(w * 0.16f, h * 0.14f),
-                        cornerRadius = CornerRadius(1.5.dp.toPx(), 1.5.dp.toPx())
-                    )
-                } else {
-                    drawLine(
-                        color = tint,
-                        start = Offset(w * 0.14f, h * 0.48f),
-                        end = Offset(w * 0.86f, h * 0.48f),
-                        strokeWidth = strokeWidth * 0.8f
-                    )
-                    drawRoundRect(
-                        color = tint,
-                        topLeft = Offset(w * 0.42f, h * 0.42f),
-                        size = Size(w * 0.16f, h * 0.14f),
-                        cornerRadius = CornerRadius(1.5.dp.toPx(), 1.5.dp.toPx()),
-                        style = Stroke(width = strokeWidth * 0.8f)
-                    )
+                val tip = Path().apply {
+                    moveTo(w * 0.29f, h * 0.68f)
+                    lineTo(w * 0.18f, h * 0.90f)
+                    lineTo(w * 0.43f, h * 0.79f)
+                    close()
                 }
+                drawPath(
+                    path = tip,
+                    color = tint,
+                    style = if (isSelected) androidx.compose.ui.graphics.drawscope.Fill
+                        else Stroke(width = strokeWidth * 0.85f, join = StrokeJoin.Round)
+                )
+                drawLine(
+                    color = if (isSelected) Color(0xFF2563EB) else tint,
+                    start = Offset(w * 0.63f, h * 0.25f),
+                    end = Offset(w * 0.80f, h * 0.41f),
+                    strokeWidth = strokeWidth * 0.75f,
+                    cap = StrokeCap.Round
+                )
             }
 
             MainNavTab.DENEMELER -> {
@@ -411,18 +402,18 @@ fun AnaSayfaScreen(
         when {
             parts.size >= 2 -> "${parts.first().first().uppercaseChar()}${parts.last().first().uppercaseChar()}"
             parts.size == 1 -> parts.first().take(2).uppercase()
-            else -> "KE"
+            else -> "SL"
         }
     }
 
     val firstName = remember(userName) {
-        userName.trim().split(" ").firstOrNull()?.takeIf { it.isNotBlank() } ?: "Ken"
+        userName.trim().split(" ").firstOrNull()?.takeIf { it.isNotBlank() } ?: "Öğrenci"
     }
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFD))
+            .background(Color(0xFFF6F8FC))
             .testTag("ana_sayfa_list"),
         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -476,7 +467,7 @@ fun AnaSayfaScreen(
                                 border = BorderStroke(1.dp, Color(0xFFBFDBFE))
                             ) {
                                 Text(
-                                    text = "YKS 2026",
+                                    text = "YKS ÇALIŞMA",
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.sp
@@ -487,7 +478,7 @@ fun AnaSayfaScreen(
                             }
                         }
                         Text(
-                            text = "AKILLI HAZIRLIK SİSTEMİ",
+                            text = "KİŞİSEL ÖĞRENME ALANIN",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp,
@@ -573,7 +564,7 @@ fun AnaSayfaScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(26.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF0B1528))
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF111A36))
             ) {
                 Box(
                     modifier = Modifier
@@ -581,9 +572,9 @@ fun AnaSayfaScreen(
                         .background(
                             Brush.linearGradient(
                                 colors = listOf(
-                                    Color(0xFF0B1528),
-                                    Color(0xFF132A55),
-                                    Color(0xFF183870)
+                                    Color(0xFF10152D),
+                                    Color(0xFF1A2E66),
+                                    Color(0xFF333182)
                                 )
                             )
                         )
@@ -614,7 +605,7 @@ fun AnaSayfaScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "HEDEF: İLK 5.000",
+                                text = "HER SORUDA BİR ADIM İLERİ",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 12.sp,
@@ -640,7 +631,7 @@ fun AnaSayfaScreen(
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = "4 Gün Seri",
+                                        text = "$totalSolvedTests test tamamlandı",
                                         color = Color(0xFFFDE68A),
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.5.sp
@@ -651,7 +642,7 @@ fun AnaSayfaScreen(
 
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                text = "Hoş geldin, $firstName",
+                                text = "Merhaba, $firstName",
                                 style = MaterialTheme.typography.headlineMedium.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 24.sp
@@ -659,8 +650,10 @@ fun AnaSayfaScreen(
                                 color = Color.White
                             )
                             Text(
-                                text = "👋",
-                                fontSize = 24.sp
+                                text = "Kitapların, denemelerin ve soruların tek bir çalışma alanında.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFCBD5E1),
+                                maxLines = 2
                             )
                         }
 
@@ -820,6 +813,61 @@ fun AnaSayfaScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Primary content action: import the next book without navigating through
+        // practice screens. No fake streak/goal data is displayed anywhere above.
+        item {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("home_add_book_quick_action")
+                    .clickable(onClick = onOpenPdfCropper),
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFFEAF1FF),
+                border = BorderStroke(1.dp, Color(0xFFCCDDFD))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 17.dp, vertical = 15.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(13.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFF2563EB)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.CollectionsBookmark,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(23.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Kitaplığını büyüt",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 15.sp,
+                            color = Color(0xFF14254C)
+                        )
+                        Text(
+                            text = "PDF soru bankası ekle ve kaldığın yerden çalış",
+                            fontSize = 12.sp,
+                            color = Color(0xFF526784),
+                            maxLines = 2
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = Color(0xFF2563EB),
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
         }
@@ -2989,7 +3037,6 @@ private fun TopicTestsDetailView(
                                         test = testItem,
                                         completed = isTestCompleted(testItem),
                                         onOpen = { onTestClicked(testItem) },
-                                        onStart = { onStartTestImmediately(testItem) },
                                         onDelete = { onDeleteTest(testItem) }
                                     )
                                 }
@@ -3068,14 +3115,12 @@ private fun TopicTestsDetailView(
 }
 
 @Composable
-private fun PremiumPracticeTestRow(
+internal fun PremiumPracticeTestRow(
     test: YksTestItem,
     completed: Boolean,
     onOpen: () -> Unit,
-    onStart: () -> Unit,
     onDelete: () -> Unit
 ) {
-    var menuExpanded by remember(test.id) { mutableStateOf(false) }
     var confirmDelete by remember(test.id) { mutableStateOf(false) }
     BoxWithConstraints(modifier = Modifier.fillMaxWidth().background(Color.White)) {
         val compact = maxWidth < 420.dp
@@ -3125,29 +3170,19 @@ private fun PremiumPracticeTestRow(
                 position = test.difficultyPosition,
                 modifier = Modifier.width(if (compact) 82.dp else 110.dp)
             )
-            Box {
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(
-                        Icons.Filled.MoreVert,
-                        contentDescription = "${test.fullTitle} seçenekleri",
-                        tint = Color(0xFF8B84A7),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                    DropdownMenuItem(
-                        text = { Text(if (completed) "Tekrar çöz" else "Testi çöz") },
-                        leadingIcon = { Icon(Icons.Filled.PlayArrow, contentDescription = null) },
-                        onClick = { menuExpanded = false; onStart() },
-                        modifier = Modifier.testTag("solve_test_btn_${test.id}")
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Testi sil", color = Color(0xFFCA3658)) },
-                        leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = Color(0xFFCA3658)) },
-                        onClick = { menuExpanded = false; confirmDelete = true },
-                        modifier = Modifier.testTag("delete_test_btn_${test.id}")
-                    )
-                }
+            // One tap opens the existing safety confirmation; no overflow
+            // menu is needed. The rest of the test row still opens the test.
+            IconButton(
+                onClick = { confirmDelete = true },
+                modifier = Modifier.size(44.dp)
+                    .testTag("delete_test_btn_${test.id}")
+            ) {
+                Icon(
+                    Icons.Outlined.Delete,
+                    contentDescription = "${test.fullTitle} testini sil",
+                    tint = Color(0xFFCA3658),
+                    modifier = Modifier.size(22.dp)
+                )
             }
         }
     }

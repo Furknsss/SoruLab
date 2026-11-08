@@ -61,10 +61,16 @@ android {
     applicationId = "com.aistudio.sorulab.ykslab"
     minSdk = 24
     targetSdk = 36
-    versionCode = 32
-    versionName = "1.2.6-rc9-validation"
+    versionCode = 33
+    versionName = "1.2.7-offline-test"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+  }
+
+  packaging {
+    // Keep a complete universal APK compact without dropping any supported CPU.
+    jniLibs.useLegacyPackaging = true
   }
 
   // Do not remove or modify these signingConfigs. They are necessary for building, installing,
@@ -236,7 +242,7 @@ dependencies {
   // implementation(libs.androidx.room.runtime)
   implementation(libs.coil.compose)
   // implementation(libs.converter.moshi)
-  implementation(libs.firebase.ai)
+  implementation(project(":ppocr-sdk"))
   // Uncomment to use Firestore:
   implementation(libs.firebase.firestore)
 
@@ -264,6 +270,7 @@ dependencies {
   testImplementation(libs.kotlinx.coroutines.test)
   testImplementation(libs.robolectric)
   androidTestImplementation(platform(libs.androidx.compose.bom))
+  androidTestImplementation(platform(libs.firebase.bom))
   androidTestImplementation(libs.androidx.compose.ui.test.junit4)
   androidTestImplementation(libs.androidx.espresso.core)
   androidTestImplementation(libs.androidx.junit)

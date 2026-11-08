@@ -166,6 +166,9 @@ data class CustomQuestionRecord(
     val difficulty: String = "Orta",
     val correctOption: String = "C",
     val questionText: String = "",
+    /** Supplied by publisher/ZIP, not inferred from question length. */
+    val learningOutcome: String = "",
+    val questionType: String = "",
     val publisherTag: String = "Kaynak Belirtilmedi",
     val publisherId: String = "",
     val sourceBookTitle: String = "",

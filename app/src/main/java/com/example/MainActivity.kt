@@ -286,8 +286,11 @@ private fun ActiveSolvingSessionHost(
             onGoToStatsTab = { mainViewModel.navigateFromReviewToStats() },
             onAskAiForQuestion = { q -> mainViewModel.openAiAssistant(q) },
             onSolveTwinTest = { mainViewModel.startTwinTestFromSession(curSession) },
+            onStrengthenFromFrequency = { target ->
+                mainViewModel.startStrengtheningTestFromSession(curSession, target)
+            },
             onGenerateTwinQuestion = { q, cb ->
-                aiViewModel.generateTwinQuestionOnDemand(q, context.applicationContext, cb)
+                cb(mainViewModel.findGroundedTwinQuestion(q, curSession))
             },
             onGenerateSolutionForQuestion = { q, cb ->
                 aiViewModel.generateQuestionSolutionOnDemand(q, context.applicationContext, cb)
@@ -481,6 +484,7 @@ private fun DenemelerTabHost(
                 aiViewModel.clearBatchError()
             },
             onDeleteLibraryBook = { questionIds -> mainViewModel.deleteLibraryBookQuestions(questionIds) },
+            onRestorePreviousQuestions = { mainViewModel.recoverPreviousDeviceQuestions() },
             onClearAllData = { mainViewModel.clearAllUserData() },
             onBack = { mainViewModel.closePdfCropperStudio() },
             onSolveBookInPractice = { firstRecord ->

@@ -36,7 +36,7 @@ internal object PdfHorizontalAnswerGridReader {
             .filter { it.text.trim().trim('.', ')', ':', '-').toIntOrNull() in 1..200 }
             .sortedWith(compareBy({ it.middleY }, { it.middleX }))
         val letters = tokens.filter { optionToken.matches(it.text.trim()) }
-        val inlineGrids = findInlineRows(cells, pageHeight)
+        val inlineGrids = findInlineRows(cells)
         if (numbers.size < 4 || letters.size < 4) return inlineGrids
 
         val bands = mutableListOf<MutableList<PdfOcrTextCell>>()
@@ -71,7 +71,12 @@ internal object PdfHorizontalAnswerGridReader {
                 val middleY = sequence.map { it.middleY }.average()
                 val minX = sequence.minOf { it.middleX }
                 val maxX = sequence.maxOf { it.middleX }
-                if (maxX - minX < pageWidth * 0.08) continue
+                // Four tightly printed answer cells can span only 7-8% of
+                // a wide page (including the Android offline fixture). The
+                // old 8% minimum silently discarded otherwise coherent
+                // four-cell grids. Keep the strict 1..N numbering, vertical
+                // alignment, per-cell X matching and >=4-letter safeguards.
+                if (maxX - minX < pageWidth * 0.055) continue
                 val gap = sequence.zipWithNext { a, b -> b.middleX - a.middleX }
                     .filter { it > 0 }.sorted()
                     .let { if (it.isEmpty()) 0.0 else it[it.size / 2].toDouble() }
@@ -126,11 +131,11 @@ internal object PdfHorizontalAnswerGridReader {
         return (grids + inlineGrids).distinctBy { grid -> grid.top / 8 to grid.answers }
     }
 
-    /** Compact footer keys: 1-A 2.C 3 B. Reject all prose and isolated choices. */
-    private fun findInlineRows(cells: List<PdfOcrTextCell>, pageHeight: Int): List<PdfHorizontalAnswerGrid> {
+    /** Compact printed keys: 1-A 2.C 3 B. These can appear at the top, middle or bottom of ANY publisher's page. Reject prose and isolated choices. */
+    private fun findInlineRows(cells: List<PdfOcrTextCell>): List<PdfHorizontalAnswerGrid> {
         val pair = Regex("""([0-9]{1,3})\s*[.:()\-]?\s*([A-E])(?:\))?""", RegexOption.IGNORE_CASE)
         val rows = mutableListOf<MutableList<PdfOcrTextCell>>()
-        for (cell in cells.filter { it.top >= pageHeight * 0.65f }.sortedBy { it.middleY }) {
+        for (cell in cells.sortedWith(compareBy({ it.middleY }, { it.left }))) {
             val row = rows.lastOrNull()
             if (row != null && abs(cell.middleY - row.map { it.middleY }.average()) <=
                 max(5.0, row.map { it.height }.average() * 0.6)) row.add(cell)

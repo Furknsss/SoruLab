@@ -67,6 +67,8 @@ internal fun mergeCloudQuestionsWithLocalMedia(
         val cached = localById[remote.id] ?: return@map remote
         val hasLocalPdf = cached.pdfFilePath.isNotBlank() && cached.pageIndex >= 0
         remote.copy(
+            learningOutcome = remote.learningOutcome.ifBlank { cached.learningOutcome },
+            questionType = remote.questionType.ifBlank { cached.questionType },
             bookId = cached.bookId.ifBlank { remote.bookId },
             imageBase64 = cached.imageBase64.ifBlank { remote.imageBase64 },
             pdfFilePath = if (hasLocalPdf) cached.pdfFilePath else remote.pdfFilePath,
@@ -236,6 +238,9 @@ class SoruLabViewModel(
 
     private val _selectedStrokeSizeIndex = MutableStateFlow(1)
     val selectedStrokeSizeIndex: StateFlow<Int> = _selectedStrokeSizeIndex.asStateFlow()
+    // Pen thickness and eraser size are separate tools, not one shared value.
+    private var penStrokeSizeIndex = 1
+    private var eraserStrokeSizeIndex = 1
 
     private val _selectedPenColorHex = MutableStateFlow(0xFF111111L)
     val selectedPenColorHex: StateFlow<Long> = _selectedPenColorHex.asStateFlow()
@@ -276,11 +281,24 @@ class SoruLabViewModel(
         SoruLabCatalog.topicByIdMap
     }
 
-    private fun saveCustomQuestionsCacheAsync(uid: String, list: List<CustomQuestionRecord>) {
+    private fun saveCustomQuestionsCacheAsync(
+        uid: String,
+        list: List<CustomQuestionRecord>,
+        allowRemovals: Boolean = false
+    ) {
         cacheSaveJob?.cancel()
         cacheSaveJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                repository.saveCachedCustomQuestions(uid, list)
+                val durable = repository.saveCachedCustomQuestions(uid, list, allowRemovals)
+                withContext(Dispatchers.Main) {
+                    if ((effectiveUserId() ?: com.example.util.PdfLibraryAccount.GUEST_CACHE_UID) == uid &&
+                        durable.size > _userCustomQuestions.value.size
+                    ) {
+                        // A partial cloud listener must not shrink the visible bank.
+                        _userCustomQuestions.value = durable
+                        syncPdfPoolToPracticeTests(durable)
+                    }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -830,31 +848,40 @@ class SoruLabViewModel(
             if (baseTopicQuestions.isEmpty()) return emptyList()
 
             val allKnownTests = _generatedTopicTests.value.values.flatten()
-            val collectedTwinQuestions = mutableListOf<YksQuestion>()
-            val seenIdentities = mutableSetOf<String>()
+            val selectedTwinIds = mutableSetOf<String>()
+            val previousUseCounts = previousTwinUseCounts()
+            val matchedQuestions = mutableListOf<YksQuestion>()
 
             for (record in solvedInTopic) {
-                val answersMap = parseAnswersJson(record.answersMapJson).orEmpty()
                 val sourceQuestions = allKnownTests.firstOrNull {
                     it.id == record.testId && it.topicId.equals(topic.id, ignoreCase = true)
-                }?.questions
-                    ?: baseTopicQuestions
-
+                }?.questions ?: TestSnapshotCodec.decode(record.testSnapshotJson)?.questions
+                // No original snapshot => no safe way to identify the wrong
+                // questions. Never interpret unrelated pool items as mistakes.
+                if (sourceQuestions.isNullOrEmpty()) continue
+                val answers = parseAnswersJson(record.answersMapJson).orEmpty()
                 for (q in sourceQuestions) {
-                    if (!q.answerKeyVerified || !q.topicHeader.equals(topic.name, ignoreCase = true)) continue
-                    val chosen = answersMap[q.number]
-                    val isWrongOrBlank = chosen.isNullOrBlank() || chosen != q.correctOption
-                    if (isWrongOrBlank) {
-                        val identityKey = q.croppedImagePath.ifBlank { "${q.stemTop}|${q.number}" }
-                        if (seenIdentities.add(identityKey)) {
-                            collectedTwinQuestions.add(q)
-                        }
-                    }
+                    if (!q.answerKeyVerified) continue
+                    val selected = answers[q.number]
+                    if (!selected.isNullOrBlank() && selected == q.correctOption) continue
+                    val alternative = GroundedTwinQuestionMatcher.select(
+                        source = q,
+                        subjectId = topic.subjectId,
+                        topicId = topic.id,
+                        topicName = topic.name,
+                        pool = _userCustomQuestions.value,
+                        excludedIds = selectedTwinIds + sourceQuestions.map { it.sourceQuestionId },
+                        previousUseCounts = previousUseCounts,
+                        isUsable = repository::hasRecoverableQuestionImage
+                    ) ?: continue
+                    val originalDifferent = baseTopicQuestions.firstOrNull {
+                        it.sourceQuestionId == alternative.id && it.answerKeyVerified
+                    } ?: continue
+                    selectedTwinIds.add(alternative.id)
+                    matchedQuestions.add(originalDifferent)
                 }
             }
-            return collectedTwinQuestions.mapIndexed { idx, q ->
-                q.copy(number = idx + 1)
-            }
+            return matchedQuestions.mapIndexed { idx, q -> q.copy(number = idx + 1) }
         }
 
         return buildRealBaseQuestionsForTopic(topic, level)
@@ -914,6 +941,8 @@ class SoruLabViewModel(
                 answerKeyVerified = answerKeyVerified,
                 stemTop = if (hasCroppedStemImage) "" else custom.questionText,
                 analyticsText = custom.questionText,
+                learningOutcome = custom.learningOutcome,
+                questionType = custom.questionType,
                 bulletsOrSteps = emptyList(),
                 stemBottom = if (hasCroppedStemImage) "" else "Buna göre doğru seçenek aşağıdakilerden hangisidir?",
                 options = mapOf(
@@ -1047,6 +1076,8 @@ class SoruLabViewModel(
                 answerKeyVerified = answerKeyVerified,
                 stemTop = if (hasCroppedStemImage) "" else custom.questionText,
                 analyticsText = custom.questionText,
+                learningOutcome = custom.learningOutcome,
+                questionType = custom.questionType,
                 bulletsOrSteps = emptyList(),
                 stemBottom = if (hasCroppedStemImage) "" else "Buna göre doğru seçenek aşağıdakilerden hangisidir?",
                 options = mapOf(
@@ -1252,11 +1283,15 @@ class SoruLabViewModel(
         level: TopicTestLevel,
         selectedDifficulties: Set<DifficultyLevel>,
         sourceFilter: QuestionSourceFilter,
-        requestedQuestionCount: Int
+        requestedQuestionCount: Int,
+        verifiedTwinCandidates: List<YksQuestion>? = null,
+        customTestTitle: String = ""
     ): YksTestItem? {
         if (requestedQuestionCount <= 0) return null
         val activeDifficulties = selectedDifficulties.ifEmpty { DifficultyLevel.entries.toSet() }
-        val sourceCandidates = if (level == TopicTestLevel.IKIZ && sourceFilter == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
+        val sourceCandidates = if (verifiedTwinCandidates != null) {
+            verifiedTwinCandidates.filter { it.answerKeyVerified && it.difficulty in activeDifficulties }
+        } else if (level == TopicTestLevel.IKIZ && sourceFilter == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
             collectRealPoolQuestionsForTopicAndLevel(topic, level)
                 .filter { it.difficulty in activeDifficulties }
         } else {
@@ -1271,8 +1306,12 @@ class SoruLabViewModel(
             .withIndex()
             .associate { it.value to it.index }
         val strictCandidates = sourceCandidates
-            .distinctBy { it.croppedImagePath.ifBlank { it.id } }
-            .sortedBy { difficultyPriority.getValue(it.difficulty) }
+            .distinctBy { it.sourceQuestionId.ifBlank { it.croppedImagePath.ifBlank { it.id } } }
+            .let { unique ->
+                // A scoped caller already ranked these by freshness.
+                if (verifiedTwinCandidates != null) unique
+                else unique.sortedBy { difficultyPriority.getValue(it.difficulty) }
+            }
 
         val key = "${topic.id}_${level.name}"
         val existingList = _generatedTopicTests.value[key].orEmpty()
@@ -1294,7 +1333,7 @@ class SoruLabViewModel(
             .toSet()
         val candidatesByDifficulty = strictCandidates.groupBy { it.difficulty }
 
-        val orderedPool = buildList {
+        val orderedPool = if (verifiedTwinCandidates != null) strictCandidates else buildList {
             difficultyFallbackOrder(selectedDifficulties).forEach { difficulty ->
                 val questionsAtDifficulty = candidatesByDifficulty[difficulty].orEmpty()
                 val unusedAtDifficulty = questionsAtDifficulty.filter { question ->
@@ -1319,8 +1358,11 @@ class SoruLabViewModel(
         if (questionsToUse.isEmpty()) return null
 
         // Otomatik İsimlendirme: "[Konu Adı] - Test [X]" (Kesinlikle kitap adı kullanılmaz)
-        val shortTitle = "${topic.name} - Test $nextTestNumber"
-        val fullTitle = "${topic.name} - Test $nextTestNumber"
+        val label = customTestTitle.trim().take(72)
+        val shortTitle = if (label.isNotBlank())
+            "${topic.name} • $label - Test $nextTestNumber"
+        else "${topic.name} - Test $nextTestNumber"
+        val fullTitle = shortTitle
         val expectedTestId = "${topic.id}_${level.name.lowercase()}_test_$nextTestNumber"
 
         val avgWeight = questionsToUse.map { it.difficulty.weight }.average().toFloat().coerceIn(0.12f, 0.94f)
@@ -1437,6 +1479,142 @@ class SoruLabViewModel(
         )
     }
 
+    /**
+     * Offline single-question twin: strictly another locally stored and
+     * answer-key-verified question from the exact same subject and topic.
+     * The original crop is never relabeled or offered as a new twin.
+     */
+    private fun previousTwinUseCounts(): Map<String, Int> {
+        val generated = _generatedTopicTests.value.values.flatten()
+            .flatMap { it.questions }
+        val solved = _userTestResults.value.filter { it.isSolvedAttempt }
+            .mapNotNull { TestSnapshotCodec.decode(it.testSnapshotJson) }
+            .flatMap { it.questions }
+        return (generated + solved)
+            .mapNotNull { it.sourceQuestionId.takeIf(String::isNotBlank) }
+            .groupingBy { it }.eachCount()
+    }
+
+    fun findGroundedTwinQuestion(source: YksQuestion, session: ActiveSolvingSession): TwinQuestionModalData {
+        val candidate = GroundedTwinQuestionMatcher.select(
+            source = source,
+            subjectId = session.subjectId,
+            topicId = session.topicId,
+            topicName = session.topicName,
+            pool = _userCustomQuestions.value,
+            excludedIds = session.testItem.questions.mapTo(HashSet()) { it.sourceQuestionId },
+            previousUseCounts = previousTwinUseCounts(),
+            isUsable = repository::hasRecoverableQuestionImage
+        ) ?: return TwinQuestionModalData(
+            errorMessage = "Aynı konuda farklı ve cevap anahtarı doğrulanmış bir soru henüz yok. İkiz oluşturmak için kitaplığa yeni ZIP soru paketleri ekleyebilirsin."
+        )
+
+        val sourceName = candidate.sourceBookTitle.ifBlank {
+            candidate.bookOrTestName.ifBlank { candidate.publisherTag }
+        }
+        val answer = candidate.correctOption.uppercase(java.util.Locale.ROOT)
+        return TwinQuestionModalData(
+            topicTitle = candidate.topicName,
+            difficultyLabel = candidate.effectiveDifficultyLabel,
+            questionStem = "",
+            croppedImagePath = candidate.croppedImagePath,
+            imageBase64 = candidate.imageBase64,
+            sourceQuestionId = candidate.id,
+            sourceDescription = sourceName +
+                if (source.learningOutcome.isNotBlank() && candidate.learningOutcome.isNotBlank())
+                    " • Aynı alt kazanım" else " • Aynı konu",
+            options = listOf("A", "B", "C", "D", "E").associateWith { it },
+            correctOption = answer,
+            solutionExplanation = candidate.cleanSolutionSummary.ifBlank {
+                "Basılı cevap anahtarında doğru seçenek $answer olarak doğrulanmıştır. Ayrıntılı çözüm bu kaynakta kayıtlı değil."
+            }
+        )
+    }
+
+    /**
+     * Opens a fresh practice test from the exact Hata Frekansı branch the
+     * student chose. Uses only recoverable, answer-key-verified ZIP questions.
+     * Never silently widens a tagged sub-outcome/type to an unrelated topic.
+     */
+    fun startStrengtheningTestFromSession(
+        session: ActiveSolvingSession,
+        target: com.example.util.FrequencyPracticeTarget
+    ) {
+        val subject = SoruLabCatalog.allSubjects.firstOrNull {
+            it.id.equals(session.subjectId, ignoreCase = true)
+        } ?: SoruLabCatalog.allSubjects.firstOrNull {
+            it.name.equals(session.subjectName, ignoreCase = true)
+        }
+        val topicName = target.topicName.trim().ifBlank { session.topicName }
+        val topic = subject?.topics?.firstOrNull {
+            it.name.trim().equals(topicName, ignoreCase = true)
+        } ?: subject?.topics?.firstOrNull {
+            it.id.equals(session.topicId, ignoreCase = true) &&
+                it.name.trim().equals(topicName, ignoreCase = true)
+        }
+        if (topic == null) {
+            showBanner("Bu dalın konusu kitaplıkta doğrulanamadı. Başka bir kazanım seç.")
+            return
+        }
+
+        fun matchesTag(actual: String, selected: String?): Boolean =
+            selected == null || actual.trim().equals(selected.trim(), ignoreCase = true)
+
+        val available = collectQuestionsByTopicSourceAndDifficulty(
+            topic, DifficultyLevel.entries.toSet(), QuestionSourceFilter.TUM_SORULAR
+        ).filter { question ->
+            question.answerKeyVerified &&
+                matchesTag(question.learningOutcome, target.learningOutcome) &&
+                matchesTag(question.questionType, target.questionType)
+        }
+
+        if (available.isEmpty()) {
+            val levelName = target.questionType ?: target.learningOutcome ?: topic.name
+            showBanner("'$levelName' için cevap anahtarı doğrulanmış, etiketli soru yok. Bu kazanıma ait ZIP soruları ekle.")
+            return
+        }
+
+        // Generated-test snapshots track exposure even before the student
+        // finishes a test; solved snapshots track actual repetition.
+        val previousGenerated = _generatedTopicTests.value.values.flatten()
+            .flatMap { it.questions }
+        val previousSolved = _userTestResults.value.filter { it.isSolvedAttempt }
+            .mapNotNull { TestSnapshotCodec.decode(it.testSnapshotJson) }
+            .flatMap { it.questions }
+        val fresh = FreshPracticeQuestionSelector.choose(
+            candidates = available,
+            generatedBefore = previousGenerated,
+            solvedBefore = previousSolved,
+            justSeen = session.testItem.questions,
+            requestedCount = AUTOMATIC_TEST_QUESTION_COUNT
+        )
+        if (fresh.isEmpty()) {
+            showBanner("Bu daldaki bütün sorular mevcut testte kullanıldı. Yeni bir Güçlen testi için aynı kazanımdan başka ZIP soruları ekle.")
+            return
+        }
+
+        val practiceLabel = when {
+            target.questionType != null ->
+                "${target.learningOutcome.orEmpty()} • ${target.questionType}"
+            target.learningOutcome != null -> target.learningOutcome
+            else -> "Güçlen"
+        }
+        val test = generateCustomFilteredTopicTest(
+            topic = topic,
+            level = TopicTestLevel.IKIZ,
+            selectedDifficulties = DifficultyLevel.entries.toSet(),
+            sourceFilter = QuestionSourceFilter.TUM_SORULAR,
+            requestedQuestionCount = fresh.size,
+            verifiedTwinCandidates = fresh,
+            customTestTitle = practiceLabel
+        )
+        if (test == null) {
+            showBanner("Güçlen testi oluşturulamadı; mevcut soruların korundu.")
+            return
+        }
+        startSolvingSession(topic, test, BoardViewMode.FULL_PAGE, isReviewMode = false)
+    }
+
     fun startTwinTestFromSession(session: ActiveSolvingSession) {
         val subject = SoruLabCatalog.allSubjects.firstOrNull {
             it.id.equals(session.subjectId, ignoreCase = true)
@@ -1453,15 +1631,46 @@ class SoruLabViewModel(
             return
         }
 
+        // Use the just-finished test immediately, not a Firestore listener
+        // that might not have finished syncing this attempt yet.
+        val sourceQuestions = session.testItem.questions.filter { source ->
+            source.answerKeyVerified && session.selectedAnswers[source.number] != source.correctOption
+        }
+        val poolQuestions = buildRealBaseQuestionsForTopic(topic, null)
+        val selectedIds = session.testItem.questions
+            .mapTo(mutableSetOf()) { it.sourceQuestionId }
+        val previousUseCounts = previousTwinUseCounts()
+        val twins = sourceQuestions.mapNotNull { source ->
+            val match = GroundedTwinQuestionMatcher.select(
+                source = source,
+                subjectId = topic.subjectId,
+                topicId = topic.id,
+                topicName = topic.name,
+                pool = _userCustomQuestions.value,
+                excludedIds = selectedIds,
+                previousUseCounts = previousUseCounts,
+                isUsable = repository::hasRecoverableQuestionImage
+            ) ?: return@mapNotNull null
+            val question = poolQuestions.firstOrNull {
+                it.sourceQuestionId == match.id && it.answerKeyVerified
+            } ?: return@mapNotNull null
+            selectedIds.add(match.id)
+            question
+        }
+        if (twins.isEmpty()) {
+            showBanner("Bu konuda yanlışlarından farklı, cevap anahtarı doğrulanmış ikiz soru bulunamadı. Havuzuna yeni soru ZIP'leri ekleyebilirsin.")
+            return
+        }
         val twinTest = generateCustomFilteredTopicTest(
             topic = topic,
             level = TopicTestLevel.IKIZ,
             selectedDifficulties = DifficultyLevel.entries.toSet(),
             sourceFilter = QuestionSourceFilter.YANLIS_YAPTIKLARIM,
-            requestedQuestionCount = AUTOMATIC_TEST_QUESTION_COUNT
+            requestedQuestionCount = minOf(AUTOMATIC_TEST_QUESTION_COUNT, twins.size),
+            verifiedTwinCandidates = twins
         )
         if (twinTest == null) {
-            showBanner("İkiz test oluşturmak için bu konuda 12 uygun yanlış veya boş soru bulunamadı.")
+            showBanner("Farklı sorulardan ikiz test hazırlanamadı; mevcut test korunuyor.")
             return
         }
 
@@ -1983,17 +2192,30 @@ class SoruLabViewModel(
     }
 
     fun selectDrawingTool(tool: DrawingTool) {
+        val oldTool = _activeTool.value
+        if (oldTool != tool) {
+            if (oldTool == DrawingTool.ERASER) {
+                eraserStrokeSizeIndex = _selectedStrokeSizeIndex.value
+            } else {
+                penStrokeSizeIndex = _selectedStrokeSizeIndex.value
+            }
+            _selectedStrokeSizeIndex.value =
+                if (tool == DrawingTool.ERASER) eraserStrokeSizeIndex else penStrokeSizeIndex
+        }
         _activeTool.value = tool
     }
 
     fun selectStrokeSize(index: Int) {
-        _selectedStrokeSizeIndex.value = index.coerceIn(0, 2)
+        val safe = index.coerceIn(0, 2)
+        _selectedStrokeSizeIndex.value = safe
+        if (_activeTool.value == DrawingTool.ERASER) eraserStrokeSizeIndex = safe
+        else penStrokeSizeIndex = safe
     }
 
     fun selectPenColor(colorHex: Long) {
         _selectedPenColorHex.value = colorHex
         if (_activeTool.value == DrawingTool.ERASER || _activeTool.value == DrawingTool.HAND_PAN) {
-            _activeTool.value = DrawingTool.PEN
+            selectDrawingTool(DrawingTool.PEN)
         }
     }
 
@@ -2025,7 +2247,9 @@ class SoruLabViewModel(
         val currentList = _boardStrokes.value[key].orEmpty()
 
         if (tool == DrawingTool.ERASER) {
-            val eraseRadius = 42f
+            val eraserWidthPx = listOf(18f, 38f, 68f)
+                .getOrElse(_selectedStrokeSizeIndex.value) { 38f }
+            val eraseRadius = eraserWidthPx / 2f + 4f
             val remaining = currentList.filter { stroke ->
                 stroke.isEraser || stroke.points.none { pt ->
                     points.any { erasePt -> (pt - erasePt).getDistance() < eraseRadius }
@@ -2035,7 +2259,7 @@ class SoruLabViewModel(
                 val eraserStroke = DrawStroke(
                     points = points,
                     colorHex = 0x00000000L,
-                    strokeWidthPx = 38f,
+                    strokeWidthPx = eraserWidthPx,
                     isSmartShape = false,
                     isEraser = true
                 )
@@ -2333,7 +2557,13 @@ class SoruLabViewModel(
             for ((idx, item) in cleanItems.withIndex()) {
                 // Reprocessing improves geometry and source headings; neither is an
                 // immutable identity. Reuse an unambiguous printed question's ID.
-                val previous = existingBySource[Triple(item.bookId, item.pageIndex, item.questionNumberInTest)]
+                // Two different tests may use the same question number on one
+                // PDF page. Reuse an old record only when the printed test
+                // identity agrees; otherwise ZIP import can overwrite a
+                // question from an unrelated test.
+                val previous = existingBySource[
+                    Triple(item.bookId, item.pageIndex, item.questionNumberInTest)
+                ]?.takeIf { it.sourceTestId == item.sourceTestId }
                 val identity = "${item.bookId}|${item.sourceTestId}|${item.pageIndex}|${item.questionNumberInTest}|${item.boxNormalized}"
                 val recordId = previous?.id ?: if (item.bookId.isNotBlank()) "cq_" + java.util.UUID.nameUUIDFromBytes(identity.toByteArray(Charsets.UTF_8)) else "cq_${batchTimestamp}_${idx}_${(100..999).random()}"
                 // Page crops are already durable files under filesDir/questions.
@@ -2411,9 +2641,14 @@ class SoruLabViewModel(
 
                 val resolvedExamType = matchedSubject?.examType?.name ?: item.examType
                 val subjectId = matchedSubject?.id.orEmpty()
-                val resolvedSubjectName = matchedSubject?.name.orEmpty()
+                // ZIP imports can carry authentic subject/topic labels for a
+                // publisher's chapter even when that chapter is not an exact
+                // match for the built-in catalog. Never silently erase them.
+                val resolvedSubjectName = matchedSubject?.name
+                    ?.takeIf { it.isNotBlank() } ?: item.subjectName
                 val topicId = matchedTopic?.id.orEmpty()
-                val resolvedTopicName = matchedTopic?.name.orEmpty()
+                val resolvedTopicName = matchedTopic?.name
+                    ?.takeIf { it.isNotBlank() } ?: item.topicName
 
                 val effectiveCover = bookCoverPath.ifBlank { item.bookCoverPath }
                 val packedSolution = CustomQuestionRecord.packSolutionWithMeta(
@@ -2448,6 +2683,8 @@ class SoruLabViewModel(
                         difficulty = firestoreCompatDiff,
                         correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty(),
                         questionText = item.questionText.take(1800),
+                        learningOutcome = item.learningOutcome,
+                        questionType = item.questionType,
                         publisherTag = finalPubName,
                         publisherId = resolvedPublisher.id,
                         sourceBookTitle = bookOrTestName,
@@ -2470,20 +2707,25 @@ class SoruLabViewModel(
                 )
             }
 
-            val updatedList = ArrayList<CustomQuestionRecord>(newRecords.size + _userCustomQuestions.value.size)
+            // One HashSet membership check per existing record: adding the 50th
+            // textbook must not compare every old question with every new one.
+            // Snapshot the old pool once before constructing the merged list.
+            val cachedBeforeImport = _userCustomQuestions.value
+            val importedQuestionIds = newRecords.mapTo(HashSet<String>(newRecords.size)) { it.id }
+            val updatedList = ArrayList<CustomQuestionRecord>(newRecords.size + cachedBeforeImport.size)
             updatedList.addAll(newRecords)
-            updatedList.addAll(_userCustomQuestions.value.filterNot { old -> newRecords.any { it.id == old.id } })
+            updatedList.addAll(cachedBeforeImport.filterNot { it.id in importedQuestionIds })
 
             // A successful scan is not a successful import until an atomic
             // file write and read-back both succeed.
-            try {
+            val durableList = try {
                 withContext(Dispatchers.IO) {
-                    repository.saveCachedCustomQuestions(uid, updatedList)
-                    val restored = repository.loadCachedCustomQuestions(uid)
+                    val restored = repository.saveCachedCustomQuestions(uid, updatedList)
                     val ids = restored.mapTo(HashSet(restored.size)) { it.id }
                     check(newRecords.all { it.id in ids }) {
                         "Yerel kitaplık yazıldı fakat doğrulanamadı."
                     }
+                    restored
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -2499,7 +2741,10 @@ class SoruLabViewModel(
             }
 
             withContext(Dispatchers.Main) {
-                _userCustomQuestions.value = updatedList
+                if ((effectiveUserId() ?: com.example.util.PdfLibraryAccount.GUEST_CACHE_UID) == uid) {
+                    _userCustomQuestions.value = durableList
+                    syncPdfPoolToPracticeTests(durableList)
+                }
                 val msg = "'$bookOrTestName' kitaplığa eklendi: ${newRecords.size} soru. " +
                     if (imageRekeyFailureCount == 0) "Yerel kayıt doğrulandı."
                     else "$imageRekeyFailureCount görselin dosya adı kontrol edilmeli."
@@ -2507,10 +2752,8 @@ class SoruLabViewModel(
                 onSaved(true, msg)
             }
 
-            syncPdfPoolToPracticeTests(updatedList)
-
             val firebaseUid = _currentUser.value?.uid
-            if (firebaseUid != null) {
+            if (firebaseUid != null && firebaseUid == uid) {
                 launch(Dispatchers.IO) {
                     val cloudBatch = newRecords.map { it.copy(userId = firebaseUid) }
                     try {
@@ -2544,6 +2787,78 @@ class SoruLabViewModel(
                 withContext(Dispatchers.Main) {
                     showBanner(msg)
                     onSaved(false, msg)
+                }
+            }
+        }
+    }
+
+    /**
+     * Explicit user-approved recovery: never silently expose the guest question
+     * bank to a signed-in account. Existing cloud/local questions are kept.
+     */
+    fun recoverPreviousDeviceQuestions() {
+        val uid = effectiveUserId() ?: com.example.util.PdfLibraryAccount.GUEST_CACHE_UID
+        val visibleBefore = _userCustomQuestions.value.filter { it.userId == uid }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val ownedCache = repository.loadCachedCustomQuestions(uid)
+                val guestRecords = if (uid == com.example.util.PdfLibraryAccount.GUEST_CACHE_UID)
+                    emptyList() else repository.loadCachedCustomQuestions(
+                    com.example.util.PdfLibraryAccount.GUEST_CACHE_UID
+                ).map { it.copy(userId = uid) }
+                val recovered = (visibleBefore + ownedCache + guestRecords)
+                    .distinctBy { it.id }
+                if (recovered.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        showBanner("Bu cihazda kurtarılabilecek eski soru kaydı bulunamadı. Orijinal ZIP'leri tekrar aktarabilirsin.")
+                    }
+                    return@launch
+                }
+                val durable = repository.saveCachedCustomQuestions(uid, recovered)
+                val newlyVisible = durable.size - visibleBefore.size
+                withContext(Dispatchers.Main) {
+                    if ((effectiveUserId() ?: com.example.util.PdfLibraryAccount.GUEST_CACHE_UID) == uid) {
+                        _userCustomQuestions.value = durable
+                        syncPdfPoolToPracticeTests(durable)
+                        showBanner(
+                            if (newlyVisible > 0)
+                                "$newlyVisible soru cihazdaki önceki kayıtlardan kurtarıldı. Toplam: ${durable.size}."
+                            else "Yerel kitaplık doğrulandı: ${durable.size} soru. Eksikse eski ZIP dosyaları gerekli."
+                        )
+                    }
+                }
+                val cloudUid = _currentUser.value?.uid
+                if (cloudUid == uid) {
+                    try {
+                        val cloud = repository.getUserCustomQuestionsList(uid)
+                        val cloudIds = cloud.mapTo(HashSet(cloud.size)) { it.id }
+                        val missingFromCloud = durable.filter { it.id !in cloudIds }
+                        if (missingFromCloud.isNotEmpty()) {
+                            repository.saveCustomQuestionsBatch(missingFromCloud)
+                        }
+                        val confirmed = repository.getUserCustomQuestionsList(uid)
+                            .mapTo(HashSet()) { it.id }
+                        val missingCount = durable.count { it.id !in confirmed }
+                        withContext(Dispatchers.Main) {
+                            if (missingCount == 0) {
+                                showBanner("${durable.size} soru yerelde doğrulandı; bulut soru kayıtları da eşitlendi. Görseller için orijinal ZIP'leri sakla.")
+                            } else {
+                                showBanner("$missingCount soru henüz bulutta doğrulanamadı; cihazdaki kopyaları korundu.")
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        withContext(Dispatchers.Main) {
+                            showBanner("Sorular cihazda korundu; bulut eşitlemesi tamamlanamadı. İnterneti kontrol et.")
+                        }
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    showBanner("Eski soru kayıtları incelenirken hata oluştu. Mevcut kitaplık değiştirilmedi.")
                 }
             }
         }
@@ -2643,7 +2958,7 @@ class SoruLabViewModel(
             .mapNotNull { it.pdfFilePath.takeIf(String::isNotBlank) }
         val updated = _userCustomQuestions.value.filterNot { it.id in idSet }
         _userCustomQuestions.value = updated
-        saveCustomQuestionsCacheAsync(uid, updated)
+        saveCustomQuestionsCacheAsync(uid, updated, allowRemovals = true)
         syncPdfPoolToPracticeTests(updated)
         viewModelScope.launch(Dispatchers.IO) {
             var failedImageDeletes = 0

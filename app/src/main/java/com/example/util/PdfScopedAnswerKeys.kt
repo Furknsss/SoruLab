@@ -25,6 +25,17 @@ internal class PdfScopedAnswerKeys(
 
     val answerCount: Int get() = answers.size
 
+    fun readings(): List<Pair<PdfAnswerScope, List<Pair<Int, String>>>> =
+        answers.entries.groupBy { it.key.scope }.map { (scope, entries) ->
+            scope to entries.map { it.key.questionNumber to it.value }
+        }
+
+    fun conflicts(): Set<PdfAnswerId> = ambiguous.toSet()
+
+    private fun canonical(scope: PdfAnswerScope) = scope.copy(
+        section = normalize(scope.section), testKind = normalize(scope.testKind)
+    )
+
     fun addOcrRows(rows: List<String>) {
         // A table may continue onto the next answer-key page without a repeated heading.
         var currentSection: String? = lastRecognizedSection
@@ -120,7 +131,7 @@ internal class PdfScopedAnswerKeys(
         for ((number, rawAnswer) in pairs) {
             val option = rawAnswer.uppercase(Locale.ROOT)
             if (number !in 1..200 || option !in listOf("A", "B", "C", "D", "E")) continue
-            val id = PdfAnswerId(scope, number)
+            val id = PdfAnswerId(canonical(scope), number)
             if (id in ambiguous) continue
             val previous = answers.putIfAbsent(id, option)
             if (previous != null && previous != option) {
@@ -147,18 +158,18 @@ internal class PdfScopedAnswerKeys(
 
     fun get(scope: PdfAnswerScope?, questionNumber: Int?): String? {
         if (scope == null || questionNumber == null || questionNumber <= 0) return null
-        return answers[PdfAnswerId(scope, questionNumber)]
+        return answers[PdfAnswerId(canonical(scope), questionNumber)]
     }
 
     /** Distinguish unread answer-key scopes from missing cells inside a known scope. */
     fun hasRecognizedScope(scope: PdfAnswerScope?): Boolean =
-        scope != null && (answers.keys.any { it.scope == scope } ||
-            ambiguous.any { it.scope == scope })
+        scope != null && (answers.keys.any { it.scope == canonical(scope) } ||
+            ambiguous.any { it.scope == canonical(scope) })
 
     /** Conflicting OCR/key evidence cannot be graded but can be reported. */
     fun hasConflictingAnswer(scope: PdfAnswerScope?, questionNumber: Int?): Boolean =
         scope != null && questionNumber != null &&
-            PdfAnswerId(scope, questionNumber) in ambiguous
+            PdfAnswerId(canonical(scope), questionNumber) in ambiguous
 
     companion object {
         private val testLabel = Regex(
@@ -232,7 +243,23 @@ internal class PdfScopedAnswerKeys(
             val kind = match.groupValues[1].lowercase(Locale.ROOT)
             val isOsym = "osym" in normalizedHeader
             val hint = normalize(topicHint)
-            val headerLines = headerText.lines()
+            // Printed headings often occupy ONE OCR line, e.g.
+            // "SINIR SISTEMI - TEST 1" or "TEST 1 - SINIR SISTEMI".
+            // Separate only an explicitly printed numbered test marker from
+            // the text beside it. The topic still comes from visible ink,
+            // never a guessed previous-page heading or catalog hint.
+            val inlineTestMarker = Regex(
+                """\b(?:test|analiz|sentez|deneme|uygulama|etkinlik)\s+[0-9]{1,3}\b"""
+            )
+            val headerLines = headerText.lines().flatMap { raw ->
+                val line = normalize(raw)
+                val printed = inlineTestMarker.find(line)
+                if (printed == null) listOf(raw) else listOf(
+                    line.substring(0, printed.range.first),
+                    printed.value,
+                    line.substring(printed.range.last + 1)
+                ).filter { it.isNotBlank() }
+            }
             val testLineIndex = headerLines.indexOfFirst { line ->
                 Regex("""\b(test|analiz|sentez|deneme|uygulama|etkinlik)\b""")
                     .containsMatchIn(normalize(line))
@@ -248,6 +275,13 @@ internal class PdfScopedAnswerKeys(
                 if (heading.length > suffix.length + 4 && heading.endsWith(suffix) &&
                     heading[heading.length - suffix.length - 1].isLetter()
                 ) heading = heading.dropLast(suffix.length)
+                // PDF branding is often rendered as one letter per glyph:
+                // "B İ Y O T İ K". Treat six or more isolated letters as a
+                // running banner, not the printed chapter after ANALİZ 8.
+                // Legitimate short labels such as "DNA" are unaffected.
+                val letterTokens = heading.split(' ').filter(String::isNotBlank)
+                val isSpacedLetterBanner = letterTokens.size >= 6 &&
+                    letterTokens.all { it.length == 1 && it[0].isLetter() }
                 val chapterHeading = Regex("""(?:^|\s)(?:unite|bolum|chapter|sinif)(?:\s|$)""")
                     .containsMatchIn(heading)
                 // "1. ÜNİTE: ..." is a running chapter banner, but a
@@ -257,6 +291,7 @@ internal class PdfScopedAnswerKeys(
                     """^(?:unite|bolum|chapter)\s+(?:degerlendirme|genel tekrar|tekrari|review)(?:\s|$)"""
                 ).containsMatchIn(heading)
                 if (heading.length !in 5..65 || !heading.any(Char::isLetter) ||
+                    isSpacedLetterBanner ||
                     (chapterHeading && !assessmentSection) ||
                     containsNonSectionWord(heading) ||
                     heading.startsWith("www") ||

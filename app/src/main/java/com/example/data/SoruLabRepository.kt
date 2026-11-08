@@ -28,6 +28,24 @@ import java.util.concurrent.ConcurrentHashMap
 
 /** Crash-safe cache IO. AtomicFile restores the previous complete JSON after a failed write. */
 internal object LocalQuestionCacheIO {
+    // All repository instances share on-device question files.
+    val questionWriteLock = Any()
+
+    fun recoveryFile(file: File): File =
+        File(file.parentFile, file.nameWithoutExtension + ".recovery.json")
+
+    /** Keep the largest last-known-good snapshot for this owner only. */
+    fun preserveLargerSnapshot(file: File, oldJson: String?) {
+        if (oldJson.isNullOrBlank()) return
+        val oldCount = runCatching { JSONArray(oldJson).length() }.getOrDefault(0)
+        if (oldCount == 0) return
+        val archive = recoveryFile(file)
+        val archivedCount = runCatching {
+            JSONArray(readJson(archive) ?: "[]").length()
+        }.getOrDefault(0)
+        if (oldCount > archivedCount) writeJson(archive, oldJson)
+    }
+
     fun writeJson(file: File, json: String) {
         require(file.parentFile?.isDirectory == true) { "Question cache directory missing" }
         val atomic = AtomicFile(file)
@@ -222,14 +240,14 @@ class SoruLabRepository(
                 .filter(String::isNotBlank)
             val editor = prefs.edit()
             prefs.all.keys.forEach { key ->
-                if (key.startsWith("solved_results_") ||
-                    key.startsWith("gen_tests_") ||
-                    key.startsWith("gen_snapshots_") ||
-                    key.startsWith("gen_snapshot_") ||
-                    key.startsWith("deleted_tests_") ||
-                    key.startsWith("custom_questions_") ||
+                if (key == "solved_results_$userId" ||
+                    key == "gen_tests_$userId" ||
+                    key == "gen_snapshots_$userId" ||
+                    key.startsWith("gen_snapshot_${userId}_") ||
+                    key == "deleted_tests_$userId" ||
+                    key == "custom_questions_$userId" ||
                     key == customPublishersCacheKey(userId) ||
-                    key.startsWith("board_strokes_")
+                    key == "board_strokes_$userId"
                 ) {
                     editor.remove(key)
                 }
@@ -237,16 +255,22 @@ class SoruLabRepository(
             editor.remove("solved_results_$userId")
             editor.remove("gen_tests_$userId")
             editor.remove("gen_snapshots_$userId")
-            editor.remove("gen_tests_global_device")
+            if (userId == com.example.util.PdfLibraryAccount.GUEST_CACHE_UID) {
+                editor.remove("gen_tests_global_device")
+                editor.remove("deleted_tests_global_device")
+                editor.remove("custom_questions_global_device")
+            }
             editor.remove("deleted_tests_$userId")
-            editor.remove("deleted_tests_global_device")
             editor.remove("custom_questions_$userId")
-            editor.remove("custom_questions_global_device")
             editor.remove("board_strokes_$userId")
             editor.apply()
             val cacheDir = java.io.File(ctx.filesDir, "sorulab_question_cache")
             if (cacheDir.exists()) {
-                cacheDir.listFiles()?.forEach { runCatching { it.delete() } }
+                val safeUid = userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+                val ownFile = File(cacheDir, "custom_questions_$safeUid.json")
+                ownFile.delete()
+                LocalQuestionCacheIO.recoveryFile(ownFile).delete()
+                // No other signed-in account's question bank is ever erased.
             }
             val snapshotDir = java.io.File(
                 java.io.File(ctx.filesDir, "sorulab_test_snapshots"),
@@ -661,6 +685,11 @@ class SoruLabRepository(
 
     suspend fun saveCustomQuestionsBatch(records: List<CustomQuestionRecord>) {
         if (records.isEmpty()) return
+        // The old implementation downloaded the ENTIRE owner's cloud collection
+        // once for every 350 new questions. For dozens of books, this becomes
+        // increasingly expensive. Cache the original creation dates once for
+        // the normal path; a retry re-queries that chunk after an uncertain write.
+        var initialCreationDates: Map<String, Timestamp>? = null
         records.chunked(350).forEach { chunk ->
             val documentRefs = chunk.map { record ->
                 if (record.id.isNotBlank()) {
@@ -672,10 +701,19 @@ class SoruLabRepository(
             var attempt = 0
             while (true) {
                 try {
-                    // Resolve again after a retry: a timed-out write may already have committed.
-                    val creationDates = existingQuestionCreationDates(
-                        chunk.mapIndexed { index, record -> record.copy(id = documentRefs[index].id) }
-                    )
+                    // A timed-out write may have committed: refresh the current
+                    // chunk on retries to avoid overwriting its original createdAt.
+                    val creationDates = if (attempt > 0) {
+                        existingQuestionCreationDates(
+                            chunk.mapIndexed { index, record ->
+                                record.copy(id = documentRefs[index].id)
+                            }
+                        )
+                    } else {
+                        initialCreationDates ?: existingQuestionCreationDates(records).also {
+                            initialCreationDates = it
+                        }
+                    }
                     val batch = db.batch()
                     chunk.forEachIndexed { index, record ->
                         batch.set(documentRefs[index], customQuestionFirestorePayload(record, creationDates[documentRefs[index].id]))
@@ -784,12 +822,15 @@ class SoruLabRepository(
             // AtomicFile can recover an interrupted write. If an older cache is
             // malformed, try its backup and legacy preferences rather than
             // treating the entire question bank as empty.
-            val userScoped = LocalQuestionCacheIO.firstValidJson(
-                listOf(
-                    LocalQuestionCacheIO.readJson(userCacheFile),
-                    prefs.getString("custom_questions_$userId", null)
-                )
-            )
+            // Prefer the largest complete, owner-scoped snapshot, not a
+            // truncated cloud/cache write. Explicit deletion clears recovery.
+            val userScoped = listOf(
+                LocalQuestionCacheIO.readJson(userCacheFile),
+                LocalQuestionCacheIO.readJson(LocalQuestionCacheIO.recoveryFile(userCacheFile)),
+                prefs.getString("custom_questions_$userId", null)
+            ).filterNotNull().filter { candidate ->
+                runCatching { JSONArray(candidate) }.isSuccess
+            }.maxByOrNull { candidate -> JSONArray(candidate).length() }
             val globalFallback = LocalQuestionCacheIO.firstValidJson(
                 listOf(
                     LocalQuestionCacheIO.readJson(globalCacheFile),
@@ -819,6 +860,8 @@ class SoruLabRepository(
                         difficulty = obj.optString("difficulty", "Orta"),
                         correctOption = obj.optString("correctOption", ""),
                         questionText = obj.optString("questionText", ""),
+                        learningOutcome = obj.optString("learningOutcome", ""),
+                        questionType = obj.optString("questionType", ""),
                         publisherTag = obj.optString("publisherTag", "Kaynak Belirtilmedi"),
                         publisherId = obj.optString("publisherId", ""),
                         sourceBookTitle = obj.optString("sourceBookTitle", ""),
@@ -902,16 +945,27 @@ class SoruLabRepository(
         )
     }
 
-    fun saveCachedCustomQuestions(userId: String, records: List<CustomQuestionRecord>) {
+    fun saveCachedCustomQuestions(
+        userId: String,
+        records: List<CustomQuestionRecord>,
+        allowRemovals: Boolean = false
+    ): List<CustomQuestionRecord> = synchronized(LocalQuestionCacheIO.questionWriteLock) {
         val ctx = appContext ?: throw IllegalStateException("Yerel soru deposu kullanılamıyor.")
         try {
             val cacheDir = java.io.File(ctx.filesDir, "sorulab_question_cache")
             if (!cacheDir.exists() && !cacheDir.mkdirs()) {
                 throw java.io.IOException("Soru önbelleği oluşturulamadı.")
             }
+            // Firestore may briefly report only the first 350 uploaded
+            // questions. Never replace a larger local bank with that subset.
+            val previous = if (allowRemovals) emptyList() else loadCachedCustomQuestions(userId)
+            val incoming = records.filter { it.userId.isBlank() || it.userId == userId }
+            val incomingIds = incoming.mapTo(HashSet(incoming.size)) { it.id }
+            val durableRecords = if (allowRemovals) incoming else
+                incoming + previous.filterNot { it.id in incomingIds }
             val arr = JSONArray()
-            val seenIds = HashSet<String>(records.size)
-            for (rec in records) {
+            val seenIds = HashSet<String>(durableRecords.size)
+            for (rec in durableRecords) {
                 if (rec.userId.isNotBlank() && rec.userId != userId) continue
                 if (rec.id.isNotBlank() && !seenIds.add(rec.id)) continue
                 val obj = JSONObject()
@@ -925,6 +979,8 @@ class SoruLabRepository(
                 obj.put("difficulty", rec.difficulty)
                 obj.put("correctOption", rec.correctOption)
                 obj.put("questionText", rec.questionText)
+                obj.put("learningOutcome", rec.learningOutcome)
+                obj.put("questionType", rec.questionType)
                 obj.put("publisherTag", rec.publisherTag)
                 obj.put("publisherId", rec.publisherId)
                 obj.put("sourceBookTitle", rec.sourceBookTitle)
@@ -944,15 +1000,38 @@ class SoruLabRepository(
             val jsonStr = arr.toString()
             val safeUid = userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
             val userCacheFile = java.io.File(cacheDir, "custom_questions_$safeUid.json")
-            LocalQuestionCacheIO.writeJson(userCacheFile, jsonStr)
-            // Keep SharedPreferences light (remove oversized old payloads if > 500 questions)
-            if (records.size > 400) {
-                val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
-                prefs.edit()
-                    .remove("custom_questions_$userId")
-                    .remove("custom_questions_global_device")
-                    .apply()
+            val archiveFile = LocalQuestionCacheIO.recoveryFile(userCacheFile)
+            if (allowRemovals) {
+                archiveFile.delete()
+                // Stale pre-JSON preferences must not resurrect deliberately
+                // removed records when the new cache has fewer questions.
+                val editor = ctx.getSharedPreferences(
+                    "sorulab_generated_tests_prefs", Context.MODE_PRIVATE
+                ).edit().remove("custom_questions_$userId")
+                if (userId == com.example.util.PdfLibraryAccount.GUEST_CACHE_UID) {
+                    editor.remove("custom_questions_global_device")
+                }
+                editor.commit()
+            } else {
+                LocalQuestionCacheIO.preserveLargerSnapshot(
+                    userCacheFile, LocalQuestionCacheIO.readJson(userCacheFile)
+                )
             }
+            LocalQuestionCacheIO.writeJson(userCacheFile, jsonStr)
+            val restoredIds = loadCachedCustomQuestions(userId).mapTo(HashSet()) { it.id }
+            check(durableRecords.all { it.id in restoredIds }) {
+                "Kalıcı soru kaydı doğrulanamadı."
+            }
+            // Keep SharedPreferences light (remove oversized old payloads if > 500 questions)
+            if (durableRecords.size > 400) {
+                val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+                val editor = prefs.edit().remove("custom_questions_$userId")
+                if (userId == com.example.util.PdfLibraryAccount.GUEST_CACHE_UID) {
+                    editor.remove("custom_questions_global_device")
+                }
+                editor.apply()
+            }
+            durableRecords
         } catch (e: Exception) {
             throw IllegalStateException("Sorular cihazdaki yerel depoya yazılamadı.", e)
         }

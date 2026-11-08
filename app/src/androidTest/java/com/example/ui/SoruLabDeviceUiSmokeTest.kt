@@ -1,6 +1,5 @@
 package com.example.ui
 
-import android.graphics.Bitmap
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -9,25 +8,24 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.DifficultyLevel
 import com.example.data.ExamType
 import com.example.data.YksQuestion
 import com.example.data.YksTestItem
 import com.example.ui.screens.DenemelerHubScreen
 import com.example.ui.screens.LiveSolvingBoardScreen
+import com.example.ui.screens.PremiumPracticeTestRow
 import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.ActiveSolvingSession
 import com.example.viewmodel.BoardViewMode
 import com.example.viewmodel.DrawingTool
-import java.io.File
-import java.io.FileOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -75,21 +73,50 @@ class SoruLabDeviceUiSmokeTest {
     }
 
     @Test
+    fun practiceTestRowUsesDirectTrashWithConfirmationAndStillOpensNormally() {
+        var opened = 0
+        var deleted = 0
+        compose.setContent {
+            MyApplicationTheme {
+                PremiumPracticeTestRow(
+                    test = fixtureSession().testItem,
+                    completed = false,
+                    onOpen = { opened++ },
+                    onDelete = { deleted++ }
+                )
+            }
+        }
+        compose.onNodeWithTag("delete_test_btn_device_screen_qa_test")
+            .assertIsDisplayed().performClick()
+        compose.onNodeWithText("Test silinsin mi?").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, deleted); assertEquals(0, opened) }
+        compose.onNodeWithText("Vazgeç").performClick()
+        compose.onNodeWithTag("test_row_device_screen_qa_test").performClick()
+        compose.runOnIdle { assertEquals(1, opened); assertEquals(0, deleted) }
+        compose.onNodeWithTag("delete_test_btn_device_screen_qa_test").performClick()
+        compose.onNodeWithText("Testi sil").performClick()
+        compose.runOnIdle { assertEquals(1, deleted) }
+    }
+
+    @Test
     fun boardAllowsOpticalAnswerSelectionPenModeAndSafeFinishCancellation() {
         var confirmedFinishes = 0
         var latestAnswers = emptyMap<Int, String>()
         var smartPenToggles = 0
         var viewToggles = 0
+        var lastSelectedTool = DrawingTool.HAND_PAN
+        var lastBrushSize = -1
         compose.setContent {
             var session by remember { mutableStateOf(fixtureSession()) }
             var tool by remember { mutableStateOf(DrawingTool.HAND_PAN) }
+            var currentBrushSize by remember { mutableStateOf(1) }
             MyApplicationTheme {
                 LiveSolvingBoardScreen(
                     session = session,
                     strokes = emptyList(),
                     currentCanvasKey = "device_qa_page",
                     activeTool = tool,
-                    selectedStrokeSizeIndex = 1,
+                    selectedStrokeSizeIndex = currentBrushSize,
                     selectedPenColorHex = 0xFF1D4ED8L,
                     onExitSession = {},
                     onToggleViewMode = {
@@ -101,9 +128,13 @@ class SoruLabDeviceUiSmokeTest {
                     },
                     onSelectTool = {
                         tool = it
+                        lastSelectedTool = it
                         if (it == DrawingTool.PEN) smartPenToggles++
                     },
-                    onSelectStrokeSize = {},
+                    onSelectStrokeSize = {
+                        currentBrushSize = it
+                        lastBrushSize = it
+                    },
                     onSelectPenColor = {},
                     onAddStroke = { _, _, _ -> },
                     onBookPageChanged = {},
@@ -121,9 +152,16 @@ class SoruLabDeviceUiSmokeTest {
                             isOpticalFormDrawerOpen = !session.isOpticalFormDrawerOpen
                         )
                     },
-                    onToggleStatsDrawer = {},
+                    onToggleStatsDrawer = {
+                        session = session.copy(
+                            isStatsDrawerOpen = !session.isStatsDrawerOpen
+                        )
+                    },
                     onToggleQuestionMap = {},
-                    onFinishTest = { confirmedFinishes++ },
+                    onFinishTest = {
+                        confirmedFinishes++
+                        session = session.copy(isReviewMode = true)
+                    },
                     onGoToStatsTab = {},
                     onAskAiForQuestion = {}
                 )
@@ -132,16 +170,43 @@ class SoruLabDeviceUiSmokeTest {
         compose.onNodeWithTag("live_solving_board").assertIsDisplayed()
         compose.onNodeWithTag("book_horizontal_pager").assertIsDisplayed()
 
+        val density = androidx.test.platform.app.InstrumentationRegistry
+            .getInstrumentation().targetContext.resources.displayMetrics.density
+        val opticalGrip = compose.onNodeWithTag("optical_form_tab")
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("Optik tab is still oversized", opticalGrip.height <= 146f * density)
+        assertTrue("Optik tab is too wide", opticalGrip.width <= 40f * density)
+        val viewRight = compose.onRoot().fetchSemanticsNode().boundsInRoot.right
+        assertTrue("Closed optical grip must sit flush at the right edge",
+            opticalGrip.right >= viewRight - 3f * density)
         compose.onNodeWithTag("optical_form_tab").performClick()
         compose.onNodeWithTag("optic_q2_E").assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals("E", latestAnswers[2]) }
         compose.onNodeWithTag("optic_q1_B").performClick()
         compose.runOnIdle { assertEquals(mapOf(1 to "B", 2 to "E"), latestAnswers) }
+        // Visual acceptance evidence: capture the drawer OPEN, not merely the
+        // underlying book page after closing it.
+        val panel = compose.onNodeWithTag("optical_form_drawer").assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        val viewport = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            "Two-question optical form expands into excessive unused tablet height",
+            panel.height < viewport.height * 0.60f
+        )
+        captureOnlySyntheticScreen("optical-form-open.png")
         compose.onNodeWithTag("optical_form_tab").performClick()
         compose.onNodeWithTag("optical_form_drawer").assertDoesNotExist()
 
-        compose.onNodeWithTag("finger_draw_mode").performClick()
+        // Premium toolbar has only one pencil: smart S Pen.
+        // The deprecated finger-draw pencil must no longer occupy space.
+        compose.onNodeWithTag("finger_draw_mode").assertDoesNotExist()
         compose.onNodeWithTag("smart_spen_mode").performClick()
+        compose.onNodeWithTag("tool_eraser_btn").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(DrawingTool.ERASER, lastSelectedTool) }
+        compose.onNodeWithTag("brush_size_2", useUnmergedTree = true)
+            .performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(2, lastBrushSize) }
+        compose.onNodeWithTag("smart_spen_mode").performScrollTo().performClick()
         compose.runOnIdle { assertTrue(smartPenToggles >= 2) }
         captureOnlySyntheticScreen("solving-board-phone.png")
 
@@ -155,16 +220,42 @@ class SoruLabDeviceUiSmokeTest {
         compose.onNodeWithTag("top_finish_test_btn").performClick()
         compose.onNodeWithTag("confirm_finish_test_btn").performClick()
         compose.runOnIdle { assertEquals(1, confirmedFinishes) }
+        // Finishing keeps the corrected book open; the encouragement and
+        // full report appear only after an explicit "Sonuçlar" tap.
+        compose.onNodeWithTag("full_screen_report_card").assertDoesNotExist()
+        compose.onNodeWithTag("go_to_report_card_btn").assertIsDisplayed().performClick()
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithTag("full_screen_report_card")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("full_screen_report_card").assertIsDisplayed()
+        compose.onNodeWithTag("result_topic_success_card").assertExists()
+        captureOnlySyntheticScreen("test-results-open.png")
+        compose.onNodeWithTag("show_in_book_btn").performClick()
+        val statsGrip = compose.onNodeWithTag("stats_drawer_tab")
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("Statistics tab is still oversized", statsGrip.height <= 150f * density)
+        assertTrue("Statistics tab is too wide", statsGrip.width <= 40f * density)
+        assertTrue("Closed statistics grip must sit flush at the right edge",
+            statsGrip.right >= compose.onRoot().fetchSemanticsNode().boundsInRoot.right - 3f * density)
+        compose.onNodeWithTag("stats_drawer_tab").performClick()
+        val statsPanel = compose.onNodeWithTag("stats_drawer_panel")
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("Statistics drawer is wider than compact tablet spec",
+            statsPanel.width <= 355f * density)
+        captureOnlySyntheticScreen("test-statistics-open.png")
+        // Hata Frekansı is a real navigation action, not a static icon:
+        // it must show the verified, topic-aware frequency tree.
+        compose.onNodeWithTag("stats_open_error_frequency").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("premium_error_frequency_screen").assertIsDisplayed()
+        compose.onNodeWithTag("frequency_donut_chart").assertIsDisplayed()
+        assertTrue(compose.onAllNodesWithTag("frequency_strengthen")
+            .fetchSemanticsNodes().isNotEmpty())
+        captureOnlySyntheticScreen("topic-outcome-frequency.png")
     }
 
     private fun captureOnlySyntheticScreen(filename: String) {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val dest = File(context.getExternalFilesDir(null), "qa-screens")
-        check(dest.exists() || dest.mkdirs()) { "Could not create QA screenshot directory" }
-        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
-        FileOutputStream(File(dest, filename)).use { output ->
-            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
-        }
+        saveSyntheticQaScreenshot(compose.onRoot().captureToImage().asAndroidBitmap(), filename)
     }
 
     private fun fixtureSession(): ActiveSolvingSession {

@@ -1,0 +1,32 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Default deny. Never expose textbook question packs or screenshots publicly.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // Ready for activation only when the Firebase Storage bucket has been
+    // configured and the owner explicitly approves the Blaze billing plan.
+    // Upload the original, already validated ZIP once per book and hash,
+    // rather than uploading thousands of question JPEGs separately.
+    match /users/{userId}/question_packs/{bookId}/{fileName} {
+      function ownsPath() {
+        return request.auth != null && request.auth.uid == userId;
+      }
+      function validPath() {
+        return bookId.matches('[A-Za-z0-9_-]{4,100}')
+          && fileName.matches('[0-9a-f]{64}[.]zip');
+      }
+      allow get, list: if ownsPath() && validPath();
+      allow create: if ownsPath() && validPath()
+        && request.resource.size > 0
+        && request.resource.size <= 300 * 1024 * 1024
+        && (request.resource.contentType == 'application/zip'
+          || request.resource.contentType == 'application/octet-stream');
+      // Backups are content-addressed: never replace silently.
+      allow update: if false;
+      allow delete: if ownsPath() && validPath();
+    }
+  }
+}

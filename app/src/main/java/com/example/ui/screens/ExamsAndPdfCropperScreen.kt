@@ -53,11 +53,14 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Dialog
 import com.example.data.*
 import com.example.util.StudioImageAndPdfEngine
+import com.example.util.SoruLabQuestionZipImporter
 import com.example.viewmodel.BatchPdfCropState
 import com.example.viewmodel.ExtractedPdfQuestionItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -279,13 +282,13 @@ fun DenemelerHubScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "PDF Soru Stüdyosu",
+                            "Soru Kitaplığı",
                             fontWeight = FontWeight.ExtraBold,
                             color = Color(0xFF0F172A),
                             fontSize = 15.sp
                         )
                         Text(
-                            "$customQuestionsCount kayıtlı soru · PDF'den soru kırp ve incele",
+                            "$customQuestionsCount kayıtlı soru · Hazır ZIP paketlerini kitaplığa aktar",
                             color = Color(0xFF64748B),
                             fontSize = 12.sp,
                             maxLines = 2
@@ -300,7 +303,7 @@ fun DenemelerHubScreen(
                             contentColor = Color.White
                         )
                     ) {
-                        Text("PDF Aç", fontWeight = FontWeight.Bold)
+                        Text("ZIP Ekle", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -611,6 +614,7 @@ fun SoruHavuzuAndPdfStudioView(
         onSaved: (Boolean, String) -> Unit
     ) -> Unit,
     onDeleteLibraryBook: (List<String>) -> Unit,
+    onRestorePreviousQuestions: () -> Unit = {},
     onClearAllData: () -> Unit = {},
     onDismissError: () -> Unit = {},
     onBack: () -> Unit,
@@ -632,16 +636,20 @@ fun SoruHavuzuAndPdfStudioView(
     }
     var selectedPdfUri by remember { mutableStateOf<Uri?>(null) }
     var selectedPdfFileName by remember { mutableStateOf("") }
+
     var totalPdfPages by remember { mutableIntStateOf(0) }
     var isReadingPdf by remember { mutableStateOf(false) }
     var pdfSelectionError by remember { mutableStateOf<String?>(null) }
     var pendingCropReview by remember { mutableStateOf<PendingCropReview?>(null) }
     var showCropReview by remember { mutableStateOf(false) }
     var isSavingImportedBook by remember { mutableStateOf(false) }
+    var isImportingQuestionZip by remember { mutableStateOf(false) }
+    var zipBatchProgress by remember { mutableStateOf("") }
     var hasSavedReview by remember { mutableStateOf(false) }
     var importSaveError by remember { mutableStateOf<String?>(null) }
     var importSaveSuccess by remember { mutableStateOf<String?>(null) }
     var showClearConfirmation by remember { mutableStateOf(false) }
+    var showRecoveryConfirmation by remember { mutableStateOf(false) }
     var pendingDeleteBook by remember { mutableStateOf<LibraryBookCardModel?>(null) }
 
     var showAddPublisherModal by remember { mutableStateOf(false) }
@@ -692,6 +700,91 @@ fun SoruHavuzuAndPdfStudioView(
     }
 
     var selectedBookForTestPanel by remember { mutableStateOf<LibraryBookCardModel?>(null) }
+
+
+    // Multi-file picker is safe: unpack and commit one book at a time.
+    val zipPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty() && !isSavingImportedBook && !isImportingQuestionZip) {
+            onDismissError()
+            importSaveError = null
+            importSaveSuccess = null
+            pendingCropReview = null // Do not retain a second large review list.
+            isImportingQuestionZip = true
+            isSavingImportedBook = true
+            scope.launch {
+                val completed = mutableListOf<String>()
+                val errors = mutableListOf<String>()
+                val seenPackDirectories = hashSetOf<String>()
+                val selectedBookIds = hashMapOf<String, Pair<String, String>>()
+                val chosen = uris.distinct()
+                try {
+                    for ((index, uri) in chosen.withIndex()) {
+                        zipBatchProgress = "${index + 1}/${chosen.size} ZIP kontrol ediliyor…"
+                        try {
+                            val pack = withContext(Dispatchers.IO) {
+                                SoruLabQuestionZipImporter.import(context, uri)
+                            }
+                            val bookId = pack.questions.firstOrNull()?.bookId.orEmpty()
+                            val identity = pack.bookTitle.trim().lowercase() to
+                                pack.publisher.trim().lowercase()
+                            require(bookId.isNotBlank()) { "ZIP kitap kimliği eksik." }
+                            val existing = customQuestions.firstOrNull { it.bookId == bookId }
+                            require(existing == null || (
+                                existing.sourceBookTitle.trim().equals(pack.bookTitle.trim(), true) &&
+                                existing.publisherTag.trim().equals(pack.publisher.trim(), true)
+                            )) {
+                                "Kitap kimliği başka kitaba ait: ${pack.bookTitle}."
+                            }
+                            val batchIdentity = selectedBookIds.putIfAbsent(bookId, identity)
+                            require(batchIdentity == null || batchIdentity == identity) {
+                                "Farklı kitapların ZIP kimlikleri aynı: $bookId."
+                            }
+                            if (!seenPackDirectories.add(pack.directory.name)) {
+                                errors.add("${pack.bookTitle}: Aynı ZIP iki kez seçilmiş, tekrar yüklenmedi.")
+                                continue
+                            }
+                            zipBatchProgress = "${index + 1}/${chosen.size} · ${pack.bookTitle} kaydediliyor…"
+                            val pub = SoruLabPublisherPresets.resolvePublisher(
+                                pack.publisher, customPublishers
+                            )
+                            val (saved, message) = suspendCancellableCoroutine<Pair<Boolean, String>> { waiter ->
+                                onSaveExtractedPdfBatch(
+                                    pack.questions, pack.publisher, pub.customLogoPath,
+                                    pack.bookTitle, pack.bookCoverPath
+                                ) { success, report ->
+                                    if (waiter.isActive) waiter.resume(success to report)
+                                }
+                            }
+                            if (saved) {
+                                completed.add("${pack.bookTitle}: ${pack.questions.size} soru")
+                            } else {
+                                errors.add("${pack.bookTitle}: $message")
+                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            errors.add("ZIP ${index + 1}: ${e.message?.take(160) ?: "Açılamadı."}")
+                        }
+                    }
+                    hasSavedReview = completed.isNotEmpty()
+                    if (completed.isNotEmpty()) {
+                        importSaveSuccess = "${completed.size} kitap ayrı kaydedildi: " +
+                            completed.joinToString(" · ")
+                    }
+                    if (errors.isNotEmpty()) {
+                        importSaveError = "${errors.size} ZIP aktarılmadı: " +
+                            errors.take(3).joinToString(" · ")
+                    }
+                } finally {
+                    zipBatchProgress = ""
+                    isImportingQuestionZip = false
+                    isSavingImportedBook = false
+                }
+            }
+        }
+    }
 
     val pdfPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -747,7 +840,7 @@ fun SoruHavuzuAndPdfStudioView(
                     .groupBy { q ->
                         val pub = q.publisherTag.trim().ifBlank { "3D Yayınları" }
                         val book = q.bookOrTestName.trim().ifBlank { "$pub Soru Bankası" }
-                        "${pub.lowercase()}|${book.lowercase()}"
+                        "${pub.lowercase()}|${book.lowercase()}|${q.bookId}"
                     }
                     .map { (groupKey, questionsInBook) ->
                         val first = questionsInBook.first()
@@ -838,6 +931,12 @@ fun SoruHavuzuAndPdfStudioView(
                             }
                             Text("PDF sayfalarını sorulara ayır, kırpmaları incele ve seçtiklerini kitaplığına ekle.", color = Color(0xFFD3D0EB), fontSize = 13.sp, lineHeight = 20.sp)
                             Text("${libraryBooks.size} kitap   ·   ${customQuestions.size} soru", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.testTag("total_active_questions_counter"))
+                            OutlinedButton(
+                                onClick = { showRecoveryConfirmation = true },
+                                modifier = Modifier.fillMaxWidth().testTag("restore_previous_question_bank")
+                            ) {
+                                Text("Eski sorularımı kurtar", color = Color.White)
+                            }
                         }
                     }
                 }
@@ -860,6 +959,80 @@ fun SoruHavuzuAndPdfStudioView(
                             .padding(if (compact) 16.dp else 24.dp),
                         verticalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
+
+                        // ZIP packets already include image crops, test IDs, and
+                        // verified answer information. No phone-side PDF OCR needed.
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                text = "Hazır soru paketini ZIP'ten yükle",
+                                color = Color(0xFF25205E),
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 15.sp
+                            )
+                            Surface(
+                                onClick = {
+                                    zipPickerLauncher.launch(arrayOf(
+                                        "application/zip",
+                                        "application/x-zip-compressed",
+                                        "application/octet-stream"
+                                    ))
+                                },
+                                enabled = !isImportingQuestionZip &&
+                                    !isSavingImportedBook && !batchCropState.isAnalyzing,
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFFF0FDF4),
+                                border = BorderStroke(1.5.dp, Color(0xFF86EFAC)),
+                                modifier = Modifier.fillMaxWidth()
+                                    .heightIn(min = 74.dp)
+                                    .testTag("import_question_zip_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.FolderZip,
+                                        contentDescription = null,
+                                        tint = Color(0xFF15803D),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Column {
+                                        Text(
+                                            "Birden Fazla ZIP Ekle",
+                                            color = Color(0xFF14532D),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        )
+                                        Text(
+                                            "Birden fazla ZIP seç; her kitap ayrı ve sırayla kaydedilir",
+                                            color = Color(0xFF166534),
+                                            fontSize = 11.5.sp,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+                                }
+                            }
+                            if (isImportingQuestionZip) {
+                                LinearProgressIndicator(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = Color(0xFF15803D)
+                                )
+                                Text(
+                                    zipBatchProgress.ifBlank { "ZIP dosyaları sırayla kaydediliyor…" },
+                                    color = Color(0xFF166534),
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Text(
+                                "ZIP paketi bu sohbetten hazırlanabilir. PDF işleme ve OCR telefonda çalışmaz.",
+                                color = Color(0xFF64748B),
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        HorizontalDivider(color = Color(0xFFE2E8F0))
+
                         // 1. YAYINEVİ / LOGO SEÇİMİ
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
@@ -1049,6 +1222,11 @@ fun SoruHavuzuAndPdfStudioView(
                                 }
                             }
                             Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "Ücretsiz · Cihaz içinde çalışır. PDF sayfaları buluta gönderilmez; internet, API anahtarı ve kota gerekmez.",
+                                modifier = Modifier.testTag("pdf_offline_processing_info").padding(vertical = 8.dp),
+                                color = Color(0xFF475569), fontSize = 12.sp, lineHeight = 17.sp
+                            )
 
                             // TAM GENİŞLİKLİ FERAH "BAŞLAT VE SİSTEME AKTAR" BUTONU (ASLA EZİLMEZ)
                             Button(
@@ -1481,6 +1659,24 @@ fun SoruHavuzuAndPdfStudioView(
                         }
                     }
                 }
+            }
+        )
+    }
+    if (showRecoveryConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showRecoveryConfirmation = false },
+            title = { Text("Önceki soru kayıtları kurtarılsın mı?") },
+            text = {
+                Text("Bu cihazdaki eski yerel ve misafir oturum soruları taranacak. Bulunan sorular mevcut kitaplığa eklenecek; hiçbir soru silinmeyecek. Misafir oturumundaki sorular giriş yaptığın hesaba da aktarılabilir.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRecoveryConfirmation = false
+                    onRestorePreviousQuestions()
+                }) { Text("Soruları kurtar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRecoveryConfirmation = false }) { Text("Vazgeç") }
             }
         )
     }

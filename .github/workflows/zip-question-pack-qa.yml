@@ -23,6 +23,8 @@ on:
       - 'app/src/androidTest/java/com/example/ui/SoruLabDeviceUiSmokeTest.kt'
       - 'app/src/androidTest/java/com/example/ui/SoruLabStylusViewportDeviceTest.kt'
       - '.github/workflows/zip-question-pack-qa.yml'
+      - 'ppocr-sdk/src/main/java/com/paddle/ocr/util/OpenCVUtils.kt'
+      - 'scripts/check_apk_integrity.py'
 
 permissions:
   contents: read
@@ -104,7 +106,7 @@ jobs:
             adb shell cmd connectivity airplane-mode enable
             adb shell svc wifi disable
             adb shell svc data disable
-            gradle :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class=com.example.util.SoruLabQuestionZipImportDeviceTest,com.example.util.SoruLabNativeLibrariesDeviceTest
+            gradle :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class=com.example.util.SoruLabQuestionZipImportDeviceTest,com.example.util.SoruLabNativeLibrariesDeviceTest,com.example.util.SoruLabNativeLibrariesDeviceTest
             adb shell wm size 1600x2560
             adb shell wm density 240
             gradle :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class=com.example.ui.SoruLabDeviceUiSmokeTest,com.example.ui.SoruLabStylusViewportDeviceTest
@@ -128,6 +130,7 @@ jobs:
         run: |
           gradle :app:assembleRelease --no-daemon --no-configuration-cache --max-workers=2
           test -s app/build/outputs/apk/release/app-release.apk
+          python3 scripts/check_apk_integrity.py app/build/outputs/apk/release/app-release.apk
       - name: Verify signed app launches on Android
         uses: reactivecircus/android-emulator-runner@v2
         with:

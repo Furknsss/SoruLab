@@ -3,6 +3,11 @@
 import argparse
 import hashlib
 from pathlib import Path
+import re
+import shutil
+import struct
+import subprocess
+import tempfile
 import zipfile
 
 
@@ -52,6 +57,61 @@ def main():
                             raise SystemExit(
                                 f"APK contains invalid ELF for {abi}: {library}"
                             )
+            # A .so can be present yet fail at runtime because it targets
+            # another CPU architecture or depends on a missing sibling .so.
+            # Reject those errors before publishing any release.
+            abi_architectures = {
+                "arm64-v8a": (2, 183),
+                "armeabi-v7a": (1, 40),
+                "x86": (1, 3),
+                "x86_64": (2, 62),
+            }
+            android_system_libs = {
+                "libandroid.so", "libc.so", "libdl.so", "libm.so",
+                "liblog.so", "libz.so", "libjnigraphics.so",
+                "libmediandk.so", "libEGL.so", "libGLESv2.so",
+                "libOpenSLES.so", "libvulkan.so", "libatomic.so",
+                "libstdc++.so", "libcamera2ndk.so", "libaaudio.so",
+                "libnativewindow.so", "libbinder_ndk.so",
+                "libsync.so", "libunwind.so",
+            }
+            if not shutil.which("readelf"):
+                raise SystemExit("Cannot verify native dependencies: readelf is missing")
+            with tempfile.TemporaryDirectory(prefix="sorulab-elf-") as folder:
+                for abi, (elf_class, machine) in abi_architectures.items():
+                    entries = {
+                        name.rsplit("/", 1)[-1]: name for name in names
+                        if name.startswith(f"lib/{abi}/") and name.endswith(".so")
+                    }
+                    for lib_name, apk_entry in entries.items():
+                        with archive.open(apk_entry) as native:
+                            header = native.read(20)
+                            if (len(header) < 20 or header[:4] != b"\\x7fELF"
+                                or header[5] != 1 or header[4] != elf_class
+                                or struct.unpack("<H", header[18:20])[0] != machine):
+                                raise SystemExit(
+                                    f"APK library architecture incompatible: {abi}/{lib_name}"
+                                )
+                        local = Path(folder, abi, lib_name)
+                        local.parent.mkdir(parents=True, exist_ok=True)
+                        with archive.open(apk_entry) as native, local.open("wb") as out:
+                            shutil.copyfileobj(native, out)
+                        elf_info = subprocess.run(
+                            ["readelf", "-d", str(local)],
+                            capture_output=True, text=True
+                        )
+                        if elf_info.returncode:
+                            raise SystemExit(f"Invalid native dynamic library: {abi}/{lib_name}")
+                        needed = set(re.findall(
+                            r"\\(NEEDED\\).*?\\[([^]]+)\\]", elf_info.stdout
+                        ))
+                        missing = needed.difference(entries).difference(android_system_libs)
+                        if missing:
+                            raise SystemExit(
+                                f"APK library not found: {abi}/{lib_name} depends on "
+                                f"{sorted(missing)}"
+                            )
+                    print(f"Native linkage verified on {abi}: {len(entries)} ELF libraries")
             bad_entry = archive.testzip()
             if bad_entry is not None:
                 raise SystemExit(f"Corrupted APK entry: {bad_entry}")

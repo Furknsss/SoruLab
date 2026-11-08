@@ -93,6 +93,7 @@ jobs:
         run: |
           bash ./gradlew :app:assembleRelease --no-daemon --no-configuration-cache --max-workers=2
           test -s app/build/outputs/apk/release/app-release.apk
+          python3 scripts/check_apk_integrity.py app/build/outputs/apk/release/app-release.apk
       - name: Enable emulator virtualization for actual release APK check
         run: sudo chmod a+rw /dev/kvm
       - name: Install and launch the signed APK delivered to testers

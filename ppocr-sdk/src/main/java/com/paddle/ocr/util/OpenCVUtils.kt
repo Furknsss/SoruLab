@@ -26,8 +26,11 @@ object OpenCVUtils {
         try {
             System.loadLibrary("opencv_java4")
             initialized = true
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e("OpenCVUtils", "Failed to initialize OpenCV: ${e.message}")
+        } catch (e: LinkageError) {
+            // JNI may fail with NoClassDefFoundError as well as
+            // UnsatisfiedLinkError. Keep optional OCR unavailable without
+            // crashing the ZIP import or the rest of the app.
+            Log.e("OpenCVUtils", "Optional OpenCV unavailable: ${e.message}", e)
         }
         return initialized
     }

@@ -26,6 +26,7 @@ internal object GroundedTwinQuestionMatcher {
         topicName: String,
         pool: List<CustomQuestionRecord>,
         excludedIds: Set<String> = emptySet(),
+        previousUseCounts: Map<String, Int> = emptyMap(),
         isUsable: (CustomQuestionRecord) -> Boolean
     ): CustomQuestionRecord? {
         val originalId = source.sourceQuestionId.ifBlank {
@@ -72,6 +73,9 @@ internal object GroundedTwinQuestionMatcher {
                     originalText == normalized(candidate.questionText))
         }.sortedWith(
             compareBy<CustomQuestionRecord>(
+                // Reuse a previously generated twin only after unused
+                // alternatives at comparable topic/skill are exhausted.
+                { previousUseCounts[it.id] ?: 0 },
                 { if (it.difficultyLevel5 == source.difficulty) 0 else 1 },
                 { abs(it.difficultyLevel5.weight - source.difficulty.weight) },
                 { if (sourceBook.isNotBlank() && normalized(it.sourceBookTitle) != sourceBook) 0 else 1 },

@@ -109,6 +109,17 @@ class GroundedTwinQuestionMatcherTest {
         ), taggedOriginal)?.id)
     }
 
+    @Test fun previouslyUnusedTwinIsPreferred() {
+        val chosen = GroundedTwinQuestionMatcher.select(
+            source = original, subjectId = "ayt_mat",
+            topicId = "fonksiyonlar", topicName = "Fonksiyonlar",
+            pool = listOf(record("first"), record("second")),
+            previousUseCounts = mapOf("first" to 3),
+            isUsable = { true }
+        )
+        assertEquals("second", chosen?.id)
+    }
+
     @Test fun emptyPoolGivesNoInventedQuestion() {
         assertNull(choose(emptyList()))
     }

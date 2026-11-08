@@ -849,6 +849,7 @@ class SoruLabViewModel(
 
             val allKnownTests = _generatedTopicTests.value.values.flatten()
             val selectedTwinIds = mutableSetOf<String>()
+            val previousUseCounts = previousTwinUseCounts()
             val matchedQuestions = mutableListOf<YksQuestion>()
 
             for (record in solvedInTopic) {
@@ -869,7 +870,8 @@ class SoruLabViewModel(
                         topicId = topic.id,
                         topicName = topic.name,
                         pool = _userCustomQuestions.value,
-                        excludedIds = selectedTwinIds,
+                        excludedIds = selectedTwinIds + sourceQuestions.map { it.sourceQuestionId },
+                        previousUseCounts = previousUseCounts,
                         isUsable = repository::hasRecoverableQuestionImage
                     ) ?: continue
                     val originalDifferent = baseTopicQuestions.firstOrNull {
@@ -1482,6 +1484,17 @@ class SoruLabViewModel(
      * answer-key-verified question from the exact same subject and topic.
      * The original crop is never relabeled or offered as a new twin.
      */
+    private fun previousTwinUseCounts(): Map<String, Int> {
+        val generated = _generatedTopicTests.value.values.flatten()
+            .flatMap { it.questions }
+        val solved = _userTestResults.value.filter { it.isSolvedAttempt }
+            .mapNotNull { TestSnapshotCodec.decode(it.testSnapshotJson) }
+            .flatMap { it.questions }
+        return (generated + solved)
+            .mapNotNull { it.sourceQuestionId.takeIf(String::isNotBlank) }
+            .groupingBy { it }.eachCount()
+    }
+
     fun findGroundedTwinQuestion(source: YksQuestion, session: ActiveSolvingSession): TwinQuestionModalData {
         val candidate = GroundedTwinQuestionMatcher.select(
             source = source,
@@ -1489,6 +1502,8 @@ class SoruLabViewModel(
             topicId = session.topicId,
             topicName = session.topicName,
             pool = _userCustomQuestions.value,
+            excludedIds = session.testItem.questions.mapTo(HashSet()) { it.sourceQuestionId },
+            previousUseCounts = previousTwinUseCounts(),
             isUsable = repository::hasRecoverableQuestionImage
         ) ?: return TwinQuestionModalData(
             errorMessage = "Aynı konuda farklı ve cevap anahtarı doğrulanmış bir soru henüz yok. İkiz oluşturmak için kitaplığa yeni ZIP soru paketleri ekleyebilirsin."
@@ -1622,7 +1637,9 @@ class SoruLabViewModel(
             source.answerKeyVerified && session.selectedAnswers[source.number] != source.correctOption
         }
         val poolQuestions = buildRealBaseQuestionsForTopic(topic, null)
-        val selectedIds = mutableSetOf<String>()
+        val selectedIds = session.testItem.questions
+            .mapTo(mutableSetOf()) { it.sourceQuestionId }
+        val previousUseCounts = previousTwinUseCounts()
         val twins = sourceQuestions.mapNotNull { source ->
             val match = GroundedTwinQuestionMatcher.select(
                 source = source,
@@ -1631,6 +1648,7 @@ class SoruLabViewModel(
                 topicName = topic.name,
                 pool = _userCustomQuestions.value,
                 excludedIds = selectedIds,
+                previousUseCounts = previousUseCounts,
                 isUsable = repository::hasRecoverableQuestionImage
             ) ?: return@mapNotNull null
             val question = poolQuestions.firstOrNull {

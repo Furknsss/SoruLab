@@ -183,12 +183,16 @@ class SoruLabStylusViewportDeviceTest {
                 })
             ) }
             showBoard()
-            // Check rendered question pixels, not an accessibility child that
-            // can be merged into the book-page semantics by Compose. The two
-            // deliberately colored bands prove that both ends survived.
-            compose.onNodeWithTag("book_question_1").assertIsDisplayed()
-            val image = compose.onNodeWithTag("book_question_1")
-                .captureToImage().toPixelMap()
+            // Wait for the actual decoded Bitmap Image to be composed; the
+            // enclosing book card can exist earlier while IO is still pending.
+            // Capture the image node itself, which avoids merged accessibility
+            // descendants and tests both colored image boundaries.
+            compose.waitUntil(20_000) {
+                compose.onAllNodesWithTag("question_crop_image_1", useUnmergedTree = true)
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            val image = compose.onNodeWithTag("question_crop_image_1", useUnmergedTree = true)
+                .assertIsDisplayed().captureToImage().toPixelMap()
             var topInk = 0
             var lastInk = 0
             for (y in 0 until image.height step 2) for (x in 0 until image.width step 2) {

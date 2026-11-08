@@ -264,7 +264,11 @@ class SoruLabRepository(
             editor.apply()
             val cacheDir = java.io.File(ctx.filesDir, "sorulab_question_cache")
             if (cacheDir.exists()) {
-                cacheDir.listFiles()?.forEach { runCatching { it.delete() } }
+                val safeUid = userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+                val ownFile = File(cacheDir, "custom_questions_$safeUid.json")
+                ownFile.delete()
+                LocalQuestionCacheIO.recoveryFile(ownFile).delete()
+                // No other signed-in account's question bank is ever erased.
             }
             val snapshotDir = java.io.File(
                 java.io.File(ctx.filesDir, "sorulab_test_snapshots"),
@@ -993,6 +997,11 @@ class SoruLabRepository(
             val archiveFile = LocalQuestionCacheIO.recoveryFile(userCacheFile)
             if (allowRemovals) {
                 archiveFile.delete()
+                // Stale pre-JSON preferences must not resurrect deliberately
+                // removed records when the new cache has fewer questions.
+                ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
+                    .edit().remove("custom_questions_$userId")
+                    .remove("custom_questions_global_device").commit()
             } else {
                 LocalQuestionCacheIO.preserveLargerSnapshot(
                     userCacheFile, LocalQuestionCacheIO.readJson(userCacheFile)

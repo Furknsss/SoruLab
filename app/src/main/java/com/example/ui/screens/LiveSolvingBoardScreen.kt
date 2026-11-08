@@ -1997,6 +1997,9 @@ private fun BookPageQuestionItem345(
                             alignment = Alignment.TopStart,
                             modifier = Modifier.fillMaxWidth().height(imageHeight)
                                 .background(Color.White)
+                                // The tag exists only once the decoded bitmap is
+                                // actually composed, not while its IO is pending.
+                                .testTag("question_crop_image_${question.number}")
                         )
                     }
                 } else {

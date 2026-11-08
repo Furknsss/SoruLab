@@ -103,6 +103,33 @@ class QuestionCacheIsolationTest {
     }
 
     @Test
+    fun signedInCacheWritesCannotDestroyGuestQuestionBank() {
+        val guest = (1..1400).map {
+            CustomQuestionRecord(id = "guest-$it", userId = "device_yks_student_tr")
+        }
+        repository.saveCachedCustomQuestions("device_yks_student_tr", guest)
+        val authenticated = (1..800).map {
+            CustomQuestionRecord(id = "signed-$it", userId = "signedStudent")
+        }
+        repository.saveCachedCustomQuestions("signedStudent", authenticated)
+        assertEquals(1400, repository.loadCachedCustomQuestions("device_yks_student_tr").size)
+        assertEquals(800, repository.loadCachedCustomQuestions("signedStudent").size)
+    }
+
+    @Test
+    fun resettingOneAccountMustNotEraseOtherAccountsLibrary() {
+        repository.saveCachedCustomQuestions("alice", listOf(
+            CustomQuestionRecord(id = "alice-1", userId = "alice")
+        ))
+        repository.saveCachedCustomQuestions("bob", listOf(
+            CustomQuestionRecord(id = "bob-1", userId = "bob")
+        ))
+        repository.clearAllLocalUserData("alice")
+        assertTrue(repository.loadCachedCustomQuestions("alice").isEmpty())
+        assertEquals(listOf("bob-1"), repository.loadCachedCustomQuestions("bob").map { it.id })
+    }
+
+    @Test
     fun savingCacheCannotAssignAnotherAccountsQuestionToCurrentAccount() {
         repository.saveCachedCustomQuestions("bob", listOf(
             CustomQuestionRecord(id = "alice-q", userId = "alice"),

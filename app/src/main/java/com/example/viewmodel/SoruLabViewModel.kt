@@ -2597,6 +2597,78 @@ class SoruLabViewModel(
         }
     }
 
+    /**
+     * Explicit user-approved recovery: never silently expose the guest question
+     * bank to a signed-in account. Existing cloud/local questions are kept.
+     */
+    fun recoverPreviousDeviceQuestions() {
+        val uid = effectiveUserId() ?: com.example.util.PdfLibraryAccount.GUEST_CACHE_UID
+        val visibleBefore = _userCustomQuestions.value.filter { it.userId == uid }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val ownedCache = repository.loadCachedCustomQuestions(uid)
+                val guestRecords = if (uid == com.example.util.PdfLibraryAccount.GUEST_CACHE_UID)
+                    emptyList() else repository.loadCachedCustomQuestions(
+                    com.example.util.PdfLibraryAccount.GUEST_CACHE_UID
+                ).map { it.copy(userId = uid) }
+                val recovered = (visibleBefore + ownedCache + guestRecords)
+                    .distinctBy { it.id }
+                if (recovered.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        showBanner("Bu cihazda kurtarılabilecek eski soru kaydı bulunamadı. Orijinal ZIP'leri tekrar aktarabilirsin.")
+                    }
+                    return@launch
+                }
+                val durable = repository.saveCachedCustomQuestions(uid, recovered)
+                val newlyVisible = durable.size - visibleBefore.size
+                withContext(Dispatchers.Main) {
+                    if ((effectiveUserId() ?: com.example.util.PdfLibraryAccount.GUEST_CACHE_UID) == uid) {
+                        _userCustomQuestions.value = durable
+                        syncPdfPoolToPracticeTests(durable)
+                        showBanner(
+                            if (newlyVisible > 0)
+                                "$newlyVisible soru cihazdaki önceki kayıtlardan kurtarıldı. Toplam: ${durable.size}."
+                            else "Yerel kitaplık doğrulandı: ${durable.size} soru. Eksikse eski ZIP dosyaları gerekli."
+                        )
+                    }
+                }
+                val cloudUid = _currentUser.value?.uid
+                if (cloudUid == uid) {
+                    try {
+                        val cloud = repository.getUserCustomQuestionsList(uid)
+                        val cloudIds = cloud.mapTo(HashSet(cloud.size)) { it.id }
+                        val missingFromCloud = durable.filter { it.id !in cloudIds }
+                        if (missingFromCloud.isNotEmpty()) {
+                            repository.saveCustomQuestionsBatch(missingFromCloud)
+                        }
+                        val confirmed = repository.getUserCustomQuestionsList(uid)
+                            .mapTo(HashSet()) { it.id }
+                        val missingCount = durable.count { it.id !in confirmed }
+                        withContext(Dispatchers.Main) {
+                            if (missingCount == 0) {
+                                showBanner("${durable.size} soru yerelde doğrulandı; bulut soru kayıtları da eşitlendi. Görseller için orijinal ZIP'leri sakla.")
+                            } else {
+                                showBanner("$missingCount soru henüz bulutta doğrulanamadı; cihazdaki kopyaları korundu.")
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        withContext(Dispatchers.Main) {
+                            showBanner("Sorular cihazda korundu; bulut eşitlemesi tamamlanamadı. İnterneti kontrol et.")
+                        }
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    showBanner("Eski soru kayıtları incelenirken hata oluştu. Mevcut kitaplık değiştirilmedi.")
+                }
+            }
+        }
+    }
+
     /** Kullanıcının kaydedilmiş bir sorunun dersini veya konusunu düzeltmesini sağlar. */
     fun updateQuestionTopic(
         questionId: String,

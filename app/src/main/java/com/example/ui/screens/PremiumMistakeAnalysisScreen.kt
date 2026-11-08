@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.util.AnswerAnalysisBucket
 import com.example.util.TestAnswerAnalytics
+import com.example.util.FrequencyPracticeTarget
 
 private val frequencyInk = Color(0xFF25215D)
 private val frequencyBlue = Color(0xFF2974E8)
@@ -58,18 +59,10 @@ internal fun PremiumMistakeAnalysisScreen(
     title: String,
     summary: TestAnswerAnalytics,
     onBack: () -> Unit,
-    onStrengthen: () -> Unit = {}
+    topicName: String = "",
+    onStrengthen: (FrequencyPracticeTarget) -> Unit = {}
 ) {
     BackHandler(onBack = onBack)
-    val root = remember(title, summary) {
-        AnswerAnalysisBucket(
-            label = title,
-            correct = summary.correct,
-            wrong = summary.wrong,
-            blank = summary.blank,
-            ungraded = summary.ungraded
-        )
-    }
     val topics = remember(summary) {
         summary.hierarchy.flatMap { lesson -> lesson.children }
             .sortedWith(
@@ -78,6 +71,15 @@ internal fun PremiumMistakeAnalysisScreen(
                     .thenBy { it.label }
             )
     }
+    // One-topic tests show the TOPIC success at the root, then outcomes.
+    val onlyTopic = topics.singleOrNull()
+    val root = onlyTopic ?: AnswerAnalysisBucket(
+        label = title,
+        correct = summary.correct, wrong = summary.wrong,
+        blank = summary.blank, ungraded = summary.ungraded
+    )
+    val branches = if (onlyTopic != null) onlyTopic.children else topics
+
     Column(
         Modifier.fillMaxSize()
             .background(frequencyBackground)
@@ -113,10 +115,12 @@ internal fun PremiumMistakeAnalysisScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        title, color = frequencyInk, fontSize = 17.sp,
+                        root.label, color = frequencyInk, fontSize = 17.sp,
                         fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center
                     )
-                    StrengthenButton(onStrengthen)
+                    StrengthenButton {
+                        onStrengthen(FrequencyPracticeTarget(topicName = onlyTopic?.label ?: topicName))
+                    }
                     FrequencySuccessCard(
                         bucket = root,
                         modifier = Modifier.widthIn(max = 500.dp).fillMaxWidth(),
@@ -124,33 +128,48 @@ internal fun PremiumMistakeAnalysisScreen(
                     )
                 }
             }
-            if (topics.isNotEmpty()) {
+            if (branches.isNotEmpty()) {
                 item { FrequencyTreeConnector() }
-                items(
-                    items = topics.chunked(2),
-                    key = { chunk -> chunk.joinToString("|") { it.label } }
-                ) { pair ->
-                    BoxWithConstraints(Modifier.fillMaxWidth()) {
-                        if (maxWidth >= 680.dp && pair.size == 2) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(22.dp),
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                TopicFrequencyBranch(pair[0], onStrengthen, Modifier.weight(1f))
-                                TopicFrequencyBranch(pair[1], onStrengthen, Modifier.weight(1f))
-                            }
-                        } else {
-                            Column(
-                                Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(18.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                pair.forEach { topic ->
-                                    TopicFrequencyBranch(
-                                        topic, onStrengthen,
-                                        Modifier.fillMaxWidth().widthIn(max = 550.dp)
-                                    )
+                if (onlyTopic != null) {
+                    item {
+                        Text("Alt kazanımlar", color = frequencyInk, fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold)
+                    }
+                    items(branches, key = { "outcome_" + it.label }) { outcome ->
+                        OutcomeFrequencyCard(
+                            bucket = outcome,
+                            topicName = onlyTopic.label,
+                            onStrengthen = onStrengthen,
+                            modifier = Modifier.fillMaxWidth().widthIn(max = 620.dp)
+                        )
+                    }
+                } else {
+                    items(
+                        items = topics.chunked(2),
+                        key = { chunk -> chunk.joinToString("|") { it.label } }
+                    ) { pair ->
+                        BoxWithConstraints(Modifier.fillMaxWidth()) {
+                            if (maxWidth >= 680.dp && pair.size == 2) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(22.dp),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    TopicFrequencyBranch(pair[0], onStrengthen, Modifier.weight(1f))
+                                    TopicFrequencyBranch(pair[1], onStrengthen, Modifier.weight(1f))
+                                }
+                            } else {
+                                Column(
+                                    Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    pair.forEach { topic ->
+                                        TopicFrequencyBranch(
+                                            topic, onStrengthen,
+                                            Modifier.fillMaxWidth().widthIn(max = 550.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -159,9 +178,8 @@ internal fun PremiumMistakeAnalysisScreen(
             } else {
                 item {
                     Text(
-                        "Bu testte konu veya kazanım verisi bulunamadı.",
-                        color = frequencyMuted,
-                        modifier = Modifier.padding(20.dp),
+                        "Bu testte kazanım verisi bulunamadı.",
+                        color = frequencyMuted, modifier = Modifier.padding(20.dp),
                         textAlign = TextAlign.Center
                     )
                 }
@@ -256,7 +274,7 @@ private fun FrequencyTreeConnector() {
 @Composable
 private fun TopicFrequencyBranch(
     bucket: AnswerAnalysisBucket,
-    onStrengthen: () -> Unit,
+    onStrengthen: (FrequencyPracticeTarget) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember(bucket.label) { mutableStateOf(false) }
@@ -272,7 +290,9 @@ private fun TopicFrequencyBranch(
             fontSize = 14.sp, maxLines = 2,
             textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis
         )
-        StrengthenButton(onStrengthen)
+        StrengthenButton {
+            onStrengthen(FrequencyPracticeTarget(topicName = bucket.label))
+        }
         FrequencySuccessCard(
             bucket, modifier = Modifier.fillMaxWidth(),
             chartTag = "frequency_topic_${bucket.label}"
@@ -313,7 +333,9 @@ private fun TopicFrequencyBranch(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     bucket.children.forEach { outcome ->
-                        OutcomeFrequencyCard(outcome)
+                        OutcomeFrequencyCard(
+                            outcome, bucket.label, onStrengthen
+                        )
                     }
                 }
             }
@@ -322,13 +344,18 @@ private fun TopicFrequencyBranch(
 }
 
 @Composable
-private fun OutcomeFrequencyCard(bucket: AnswerAnalysisBucket) {
+private fun OutcomeFrequencyCard(
+    bucket: AnswerAnalysisBucket,
+    topicName: String,
+    onStrengthen: (FrequencyPracticeTarget) -> Unit,
+    modifier: Modifier = Modifier
+) {
     var expanded by remember(bucket.label) { mutableStateOf(false) }
     Surface(
         shape = RoundedCornerShape(17.dp),
         color = Color.White,
         shadowElevation = 2.dp,
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
             .testTag("frequency_outcome_${bucket.label}")
     ) {
         Column(
@@ -358,6 +385,9 @@ private fun OutcomeFrequencyCard(bucket: AnswerAnalysisBucket) {
                 modifier = Modifier.fillMaxWidth(),
                 compact = true
             )
+            StrengthenButton {
+                onStrengthen(FrequencyPracticeTarget(topicName, learningOutcome = bucket.label))
+            }
             AnimatedVisibility(visible = expanded && bucket.children.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     bucket.children.forEach { type ->
@@ -372,6 +402,14 @@ private fun OutcomeFrequencyCard(bucket: AnswerAnalysisBucket) {
                             Text(
                                 "${type.correct}D  ${type.wrong}Y  ${type.blank}B",
                                 fontSize = 11.sp, color = frequencyInk
+                            )
+                        }
+                        StrengthenButton {
+                            onStrengthen(
+                                FrequencyPracticeTarget(
+                                    topicName, learningOutcome = bucket.label,
+                                    questionType = type.label
+                                )
                             )
                         }
                     }

@@ -202,6 +202,7 @@ fun LiveSolvingBoardScreen(
     onGoToStatsTab: () -> Unit,
     onAskAiForQuestion: (YksQuestion) -> Unit,
     onSolveTwinTest: () -> Unit = {},
+    onStrengthenFromFrequency: (com.example.util.FrequencyPracticeTarget) -> Unit = {},
     onGenerateTwinQuestion: (YksQuestion, (TwinQuestionModalData) -> Unit) -> Unit = { _, _ -> },
     onGenerateSolutionForQuestion: (YksQuestion, (String) -> Unit) -> Unit = { _, _ -> },
     onAddQuestionToKumbara: (YksQuestion) -> Unit = {},
@@ -439,7 +440,8 @@ fun LiveSolvingBoardScreen(
             title = session.testItem.fullTitle.ifBlank { session.topicName },
             summary = frequencySummary,
             onBack = { showFrequencyFromDrawer = false },
-            onStrengthen = onSolveTwinTest
+            topicName = session.topicName,
+            onStrengthen = onStrengthenFromFrequency
         )
         return
     }
@@ -461,6 +463,7 @@ fun LiveSolvingBoardScreen(
             onSolveTwinTestForWrongQuestions = {
                 onSolveTwinTest()
             },
+            onStrengthenFromFrequency = onStrengthenFromFrequency,
             onWatchQuestionSolution = { q ->
                 showFullReportCardScreen = false
                 activeSolutionModalQuestion = q
@@ -3857,6 +3860,7 @@ private fun FullScreenSuccessReportCardView(
     showTwinSuggestion: Boolean,
     onBackToBookPage: () -> Unit,
     onSolveTwinTestForWrongQuestions: () -> Unit,
+    onStrengthenFromFrequency: (com.example.util.FrequencyPracticeTarget) -> Unit,
     onWatchQuestionSolution: (YksQuestion) -> Unit,
     onOpenTwinForQuestion: (YksQuestion) -> Unit
 ) {
@@ -3876,7 +3880,8 @@ private fun FullScreenSuccessReportCardView(
             title = session.testItem.fullTitle.ifBlank { session.topicName },
             summary = mistakeSummary,
             onBack = { showMistakeAnalysis = false },
-            onStrengthen = onSolveTwinTestForWrongQuestions
+            topicName = session.topicName,
+            onStrengthen = onStrengthenFromFrequency
         )
         return
     }

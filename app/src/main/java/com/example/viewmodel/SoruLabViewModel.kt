@@ -68,6 +68,7 @@ internal fun mergeCloudQuestionsWithLocalMedia(
         val hasLocalPdf = cached.pdfFilePath.isNotBlank() && cached.pageIndex >= 0
         remote.copy(
             learningOutcome = remote.learningOutcome.ifBlank { cached.learningOutcome },
+            questionType = remote.questionType.ifBlank { cached.questionType },
             bookId = cached.bookId.ifBlank { remote.bookId },
             imageBase64 = cached.imageBase64.ifBlank { remote.imageBase64 },
             pdfFilePath = if (hasLocalPdf) cached.pdfFilePath else remote.pdfFilePath,
@@ -939,6 +940,7 @@ class SoruLabViewModel(
                 stemTop = if (hasCroppedStemImage) "" else custom.questionText,
                 analyticsText = custom.questionText,
                 learningOutcome = custom.learningOutcome,
+                questionType = custom.questionType,
                 bulletsOrSteps = emptyList(),
                 stemBottom = if (hasCroppedStemImage) "" else "Buna göre doğru seçenek aşağıdakilerden hangisidir?",
                 options = mapOf(
@@ -1073,6 +1075,7 @@ class SoruLabViewModel(
                 stemTop = if (hasCroppedStemImage) "" else custom.questionText,
                 analyticsText = custom.questionText,
                 learningOutcome = custom.learningOutcome,
+                questionType = custom.questionType,
                 bulletsOrSteps = emptyList(),
                 stemBottom = if (hasCroppedStemImage) "" else "Buna göre doğru seçenek aşağıdakilerden hangisidir?",
                 options = mapOf(
@@ -1279,7 +1282,8 @@ class SoruLabViewModel(
         selectedDifficulties: Set<DifficultyLevel>,
         sourceFilter: QuestionSourceFilter,
         requestedQuestionCount: Int,
-        verifiedTwinCandidates: List<YksQuestion>? = null
+        verifiedTwinCandidates: List<YksQuestion>? = null,
+        customTestTitle: String = ""
     ): YksTestItem? {
         if (requestedQuestionCount <= 0) return null
         val activeDifficulties = selectedDifficulties.ifEmpty { DifficultyLevel.entries.toSet() }
@@ -1300,8 +1304,12 @@ class SoruLabViewModel(
             .withIndex()
             .associate { it.value to it.index }
         val strictCandidates = sourceCandidates
-            .distinctBy { it.croppedImagePath.ifBlank { it.id } }
-            .sortedBy { difficultyPriority.getValue(it.difficulty) }
+            .distinctBy { it.sourceQuestionId.ifBlank { it.croppedImagePath.ifBlank { it.id } } }
+            .let { unique ->
+                // A scoped caller already ranked these by freshness.
+                if (verifiedTwinCandidates != null) unique
+                else unique.sortedBy { difficultyPriority.getValue(it.difficulty) }
+            }
 
         val key = "${topic.id}_${level.name}"
         val existingList = _generatedTopicTests.value[key].orEmpty()
@@ -1323,7 +1331,7 @@ class SoruLabViewModel(
             .toSet()
         val candidatesByDifficulty = strictCandidates.groupBy { it.difficulty }
 
-        val orderedPool = buildList {
+        val orderedPool = if (verifiedTwinCandidates != null) strictCandidates else buildList {
             difficultyFallbackOrder(selectedDifficulties).forEach { difficulty ->
                 val questionsAtDifficulty = candidatesByDifficulty[difficulty].orEmpty()
                 val unusedAtDifficulty = questionsAtDifficulty.filter { question ->
@@ -1348,8 +1356,11 @@ class SoruLabViewModel(
         if (questionsToUse.isEmpty()) return null
 
         // Otomatik İsimlendirme: "[Konu Adı] - Test [X]" (Kesinlikle kitap adı kullanılmaz)
-        val shortTitle = "${topic.name} - Test $nextTestNumber"
-        val fullTitle = "${topic.name} - Test $nextTestNumber"
+        val label = customTestTitle.trim().take(72)
+        val shortTitle = if (label.isNotBlank())
+            "${topic.name} • $label - Test $nextTestNumber"
+        else "${topic.name} - Test $nextTestNumber"
+        val fullTitle = shortTitle
         val expectedTestId = "${topic.id}_${level.name.lowercase()}_test_$nextTestNumber"
 
         val avgWeight = questionsToUse.map { it.difficulty.weight }.average().toFloat().coerceIn(0.12f, 0.94f)
@@ -2571,6 +2582,7 @@ class SoruLabViewModel(
                         correctOption = item.correctOption.uppercase().takeIf { it in listOf("A", "B", "C", "D", "E") }.orEmpty(),
                         questionText = item.questionText.take(1800),
                         learningOutcome = item.learningOutcome,
+                        questionType = item.questionType,
                         publisherTag = finalPubName,
                         publisherId = resolvedPublisher.id,
                         sourceBookTitle = bookOrTestName,

@@ -6,6 +6,13 @@ import java.util.Locale
 /** The analytics layer never scores questions without a VERIFIED source key. */
 internal enum class AnswerOutcome { CORRECT, WRONG, BLANK, UNGRADED }
 
+/** Exact target of a Güçlen action, never a guessed skill label. */
+data class FrequencyPracticeTarget(
+    val topicName: String,
+    val learningOutcome: String? = null,
+    val questionType: String? = null
+)
+
 internal data class AnswerAnalysisItem(
     val lesson: String,
     val topic: String,

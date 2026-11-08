@@ -117,7 +117,8 @@ data class ExtractedPdfQuestionItem(
     val pageIndex: Int = -1,
     val questionNumberInTest: Int = 0,
     val sourceTestId: String = "",
-    val learningOutcome: String = ""
+    val learningOutcome: String = "",
+    val questionType: String = ""
 ) {
     val imagePath: String get() = croppedImagePath
     val subject: String get() = subjectName

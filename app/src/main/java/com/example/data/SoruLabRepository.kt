@@ -861,6 +861,7 @@ class SoruLabRepository(
                         correctOption = obj.optString("correctOption", ""),
                         questionText = obj.optString("questionText", ""),
                         learningOutcome = obj.optString("learningOutcome", ""),
+                        questionType = obj.optString("questionType", ""),
                         publisherTag = obj.optString("publisherTag", "Kaynak Belirtilmedi"),
                         publisherId = obj.optString("publisherId", ""),
                         sourceBookTitle = obj.optString("sourceBookTitle", ""),
@@ -979,6 +980,7 @@ class SoruLabRepository(
                 obj.put("correctOption", rec.correctOption)
                 obj.put("questionText", rec.questionText)
                 obj.put("learningOutcome", rec.learningOutcome)
+                obj.put("questionType", rec.questionType)
                 obj.put("publisherTag", rec.publisherTag)
                 obj.put("publisherId", rec.publisherId)
                 obj.put("sourceBookTitle", rec.sourceBookTitle)

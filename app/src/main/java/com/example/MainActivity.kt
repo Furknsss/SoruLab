@@ -286,6 +286,9 @@ private fun ActiveSolvingSessionHost(
             onGoToStatsTab = { mainViewModel.navigateFromReviewToStats() },
             onAskAiForQuestion = { q -> mainViewModel.openAiAssistant(q) },
             onSolveTwinTest = { mainViewModel.startTwinTestFromSession(curSession) },
+            onStrengthenFromFrequency = { target ->
+                mainViewModel.startStrengtheningTestFromSession(curSession, target)
+            },
             onGenerateTwinQuestion = { q, cb ->
                 cb(mainViewModel.findGroundedTwinQuestion(q, curSession))
             },

@@ -82,6 +82,11 @@ data class TwinQuestionModalData(
     ),
     val correctOption: String = "C",
     val solutionExplanation: String = "",
+    /** Exact source crop; never display invented text in place of the image. */
+    val croppedImagePath: String = "",
+    val imageBase64: String = "",
+    val sourceQuestionId: String = "",
+    val sourceDescription: String = "",
     val errorMessage: String? = null
 )
 

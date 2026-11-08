@@ -119,7 +119,7 @@ internal fun PremiumMistakeAnalysisScreen(
                     StrengthenButton(onStrengthen)
                     FrequencySuccessCard(
                         bucket = root,
-                        modifier = Modifier.fillMaxWidth().widthIn(max = 500.dp),
+                        modifier = Modifier.widthIn(max = 500.dp).fillMaxWidth(),
                         chartTag = "frequency_donut_chart"
                     )
                 }

@@ -30,6 +30,8 @@ The manifest.json file uses UTF-8 JSON with this structure:
           "sourceTestId": "sinir-sistemi~test-1",
           "testName": "Sinir Sistemi - Test 1",
           "topic": "Sinir Sistemi",
+          "learningOutcome": "Nöronun yapısı ve görevleri",
+          "questionType": "Öncüllü bilgi",
           "difficulty": "Orta",
           "targetLevel": "OSYM",
           "answer": "B",
@@ -66,6 +68,12 @@ INTEGRITY AND ACCURACY:
 - Do not invent or guess answers. When the original printed key has not
   been independently checked, use answer:"" and answerVerified:false.
   Such answers remain blank in SoruLab.
+- Optional but important: learningOutcome is the EXACT, source-verified
+  alt kazanım label; questionType is the exact question-type label.
+  These fields control Hata Frekansı branches and the scope of Güçlen
+  practice tests. Match the same string consistently across the book.
+  When not certain, use an empty string; NEVER invent an official MEB
+  kazanım or infer one solely from the length/diagram of a question.
 - Do not claim a real difficulty evaluation based on a placeholder.
   If unknown, omit difficulty (the UI can display "Orta" as a default).
 - Reimports of the same source book should preserve bookId.

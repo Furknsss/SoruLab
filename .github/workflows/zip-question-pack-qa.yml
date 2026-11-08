@@ -37,6 +37,40 @@ jobs:
         with:
           packages: platform-tools
       - run: sdkmanager 'platforms;android-36.1' 'build-tools;36.0.0'
+      # Keep the runner's Gradle download independent from the emulator's
+      # offline network acceptance test. Cache a checksum-verified distribution.
+      - uses: actions/cache@v4
+        with:
+          path: .ci-gradle/gradle-9.3.1
+          key: sorulab-gradle-9.3.1-verified-b266d5ff6b90eada
+      - name: Prepare verified Gradle before starting offline emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='9.3.1'
+          expected='b266d5ff6b90eada6dc3b20cb090e3731302e553a27c5d3e4df1f0d76beaff06'
+          gradle_home=".ci-gradle/gradle-$version"
+          if [[ ! -x "$gradle_home/bin/gradle" ]]; then
+            mkdir -p .ci-gradle
+            archive="$RUNNER_TEMP/gradle-$version-bin.zip"
+            fetched=false
+            for url in \
+              "https://downloads.gradle.org/distributions/gradle-$version-bin.zip" \
+              "https://services.gradle.org/distributions/gradle-$version-bin.zip"; do
+              rm -f "$archive"
+              if curl --fail --location --silent --show-error \
+                  --retry 2 --retry-all-errors --connect-timeout 20 --max-time 240 \
+                  --output "$archive" "$url" && \
+                  printf '%s  %s\\n' "$expected" "$archive" | sha256sum --check -; then
+                unzip -q "$archive" -d .ci-gradle
+                fetched=true
+                break
+              fi
+            done
+            [[ "$fetched" == true ]]
+          fi
+          "$gradle_home/bin/gradle" --version
+          printf '%s\\n' "$GITHUB_WORKSPACE/$gradle_home/bin" >> "$GITHUB_PATH"
       - name: Prepare ephemeral Android signing key
         run: |
           test -e /dev/kvm
@@ -57,10 +91,10 @@ jobs:
             adb shell cmd connectivity airplane-mode enable
             adb shell svc wifi disable
             adb shell svc data disable
-            bash ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class=com.example.util.SoruLabQuestionZipImportDeviceTest
+            gradle :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class=com.example.util.SoruLabQuestionZipImportDeviceTest
             adb shell wm size 1600x2560
             adb shell wm density 240
-            bash ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class=com.example.ui.SoruLabDeviceUiSmokeTest,com.example.ui.SoruLabStylusViewportDeviceTest
+            gradle :app:connectedDebugAndroidTest --no-daemon --no-configuration-cache --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class=com.example.ui.SoruLabDeviceUiSmokeTest,com.example.ui.SoruLabStylusViewportDeviceTest
             adb shell wm size reset
             adb shell wm density reset
       - name: Restore existing app signing identity
@@ -79,7 +113,7 @@ jobs:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          bash ./gradlew :app:assembleRelease --no-daemon --no-configuration-cache --max-workers=2
+          gradle :app:assembleRelease --no-daemon --no-configuration-cache --max-workers=2
           test -s app/build/outputs/apk/release/app-release.apk
       - name: Verify signed app launches on Android
         uses: reactivecircus/android-emulator-runner@v2

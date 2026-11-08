@@ -196,6 +196,13 @@ class SoruLabDeviceUiSmokeTest {
         compose.onNodeWithTag("stats_drawer_tab").assertIsDisplayed().performClick()
         compose.onNodeWithTag("stats_drawer_panel").assertIsDisplayed()
         captureOnlySyntheticScreen("test-statistics-open.png")
+        // Hata Frekansı is a real navigation action, not a static icon:
+        // it must show the verified, topic-aware frequency tree.
+        compose.onNodeWithTag("stats_open_error_frequency").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("premium_error_frequency_screen").assertIsDisplayed()
+        compose.onNodeWithTag("frequency_donut_chart").assertIsDisplayed()
+        compose.onNodeWithTag("frequency_strengthen").assertExists()
+        captureOnlySyntheticScreen("topic-outcome-frequency.png")
     }
 
     private fun captureOnlySyntheticScreen(filename: String) {

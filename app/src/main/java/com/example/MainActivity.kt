@@ -481,6 +481,7 @@ private fun DenemelerTabHost(
                 aiViewModel.clearBatchError()
             },
             onDeleteLibraryBook = { questionIds -> mainViewModel.deleteLibraryBookQuestions(questionIds) },
+            onRestorePreviousQuestions = { mainViewModel.recoverPreviousDeviceQuestions() },
             onClearAllData = { mainViewModel.clearAllUserData() },
             onBack = { mainViewModel.closePdfCropperStudio() },
             onSolveBookInPractice = { firstRecord ->

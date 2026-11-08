@@ -9,6 +9,11 @@ on:
       - 'app/src/main/java/com/example/util/SoruLabQuestionZipImporter.kt'
       - 'app/src/main/java/com/example/ui/screens/ExamsAndPdfCropperScreen.kt'
       - 'app/src/main/java/com/example/viewmodel/SoruLabViewModel.kt'
+      - 'app/src/main/java/com/example/data/SoruLabRepository.kt'
+      - 'app/src/main/java/com/example/MainActivity.kt'
+      - 'app/src/test/java/com/example/data/QuestionCacheIsolationTest.kt'
+      - 'app/src/test/java/com/example/data/LocalQuestionCacheIOTest.kt'
+      - 'app/build.gradle.kts'
       - 'app/src/androidTest/java/com/example/util/SoruLabQuestionZipImportDeviceTest.kt'
       - 'app/src/main/java/com/example/ui/screens/LiveSolvingBoardScreen.kt'
       - 'app/src/main/java/com/example/ui/screens/PremiumMistakeAnalysisScreen.kt'
@@ -71,6 +76,11 @@ jobs:
           fi
           "$gradle_home/bin/gradle" --version
           printf '%s\n' "$GITHUB_WORKSPACE/$gradle_home/bin" >> "$GITHUB_PATH"
+      - name: Verify 1400-question persistence and account isolation
+        run: |
+          gradle :app:testDebugUnitTest --no-daemon --no-configuration-cache --max-workers=2 \
+            --tests 'com.example.data.QuestionCacheIsolationTest' \
+            --tests 'com.example.data.LocalQuestionCacheIOTest'
       - name: Prepare ephemeral Android signing key
         run: |
           test -e /dev/kvm

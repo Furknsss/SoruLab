@@ -1,6 +1,7 @@
 package com.example.viewmodel
 
 import com.example.data.YksQuestion
+import com.example.data.CustomQuestionRecord
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -90,4 +91,53 @@ class PublisherMixingPolicyTest {
         assertEquals(raw.map { it.id }.toSet(), result.map { it.id }.toSet())
         assertNotEquals(raw.map { it.id }, result.map { it.id })
     }
+
+    @Test fun singlePublisherPickerOnlyShowsPublishersWithBooksImportedForThisLesson() {
+        val records = listOf(
+            CustomQuestionRecord(
+                id = "a", subjectId = "ayt_mat", topicId = "trig",
+                publisherTag = "345", publisherId = "pub_345",
+                sourceBookTitle = "345 AYT Matematik", bookId = "book_345"
+            ),
+            CustomQuestionRecord(
+                id = "b", subjectId = "ayt_fizik", topicId = "vektor",
+                publisherTag = "3D", publisherId = "pub_3d",
+                sourceBookTitle = "3D AYT Fizik", bookId = "book_3d"
+            ),
+            CustomQuestionRecord(
+                id = "c", subjectId = "ayt_mat", topicId = "turev",
+                publisherTag = "Apotemi", publisherId = "pub_apotemi",
+                sourceBookTitle = "Apotemi Türev", bookId = "book_apotemi"
+            ),
+            // The publisher exists but no book has been imported yet.
+            CustomQuestionRecord(
+                id = "d", subjectId = "ayt_mat", topicId = "trig",
+                publisherTag = "Orijinal", publisherId = "pub_orijinal"
+            ),
+            CustomQuestionRecord(
+                id = "e", subjectId = "tyt_mat", topicId = "sayilar",
+                publisherTag = "Bilgi Sarmal", publisherId = "pub_bs",
+                sourceBookTitle = "Bilgi Sarmal TYT Matematik", bookId = "book_bs"
+            )
+        )
+        val options = TestPublisherChoice.fromImportedBooksForSubject(records, "ayt_mat")
+        assertEquals(listOf("345", "Apotemi"), options.map { it.name })
+        assertTrue(options.all { it.key in setOf("id:pub_345", "id:pub_apotemi") })
+        assertTrue(TestPublisherChoice.fromImportedBooksForSubject(records, "ayt_kimya").isEmpty())
+    }
+
+    @Test fun publishersRemainInLessonMenuEvenIfTheirBooksHaveNoQuestionsInCurrentTopic() {
+        val records = listOf(
+            CustomQuestionRecord(
+                id = "a", subjectId = "ayt_mat", topicId = "polinom",
+                publisherTag = "Endemik", publisherId = "pub_endemik",
+                bookId = "book_endemik"
+            )
+        )
+        assertEquals(
+            listOf("Endemik"),
+            TestPublisherChoice.fromImportedBooksForSubject(records, "ayt_mat").map { it.name }
+        )
+    }
+
 }

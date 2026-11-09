@@ -490,7 +490,7 @@ fun LiveSolvingBoardScreen(
             wrongCount = wrongCount,
             emptyCount = emptyCount,
             ungradedCount = ungradedCount,
-            showTwinSuggestion = wrongCount > 0 || emptyCount > 0,
+            showTwinSuggestion = wrongCount > 0,
             onBackToBookPage = {
                 showFullReportCardScreen = false
             },
@@ -3395,6 +3395,8 @@ private fun FullScreenTwinQuestionComparisonView(
     onBackToBookReview: () -> Unit,
     onOpenReportCard: () -> Unit
 ) {
+    var isTwinExpanded by remember(originalQuestion.id) { mutableStateOf(false) }
+    BackHandler(enabled = isTwinExpanded) { isTwinExpanded = false }
     var twinSelectedOption by remember(originalQuestion.id) { mutableStateOf<String?>(null) }
     var isTwinAnswerRevealed by remember(originalQuestion.id) { mutableStateOf(false) }
     var originalTwinStrokes by remember(originalQuestion.id) { mutableStateOf<List<DrawStroke>>(emptyList()) }
@@ -3423,6 +3425,7 @@ private fun FullScreenTwinQuestionComparisonView(
             .background(Color(0xFFF5F4FA))
             .testTag("full_screen_twin_comparison")
     ) {
+        if (!isTwinExpanded) {
         // 1. Üst Beyaz Bar: Solda Geri Oku, Ortada Test Başlığı, Sağda "▸ Başarı Durumuna Git"
         BookPageTopBar345(
             testTitle = session.testItem.fullTitle.ifBlank { "${session.topicName} - Test 1" },
@@ -3453,14 +3456,19 @@ private fun FullScreenTwinQuestionComparisonView(
             )
         }
 
+        }
+
         // RTL places the twin card on the right while keeping each card's content LTR.
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
             Row(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(
+                        horizontal = if (isTwinExpanded) 0.dp else 16.dp,
+                        vertical = if (isTwinExpanded) 0.dp else 12.dp
+                    ),
+                horizontalArrangement = Arrangement.spacedBy(if (isTwinExpanded) 0.dp else 16.dp)
             ) {
             // İkiz kartı sağda, Test Sorusu kartı solda yer alır.
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
@@ -3470,22 +3478,42 @@ private fun FullScreenTwinQuestionComparisonView(
                     .fillMaxHeight()
             ) {
                 Surface(
-                    shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
-                    color = Color(0xFFEA580C)
+                    shape = if (isTwinExpanded) RoundedCornerShape(0.dp)
+                        else RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
+                    color = Color(0xFFF59E0B)
                 ) {
-                    Text(
-                        text = "İkiz Sorusu",
-                        color = Color.White,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 13.5.sp,
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp)
+                            .padding(start = 18.dp, end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = if (isTwinExpanded) "İkiz Sorusu • Tam Ekran" else "İkiz Sorusu",
+                            color = Color(0xFF422006),
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 14.sp
+                        )
+                        IconButton(
+                            onClick = { isTwinExpanded = !isTwinExpanded },
+                            modifier = Modifier.testTag("twin_fullscreen_toggle")
+                        ) {
+                            Icon(
+                                imageVector = if (isTwinExpanded) Icons.Filled.Minimize
+                                    else Icons.Filled.Maximize,
+                                contentDescription = if (isTwinExpanded) "İkiz soruyu küçült"
+                                    else "İkiz soruyu tam ekran büyüt",
+                                tint = Color(0xFF422006),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
                 }
 
                 Surface(
                     shape = RoundedCornerShape(topEnd = 14.dp, bottomStart = 14.dp, bottomEnd = 14.dp),
                     color = Color.White,
-                    border = BorderStroke(1.5.dp, Color(0xFFEA580C)),
+                    border = BorderStroke(if (isTwinExpanded) 2.5.dp else 1.5.dp, Color(0xFFF59E0B)),
                     shadowElevation = 2.dp,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -3708,6 +3736,7 @@ private fun FullScreenTwinQuestionComparisonView(
             }
             }
 
+            if (!isTwinExpanded) {
             // Test kartı, RTL düzeni nedeniyle sol tarafta.
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Column(
@@ -3859,6 +3888,7 @@ private fun FullScreenTwinQuestionComparisonView(
                         }
                     }
                 }
+            }
             }
         }
     }
@@ -4162,6 +4192,46 @@ private fun FullScreenSuccessReportCardView(
                 }
             }
 
+            if (session.testItem.level == TopicTestLevel.SEVIYE_TESPIT) item {
+                val placement = remember(questions, session.selectedAnswers) {
+                    LevelPlacementAdvisor.evaluate(questions, session.selectedAnswers)
+                }
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xFFF0F4FF),
+                    border = BorderStroke(1.5.dp, Color(0xFF93B4FF)),
+                    modifier = Modifier.fillMaxWidth().widthIn(max = 620.dp)
+                        .testTag("diagnostic_ideal_level_card")
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        Text("İdeal Seviyeniz", fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold, color = Color(0xFF1E3A8A))
+                        if (placement != null) {
+                            Text(
+                                text = placement.recommended.displayTitle,
+                                fontSize = 23.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(placement.recommended.wedgeColorHex),
+                                modifier = Modifier.testTag("diagnostic_recommended_level")
+                            )
+                            Text(
+                                placement.note + " Bu öneri beş zorluk bandındaki performansının ön değerlendirmesidir.",
+                                fontSize = 12.5.sp, color = Color(0xFF435577),
+                                lineHeight = 19.sp
+                            )
+                        } else {
+                            Text(
+                                "Sağlıklı seviye önerisi için beş zorluk düzeyinden de doğrulanmış sorular gerekir.",
+                                fontSize = 12.5.sp, color = Color(0xFF64748B)
+                            )
+                        }
+                    }
+                }
+            }
+
             // Premium, source-aware analysis entry, visible only after finishing the test.
             item {
                 Surface(
@@ -4212,7 +4282,7 @@ private fun FullScreenSuccessReportCardView(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Yanlış ve boşlarını pekiştir.\nHavuzunda aynı alt kazanım ve çözüm kalıbında doğrulanmış örnek varsa ikiz test oluştur.",
+                            text = "Bu testte yanlış cevapladığın soruları yeniden çöz.\nİkiz Test tam olarak o sorulardan oluşur; yeni soru eklemez.",
                             color = Color(0xFF1E293B),
                             fontWeight = FontWeight.Medium,
                             fontSize = 13.5.sp,

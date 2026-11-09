@@ -90,24 +90,36 @@ internal object PublisherQuestionMixer {
         return fairOrder(unseen, seed) + fairOrder(repeated, seed xor 0x5A12C4)
     }
 
-    /** Natural, seed-dependent order; avoid triple runs when another publisher exists. */
+    /**
+     * A seeded, maximum-remaining scheduler instead of an easily patterned
+     * publisher round robin. A third identical publisher in a row is forbidden
+     * whenever another publisher still has a question available.
+     */
     fun shuffleNatural(questions: List<YksQuestion>, seed: Int): List<YksQuestion> {
         if (questions.size <= 1) return questions
-        val mixed = questions.shuffled(Random(seed xor 0x739B12)).toMutableList()
-        for (i in 2 until mixed.size) {
-            val publisher = key(mixed[i])
-            if (key(mixed[i - 1]) != publisher || key(mixed[i - 2]) != publisher) continue
-            val swapIndex = (i + 1 until mixed.size).firstOrNull { j ->
-                val alternative = key(mixed[j])
-                alternative != publisher &&
-                    (j == mixed.lastIndex || key(mixed[j + 1]) != publisher)
-            } ?: (i + 1 until mixed.size).firstOrNull { key(mixed[it]) != publisher }
-            if (swapIndex != null) {
-                val old = mixed[i]
-                mixed[i] = mixed[swapIndex]
-                mixed[swapIndex] = old
-            }
+        val random = Random(seed xor 0x739B12)
+        val queues = questions.shuffled(random).groupBy(::key)
+            .mapValues { (_, items) -> items.toMutableList() }
+        val ordered = ArrayList<YksQuestion>(questions.size)
+        while (ordered.size < questions.size) {
+            val nonEmpty = queues.keys.filter { !queues[it].isNullOrEmpty() }
+            if (nonEmpty.isEmpty()) break
+            val lastKey = ordered.lastOrNull()?.let(::key)
+            val mustBreakRun = ordered.size >= 2 &&
+                key(ordered[ordered.lastIndex - 1]) == lastKey
+            val allowed = if (mustBreakRun && nonEmpty.any { it != lastKey }) {
+                nonEmpty.filter { it != lastKey }
+            } else nonEmpty
+
+            // Prefer groups that still have enough questions to avoid leaving
+            // an impossible large tail of a single publisher. Randomized ties
+            // make the ordering vary between generated tests.
+            val maximum = allowed.maxOf { queues.getValue(it).size }
+            val contenders = allowed.filter { queues.getValue(it).size >= maximum - 1 }
+            val winner = contenders[random.nextInt(contenders.size)]
+            ordered.add(queues.getValue(winner).removeAt(0))
         }
-        return mixed
+        return ordered
     }
+
 }

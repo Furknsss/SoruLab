@@ -1137,8 +1137,10 @@ class SoruLabViewModel(
                     selectedPublisherKey = publisherKey
                 )
             }
-        val availablePublisherChoices =
-            TestPublisherChoice.fromQuestions(allTopicQuestions.filter { it.answerKeyVerified })
+        val availablePublisherChoices = TestPublisherChoice.fromImportedBooksForSubject(
+            records = _userCustomQuestions.value,
+            subjectId = topic.subjectId
+        )
         val eligibleForLevel = if (level == TopicTestLevel.IKIZ) {
             collectWrongQuestionsFromResultsForTopic(topic)
         } else {

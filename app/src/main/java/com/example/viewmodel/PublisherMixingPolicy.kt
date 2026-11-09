@@ -1,6 +1,7 @@
 package com.example.viewmodel
 
 import com.example.data.YksQuestion
+import com.example.data.CustomQuestionRecord
 import java.util.Locale
 import kotlin.random.Random
 
@@ -81,6 +82,31 @@ internal object PublisherMixingPolicy {
 
 data class TestPublisherChoice(val key: String, val name: String) {
     companion object {
+        /**
+         * Show publishers only when the user imported a real book for the
+         * current lesson. An imported book in another subject does not qualify,
+         * even if that publisher is registered globally. A publisher with
+         * books in this lesson may appear even if it has zero eligible questions
+         * in the currently selected topic; the test count remains zero.
+         */
+        fun fromImportedBooksForSubject(
+            records: List<CustomQuestionRecord>,
+            subjectId: String
+        ): List<TestPublisherChoice> =
+            records.asSequence()
+                .filter { subjectId.isNotBlank() &&
+                    it.subjectId.equals(subjectId, ignoreCase = true) }
+                .filter { it.bookId.isNotBlank() ||
+                    it.sourceBookTitle.isNotBlank() || it.bookOrTestName.isNotBlank() }
+                .filter {
+                    it.publisherTag.isNotBlank() &&
+                        !it.publisherTag.equals("Kaynak Belirtilmedi", ignoreCase = true)
+                }
+                .groupBy { PublisherMixingPolicy.key(it.publisherId, it.publisherTag) }
+                .map { (key, values) ->
+                    TestPublisherChoice(key, values.first().publisherTag.trim())
+                }.sortedBy { it.name.lowercase(Locale.forLanguageTag("tr-TR")) }
+
         fun fromQuestions(questions: List<YksQuestion>): List<TestPublisherChoice> =
             questions.filter { it.publisherName.isNotBlank() }
                 .groupBy(PublisherMixingPolicy::key)

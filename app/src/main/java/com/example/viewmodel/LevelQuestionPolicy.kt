@@ -18,7 +18,8 @@ internal object LevelQuestionPolicy {
         level: TopicTestLevel,
         sourceQuestions: List<YksQuestion>,
         count: Int,
-        previouslyUsed: Set<String> = emptySet()
+        previouslyUsed: Set<String> = emptySet(),
+        mixSeed: Int = 0
     ): List<YksQuestion> {
         if (count < 1) return emptyList()
         val eligible = sourceQuestions.filter { it.answerKeyVerified }
@@ -28,11 +29,15 @@ internal object LevelQuestionPolicy {
             // wrong; preserve recency/attempt order, never refill from the pool.
             return eligible.take(count)
         }
+        // Publisher allocation is balanced within each difficulty bucket,
+        // preserving level quotas and prioritizing questions not used in prior tests.
         val byLevel = eligible.groupBy { it.difficulty }
-            .mapValues { (_, items) ->
-                items.sortedWith(compareBy<YksQuestion> {
-                    if (stableId(it) in previouslyUsed) 1 else 0
-                }.thenBy { stableId(it) }).toMutableList()
+            .mapValues { (difficulty, items) ->
+                PublisherQuestionMixer.orderFreshFair(
+                    questions = items,
+                    previouslyUsed = previouslyUsed,
+                    seed = mixSeed xor ((difficulty.ordinal + 1) * 1499)
+                ).toMutableList()
             }
         if (level == TopicTestLevel.SEVIYE_TESPIT &&
             (count < 5 || diagnosticOrder.any { byLevel[it].isNullOrEmpty() })
@@ -105,7 +110,9 @@ internal object LevelQuestionPolicy {
             selected.addAll(secondary)
             selected.addAll(main.drop((main.size + 1) / 2))
         }
-        return selected.take(count)
+        // The final display order must not follow visible publisher rounds
+        // or fixed easy/easy/medium patterns; seed varies per generated test.
+        return PublisherQuestionMixer.shuffleNatural(selected.take(count), mixSeed)
     }
 
     /** Maximum full-sized test possible without breaking the stage's quotas. */

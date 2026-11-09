@@ -1140,7 +1140,8 @@ class SoruLabViewModel(
         val countsForLevel = DifficultyLevel.entries.associateWith { diff ->
             eligibleForLevel.count { it.difficulty == diff }
         }
-        val publisherChoices = PublisherQuestionMixer.options(eligibleForLevel)
+        // Filter choices must not disappear just because a difficulty is empty.
+        val publisherChoices = PublisherQuestionMixer.options(allTopicQuestions)
         val sourceCountsForLevel = QuestionSourceFilter.entries.associateWith { filter ->
             if (level == TopicTestLevel.IKIZ) eligibleForLevel.size
             else collectQuestionsByTopicSourceAndDifficulty(
@@ -1185,32 +1186,26 @@ class SoruLabViewModel(
                 availablePublishers = publisherChoices
             )
         }
-        if (level == TopicTestLevel.SEVIYE_TESPIT &&
-            DifficultyLevel.entries.any { countsForLevel[it] == 0 }
-        ) {
-            return PoolAvailabilityCheck(
-                canGenerate = false,
-                availableQuestionCount = eligibleForLevel.size,
-                reasonTitle = "Seviye Tespit İçin Eksik Seviye",
-                reasonMessage = "Dengeli seviye tespit testi için Kolay, Orta, ÖSYM, Zor ve Çok Zor etiketlerinin her birinden en az bir doğrulanmış soru gerekir.",
-                countsByDifficulty = countsForLevel,
-                countsBySource = sourceCountsForLevel,
-                matchingQuestions = eligibleForLevel,
-                onGenerateCustomTest = customBuilder,
-                questionCountForSelection = questionCountForSelection,
-                questionCountForDifficulty = questionCountForDifficulty,
-                availablePublishers = publisherChoices
-            )
-        }
         val maximumPossible = LevelQuestionPolicy.maximumConstructibleCount(
             level, eligibleForLevel, AUTOMATIC_TEST_QUESTION_COUNT
         )
         if (maximumPossible == 0) {
+            val topicRecordCount = _userCustomQuestions.value.count { cq ->
+                matchesTopic(cq.subjectId, cq.topicId, cq.topicName, topic)
+            }
+            val failureDetails = when {
+                topicRecordCount == 0 -> "Bu konuya eşleşmiş soru kaydı bulunamadı. Kitabın konu etiketlerini kontrol et."
+                strictTopicPool.isEmpty() -> "$topicRecordCount kayıt var ancak soru görselleri cihazda bulunamadı. Kitabı silmeden görselleri geri yüklemek gerekiyor."
+                allTopicQuestions.none { it.answerKeyVerified } -> "${strictTopicPool.size} soru görseli var ancak cevap anahtarları doğrulanmamış. Yanlış cevapla sınav oluşturulamaz."
+                else -> "Bu seviyeye uygun doğrulanmış soru bulunmuyor. Mevcut etiketler: " +
+                    countsByDiff.filterValues { it > 0 }
+                        .entries.joinToString { "${it.key.label}: ${it.value}" }
+            }
             return PoolAvailabilityCheck(
                 canGenerate = false,
                 availableQuestionCount = 0,
                 reasonTitle = "Bu Seviyede Soru Bulunamadı",
-                reasonMessage = "Seçilen seviyeye uygun, cevap anahtarı doğrulanmış soru havuzda yok. Bu seviyede soru ekleyebilirsin.",
+                reasonMessage = failureDetails,
                 countsByDifficulty = countsForLevel,
                 countsBySource = sourceCountsForLevel,
                 matchingQuestions = emptyList(),
@@ -1224,7 +1219,10 @@ class SoruLabViewModel(
             canGenerate = true,
             availableQuestionCount = maximumPossible,
             reasonTitle = "Seviyeye Uygun Sorular",
-            reasonMessage = level.poolDistributionLabel,
+            reasonMessage = if (level == TopicTestLevel.SEVIYE_TESPIT &&
+                DifficultyLevel.entries.any { countsForLevel[it] == 0 }
+            ) "Eksik zorluk etiketleriyle mevcut sorulardan pratik yapılabilir; beş seviye tamamlanmadan kesin seviye karnesi hesaplanmaz."
+            else level.poolDistributionLabel,
             countsByDifficulty = countsForLevel,
             countsBySource = sourceCountsForLevel,
             matchingQuestions = eligibleForLevel,

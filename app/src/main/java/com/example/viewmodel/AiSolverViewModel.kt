@@ -174,7 +174,7 @@ class AiSolverViewModel : ViewModel() {
     private val initialWelcomeMessage = AiChatMessage(
         id = "welcome",
         isUser = false,
-        text = "PDF soruların cihazında ücretsiz işlenir. Kayıtlı soru çözümlerini burada görüntüleyebilirsin. Bu sürümde bulutla soru çözümü ve üretimi kapalıdır."
+        text = "PDF soruların cihazında ücretsiz işlenir. Kayıtlı soru çözümlerini burada görüntüleyebilirsin. Yalnızca İkiz Soru'ya basıldığında görüntü analizi ve doğrulanmış soru üretimi kullanılabilir; diğer çözümler cihazındaki kayıtlardan gösterilir."
     )
 
     private val _messages = MutableStateFlow(listOf(initialWelcomeMessage))

@@ -3503,7 +3503,7 @@ private fun FullScreenTwinQuestionComparisonView(
                                 CircularProgressIndicator(color = Color(0xFFEA580C))
                                 Spacer(modifier = Modifier.height(14.dp))
                                 Text(
-                                    text = "${originalQuestion.topicHeader} kazanımına uygun İkiz Soru hazırlanıyor...",
+                                    text = "${originalQuestion.topicHeader} sorusunun birebir çözüm kalıbı analiz edilip yeni verilerle doğrulanıyor...",
                                     color = Color(0xFF475569),
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 13.sp,
@@ -4212,7 +4212,7 @@ private fun FullScreenSuccessReportCardView(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Yanlış ve boşlarını pekiştir.\nHavuzundaki farklı, doğrulanmış sorularla ikiz test oluştur.",
+                            text = "Yanlış ve boşlarını pekiştir.\nHavuzunda aynı alt kazanım ve çözüm kalıbında doğrulanmış örnek varsa ikiz test oluştur.",
                             color = Color(0xFF1E293B),
                             fontWeight = FontWeight.Medium,
                             fontSize = 13.5.sp,

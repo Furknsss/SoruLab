@@ -79,7 +79,7 @@ internal object PublisherMixingPolicy {
         mix(questions, seed, ::key)
 }
 
-internal data class TestPublisherChoice(val key: String, val name: String) {
+data class TestPublisherChoice(val key: String, val name: String) {
     companion object {
         fun fromQuestions(questions: List<YksQuestion>): List<TestPublisherChoice> =
             questions.filter { it.publisherName.isNotBlank() }

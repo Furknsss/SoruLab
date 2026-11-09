@@ -2718,7 +2718,7 @@ private fun TopicTestsDetailView(
 
                                 Text(
                                     text = if (selectedTestLevel == TopicTestLevel.IKIZ) {
-                                        "Bu seviyede henüz oluşturulmuş bir İkiz test yok. Sağ üstteki 'Test / Soru Üret' butonuna bastığında bu konuda daha önce yanlış yaptığın veya boş bıraktığın gerçek sorular kontrol edilerek İkiz Test oluşturulur."
+                                        "Bu konuda daha önce yanlış cevapladığın soruları İkiz seviyesinde yeniden çözebilirsin. Yanlış yoksa İkiz testi oluşturulmaz."
                                     } else {
                                         "Bu seviyede henüz test oluşturulmadı (${selectedTestLevel.poolDistributionLabel}). Sağ üstteki 'Test / Soru Üret' butonuna basarak soru havuzundaki gerçek sorularla test oluşturabilirsin."
                                     },
@@ -2945,7 +2945,7 @@ private fun RadialLevelWheelOverlay(
     onDismiss: () -> Unit
 ) {
     val levels = TopicTestLevel.entries
-    val wheelLabels = listOf("SIFIR", "İKİZ", "YAYGIN", "ÖDEV", "ÖSYM", "DERECE")
+    val wheelLabels = listOf("SEVİYE TESPİT", "BAŞLANGIÇ", "İKİZ", "PEKİŞTİRME", "ÖSYM", "DERECE")
     val startAngleDeg = -90f
     val totalSweepDeg = 180f
     val sliceSweepDeg = totalSweepDeg / levels.size.toFloat()
@@ -2955,7 +2955,7 @@ private fun RadialLevelWheelOverlay(
         Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG).apply {
             textAlign = Paint.Align.CENTER
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textSize = with(density) { 10.8.sp.toPx() }
+            textSize = with(density) { 9.sp.toPx() }
             letterSpacing = 0.03f
         }
     }
@@ -3132,29 +3132,21 @@ private fun RadialLevelWheelOverlay(
                     nativeCanvas.save()
                     nativeCanvas.translate(tx, ty)
                     nativeCanvas.rotate(midAngleDeg)
-                    nativeCanvas.drawText(wheelLabels[index], 0f, -fontOffset, textPaint)
+                    val lines = if (level == TopicTestLevel.SEVIYE_TESPIT) {
+                        listOf("SEVİYE", "TESPİT")
+                    } else listOf(wheelLabels[index])
+                    lines.forEachIndexed { lineIndex, line ->
+                        nativeCanvas.drawText(
+                            line, 0f,
+                            -fontOffset + (lineIndex - (lines.size - 1) / 2f) * textPaint.textSize * 1.1f,
+                            textPaint
+                        )
+                    }
                     nativeCanvas.restore()
                 }
             }
         }
-        Text(
-            text = "HATA",
-            color = Color(0xFFD98A16),
-            fontSize = 9.sp,
-            fontWeight = FontWeight.ExtraBold,
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .offset(x = 84.dp, y = (-150).dp)
-        )
-        Text(
-            text = "TEST",
-            color = Color(0xFF0E8AC8),
-            fontSize = 9.sp,
-            fontWeight = FontWeight.ExtraBold,
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .offset(x = 84.dp, y = 150.dp)
-        )
+
     }
 }
 
@@ -3183,7 +3175,10 @@ private fun SoruLabAiTestGeneratorDialog(
             ?: poolCheck.availableQuestionCount
     }
     val maxAvailableCount = matchingDiffCount.coerceAtLeast(0)
-    var selectedQuestionCount by remember(maxAvailableCount) { mutableIntStateOf(maxAvailableCount.coerceAtMost(AUTOMATIC_TEST_QUESTION_COUNT).coerceAtLeast(1)) }
+    val minimumQuestionCount = if (level == TopicTestLevel.SEVIYE_TESPIT) 5 else 1
+    var selectedQuestionCount by remember(maxAvailableCount, level) {
+        mutableIntStateOf(maxAvailableCount.coerceAtMost(AUTOMATIC_TEST_QUESTION_COUNT).coerceAtLeast(minimumQuestionCount))
+    }
     val hasStandardTestPool = maxAvailableCount > 0
     var currentStep by remember { mutableIntStateOf(1) }
     var progressTarget by remember { mutableFloatStateOf(0.20f) }
@@ -3366,105 +3361,34 @@ private fun SoruLabAiTestGeneratorDialog(
 
                     HorizontalDivider(color = Color(0xFFE2E8F0))
 
-                    // 1. 5'Lİ ZORLUK SEÇİCİ (Multi-Select Chips + Soru Sayısı)
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "1. Zorluk Seviyeleri (Çoklu Seçim)",
-                            style = MaterialTheme.typography.labelLarge.copy(
+                    // Difficulty composition belongs to the selected wheel level.
+                    // Do not allow a chip/filter to invalidate the distribution.
+                    Surface(
+                        color = Color(level.wedgeColorHex).copy(alpha = 0.10f),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, Color(level.wedgeColorHex).copy(alpha = 0.42f))
+                    ) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = level.displayTitle,
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 13.sp
-                            ),
-                            color = Color(0xFF1E293B)
-                        )
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(DifficultyLevel.entries) { diff ->
-                                val isSelected = diff in selectedDifficulties
-                                val countForDiff = poolCheck.questionCountForDifficulty
-                                    ?.invoke(diff, selectedSourceFilter)
-                                    ?: poolCheck.countsByDifficulty[diff]
-                                    ?: 0
-                                val chipColor = Color(diff.colorHex)
-                                Surface(
-                                    onClick = {
-                                        selectedDifficulties = if (isSelected && selectedDifficulties.size > 1) {
-                                            selectedDifficulties - diff
-                                        } else {
-                                            selectedDifficulties + diff
-                                        }
-                                    },
-                                    shape = RoundedCornerShape(50),
-                                    color = if (isSelected) chipColor.copy(alpha = 0.16f) else Color(0xFFF8FAFC),
-                                    border = BorderStroke(
-                                        1.3.dp,
-                                        if (isSelected) chipColor else Color(0xFFCBD5E1)
-                                    ),
-                                    modifier = Modifier.testTag("diff_chip_${diff.name}")
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                    ) {
-                                        if (isSelected) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Check,
-                                                contentDescription = null,
-                                                tint = chipColor,
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                        }
-                                        Text(
-                                            text = "${diff.label} ($countForDiff)",
-                                            style = MaterialTheme.typography.labelMedium.copy(
-                                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
-                                                fontSize = 12.sp
-                                            ),
-                                            color = if (isSelected) chipColor else Color(0xFF475569)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 2. AKILLI KAYNAK FİLTRESİ
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "2. Akıllı Kaynak Filtresi",
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 13.sp
-                            ),
-                            color = Color(0xFF1E293B)
-                        )
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(QuestionSourceFilter.entries) { srcFilter ->
-                                val isSel = selectedSourceFilter == srcFilter
-                                val srcCount = poolCheck.questionCountForSelection
-                                    ?.invoke(selectedDifficulties, srcFilter)
-                                    ?: poolCheck.countsBySource[srcFilter]
-                                    ?: poolCheck.availableQuestionCount
-                                Surface(
-                                    onClick = { selectedSourceFilter = srcFilter },
-                                    shape = RoundedCornerShape(50),
-                                    color = if (isSel) Color(0xFF1D63DC) else Color(0xFFF8FAFC),
-                                    border = BorderStroke(
-                                        1.2.dp,
-                                        if (isSel) Color(0xFF1D63DC) else Color(0xFFCBD5E1)
-                                    ),
-                                    modifier = Modifier.testTag("source_chip_${srcFilter.name}")
-                                ) {
-                                    Text(
-                                        text = "${srcFilter.label} ($srcCount)",
-                                        style = MaterialTheme.typography.labelMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp
-                                        ),
-                                        color = if (isSel) Color.White else Color(0xFF334155),
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-                                    )
-                                }
-                            }
+                                color = Color(0xFF18233A)
+                            )
+                            Text(
+                                text = level.poolDistributionLabel,
+                                fontSize = 13.sp,
+                                color = Color(0xFF42526E)
+                            )
+                            Text(
+                                text = if (level == TopicTestLevel.IKIZ)
+                                    "Kaynak: Bu konunun önceki yanlışları • Zorluk: orijinal soru"
+                                else "Zorluk dağılımı bu seviye için otomatik ve sabittir.",
+                                fontSize = 11.sp,
+                                color = Color(0xFF526581)
+                            )
                         }
                     }
 
@@ -3502,8 +3426,14 @@ private fun SoruLabAiTestGeneratorDialog(
                         }
                     }
 
-                    if (maxAvailableCount > 1) {
-                        Slider(value = selectedQuestionCount.toFloat(), onValueChange = { selectedQuestionCount = it.toInt().coerceIn(1, maxAvailableCount) }, valueRange = 1f..maxAvailableCount.toFloat())
+                    if (maxAvailableCount > minimumQuestionCount) {
+                        Slider(
+                            value = selectedQuestionCount.toFloat().coerceIn(minimumQuestionCount.toFloat(), maxAvailableCount.toFloat()),
+                            onValueChange = {
+                                selectedQuestionCount = it.toInt().coerceIn(minimumQuestionCount, maxAvailableCount)
+                            },
+                            valueRange = minimumQuestionCount.toFloat()..maxAvailableCount.toFloat()
+                        )
                         Text("Havuzda $maxAvailableCount gerçek soru var. Seçilen sayıyla test oluşturulur.", fontSize = 12.sp, color = Color(0xFF74708F))
                     }
                     Spacer(modifier = Modifier.height(4.dp))
@@ -3563,8 +3493,8 @@ private fun SoruLabAiTestGeneratorDialog(
     val step1Text = remember(topic, selectedSourceFilter, realCount) {
         "'${topic.name}' konusundan (${selectedSourceFilter.label}) $realCount gerçek soru seçiliyor..."
     }
-    val step2Text = remember(topic, selectedDifficulties, realCount) {
-        "Seçilen zorluklar (${selectedDifficulties.joinToString { it.label }}) öncelikli; gerekirse en yakın seviyelerle $realCount soru tamamlanıyor..."
+    val step2Text = remember(topic, level, realCount) {
+        "${level.displayTitle}: ${level.poolDistributionLabel}"
     }
     val step3Text = remember(topic, nextTestNumber) {
         "${topic.name} - Test $nextTestNumber optik formu ve canlı çözüm tahtası hazırlanıyor..."

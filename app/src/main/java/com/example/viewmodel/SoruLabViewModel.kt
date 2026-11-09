@@ -745,7 +745,10 @@ class SoruLabViewModel(
                 )?.takeIf { it.id == expectedTestId }
                     ?.let(::hydrateSnapshotQuestionImages)
                 val realQuestions = if (snapshot == null) {
-                    collectRealPoolQuestionsForTopicAndLevel(topic, level)
+                    LevelQuestionPolicy.select(
+                        level, collectRealPoolQuestionsForTopicAndLevel(topic, level),
+                        AUTOMATIC_TEST_QUESTION_COUNT
+                    )
                 } else {
                     emptyList()
                 }
@@ -886,24 +889,10 @@ class SoruLabViewModel(
                 repository.hasRecoverableQuestionImage(question)
         }
 
-        val filteredCustom = if (levelFilter == null) {
-            topicPool
-        } else {
-            val exactLevelMatches = topicPool.filter {
-                it.targetLevelName.equals(levelFilter.name, ignoreCase = true)
-            }
-            val difficultyMatches = topicPool.filter { cq ->
-                val diff5 = cq.difficultyLevel5
-                when (levelFilter) {
-                    TopicTestLevel.BASLANGIC -> diff5 == DifficultyLevel.KOLAY || diff5 == DifficultyLevel.ORTA
-                    TopicTestLevel.PEKISTIRME -> diff5 == DifficultyLevel.KOLAY || diff5 == DifficultyLevel.ORTA || diff5 == DifficultyLevel.ZOR
-                    TopicTestLevel.SEVIYE_TESPIT -> true
-                    TopicTestLevel.OSYM -> diff5 == DifficultyLevel.OSYM
-                    TopicTestLevel.DERECE -> diff5 == DifficultyLevel.ZOR || diff5 == DifficultyLevel.COK_ZOR
-                    TopicTestLevel.IKIZ -> true
-                }
-            }
-            (exactLevelMatches + difficultyMatches).distinctBy { it.id }
+        val filteredCustom = if (levelFilter == null) topicPool else {
+            // Never let a legacy wheel-level tag override the verified question
+            // difficulty. E.g. an Orta question tagged OSYM is still Orta.
+            topicPool.filter { it.difficultyLevel5 in levelFilter.recommendedDifficultyLevels() }
         }
 
         val mixedCustom = interleaveByGroup(filteredCustom) { it.publisherTag }

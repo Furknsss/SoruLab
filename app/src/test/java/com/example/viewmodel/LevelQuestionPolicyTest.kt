@@ -86,6 +86,27 @@ class LevelQuestionPolicyTest {
             LevelQuestionPolicy.select(TopicTestLevel.IKIZ, wrong, 12).map { it.id })
     }
 
+
+    @Test fun scarceCategoryKeepsDiagnosticBalancedInsteadOfPaddingWithOtherBands() {
+        val pool = DifficultyLevel.entries.flatMap { level ->
+            (1..if (level == DifficultyLevel.COK_ZOR) 1 else 20).map { question(level, it) }
+        }
+        val chosen = LevelQuestionPolicy.select(TopicTestLevel.SEVIYE_TESPIT, pool, 12)
+        val counts = chosen.groupingBy { it.difficulty }.eachCount()
+        assertEquals(9, chosen.size)
+        assertEquals(5, counts.size)
+        assertTrue(counts.values.max() - counts.values.min() <= 1)
+        assertEquals(9, LevelQuestionPolicy.maximumConstructibleCount(TopicTestLevel.SEVIYE_TESPIT, pool))
+    }
+
+    @Test fun dominantBandMustHaveStrictMajority() {
+        val shortage = listOf(question(DifficultyLevel.KOLAY, 1)) +
+            (1..20).map { question(DifficultyLevel.ORTA, it) }
+        val chosen = LevelQuestionPolicy.select(TopicTestLevel.BASLANGIC, shortage, 12)
+        assertTrue(chosen.count { it.difficulty == DifficultyLevel.KOLAY } > chosen.size / 2)
+        assertEquals(1, LevelQuestionPolicy.maximumConstructibleCount(TopicTestLevel.BASLANGIC, shortage))
+    }
+
     @Test fun placementRecommendsNextReasonableBand() {
         val questions = DifficultyLevel.entries.mapIndexed { index, d -> question(d, index + 1) }
         val correctAll = questions.associate { it.number to "B" }

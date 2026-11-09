@@ -50,6 +50,7 @@ internal class TwinQuestionGenerationEngine {
     ))
     private val reviewerSchema = Schema.obj(mapOf(
         "solvedOptionWithoutAnswerKey" to Schema.enumeration(answers + "UNKNOWN", "Blind independent solution of new question"),
+        "independentSolution" to Schema.string("Full calculation explaining the independent answer from first principles"),
         "sameSpecificSubSkill" to Schema.enumeration(yesNo, "Same very specific skill"),
         "sameProblemArchitecture" to Schema.enumeration(yesNo, "Same architecture, not merely the same topic"),
         "sameOrderedReasoning" to Schema.enumeration(yesNo, "Same ordered solution steps"),
@@ -184,7 +185,8 @@ internal class TwinQuestionGenerationEngine {
                 val reviewerPrompt = """
                     Bağımsız YKS denetmenisin. Aşağıdaki YENİ soruyu cevap
                     anahtarı olmadan SIFIRDAN çöz; seçenekleri kendin kontrol
-                    et. Bulduğun şık UNKNOWN olabilir. Sonra kaynak sorunun
+                    et ve bağımsız adım adım çözümünü independentSolution'a
+                    yaz. Bulduğun şık UNKNOWN olabilir. Sonra kaynak sorunun
                     kendine özgü koşul, işlem sırası, verilen/istenen ilişkisi
                     ile birebir aynı olup olmadığını denetle.
                     Yalnızca aynı konu asla yeterli değildir.
@@ -200,6 +202,11 @@ internal class TwinQuestionGenerationEngine {
                     "\nYENİ ŞIKLAR:\n" + draft.options.entries.joinToString("\n") { it.key + ") " + it.value }
                 val check = call(reviewerModel, bitmap, reviewerPrompt)
                 fun yes(field: String) = check.optString(field) == "YES"
+                val independentlyRecomputedSolution = check.optString("independentSolution").trim()
+                if (independentlyRecomputedSolution.length < 40) {
+                    lastError = "Bağımsız çözüm adımları yeterince açık değil."
+                    return@repeat
+                }
                 val audit = TwinIndependentAudit(
                     solvedOptionWithoutAnswerKey = check.optString("solvedOptionWithoutAnswerKey"),
                     sameSpecificSubSkill = yes("sameSpecificSubSkill"),
@@ -221,7 +228,7 @@ internal class TwinQuestionGenerationEngine {
                     questionStem = draft.stem,
                     options = draft.options,
                     correctOption = draft.correctOption,
-                    solutionExplanation = draft.explanation,
+                    solutionExplanation = independentlyRecomputedSolution,
                     sourceDescription = "Çözüm kalıbı korundu • bağımsız cevap kontrolünden geçti"
                 )
                 synchronized(acceptedCache) {

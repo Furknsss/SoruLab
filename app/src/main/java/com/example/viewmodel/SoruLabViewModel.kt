@@ -2454,10 +2454,18 @@ class SoruLabViewModel(
 
         val updatedList = listOf(record) + _userCustomQuestions.value
         _userCustomQuestions.value = updatedList
-        try {
-            repository.saveCachedCustomQuestions(uid, updatedList)
-        } catch (_: Exception) {
-            showBanner("Soru oturumda eklendi ancak cihazdaki yerel depoya yazılamadı.")
+        // Committing a very large offline book library cannot block a Compose frame.
+        // The SQLite transaction runs on IO and the in-memory list updates instantly.
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                repository.saveCachedCustomQuestions(uid, updatedList)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    showBanner("Soru oturumda eklendi ancak cihazdaki yerel depoya yazılamadı.")
+                }
+            }
         }
         syncPdfPoolToPracticeTests(updatedList)
 

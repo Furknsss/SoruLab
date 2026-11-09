@@ -267,7 +267,6 @@ internal class TwinQuestionGenerationEngine {
         appendLine("Şıklar: " + question.options.entries.joinToString(" | ") {
             it.key + ") " + it.value
         })
-        if (question.answerKeyVerified) appendLine("Basılı cevap anahtarı: " + question.correctOption)
         appendLine("Kayıtlı çözüm: " + question.stepByStepSolution.take(1400))
     }.take(6500)
 

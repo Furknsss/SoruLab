@@ -143,9 +143,10 @@ data class PoolAvailabilityCheck(
     val countsByDifficulty: Map<DifficultyLevel, Int> = emptyMap(),
     val countsBySource: Map<QuestionSourceFilter, Int> = emptyMap(),
     val matchingQuestions: List<YksQuestion> = emptyList(),
-    val onGenerateCustomTest: ((Set<DifficultyLevel>, QuestionSourceFilter, Int) -> YksTestItem?)? = null,
-    val questionCountForSelection: ((Set<DifficultyLevel>, QuestionSourceFilter) -> Int)? = null,
-    val questionCountForDifficulty: ((DifficultyLevel, QuestionSourceFilter) -> Int)? = null
+    val onGenerateCustomTest: ((Set<DifficultyLevel>, QuestionSourceFilter, Int, String?) -> YksTestItem?)? = null,
+    val questionCountForSelection: ((Set<DifficultyLevel>, QuestionSourceFilter, String?) -> Int)? = null,
+    val questionCountForDifficulty: ((DifficultyLevel, QuestionSourceFilter) -> Int)? = null,
+    val availablePublishers: List<PublisherChoice> = emptyList()
 )
 
 @Immutable
@@ -1118,15 +1119,17 @@ class SoruLabViewModel(
             sourceFilter = QuestionSourceFilter.TUM_SORULAR
         )
 
-        val customBuilder: (Set<DifficultyLevel>, QuestionSourceFilter, Int) -> YksTestItem? = { diffs, srcFilter, reqCount ->
-            generateCustomFilteredTopicTest(
-                topic = topic,
-                level = level,
-                selectedDifficulties = diffs,
-                sourceFilter = srcFilter,
-                requestedQuestionCount = reqCount
-            )
-        }
+        val customBuilder: (Set<DifficultyLevel>, QuestionSourceFilter, Int, String?) -> YksTestItem? =
+            { diffs, srcFilter, reqCount, publisherKey ->
+                generateCustomFilteredTopicTest(
+                    topic = topic,
+                    level = level,
+                    selectedDifficulties = diffs,
+                    sourceFilter = srcFilter,
+                    requestedQuestionCount = reqCount,
+                    selectedPublisherKey = publisherKey
+                )
+            }
         val eligibleForLevel = if (level == TopicTestLevel.IKIZ) {
             collectWrongQuestionsFromResultsForTopic(topic)
         } else {
@@ -1137,21 +1140,26 @@ class SoruLabViewModel(
         val countsForLevel = DifficultyLevel.entries.associateWith { diff ->
             eligibleForLevel.count { it.difficulty == diff }
         }
+        val publisherChoices = PublisherQuestionMixer.options(eligibleForLevel)
         val sourceCountsForLevel = QuestionSourceFilter.entries.associateWith { filter ->
             if (level == TopicTestLevel.IKIZ) eligibleForLevel.size
             else collectQuestionsByTopicSourceAndDifficulty(
                 topic, level.recommendedDifficultyLevels(), filter
             ).count { it.answerKeyVerified }
         }
-        val questionCountForSelection: (Set<DifficultyLevel>, QuestionSourceFilter) -> Int = { _, source ->
-            if (level == TopicTestLevel.IKIZ) eligibleForLevel.size.coerceAtMost(AUTOMATIC_TEST_QUESTION_COUNT)
-            else LevelQuestionPolicy.maximumConstructibleCount(
-                level,
-                collectQuestionsByTopicSourceAndDifficulty(
-                    topic, level.recommendedDifficultyLevels(), source
+        val questionCountForSelection: (Set<DifficultyLevel>, QuestionSourceFilter, String?) -> Int =
+            { _, source, selectedPublisherKey ->
+                val fromSource = if (level == TopicTestLevel.IKIZ) eligibleForLevel else
+                    collectQuestionsByTopicSourceAndDifficulty(
+                        topic, level.recommendedDifficultyLevels(), source
+                    )
+                val fromPublisher = PublisherQuestionMixer.filter(fromSource, selectedPublisherKey)
+                LevelQuestionPolicy.maximumConstructibleCount(
+                    level = level,
+                    sourceQuestions = fromPublisher,
+                    cap = AUTOMATIC_TEST_QUESTION_COUNT
                 )
-            )
-        }
+            }
         val questionCountForDifficulty: (DifficultyLevel, QuestionSourceFilter) -> Int = { diff, source ->
             if (level == TopicTestLevel.IKIZ) countsForLevel[diff] ?: 0
             else collectQuestionsByTopicSourceAndDifficulty(topic, setOf(diff), source)
@@ -1173,7 +1181,9 @@ class SoruLabViewModel(
                 matchingQuestions = eligibleForLevel,
                 onGenerateCustomTest = customBuilder,
                 questionCountForSelection = questionCountForSelection,
-                questionCountForDifficulty = questionCountForDifficulty
+                questionCountForDifficulty = questionCountForDifficulty,
+            availablePublishers = publisherChoices,
+                availablePublishers = publisherChoices
             )
         }
         if (level == TopicTestLevel.SEVIYE_TESPIT &&
@@ -1189,7 +1199,8 @@ class SoruLabViewModel(
                 matchingQuestions = eligibleForLevel,
                 onGenerateCustomTest = customBuilder,
                 questionCountForSelection = questionCountForSelection,
-                questionCountForDifficulty = questionCountForDifficulty
+                questionCountForDifficulty = questionCountForDifficulty,
+                availablePublishers = publisherChoices
             )
         }
         val maximumPossible = LevelQuestionPolicy.maximumConstructibleCount(
@@ -1206,7 +1217,8 @@ class SoruLabViewModel(
                 matchingQuestions = emptyList(),
                 onGenerateCustomTest = customBuilder,
                 questionCountForSelection = questionCountForSelection,
-                questionCountForDifficulty = questionCountForDifficulty
+                questionCountForDifficulty = questionCountForDifficulty,
+                availablePublishers = publisherChoices
             )
         }
         return PoolAvailabilityCheck(
@@ -1279,7 +1291,8 @@ class SoruLabViewModel(
         sourceFilter: QuestionSourceFilter,
         requestedQuestionCount: Int,
         verifiedTwinCandidates: List<YksQuestion>? = null,
-        customTestTitle: String = ""
+        customTestTitle: String = "",
+        selectedPublisherKey: String? = null
     ): YksTestItem? {
         if (requestedQuestionCount <= 0) return null
         val enforcedDifficulties = level.recommendedDifficultyLevels()
@@ -1293,8 +1306,13 @@ class SoruLabViewModel(
                 topic, enforcedDifficulties, sourceFilter
             ).filter { it.answerKeyVerified }
         }
-        if (sourceCandidates.isEmpty()) return null
-        val strictCandidates = sourceCandidates.distinctBy { LevelQuestionPolicy.stableId(it) }
+        // Server-side selection is strict even if a UI callback sends a
+        // stale key. A chosen publisher can never leak another publication.
+        val publisherFiltered = PublisherQuestionMixer.filter(
+            sourceCandidates, selectedPublisherKey
+        )
+        if (publisherFiltered.isEmpty()) return null
+        val strictCandidates = publisherFiltered.distinctBy { LevelQuestionPolicy.stableId(it) }
 
         val key = "${topic.id}_${level.name}"
         val existingList = _generatedTopicTests.value[key].orEmpty()
@@ -1315,7 +1333,8 @@ class SoruLabViewModel(
             level = level,
             sourceQuestions = strictCandidates,
             count = requestedQuestionCount,
-            previouslyUsed = usedSignatures
+            previouslyUsed = usedSignatures,
+            mixSeed = (topic.id + level.name + nextTestNumber + selectedPublisherKey.orEmpty()).hashCode()
         )
         if (questionsToUse.isEmpty()) return null
 

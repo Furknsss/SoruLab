@@ -41,7 +41,11 @@ internal object LevelQuestionPolicy {
         val slots = when (level) {
             TopicTestLevel.SEVIYE_TESPIT -> diagnosticOrder
             TopicTestLevel.BASLANGIC -> {
-                val medium = if (count <= 5) 1 else 2
+                val medium = when {
+                    count < 4 -> 0
+                    count <= 8 -> 1
+                    else -> 2
+                }
                 List((count - medium).coerceAtLeast(0)) { DifficultyLevel.KOLAY } +
                     List(minOf(count, medium)) { DifficultyLevel.ORTA }
             }
@@ -52,7 +56,11 @@ internal object LevelQuestionPolicy {
             }
             TopicTestLevel.OSYM -> listOf(DifficultyLevel.OSYM)
             TopicTestLevel.DERECE -> {
-                val veryHard = if (count <= 5) 1 else 2
+                val veryHard = when {
+                    count < 4 -> 0
+                    count <= 8 -> 1
+                    else -> 2
+                }
                 List((count - veryHard).coerceAtLeast(0)) { DifficultyLevel.ZOR } +
                     List(minOf(count, veryHard)) { DifficultyLevel.COK_ZOR }
             }
@@ -82,17 +90,27 @@ internal object LevelQuestionPolicy {
             for ((difficulty, number) in quotas) {
                 selected.addAll(byLevel[difficulty].orEmpty().take(number))
             }
-            // Show dominant difficulty first but interleave the rare examples
-            // when available to avoid front-loading only the hardest.
-            if (selected.size > 3) {
-                val secondary = selected.filter { it.difficulty != slots.first() }
-                val main = selected.filter { it.difficulty == slots.first() }
-                return (main.take((main.size + 1) / 2) + secondary +
-                    main.drop((main.size + 1) / 2)).take(count)
-            }
+            // A level without its dominant band must NOT be filled by
+            // only secondary questions. Ensure strict primary majority.
+            val main = selected.filter { it.difficulty == slots.first() }
+            val secondary = selected.filter { it.difficulty != slots.first() }
+                .take((main.size - 1).coerceAtLeast(0))
+            selected.clear()
+            selected.addAll(main.take((main.size + 1) / 2))
+            selected.addAll(secondary)
+            selected.addAll(main.drop((main.size + 1) / 2))
         }
         return selected.take(count)
     }
+
+    /** Maximum full-sized test possible without breaking the stage's quotas. */
+    fun maximumConstructibleCount(
+        level: TopicTestLevel,
+        sourceQuestions: List<YksQuestion>,
+        cap: Int = 12
+    ): Int = (cap.coerceAtLeast(0) downTo 1).firstOrNull {
+        select(level, sourceQuestions, it).size == it
+    } ?: 0
 
     fun stableId(q: YksQuestion): String =
         q.sourceQuestionId.ifBlank { q.croppedImagePath.ifBlank { q.id } }

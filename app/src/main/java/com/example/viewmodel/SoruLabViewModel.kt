@@ -848,10 +848,7 @@ class SoruLabViewModel(
                 ?: knownTests.firstOrNull { it.id == record.testId }?.questions
                 ?: continue
             val answers = parseAnswersJson(record.answersMapJson).orEmpty()
-            questions.forEach { q ->
-                val chosen = answers[q.number]
-                if (!q.answerKeyVerified || chosen.isNullOrBlank() ||
-                    chosen.equals(q.correctOption, ignoreCase = true)) return@forEach
+            MistakeReviewPolicy.wrongAnswersOnly(questions, answers).forEach { q ->
                 val key = LevelQuestionPolicy.stableId(q)
                 if (seen.add(key)) errors.add(q)
             }
@@ -1592,11 +1589,9 @@ class SoruLabViewModel(
         }
 
         // This test directly re-presents exactly the source test's WRONG answers.
-        val wrongQuestions = session.testItem.questions.filter { q ->
-            val answer = session.selectedAnswers[q.number]
-            q.answerKeyVerified && !answer.isNullOrBlank() &&
-                !answer.equals(q.correctOption, ignoreCase = true)
-        }
+        val wrongQuestions = MistakeReviewPolicy.wrongAnswersOnly(
+            session.testItem.questions, session.selectedAnswers
+        )
         if (wrongQuestions.isEmpty()) {
             showBanner("Bu testte tekrar çözülecek yanlış cevaplanmış soru yok.")
             return

@@ -56,7 +56,7 @@ internal object TwinQuestionQualityGate {
             source.orderedSolutionOperations.trim().length < 12
         ) return "Kaynak sorunun özgün çözüm şablonu güvenilir biçimde çıkarılamadı."
         val originalOption = source.independentlySolvedOriginalOption.uppercase(Locale.ROOT)
-        if (verifiedOriginalOption != null && originalOption !in labels) {
+        if (originalOption !in labels) {
             return "Kaynak sorunun cevabı bağımsız çözüme göre doğrulanamadı."
         }
         if (verifiedOriginalOption != null &&

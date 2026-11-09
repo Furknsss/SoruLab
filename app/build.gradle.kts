@@ -72,7 +72,7 @@ android {
           Instant.parse("2026-01-01T00:00:00Z").epochSecond / 60L
       )
     ).coerceIn(35L, 2_100_000_000L).toInt()
-    versionName = "1.3.1"
+    versionName = "1.3.2"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

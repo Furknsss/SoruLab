@@ -3160,7 +3160,13 @@ private fun SoruLabAiTestGeneratorDialog(
     onStartGeneratedTest: (YksTestItem) -> Unit,
     onGoToPdfStudio: () -> Unit
 ) {
-    var isSetupPhase by remember(topic.id, level) { mutableStateOf(false) }
+    // Give the student a chance to select the publisher before generating.
+    var isSetupPhase by remember(topic.id, level) { mutableStateOf(true) }
+    var showPublisherFilter by remember(topic.id, level) { mutableStateOf(false) }
+    var selectedPublisherKey by remember(topic.id, level) { mutableStateOf<String?>(null) }
+    val selectedPublisher = poolCheck.availablePublishers.firstOrNull {
+        it.key == selectedPublisherKey
+    }
     var selectedDifficulties by remember(topic.id, level) {
         mutableStateOf(level.recommendedDifficultyLevels())
     }
@@ -3170,23 +3176,27 @@ private fun SoruLabAiTestGeneratorDialog(
         )
     }
 
-    val matchingDiffCount = remember(selectedDifficulties, selectedSourceFilter, poolCheck) {
-        poolCheck.questionCountForSelection?.invoke(selectedDifficulties, selectedSourceFilter)
-            ?: poolCheck.availableQuestionCount
+    val matchingDiffCount = remember(
+        selectedDifficulties, selectedSourceFilter, selectedPublisherKey, poolCheck
+    ) {
+        poolCheck.questionCountForSelection?.invoke(
+            selectedDifficulties, selectedSourceFilter, selectedPublisherKey
+        ) ?: poolCheck.availableQuestionCount
     }
     val maxAvailableCount = matchingDiffCount.coerceAtLeast(0)
     val minimumQuestionCount = if (level == TopicTestLevel.SEVIYE_TESPIT) 5 else 1
-    var selectedQuestionCount by remember(maxAvailableCount, level) {
+    var selectedQuestionCount by remember(maxAvailableCount, level, selectedPublisherKey) {
         mutableIntStateOf(maxAvailableCount.coerceAtMost(AUTOMATIC_TEST_QUESTION_COUNT).coerceAtLeast(minimumQuestionCount))
     }
-    val hasStandardTestPool = maxAvailableCount > 0
+    val hasStandardTestPool = poolCheck.canGenerate &&
+        maxAvailableCount >= minimumQuestionCount
     var currentStep by remember { mutableIntStateOf(1) }
     var progressTarget by remember { mutableFloatStateOf(0.20f) }
     var createdTest by remember { mutableStateOf<YksTestItem?>(null) }
     var generationFailed by remember { mutableStateOf(false) }
 
     // Never show "Soru Bulunamadı" if a test was already created or if poolCheck.canGenerate is true!
-    if ((!poolCheck.canGenerate || !hasStandardTestPool) && createdTest == null && currentStep <= 1) {
+    if (!poolCheck.canGenerate && createdTest == null && currentStep <= 1) {
         Dialog(onDismissRequest = onDismiss) {
             Card(
                 shape = RoundedCornerShape(26.dp),
@@ -3350,12 +3360,114 @@ private fun SoruLabAiTestGeneratorDialog(
                                 color = Color(0xFF1D63DC)
                             )
                         }
+                        Box {
+                            IconButton(
+                                onClick = { showPublisherFilter = true },
+                                modifier = Modifier.testTag("test_publisher_filter_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.FilterList,
+                                    contentDescription = "Yayınevi filtrele",
+                                    tint = if (selectedPublisherKey == null)
+                                        Color(0xFF315CF0) else Color(0xFFEA580C)
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showPublisherFilter,
+                                onDismissRequest = { showPublisherFilter = false },
+                                modifier = Modifier.widthIn(min = 240.dp, max = 320.dp)
+                                    .background(Color.White)
+                            ) {
+                                Text(
+                                    "YAYINEVİ SEÇ • TEK SEÇİM",
+                                    modifier = Modifier.padding(
+                                        start = 16.dp, end = 16.dp, top = 10.dp, bottom = 5.dp
+                                    ),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF64748B)
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Tüm Yayınlar • Karışık") },
+                                    leadingIcon = {
+                                        RadioButton(
+                                            selected = selectedPublisherKey == null,
+                                            onClick = null
+                                        )
+                                    },
+                                    onClick = {
+                                        selectedPublisherKey = null
+                                        showPublisherFilter = false
+                                    },
+                                    modifier = Modifier.testTag("publisher_all_option")
+                                )
+                                HorizontalDivider(color = Color(0xFFE2E8F0))
+                                poolCheck.availablePublishers.forEach { publisher ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                publisher.name,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            RadioButton(
+                                                selected = selectedPublisherKey == publisher.key,
+                                                onClick = null
+                                            )
+                                        },
+                                        onClick = {
+                                            selectedPublisherKey = publisher.key
+                                            showPublisherFilter = false
+                                        },
+                                        modifier = Modifier.testTag("publisher_option_" + publisher.key)
+                                    )
+                                }
+                            }
+                        }
                         IconButton(onClick = onDismiss) {
                             Icon(
                                 imageVector = Icons.Filled.Close,
                                 contentDescription = "Kapat",
                                 tint = Color(0xFF64748B)
                             )
+                        }
+                    }
+
+                    if (selectedPublisher != null) {
+                        Surface(
+                            color = Color(0xFFFFF2DD),
+                            border = BorderStroke(1.dp, Color(0xFFFBBF24)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "Yalnızca " + selectedPublisher.name + " • " +
+                                        maxAvailableCount + " uygun soru",
+                                    modifier = Modifier.weight(1f),
+                                    color = Color(0xFF92400E),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                IconButton(
+                                    onClick = { selectedPublisherKey = null },
+                                    modifier = Modifier.size(26.dp)
+                                        .testTag("clear_publisher_filter_button")
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = "Yayınevi filtresini kaldır",
+                                        tint = Color(0xFF92400E),
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -3419,7 +3531,9 @@ private fun SoruLabAiTestGeneratorDialog(
 
                         if (!hasStandardTestPool) {
                             Text(
-                                text = "Uygun soru bulunamadı. Başka kaynak ekleyin veya filtreleri değiştirin.",
+                                text = if (selectedPublisher != null)
+                                    "Seçili yayında bu seviyenin gerekli soru dağılımı yok. Filtreyi kaldır veya o yayından daha fazla soru ekle."
+                                else "Bu seviye için yeterli, doğrulanmış soru bulunamadı.",
                                 color = Color(0xFFB91C1C),
                                 style = MaterialTheme.typography.bodySmall
                             )
@@ -3490,8 +3604,10 @@ private fun SoruLabAiTestGeneratorDialog(
     )
 
     val realCount = selectedQuestionCount.coerceIn(1, maxAvailableCount.coerceAtLeast(1))
-    val step1Text = remember(topic, selectedSourceFilter, realCount) {
-        "'${topic.name}' konusundan (${selectedSourceFilter.label}) $realCount gerçek soru seçiliyor..."
+    val step1Text = remember(topic, selectedSourceFilter, selectedPublisherKey, realCount) {
+        "'${topic.name}' için " +
+            (selectedPublisher?.name ?: "tüm yayınevlerinden karışık") +
+            " $realCount gerçek soru seçiliyor..."
     }
     val step2Text = remember(topic, level, realCount) {
         "${level.displayTitle}: ${level.poolDistributionLabel}"
@@ -3500,7 +3616,10 @@ private fun SoruLabAiTestGeneratorDialog(
         "${topic.name} - Test $nextTestNumber optik formu ve canlı çözüm tahtası hazırlanıyor..."
     }
 
-    LaunchedEffect(isSetupPhase, topic.id, level, selectedDifficulties, selectedSourceFilter, realCount) {
+    LaunchedEffect(
+        isSetupPhase, topic.id, level, selectedDifficulties,
+        selectedSourceFilter, selectedPublisherKey, realCount
+    ) {
         if (!isSetupPhase) {
             progressTarget = 0.36f
             delay(450L)
@@ -3514,8 +3633,14 @@ private fun SoruLabAiTestGeneratorDialog(
                 createdTest = poolCheck.onGenerateCustomTest?.invoke(
                     selectedDifficulties,
                     selectedSourceFilter,
-                    realCount
-                )?.takeIf { it.questions.isNotEmpty() }
+                    realCount,
+                    selectedPublisherKey
+                )?.takeIf {
+                    it.questions.isNotEmpty() &&
+                        (selectedPublisherKey == null || it.questions.all { q ->
+                            com.example.viewmodel.PublisherMixingPolicy.key(q) == selectedPublisherKey
+                        })
+                }
                 generationFailed = createdTest == null
             } else if (createdTest == null) {
                 generationFailed = true

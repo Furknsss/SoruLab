@@ -1361,14 +1361,16 @@ private fun ProfileCenterBottomSheet(
                                 .clickable { onOpenSoruHavuzu() }
                                 .testTag("profile_open_soru_havuzu_card"),
                             shape = RoundedCornerShape(18.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, Color(0xFFDCE6FA)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(
                                         Brush.horizontalGradient(
-                                            listOf(Color(0xFF0F2557), Color(0xFF1D4ED8))
+                                            listOf(Color.White, Color(0xFFEFF4FF))
                                         )
                                     )
                                     .padding(16.dp),
@@ -1384,13 +1386,13 @@ private fun ProfileCenterBottomSheet(
                                         modifier = Modifier
                                             .size(44.dp)
                                             .clip(RoundedCornerShape(12.dp))
-                                            .background(Color(0xFF2563EB).copy(alpha = 0.16f)),
+                                            .background(Color(0xFF2563EB).copy(alpha = 0.10f)),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = Icons.Filled.AutoStories,
                                             contentDescription = null,
-                                            tint = Color.White,
+                                            tint = Color(0xFF315CF0),
                                             modifier = Modifier.size(22.dp)
                                         )
                                     }
@@ -1398,12 +1400,12 @@ private fun ProfileCenterBottomSheet(
                                         Text(
                                             text = "Soru Havuzu",
                                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
-                                            color = Color.White
+                                            color = Color(0xFF122142)
                                         )
                                         Text(
                                             text = "PDF yükle, otomatik kırp ve yayın logosuyla havuza ekle ($customQuestionsCount soru)",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = Color.White.copy(alpha = 0.85f)
+                                            color = Color(0xFF657590)
                                         )
                                     }
                                 }

@@ -114,9 +114,11 @@ class SoruLabRepository(
         }
         val found = imagePaths.any { path ->
                 val file = File(path)
-                file.isFile && file.length() > 0L && hasBitmapBounds(file.absolutePath, isFile = true)
+                // The PDF/ZIP importer validates image encoding before persisting.
+                // Reading every bitmap header on the UI thread freezes large libraries.
+                file.isFile && file.length() >= 128L
             } ||
-            (question.imageBase64.isNotBlank() && hasBitmapBounds(question.imageBase64))
+            (question.imageBase64.length >= 160)
         val pdfFile = question.pdfFilePath.takeIf(String::isNotBlank)?.let(::File)
         val recoverable = found || (pdfFile?.isFile == true &&
             pdfFile.length() > 0L &&
@@ -272,6 +274,8 @@ class SoruLabRepository(
                 LocalQuestionCacheIO.recoveryFile(ownFile).delete()
                 // No other signed-in account's question bank is ever erased.
             }
+            val databaseId = userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+            ctx.deleteDatabase("sorulab_library_$databaseId.db")
             val snapshotDir = java.io.File(
                 java.io.File(ctx.filesDir, "sorulab_test_snapshots"),
                 userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
@@ -813,6 +817,12 @@ class SoruLabRepository(
 
     fun loadCachedCustomQuestions(userId: String): List<CustomQuestionRecord> {
         val ctx = appContext ?: return emptyList()
+        // Transactionally committed, per-question index; existing JSON libraries
+        // remain readable until their first successful SQLite migration.
+        val indexed = runCatching {
+            QuestionLibrarySqliteStore(ctx, userId).read()
+        }.getOrNull()
+        if (indexed != null) return indexed.map(::normalizeLegacyBiologyQuestion)
         return try {
             val cacheDir = java.io.File(ctx.filesDir, "sorulab_question_cache")
             val userCacheFile = java.io.File(cacheDir, "custom_questions_${userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")}.json")
@@ -963,6 +973,17 @@ class SoruLabRepository(
             val incomingIds = incoming.mapTo(HashSet(incoming.size)) { it.id }
             val durableRecords = if (allowRemovals) incoming else
                 incoming + previous.filterNot { it.id in incomingIds }
+            // A transaction must succeed before the newly imported book is visible.
+            val indexed = QuestionLibrarySqliteStore(ctx, userId)
+            indexed.save(durableRecords, replace = allowRemovals)
+            check(indexed.count() >= durableRecords.map { it.id }.distinct().size) {
+                "SQLite kitaplık doğrulaması başarısız."
+            }
+            if (durableRecords.size > 400) {
+                // Avoid repeatedly rewriting a growing multi-book JSON snapshot.
+                // Keep the last legacy snapshot as emergency migration evidence.
+                return@synchronized durableRecords
+            }
             val arr = JSONArray()
             val seenIds = HashSet<String>(durableRecords.size)
             for (rec in durableRecords) {

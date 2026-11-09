@@ -1161,8 +1161,7 @@ class SoruLabViewModel(
                     else collectQuestionsByTopicSourceAndDifficulty(
                         topic, level.recommendedDifficultyLevels(), source
                     ).filter { it.answerKeyVerified }
-                val exactPublisherPool = if (publisherKey == null) pool
-                    else pool.filter { PublisherMixingPolicy.key(it) == publisherKey }
+                val exactPublisherPool = PublisherMixingPolicy.onlySelected(pool, publisherKey)
                 LevelQuestionPolicy.maximumConstructibleCount(
                     level, exactPublisherPool, AUTOMATIC_TEST_QUESTION_COUNT
                 )
@@ -1316,10 +1315,9 @@ class SoruLabViewModel(
         if (sourceCandidates.isEmpty()) return null
         // Exact single-publisher filter is applied BEFORE level composition.
         // Never silently fill a selected publisher's shortage from another.
-        val publisherCandidates = if (selectedPublisherKey == null) sourceCandidates
-            else sourceCandidates.filter {
-                PublisherMixingPolicy.key(it) == selectedPublisherKey
-            }
+        val publisherCandidates = PublisherMixingPolicy.onlySelected(
+            sourceCandidates, selectedPublisherKey
+        )
         val strictCandidates = publisherCandidates.distinctBy { LevelQuestionPolicy.stableId(it) }
         if (strictCandidates.isEmpty()) return null
 

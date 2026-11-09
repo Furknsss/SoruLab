@@ -1155,10 +1155,13 @@ class SoruLabViewModel(
             ).count { it.answerKeyVerified }
         }
         val questionCountForSelection: (Set<DifficultyLevel>, QuestionSourceFilter) -> Int = { _, source ->
-            if (level == TopicTestLevel.IKIZ) eligibleForLevel.size
-            else collectQuestionsByTopicSourceAndDifficulty(
-                topic, level.recommendedDifficultyLevels(), source
-            ).count { it.answerKeyVerified }
+            if (level == TopicTestLevel.IKIZ) eligibleForLevel.size.coerceAtMost(AUTOMATIC_TEST_QUESTION_COUNT)
+            else LevelQuestionPolicy.maximumConstructibleCount(
+                level,
+                collectQuestionsByTopicSourceAndDifficulty(
+                    topic, level.recommendedDifficultyLevels(), source
+                )
+            )
         }
         val questionCountForDifficulty: (DifficultyLevel, QuestionSourceFilter) -> Int = { diff, source ->
             if (level == TopicTestLevel.IKIZ) countsForLevel[diff] ?: 0
@@ -1200,7 +1203,10 @@ class SoruLabViewModel(
                 questionCountForDifficulty = questionCountForDifficulty
             )
         }
-        if (eligibleForLevel.isEmpty()) {
+        val maximumPossible = LevelQuestionPolicy.maximumConstructibleCount(
+            level, eligibleForLevel, AUTOMATIC_TEST_QUESTION_COUNT
+        )
+        if (maximumPossible == 0) {
             return PoolAvailabilityCheck(
                 canGenerate = false,
                 availableQuestionCount = 0,
@@ -1216,7 +1222,7 @@ class SoruLabViewModel(
         }
         return PoolAvailabilityCheck(
             canGenerate = true,
-            availableQuestionCount = eligibleForLevel.size,
+            availableQuestionCount = maximumPossible,
             reasonTitle = "Seviyeye Uygun Sorular",
             reasonMessage = level.poolDistributionLabel,
             countsByDifficulty = countsForLevel,

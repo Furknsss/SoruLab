@@ -19,7 +19,7 @@ package_name() { sed -nE "s/^package: name='([^']+)'.*/\\1/p" <<<"$1"; }
 version_code() { sed -nE "s/.*versionCode='([0-9]+)'.*/\\1/p" <<<"$1"; }
 cert_digest() {
   "$apksigner" verify --print-certs "$1" \
-    | sed -nE 's/^Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+).*/\\1/p'
+    | sed -nE 's/^Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+).*/\1/p'
 }
 
 old_info="$(metadata "$old_apk")"
@@ -47,7 +47,7 @@ if [[ "${3:-}" == "--install" ]]; then
   adb shell pm path "$old_pkg" | grep -q 'package:'
   adb install -r "$new_apk"
   adb shell pm path "$new_pkg" | grep -q 'package:'
-  installed="$(adb shell dumpsys package "$new_pkg" | sed -nE 's/.*versionCode=([0-9]+).*/\\1/p' | sed -n '1p' | tr -d '\r')"
+  installed="$(adb shell dumpsys package "$new_pkg" | sed -nE 's/.*versionCode=([0-9]+).*/\1/p' | sed -n '1p' | tr -d '\r')"
   test "$installed" = "$new_code" \
     || { echo "Expected versionCode $new_code on device, got $installed" >&2; exit 1; }
   echo "Real adb in-place upgrade passed: $old_code -> $new_code (no uninstall)."

@@ -134,9 +134,7 @@ object TestSnapshotCodec {
             difficultyPosition = root.optDouble("difficultyPosition", 0.5).toFloat(),
             defaultCompleted = root.optBoolean("defaultCompleted"),
             starRating = root.optInt("starRating"),
-            level = TopicTestLevel.entries.firstOrNull {
-                it.name == root.optString("level")
-            } ?: TopicTestLevel.OSYM,
+            level = TopicTestLevel.fromPersistedName(root.optString("level")) ?: TopicTestLevel.OSYM,
             questions = questions
         )
     }.getOrNull()

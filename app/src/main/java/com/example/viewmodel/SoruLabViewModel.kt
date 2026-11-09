@@ -206,7 +206,7 @@ class SoruLabViewModel(
     private val _selectedTopic = MutableStateFlow<YksTopic?>(null)
     val selectedTopic: StateFlow<YksTopic?> = _selectedTopic.asStateFlow()
 
-    private val _selectedTestLevel = MutableStateFlow(TopicTestLevel.OSYM)
+    private val _selectedTestLevel = MutableStateFlow(TopicTestLevel.SEVIYE_TESPIT)
     val selectedTestLevel: StateFlow<TopicTestLevel> = _selectedTestLevel.asStateFlow()
 
     private val _generatedTopicTests = MutableStateFlow<Map<String, List<YksTestItem>>>(emptyMap())
@@ -640,8 +640,12 @@ class SoruLabViewModel(
     fun getTestsForTopicAndLevel(topic: YksTopic, level: TopicTestLevel): List<YksTestItem> {
         val map = _generatedTopicTests.value
         val levelSpecific = map["${topic.id}_${level.name}"].orEmpty()
+        // Previously generated GELISIYORUM tests remain visible after wheel rename.
+        val legacy = if (level == TopicTestLevel.SEVIYE_TESPIT) {
+            map["${topic.id}_GELISIYORUM"].orEmpty().map { it.copy(level = level) }
+        } else emptyList()
         val deleted = _deletedTestIds.value
-        return levelSpecific
+        return (levelSpecific + legacy)
             .filter { it.id !in deleted }
             .distinctBy { it.id }
     }
@@ -694,7 +698,7 @@ class SoruLabViewModel(
                 val obj = JSONObject(rec.answersMapJson)
                 val levelStr = obj.optString("level")
                 val testNum = obj.optInt("testNumber", 0)
-                val level = TopicTestLevel.entries.find { it.name.equals(levelStr, ignoreCase = true) }
+                val level = TopicTestLevel.fromPersistedName(levelStr)
                 if (rec.topicId.isNotBlank() && level != null && testNum >= 1) {
                     return Triple(rec.topicId, level, testNum)
                 }
@@ -702,12 +706,14 @@ class SoruLabViewModel(
         } catch (_: Exception) {
         }
         for (level in TopicTestLevel.entries) {
-            val token = "_${level.name.lowercase()}_test_"
-            if (rec.testId.contains(token)) {
-                val topicId = rec.testId.substringBefore(token).ifBlank { rec.topicId }
-                val num = rec.testId.substringAfter(token).toIntOrNull() ?: 1
-                if (topicId.isNotBlank()) {
-                    return Triple(topicId, level, num)
+            val tokens = if (level == TopicTestLevel.SEVIYE_TESPIT) {
+                listOf("_seviye_tespit_test_", "_gelisiyorum_test_")
+            } else listOf("_${level.name.lowercase()}_test_")
+            for (token in tokens) {
+                if (rec.testId.contains(token)) {
+                    val topicId = rec.testId.substringBefore(token).ifBlank { rec.topicId }
+                    val num = rec.testId.substringAfter(token).toIntOrNull() ?: 1
+                    if (topicId.isNotBlank()) return Triple(topicId, level, num)
                 }
             }
         }
@@ -728,14 +734,21 @@ class SoruLabViewModel(
             val topic = allTopicsById[topicId] ?: continue
             val key = "${topic.id}_${level.name}"
             val currentList = updatedMap[key].orEmpty()
-            val expectedTestId = "${topic.id}_${level.name.lowercase()}_test_$testNumber"
+            val generatedId = "${topic.id}_${level.name.lowercase()}_test_$testNumber"
+            val oldId = "${topic.id}_gelisiyorum_test_$testNumber"
+            val expectedTestId = if (level == TopicTestLevel.SEVIYE_TESPIT &&
+                (oldId in cachedSnapshots || oldId in snapshotJsonByTestId)
+            ) oldId else generatedId
             if (expectedTestId !in deleted && currentList.none { it.id == expectedTestId }) {
                 val snapshot = TestSnapshotCodec.decode(
                     snapshotJsonByTestId[expectedTestId] ?: cachedSnapshots[expectedTestId].orEmpty()
                 )?.takeIf { it.id == expectedTestId }
                     ?.let(::hydrateSnapshotQuestionImages)
                 val realQuestions = if (snapshot == null) {
-                    collectRealPoolQuestionsForTopicAndLevel(topic, level)
+                    LevelQuestionPolicy.select(
+                        level, collectRealPoolQuestionsForTopicAndLevel(topic, level),
+                        AUTOMATIC_TEST_QUESTION_COUNT
+                    )
                 } else {
                     emptyList()
                 }
@@ -789,7 +802,7 @@ class SoruLabViewModel(
 
     /**
      * Collects ONLY real questions belonging to [topic] and [level] (0-hallucination policy):
-     * 1. For IKIZ level: only questions the user actually answered wrong or left blank in solved tests of this topic.
+     * 1. For IKIZ level: only verified questions the user actually answered incorrectly in this topic.
      * 2. For standard levels: user's cropped/custom questions for this topic calibrated to the requested 6-level wheel category.
      */
     private fun matchesTopic(
@@ -836,52 +849,32 @@ class SoruLabViewModel(
         )
     }
 
+    /** Return real incorrect answers from completed tests; never a same-topic substitute. */
+    private fun collectWrongQuestionsFromResultsForTopic(topic: YksTopic): List<YksQuestion> {
+        val knownTests = _generatedTopicTests.value.values.flatten()
+        val errors = mutableListOf<YksQuestion>()
+        val seen = mutableSetOf<String>()
+        for (record in _userTestResults.value.filter {
+            it.isSolvedAttempt && matchesTopic(it.subjectId, it.topicId, it.topicName, topic)
+        }.asReversed()) {
+            val questions = TestSnapshotCodec.decode(record.testSnapshotJson)?.questions
+                ?: knownTests.firstOrNull { it.id == record.testId }?.questions
+                ?: continue
+            val answers = parseAnswersJson(record.answersMapJson).orEmpty()
+            MistakeReviewPolicy.wrongAnswersOnly(questions, answers).forEach { q ->
+                val key = LevelQuestionPolicy.stableId(q)
+                if (seen.add(key)) errors.add(q)
+            }
+        }
+        return errors.mapIndexed { index, q -> q.copy(number = index + 1) }
+    }
+
     private fun collectRealPoolQuestionsForTopicAndLevel(
         topic: YksTopic,
         level: TopicTestLevel
     ): List<YksQuestion> {
         if (level == TopicTestLevel.IKIZ) {
-            val solvedInTopic = _userTestResults.value.filter { it.isSolvedAttempt && matchesTopic(it.subjectId, it.topicId, it.topicName, topic) }
-            if (solvedInTopic.isEmpty()) return emptyList()
-
-            val baseTopicQuestions = buildRealBaseQuestionsForTopic(topic, null)
-            if (baseTopicQuestions.isEmpty()) return emptyList()
-
-            val allKnownTests = _generatedTopicTests.value.values.flatten()
-            val selectedTwinIds = mutableSetOf<String>()
-            val previousUseCounts = previousTwinUseCounts()
-            val matchedQuestions = mutableListOf<YksQuestion>()
-
-            for (record in solvedInTopic) {
-                val sourceQuestions = allKnownTests.firstOrNull {
-                    it.id == record.testId && it.topicId.equals(topic.id, ignoreCase = true)
-                }?.questions ?: TestSnapshotCodec.decode(record.testSnapshotJson)?.questions
-                // No original snapshot => no safe way to identify the wrong
-                // questions. Never interpret unrelated pool items as mistakes.
-                if (sourceQuestions.isNullOrEmpty()) continue
-                val answers = parseAnswersJson(record.answersMapJson).orEmpty()
-                for (q in sourceQuestions) {
-                    if (!q.answerKeyVerified) continue
-                    val selected = answers[q.number]
-                    if (!selected.isNullOrBlank() && selected == q.correctOption) continue
-                    val alternative = GroundedTwinQuestionMatcher.select(
-                        source = q,
-                        subjectId = topic.subjectId,
-                        topicId = topic.id,
-                        topicName = topic.name,
-                        pool = _userCustomQuestions.value,
-                        excludedIds = selectedTwinIds + sourceQuestions.map { it.sourceQuestionId },
-                        previousUseCounts = previousUseCounts,
-                        isUsable = repository::hasRecoverableQuestionImage
-                    ) ?: continue
-                    val originalDifferent = baseTopicQuestions.firstOrNull {
-                        it.sourceQuestionId == alternative.id && it.answerKeyVerified
-                    } ?: continue
-                    selectedTwinIds.add(alternative.id)
-                    matchedQuestions.add(originalDifferent)
-                }
-            }
-            return matchedQuestions.mapIndexed { idx, q -> q.copy(number = idx + 1) }
+            return collectWrongQuestionsFromResultsForTopic(topic)
         }
 
         return buildRealBaseQuestionsForTopic(topic, level)
@@ -896,24 +889,10 @@ class SoruLabViewModel(
                 repository.hasRecoverableQuestionImage(question)
         }
 
-        val filteredCustom = if (levelFilter == null) {
-            topicPool
-        } else {
-            val exactLevelMatches = topicPool.filter {
-                it.targetLevelName.equals(levelFilter.name, ignoreCase = true)
-            }
-            val difficultyMatches = topicPool.filter { cq ->
-                val diff5 = cq.difficultyLevel5
-                when (levelFilter) {
-                    TopicTestLevel.BASLANGIC -> diff5 == DifficultyLevel.KOLAY || diff5 == DifficultyLevel.ORTA
-                    TopicTestLevel.PEKISTIRME -> diff5 == DifficultyLevel.KOLAY || diff5 == DifficultyLevel.ORTA || diff5 == DifficultyLevel.OSYM
-                    TopicTestLevel.GELISIYORUM -> diff5 == DifficultyLevel.ORTA || diff5 == DifficultyLevel.OSYM || diff5 == DifficultyLevel.ZOR
-                    TopicTestLevel.OSYM -> diff5 == DifficultyLevel.OSYM || diff5 == DifficultyLevel.ORTA || diff5 == DifficultyLevel.ZOR
-                    TopicTestLevel.DERECE -> diff5 == DifficultyLevel.ZOR || diff5 == DifficultyLevel.COK_ZOR || diff5 == DifficultyLevel.OSYM
-                    TopicTestLevel.IKIZ -> true
-                }
-            }
-            (exactLevelMatches + difficultyMatches).distinctBy { it.id }.ifEmpty { topicPool }
+        val filteredCustom = if (levelFilter == null) topicPool else {
+            // Never let a legacy wheel-level tag override the verified question
+            // difficulty. E.g. an Orta question tagged OSYM is still Orta.
+            topicPool.filter { it.difficultyLevel5 in levelFilter.recommendedDifficultyLevels() }
         }
 
         val mixedCustom = interleaveByGroup(filteredCustom) { it.publisherTag }
@@ -1148,81 +1127,96 @@ class SoruLabViewModel(
                 requestedQuestionCount = reqCount
             )
         }
-        val questionCountForSelection: (Set<DifficultyLevel>, QuestionSourceFilter) -> Int = { difficulties, source ->
-            val activeDifficulties = difficulties.ifEmpty { DifficultyLevel.entries.toSet() }
-            if (level == TopicTestLevel.IKIZ && source == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
-                collectRealPoolQuestionsForTopicAndLevel(topic, level)
-                    .count { it.difficulty in activeDifficulties }
-            } else {
-                collectQuestionsByTopicSourceAndDifficulty(
-                    topic,
-                    activeDifficulties,
-                    source
-                ).size
+        val eligibleForLevel = if (level == TopicTestLevel.IKIZ) {
+            collectWrongQuestionsFromResultsForTopic(topic)
+        } else {
+            allTopicQuestions.filter {
+                it.answerKeyVerified && it.difficulty in level.recommendedDifficultyLevels()
             }
+        }
+        val countsForLevel = DifficultyLevel.entries.associateWith { diff ->
+            eligibleForLevel.count { it.difficulty == diff }
+        }
+        val sourceCountsForLevel = QuestionSourceFilter.entries.associateWith { filter ->
+            if (level == TopicTestLevel.IKIZ) eligibleForLevel.size
+            else collectQuestionsByTopicSourceAndDifficulty(
+                topic, level.recommendedDifficultyLevels(), filter
+            ).count { it.answerKeyVerified }
+        }
+        val questionCountForSelection: (Set<DifficultyLevel>, QuestionSourceFilter) -> Int = { _, source ->
+            if (level == TopicTestLevel.IKIZ) eligibleForLevel.size.coerceAtMost(AUTOMATIC_TEST_QUESTION_COUNT)
+            else LevelQuestionPolicy.maximumConstructibleCount(
+                level,
+                collectQuestionsByTopicSourceAndDifficulty(
+                    topic, level.recommendedDifficultyLevels(), source
+                )
+            )
         }
         val questionCountForDifficulty: (DifficultyLevel, QuestionSourceFilter) -> Int = { diff, source ->
-            if (level == TopicTestLevel.IKIZ && source == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
-                collectRealPoolQuestionsForTopicAndLevel(topic, level).count { it.difficulty == diff }
-            } else {
-                collectQuestionsByTopicSourceAndDifficulty(topic, setOf(diff), source).size
-            }
+            if (level == TopicTestLevel.IKIZ) countsForLevel[diff] ?: 0
+            else collectQuestionsByTopicSourceAndDifficulty(topic, setOf(diff), source)
+                .count { it.answerKeyVerified && it.difficulty in level.recommendedDifficultyLevels() }
         }
-
         if (level == TopicTestLevel.IKIZ) {
-            val realCandidates = collectRealPoolQuestionsForTopicAndLevel(topic, level)
-            if (realCandidates.isEmpty() && allTopicQuestions.isEmpty()) {
-                return PoolAvailabilityCheck(
-                    canGenerate = false,
-                    availableQuestionCount = 0,
-                    reasonTitle = "Soru Bulunamadı",
-                    reasonMessage = "'${topic.name}' konusunda henüz yanlış yaptığınız, boş bıraktığınız veya havuza eklenmiş bir soru kaydı bulunamadı.",
-                    countsByDifficulty = countsByDiff,
-                    countsBySource = countsBySource,
-                    matchingQuestions = emptyList(),
-                    onGenerateCustomTest = customBuilder,
-                    questionCountForSelection = questionCountForSelection,
-                    questionCountForDifficulty = questionCountForDifficulty
-                )
+            val message = if (eligibleForLevel.isEmpty()) {
+                "Bu konuda yanlış cevapladığın, kaynak cevabı doğrulanmış soru henüz yok. İkiz bu soruları tekrar önüne getirir."
+            } else {
+                "Bu konudaki geçmiş testlerinde yanlış yaptığın ${eligibleForLevel.size} soru tekrar çözülmeye hazır."
             }
-            val effectiveList = realCandidates.ifEmpty { allTopicQuestions }
             return PoolAvailabilityCheck(
-                canGenerate = true,
-                availableQuestionCount = effectiveList.size,
-                reasonTitle = "İkiz & Havuz Soruları Hazır",
-                reasonMessage = "'${topic.name}' konusundaki ${effectiveList.size} gerçek soru ile test oluşturabilirsiniz.",
-                countsByDifficulty = countsByDiff,
-                countsBySource = countsBySource,
-                matchingQuestions = effectiveList,
+                canGenerate = eligibleForLevel.isNotEmpty(),
+                availableQuestionCount = eligibleForLevel.size,
+                reasonTitle = if (eligibleForLevel.isEmpty()) "Tekrarlanacak Yanlış Yok" else "İkiz • Yanlışlarım",
+                reasonMessage = message,
+                countsByDifficulty = countsForLevel,
+                countsBySource = sourceCountsForLevel,
+                matchingQuestions = eligibleForLevel,
                 onGenerateCustomTest = customBuilder,
                 questionCountForSelection = questionCountForSelection,
                 questionCountForDifficulty = questionCountForDifficulty
             )
         }
-
-        if (allTopicQuestions.isEmpty()) {
+        if (level == TopicTestLevel.SEVIYE_TESPIT &&
+            DifficultyLevel.entries.any { countsForLevel[it] == 0 }
+        ) {
+            return PoolAvailabilityCheck(
+                canGenerate = false,
+                availableQuestionCount = eligibleForLevel.size,
+                reasonTitle = "Seviye Tespit İçin Eksik Seviye",
+                reasonMessage = "Dengeli seviye tespit testi için Kolay, Orta, ÖSYM, Zor ve Çok Zor etiketlerinin her birinden en az bir doğrulanmış soru gerekir.",
+                countsByDifficulty = countsForLevel,
+                countsBySource = sourceCountsForLevel,
+                matchingQuestions = eligibleForLevel,
+                onGenerateCustomTest = customBuilder,
+                questionCountForSelection = questionCountForSelection,
+                questionCountForDifficulty = questionCountForDifficulty
+            )
+        }
+        val maximumPossible = LevelQuestionPolicy.maximumConstructibleCount(
+            level, eligibleForLevel, AUTOMATIC_TEST_QUESTION_COUNT
+        )
+        if (maximumPossible == 0) {
             return PoolAvailabilityCheck(
                 canGenerate = false,
                 availableQuestionCount = 0,
-                reasonTitle = "Soru Bulunamadı",
-                reasonMessage = "'${topic.name}' için soru havuzunda uygun soru bulunamadı. Soru Havuzu & PDF Stüdyosu bölümünden yayın PDF'i yükleyerek bu konuya otomatik soru ekleyebilirsiniz.",
-                countsByDifficulty = countsByDiff,
-                countsBySource = countsBySource,
+                reasonTitle = "Bu Seviyede Soru Bulunamadı",
+                reasonMessage = "Seçilen seviyeye uygun, cevap anahtarı doğrulanmış soru havuzda yok. Bu seviyede soru ekleyebilirsin.",
+                countsByDifficulty = countsForLevel,
+                countsBySource = sourceCountsForLevel,
                 matchingQuestions = emptyList(),
                 onGenerateCustomTest = customBuilder,
                 questionCountForSelection = questionCountForSelection,
                 questionCountForDifficulty = questionCountForDifficulty
             )
         }
-
         return PoolAvailabilityCheck(
             canGenerate = true,
-            availableQuestionCount = allTopicQuestions.size,
-            reasonTitle = "Soru Havuzu Uygun",
-            reasonMessage = "Soru havuzunda '${topic.name}' için ${allTopicQuestions.size} gerçek soru bulundu.",
-            countsByDifficulty = countsByDiff,
-            countsBySource = countsBySource,
-            matchingQuestions = allTopicQuestions,
+            availableQuestionCount = maximumPossible,
+            reasonTitle = "Seviyeye Uygun Sorular",
+            reasonMessage = level.poolDistributionLabel,
+            countsByDifficulty = countsForLevel,
+            countsBySource = sourceCountsForLevel,
+            matchingQuestions = eligibleForLevel,
             onGenerateCustomTest = customBuilder,
             questionCountForSelection = questionCountForSelection,
             questionCountForDifficulty = questionCountForDifficulty
@@ -1288,30 +1282,19 @@ class SoruLabViewModel(
         customTestTitle: String = ""
     ): YksTestItem? {
         if (requestedQuestionCount <= 0) return null
-        val activeDifficulties = selectedDifficulties.ifEmpty { DifficultyLevel.entries.toSet() }
-        val sourceCandidates = if (verifiedTwinCandidates != null) {
-            verifiedTwinCandidates.filter { it.answerKeyVerified && it.difficulty in activeDifficulties }
-        } else if (level == TopicTestLevel.IKIZ && sourceFilter == QuestionSourceFilter.YANLIS_YAPTIKLARIM) {
-            collectRealPoolQuestionsForTopicAndLevel(topic, level)
-                .filter { it.difficulty in activeDifficulties }
-        } else {
-            collectQuestionsByTopicSourceAndDifficulty(
-                topic = topic,
-                selectedDifficulties = activeDifficulties,
-                sourceFilter = sourceFilter
-            )
+        val enforcedDifficulties = level.recommendedDifficultyLevels()
+        val sourceCandidates = when {
+            verifiedTwinCandidates != null -> verifiedTwinCandidates.filter {
+                it.answerKeyVerified && (level == TopicTestLevel.IKIZ ||
+                    it.difficulty in enforcedDifficulties)
+            }
+            level == TopicTestLevel.IKIZ -> collectWrongQuestionsFromResultsForTopic(topic)
+            else -> collectQuestionsByTopicSourceAndDifficulty(
+                topic, enforcedDifficulties, sourceFilter
+            ).filter { it.answerKeyVerified }
         }
         if (sourceCandidates.isEmpty()) return null
-        val difficultyPriority = difficultyFallbackOrder(selectedDifficulties)
-            .withIndex()
-            .associate { it.value to it.index }
-        val strictCandidates = sourceCandidates
-            .distinctBy { it.sourceQuestionId.ifBlank { it.croppedImagePath.ifBlank { it.id } } }
-            .let { unique ->
-                // A scoped caller already ranked these by freshness.
-                if (verifiedTwinCandidates != null) unique
-                else unique.sortedBy { difficultyPriority.getValue(it.difficulty) }
-            }
+        val strictCandidates = sourceCandidates.distinctBy { LevelQuestionPolicy.stableId(it) }
 
         val key = "${topic.id}_${level.name}"
         val existingList = _generatedTopicTests.value[key].orEmpty()
@@ -1326,35 +1309,14 @@ class SoruLabViewModel(
                 deletedTestNumbers
             ).maxOrNull()?.plus(1) ?: 1
 
-        // Her zorluk seviyesinde önce kullanılmamış soruları seç; sonra aynı seviyedeki eski sorularla tamamla.
-        val usedSignatures = allTestsInTopic
-            .flatMap { it.questions }
-            .map { q -> q.croppedImagePath.ifBlank { q.stemTop.take(60) } }
-            .toSet()
-        val candidatesByDifficulty = strictCandidates.groupBy { it.difficulty }
-
-        val orderedPool = if (verifiedTwinCandidates != null) strictCandidates else buildList {
-            difficultyFallbackOrder(selectedDifficulties).forEach { difficulty ->
-                val questionsAtDifficulty = candidatesByDifficulty[difficulty].orEmpty()
-                val unusedAtDifficulty = questionsAtDifficulty.filter { question ->
-                    val signature = question.croppedImagePath.ifBlank { question.stemTop.take(60) }
-                    signature !in usedSignatures
-                }
-                val usedAtDifficulty = questionsAtDifficulty.filter { question ->
-                    val signature = question.croppedImagePath.ifBlank { question.stemTop.take(60) }
-                    signature in usedSignatures
-                }
-                addAll(unusedAtDifficulty)
-                if (usedAtDifficulty.isNotEmpty()) {
-                    val offset = ((nextTestNumber - 1) * requestedQuestionCount.coerceAtLeast(1)) %
-                        usedAtDifficulty.size
-                    addAll(usedAtDifficulty.drop(offset) + usedAtDifficulty.take(offset))
-                }
-            }
-        }
-
-        val safeCount = requestedQuestionCount.coerceAtMost(orderedPool.size)
-        val questionsToUse = orderedPool.take(safeCount)
+        val usedSignatures = allTestsInTopic.flatMap { it.questions }
+            .mapTo(mutableSetOf()) { LevelQuestionPolicy.stableId(it) }
+        val questionsToUse = LevelQuestionPolicy.select(
+            level = level,
+            sourceQuestions = strictCandidates,
+            count = requestedQuestionCount,
+            previouslyUsed = usedSignatures
+        )
         if (questionsToUse.isEmpty()) return null
 
         // Otomatik İsimlendirme: "[Konu Adı] - Test [X]" (Kesinlikle kitap adı kullanılmaz)
@@ -1631,34 +1593,12 @@ class SoruLabViewModel(
             return
         }
 
-        // Use the just-finished test immediately, not a Firestore listener
-        // that might not have finished syncing this attempt yet.
-        val sourceQuestions = session.testItem.questions.filter { source ->
-            source.answerKeyVerified && session.selectedAnswers[source.number] != source.correctOption
-        }
-        val poolQuestions = buildRealBaseQuestionsForTopic(topic, null)
-        val selectedIds = session.testItem.questions
-            .mapTo(mutableSetOf()) { it.sourceQuestionId }
-        val previousUseCounts = previousTwinUseCounts()
-        val twins = sourceQuestions.mapNotNull { source ->
-            val match = GroundedTwinQuestionMatcher.select(
-                source = source,
-                subjectId = topic.subjectId,
-                topicId = topic.id,
-                topicName = topic.name,
-                pool = _userCustomQuestions.value,
-                excludedIds = selectedIds,
-                previousUseCounts = previousUseCounts,
-                isUsable = repository::hasRecoverableQuestionImage
-            ) ?: return@mapNotNull null
-            val question = poolQuestions.firstOrNull {
-                it.sourceQuestionId == match.id && it.answerKeyVerified
-            } ?: return@mapNotNull null
-            selectedIds.add(match.id)
-            question
-        }
-        if (twins.isEmpty()) {
-            showBanner("Bu konuda yanlışlarından farklı, cevap anahtarı doğrulanmış ikiz soru bulunamadı. Havuzuna yeni soru ZIP'leri ekleyebilirsin.")
+        // This test directly re-presents exactly the source test's WRONG answers.
+        val wrongQuestions = MistakeReviewPolicy.wrongAnswersOnly(
+            session.testItem.questions, session.selectedAnswers
+        )
+        if (wrongQuestions.isEmpty()) {
+            showBanner("Bu testte tekrar çözülecek yanlış cevaplanmış soru yok.")
             return
         }
         val twinTest = generateCustomFilteredTopicTest(
@@ -1666,11 +1606,12 @@ class SoruLabViewModel(
             level = TopicTestLevel.IKIZ,
             selectedDifficulties = DifficultyLevel.entries.toSet(),
             sourceFilter = QuestionSourceFilter.YANLIS_YAPTIKLARIM,
-            requestedQuestionCount = minOf(AUTOMATIC_TEST_QUESTION_COUNT, twins.size),
-            verifiedTwinCandidates = twins
+            requestedQuestionCount = wrongQuestions.size,
+            verifiedTwinCandidates = wrongQuestions,
+            customTestTitle = "Bu Testin Yanlışları"
         )
         if (twinTest == null) {
-            showBanner("Farklı sorulardan ikiz test hazırlanamadı; mevcut test korunuyor.")
+            showBanner("Yanlış soruların görüntüsü veya cevap anahtarı doğrulanamadı.")
             return
         }
 

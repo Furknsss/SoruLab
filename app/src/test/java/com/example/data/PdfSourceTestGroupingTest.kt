@@ -5,6 +5,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PdfSourceTestGroupingTest {
+    // Source grouping is independent of the wheel category. Ordinary Orta
+    // fixtures belong in Pekiştirme; the ÖSYM level now accepts only ÖSYM tags.
     private fun question(number: Int, scope: String): CustomQuestionRecord =
         CustomQuestionRecord(
             id = "q_${scope}_${number}",
@@ -21,7 +23,7 @@ class PdfSourceTestGroupingTest {
     fun `a ten-question source test must not borrow questions from the next test`() {
         val input = (1..10).map { question(it, "sinir sistemi~normal~1") } +
             (1..2).map { question(it, "sinir sistemi~normal~2") }
-        val chunks = automaticBookTestChunks(input, TopicTestLevel.OSYM)
+        val chunks = automaticBookTestChunks(input, TopicTestLevel.PEKISTIRME)
         assertEquals(listOf(10, 2), chunks.map { it.size })
         assertEquals(1, chunks[0][0].questionNumberInTest)
         assertEquals(1, chunks[1][0].questionNumberInTest)
@@ -36,14 +38,14 @@ class PdfSourceTestGroupingTest {
             question(1, "sinir sistemi~osym~6")
         )
         assertEquals(listOf(1, 1),
-            automaticBookTestChunks(input, TopicTestLevel.OSYM).map { it.size })
+            automaticBookTestChunks(input, TopicTestLevel.PEKISTIRME).map { it.size })
     }
 
     @Test
     fun `older imports without source-test metadata still build twelve-question chunks`() {
         val legacy = (1..13).map { question(it, "") }
         assertEquals(listOf(12, 1),
-            automaticBookTestChunks(legacy, TopicTestLevel.OSYM).map { it.size })
+            automaticBookTestChunks(legacy, TopicTestLevel.PEKISTIRME).map { it.size })
     }
 
     @Test
@@ -65,7 +67,7 @@ class PdfSourceTestGroupingTest {
             question(10, "printed~analiz~21").copy(topicName = "Duyu Organları"),
             question(1, "printed~analiz~21").copy(topicName = "Sinir Sistemi")
         )
-        val chunks = automaticBookTestChunks(records, TopicTestLevel.OSYM)
+        val chunks = automaticBookTestChunks(records, TopicTestLevel.PEKISTIRME)
         assertEquals(listOf(1, 1), chunks.map { it.size })
         assertEquals(listOf("Duyu Organları", "Sinir Sistemi"),
             chunks.map { it.first().topicName })
@@ -79,7 +81,7 @@ class PdfSourceTestGroupingTest {
             question(1, "").copy(pageIndex = 49, topicName = "Sinir Sistemi")
         )
         assertEquals(listOf(2, 1),
-            automaticBookTestChunks(records, TopicTestLevel.OSYM).map { it.size })
+            automaticBookTestChunks(records, TopicTestLevel.PEKISTIRME).map { it.size })
     }
 
     @Test
@@ -89,7 +91,7 @@ class PdfSourceTestGroupingTest {
             question(1, "sinir sistemi~analiz~2").copy(topicName = "Sinir Sistemi")
         )
         assertEquals(listOf(1, 1),
-            automaticBookTestChunks(records, TopicTestLevel.OSYM).map { it.size })
+            automaticBookTestChunks(records, TopicTestLevel.PEKISTIRME).map { it.size })
     }
 
 }

@@ -190,82 +190,10 @@ fun DenemelerHubScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = Color(0xFF0F172A),
-                shadowElevation = 6.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(Color(0xFF0F172A), Color(0xFF1E3A8A), Color(0xFF1D4ED8))
-                            )
-                        )
-                        .padding(22.dp)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color(0xFF38BDF8).copy(alpha = 0.18f),
-                                border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.45f))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.WorkspacePremium,
-                                        contentDescription = null,
-                                        tint = Color(0xFF38BDF8),
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                    Text(
-                                        text = "TÜRKİYE GENELİ KURUMSAL DENEME MERKEZİ",
-                                        color = Color(0xFFE0F2FE),
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 10.sp
-                                    )
-                                }
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.12f)
-                            ) {
-                                Text(
-                                    text = "${solvedRecords.count { it.testId.startsWith("mock_") }} Çözüldü",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
-                                )
-                            }
-                        }
-
-                        Text(
-                            text = "Kurumsal TYT & AYT Deneme Sınavları",
-                            color = Color.White,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 22.sp
-                        )
-                        Text(
-                            text = "Gerçek sınav süresi, optik kodlama ve konu bazlı net analizi ile kendinizi Türkiye genelinde test edin.",
-                            color = Color(0xFFCBD5E1),
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp
-                        )
-                    }
-                }
-            }
+            PremiumLightExamsHero(
+                totalExams = mockExams.size,
+                solvedCount = solvedRecords.count { it.testId.startsWith("mock_") }
+            )
         }
 
         item {
@@ -361,8 +289,8 @@ private fun FilterChipPill(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(50),
-        color = if (selected) Color(0xFF0F172A) else Color.White,
-        border = BorderStroke(1.dp, if (selected) Color(0xFF0F172A) else Color(0xFFE2E8F0)),
+        color = if (selected) Color(0xFF315CF0) else Color.White,
+        border = BorderStroke(1.dp, if (selected) Color(0xFF315CF0) else Color(0xFFDCE5F5)),
         shadowElevation = if (selected) 3.dp else 0.dp,
         // Put click semantics on the actual Material3 Surface rather than
         // only an outer modifier. Compose tests and accessibility both need

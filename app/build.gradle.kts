@@ -4,6 +4,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.security.KeyStore
 import java.time.Duration
+import java.time.Instant
 import java.util.Base64
 
 plugins {
@@ -61,8 +62,17 @@ android {
     applicationId = "com.aistudio.sorulab.ykslab"
     minSdk = 24
     targetSdk = 36
-    versionCode = 34
-    versionName = "1.2.8"
+    // Monotonically increasing for GitHub and local APK builds.
+    // The timestamp-derived code prevents installing a newly built older version
+    // over a signed SoruLab APK, even when a different branch is used.
+    // Android maximum versionCode: 2_100_000_000.
+    versionCode = (
+      100_000L + (
+        System.currentTimeMillis() / 60_000L -
+          Instant.parse("2026-01-01T00:00:00Z").epochSecond / 60L
+      )
+    ).coerceIn(35L, 2_100_000_000L).toInt()
+    versionName = "1.2.9"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

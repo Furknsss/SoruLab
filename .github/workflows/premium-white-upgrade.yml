@@ -1,0 +1,160 @@
+name: SoruLab Premium White Signed In-place Upgrade
+
+on:
+  push:
+    branches:
+      - fix/premium-white-inplace-upgrade-v35-20261109
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Accept Android SDK licenses & install build tools
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager "platforms;android-36.1" "build-tools;36.0.0"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run unit tests with Firebase emulators
+        run: >-
+          npx --yes firebase-tools@13.35.1 emulators:exec
+          --project demo-test
+          --only auth,firestore
+          --config firebase.json
+          "bash ./gradlew :app:testDebugUnitTest --no-daemon --no-configuration-cache --max-workers=2"
+
+      - name: Restore Firebase config and release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64" || { echo "Missing required KEYSTORE_BASE64 secret."; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo "Missing required STORE_PASSWORD secret."; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "Missing required KEY_PASSWORD secret."; exit 1; }
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+          test -s my-upload-key.jks || { echo "Release keystore decode failed."; exit 1; }
+          keytool -list -keystore my-upload-key.jks -alias upload -storepass "$STORE_PASSWORD" > /dev/null
+          base64 --decode google-services.json.base64 > app/google-services.json
+          RELEASE_CERT_SHA1="$(keytool -list -v -keystore my-upload-key.jks -alias upload -storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" | awk -F': ' '/SHA1:/{print $2; exit}' | tr -d ':')"
+          test -n "$RELEASE_CERT_SHA1" || { echo "Could not read release certificate SHA-1."; exit 1; }
+          RELEASE_CERT_SHA1="$RELEASE_CERT_SHA1" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected_project = "gen-lang-client-0143749618"
+          expected_package = "com.aistudio.sorulab.ykslab"
+          config = json.loads(Path("app/google-services.json").read_text())
+          if config.get("project_info", {}).get("project_id") != expected_project:
+              raise SystemExit("Google services config targets an unexpected Firebase project.")
+          client = next(
+              (
+                  item for item in config.get("client", [])
+                  if item.get("client_info", {}).get("android_client_info", {}).get("package_name")
+                  == expected_package
+              ),
+              None,
+          )
+          if client is None:
+              raise SystemExit("Google services config does not include the SoruLab Android app.")
+          oauth_clients = client.get("oauth_client", [])
+          if not any(item.get("client_type") == 3 for item in oauth_clients):
+              raise SystemExit("Google services config is missing its Web OAuth client.")
+          release_sha1 = os.environ["RELEASE_CERT_SHA1"].lower()
+          if not any(
+              item.get("client_type") == 1
+              and item.get("android_info", {}).get("package_name") == expected_package
+              and item.get("android_info", {}).get("certificate_hash", "").replace(":", "").lower()
+              == release_sha1
+              for item in oauth_clients
+          ):
+              raise SystemExit("The release signing certificate SHA-1 is not registered for Google Sign-In.")
+          print("Firebase project, Google OAuth clients, and release certificate are consistent.")
+          PY
+
+      - name: Build Release APK
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: bash ./gradlew :app:assembleRelease --no-daemon --no-configuration-cache --stacktrace
+
+      - name: Read app version
+        id: app_version
+        run: |
+          VERSION_NAME=$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' app/build.gradle.kts | head -n 1)
+          if [[ -z "$VERSION_NAME" ]]; then
+            echo "Could not read app versionName from app/build.gradle.kts." >&2
+            exit 1
+          fi
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Collect Release Artifacts
+        env:
+          VERSION_NAME: ${{ steps.app_version.outputs.version_name }}
+        run: |
+          mkdir -p out
+          APK_PATH=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)
+          test -n "$APK_PATH" || { echo "Release APK was not produced."; exit 1; }
+          cp "$APK_PATH" "out/SoruLab-v${VERSION_NAME}.apk"
+
+      - name: Download previous signed v1.2.8 APK as upgrade baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: SoruLab-v1.2.8-Signed-Upgrade-APK
+          path: baseline-v34
+          run-id: 42632670068
+          github-token: ${{ github.token }}
+
+      - name: Verify stable package name, higher versionCode and identical signing certificate
+        shell: bash
+        run: |
+          OLD_APK="$(find baseline-v34 -name '*.apk' -type f -print -quit)"
+          NEW_APK="$(find out -name '*.apk' -type f -print -quit)"
+          test -n "$OLD_APK" && test -n "$NEW_APK"
+          bash scripts/check_inplace_upgrade.sh "$OLD_APK" "$NEW_APK"
+
+      - name: Enable hardware acceleration for Android emulator
+        run: sudo chmod a+rw /dev/kvm
+
+      - name: Test real v1.2.8 to new APK update without uninstalling
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          emulator-options: '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none'
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash scripts/check_inplace_upgrade.sh "$(find baseline-v34 -name '*.apk' -type f -print -quit)" "$(find out -name '*.apk' -type f -print -quit)" --install
+
+      - name: Upload Release APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoruLab-Premium-White-v1.2.9-Upgrade-APK
+          path: out/*.apk
+          retention-days: 30

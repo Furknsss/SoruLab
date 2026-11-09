@@ -228,12 +228,17 @@ class AiSolverViewModel : ViewModel() {
         question.stepByStepSolution.trim().takeIf { it.isNotBlank() }
             ?: "Bu soru için kayıtlı çözüm bulunmuyor. Ücretsiz sürümde bulutla çözüm üretilmez."
 
+    private val twinGenerationEngine by lazy { TwinQuestionGenerationEngine() }
+
     fun generateTwinQuestionOnDemand(
         question: YksQuestion, context: Context, onResult: (TwinQuestionModalData) -> Unit
     ) {
-        onResult(TwinQuestionModalData(
-            errorMessage = "Ücretsiz sürümde bulutla ikiz soru üretimi kapalıdır."
-        ))
+        // Network calls are triggered only by the explicit Twin button. Neither
+        // PDF imports nor ordinary solution controls call the cloud model.
+        viewModelScope.launch {
+            val result = twinGenerationEngine.generate(question, context.applicationContext)
+            onResult(result)
+        }
     }
 
     private suspend fun classifyCroppedQuestion(

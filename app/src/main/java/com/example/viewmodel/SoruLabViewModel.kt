@@ -1193,29 +1193,28 @@ class SoruLabViewModel(
                 questionCountForDifficulty = questionCountForDifficulty
             )
         }
-        if (allTopicQuestions.isEmpty()) {
+        if (eligibleForLevel.isEmpty()) {
             return PoolAvailabilityCheck(
                 canGenerate = false,
                 availableQuestionCount = 0,
-                reasonTitle = "Soru Bulunamadı",
-                reasonMessage = "'${topic.name}' için soru havuzunda uygun soru bulunamadı. Soru Havuzu & PDF Stüdyosu bölümünden yayın PDF'i yükleyerek bu konuya otomatik soru ekleyebilirsiniz.",
-                countsByDifficulty = countsByDiff,
-                countsBySource = countsBySource,
+                reasonTitle = "Bu Seviyede Soru Bulunamadı",
+                reasonMessage = "Seçilen seviyeye uygun, cevap anahtarı doğrulanmış soru havuzda yok. Bu seviyede soru ekleyebilirsin.",
+                countsByDifficulty = countsForLevel,
+                countsBySource = sourceCountsForLevel,
                 matchingQuestions = emptyList(),
                 onGenerateCustomTest = customBuilder,
                 questionCountForSelection = questionCountForSelection,
                 questionCountForDifficulty = questionCountForDifficulty
             )
         }
-
         return PoolAvailabilityCheck(
             canGenerate = true,
-            availableQuestionCount = allTopicQuestions.size,
-            reasonTitle = "Soru Havuzu Uygun",
-            reasonMessage = "Soru havuzunda '${topic.name}' için ${allTopicQuestions.size} gerçek soru bulundu.",
-            countsByDifficulty = countsByDiff,
-            countsBySource = countsBySource,
-            matchingQuestions = allTopicQuestions,
+            availableQuestionCount = eligibleForLevel.size,
+            reasonTitle = "Seviyeye Uygun Sorular",
+            reasonMessage = level.poolDistributionLabel,
+            countsByDifficulty = countsForLevel,
+            countsBySource = sourceCountsForLevel,
+            matchingQuestions = eligibleForLevel,
             onGenerateCustomTest = customBuilder,
             questionCountForSelection = questionCountForSelection,
             questionCountForDifficulty = questionCountForDifficulty

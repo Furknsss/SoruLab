@@ -68,14 +68,19 @@ internal object LevelQuestionPolicy {
         }
         val selected = mutableListOf<YksQuestion>()
         if (level == TopicTestLevel.SEVIYE_TESPIT) {
-            // Round robin yields near-equal difficulty representation.
+            // Fairness is a hard constraint, not a best-effort average.
+            // If one band runs out, stop before another band exceeds it by
+            // more than one question. Do not claim a skewed test is balanced.
+            val pickedByBand = diagnosticOrder.associateWith { 0 }.toMutableMap()
             while (selected.size < count) {
                 var added = false
                 for (difficulty in slots) {
                     if (selected.size == count) break
                     val bucket = byLevel[difficulty] ?: continue
-                    if (bucket.isNotEmpty()) {
+                    val minimum = pickedByBand.values.minOrNull() ?: 0
+                    if (bucket.isNotEmpty() && (pickedByBand[difficulty] ?: 0) <= minimum) {
                         selected += bucket.removeAt(0)
+                        pickedByBand[difficulty] = (pickedByBand[difficulty] ?: 0) + 1
                         added = true
                     }
                 }

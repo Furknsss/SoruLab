@@ -4,6 +4,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.security.KeyStore
 import java.time.Duration
+import java.time.Instant
 import java.util.Base64
 
 plugins {
@@ -68,7 +69,7 @@ android {
     versionCode = (
       100_000L + (
         System.currentTimeMillis() / 60_000L -
-          java.time.Instant.parse("2026-01-01T00:00:00Z").epochSecond / 60L
+          Instant.parse("2026-01-01T00:00:00Z").epochSecond / 60L
       )
     ).coerceIn(35L, 2_100_000_000L).toInt()
     versionName = "1.2.9"

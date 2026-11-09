@@ -5,7 +5,7 @@ import java.util.Locale
 import kotlin.random.Random
 
 /** One canonical publisher per user choice; never pass a fuzzy/partial string match. */
-internal data class PublisherChoice(
+data class PublisherChoice(
     val key: String,
     val title: String,
     val availableQuestions: Int

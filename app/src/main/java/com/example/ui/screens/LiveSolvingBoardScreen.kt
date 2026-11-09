@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -57,6 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,59 +85,90 @@ private data class TwoColumnQuestionPage(
     val questions: List<YksQuestion> get() = left + right
 }
 
-private fun packQuestionsIntoTwoColumnPages(questions: List<YksQuestion>): List<TwoColumnQuestionPage> {
+/**
+ * Uses cropped image dimensions (when available) and the actual book viewport to
+ * distribute questions across two natural-flow columns. A page may have one
+ * long question or several short ones in either column: no fixed question count.
+ */
+private fun readBookQuestionImageAspectRatio(question: YksQuestion, filesDir: File): Float? {
+    val candidates = listOfNotNull(
+        question.imagePath?.takeIf { it.isNotBlank() }?.let(::File),
+        File(filesDir, "questions/q_${question.id}.jpg"),
+        question.sourceQuestionId.takeIf { it.isNotBlank() }
+            ?.let { File(filesDir, "questions/q_${it}.jpg") }
+    )
+    for (file in candidates) {
+        if (!file.isFile) continue
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        if (bounds.outWidth > 0 && bounds.outHeight > 0) {
+            return bounds.outHeight.toFloat() / bounds.outWidth.toFloat()
+        }
+    }
+    return null
+}
+
+private fun estimatedBookQuestionHeightDp(
+    question: YksQuestion,
+    columnWidthDp: Float,
+    measuredAspectRatio: Float?
+): Float {
+    // Match the real question row: outside padding, publisher/number gutter and ⋮ action.
+    val imageWidthDp = (columnWidthDp - 110f).coerceAtLeast(100f)
+    val hasImage = question.imagePath?.isNotBlank() == true ||
+        question.imageBase64?.isNotBlank() == true || question.pdfFilePath.isNotBlank()
+    val bodyHeightDp = if (hasImage) {
+        val normalizedWidth = (question.normRight - question.normLeft).coerceAtLeast(0.08f)
+        val normalizedHeight = (question.normBottom - question.normTop).coerceAtLeast(0.04f)
+        val fallbackRatio = if (normalizedWidth > 0.97f && normalizedHeight > 0.97f) {
+            1f
+        } else {
+            (normalizedHeight / normalizedWidth * 1.42f).coerceIn(0.18f, 3.8f)
+        }
+        imageWidthDp * (measuredAspectRatio ?: fallbackRatio).coerceIn(0.12f, 5f)
+    } else {
+        val charsPerLine = (imageWidthDp / 7f).toInt().coerceAtLeast(12)
+        val totalChars = question.stemTop.length + question.stemBottom.length +
+            question.bulletsOrSteps.sumOf { it.length }
+        val textLines = (totalChars / charsPerLine + 2).coerceAtLeast(2)
+        (textLines * 19f) + 46f +
+            if (question.visualType != QuestionVisualType.NONE) 155f else 0f
+    }
+    return maxOf(78f, bodyHeightDp + 14f)
+}
+
+private fun packQuestionsIntoTwoColumnPages(
+    questions: List<YksQuestion>,
+    viewportWidthDp: Float,
+    viewportHeightDp: Float,
+    measuredAspectRatios: Map<String, Float>
+): List<TwoColumnQuestionPage> {
     if (questions.isEmpty()) return listOf(TwoColumnQuestionPage(emptyList(), emptyList()))
     val pages = mutableListOf<TwoColumnQuestionPage>()
+    val columnWidthDp = ((viewportWidthDp - 57f) / 2f).coerceAtLeast(130f)
+    val availableColumnHeightDp = (viewportHeightDp - 56f).coerceAtLeast(210f)
     var index = 0
 
     while (index < questions.size) {
         val columns = listOf(mutableListOf<YksQuestion>(), mutableListOf<YksQuestion>())
-        repeat(2) {
-            var columnHeight = 0f
-            var columnCount = 0
-            while (index < questions.size && columnCount < 4) {
+        for (column in columns) {
+            var usedHeightDp = 0f
+            while (index < questions.size) {
                 val question = questions[index]
-                val normalizedWidth = (question.normRight - question.normLeft).coerceAtLeast(0.08f)
-                val normalizedHeight = (question.normBottom - question.normTop).coerceAtLeast(0.04f)
-                val hasImage = question.croppedImagePath.isNotBlank() || !question.imageBase64.isNullOrBlank()
-                val estimatedHeight = if (
-                    !hasImage && normalizedWidth >= 0.98f && normalizedHeight >= 0.98f
-                ) {
-                    val contentLength = question.stemTop.length + question.stemBottom.length +
-                        question.bulletsOrSteps.sumOf { it.length }
-                    (0.28f + contentLength / 220f +
-                        if (question.visualType != QuestionVisualType.NONE) 0.42f else 0f)
-                        .coerceIn(0.28f, 1.1f)
-                } else {
-                    (normalizedHeight / normalizedWidth * 1.45f).coerceIn(0.16f, 1.3f)
-                }
-                val spacing = if (columnCount == 0) 0f else 0.13f
-                if (columnCount > 0 && columnHeight + spacing + estimatedHeight > 2.1f) break
-                columns[it] += question
-                columnHeight += spacing + estimatedHeight
-                columnCount++
+                val gapDp = if (column.isEmpty()) 0f else 24f
+                val questionHeightDp = estimatedBookQuestionHeightDp(
+                    question, columnWidthDp, measuredAspectRatios[question.id]
+                )
+                // Always allow one oversized question; the page can scroll vertically.
+                if (column.isNotEmpty() &&
+                    usedHeightDp + gapDp + questionHeightDp > availableColumnHeightDp
+                ) break
+                column += question
+                usedHeightDp += gapDp + questionHeightDp
                 index++
             }
         }
         pages += TwoColumnQuestionPage(columns[0], columns[1])
-    }
-
-    if (pages.size > 1 && pages.last().questions.size == 1) {
-        val previous = pages[pages.lastIndex - 1]
-        if (previous.questions.size > 2) {
-            val moved = previous.right.lastOrNull() ?: previous.left.last()
-            pages[pages.lastIndex - 1] = if (previous.right.isNotEmpty()) {
-                previous.copy(right = previous.right.dropLast(1))
-            } else {
-                previous.copy(left = previous.left.dropLast(1))
-            }
-            val lastPage = pages.last()
-            pages[pages.lastIndex] = lastPage.copy(left = listOf(moved) + lastPage.left)
-        } else {
-            val finalQuestion = pages.last().questions.single()
-            pages[pages.lastIndex - 1] = previous.copy(right = previous.right + finalQuestion)
-            pages.removeAt(pages.lastIndex)
-        }
     }
     return pages
 }
@@ -174,7 +207,33 @@ fun LiveSolvingBoardScreen(
 ) {
     val questions = session.testItem.questions
     val totalQuestions = questions.size.coerceAtLeast(1)
-    val packedBookPages = remember(questions) { packQuestionsIntoTwoColumnPages(questions) }
+    val bookContext = LocalContext.current
+    val bookDensity = LocalDensity.current.density
+    var bookViewportSize by remember(session.testItem.id) { mutableStateOf(IntSize.Zero) }
+    val pageWidthDp = if (bookViewportSize.width > 0) {
+        bookViewportSize.width / bookDensity
+    } else 880f
+    val pageHeightDp = if (bookViewportSize.height > 0) {
+        bookViewportSize.height / bookDensity
+    } else 700f
+    // Decode bitmap *bounds only* off the UI thread; never decode entire book pages for packing.
+    val bookImageAspectRatios by produceState<Map<String, Float>>(
+        initialValue = emptyMap(),
+        key1 = questions,
+        key2 = bookContext.filesDir.absolutePath
+    ) {
+        value = withContext(Dispatchers.IO) {
+            questions.mapNotNull { question ->
+                readBookQuestionImageAspectRatio(question, bookContext.filesDir)
+                    ?.let { question.id to it }
+            }.toMap()
+        }
+    }
+    val packedBookPages = remember(questions, pageWidthDp, pageHeightDp, bookImageAspectRatios) {
+        packQuestionsIntoTwoColumnPages(
+            questions, pageWidthDp, pageHeightDp, bookImageAspectRatios
+        )
+    }
     val totalBookPages = packedBookPages.size.coerceAtLeast(1)
     val currentQuestionId = questions.getOrNull(session.currentQuestionIndex)?.id
     val initialBookPage = packedBookPages.indexOfFirst { page ->
@@ -192,7 +251,7 @@ fun LiveSolvingBoardScreen(
     val pagerScope = rememberCoroutineScope()
 
     // Keep HorizontalPager synced when currentQuestionIndex is updated externally
-    LaunchedEffect(session.currentQuestionIndex, session.viewMode) {
+    LaunchedEffect(session.currentQuestionIndex, session.viewMode, packedBookPages) {
         if (session.viewMode == BoardViewMode.FULL_PAGE) {
             val targetQuestionId = questions.getOrNull(session.currentQuestionIndex)?.id
             val targetPage = packedBookPages.indexOfFirst { page ->
@@ -210,7 +269,7 @@ fun LiveSolvingBoardScreen(
     }
 
     // Update ViewModel question index when the user swipes horizontally between book pages
-    LaunchedEffect(bookPagerState.settledPage, session.viewMode) {
+    LaunchedEffect(bookPagerState.settledPage, session.viewMode, packedBookPages) {
         if (session.viewMode == BoardViewMode.FULL_PAGE) {
             val page = packedBookPages.getOrNull(bookPagerState.settledPage)
                 ?: TwoColumnQuestionPage(emptyList(), emptyList())
@@ -417,6 +476,9 @@ fun LiveSolvingBoardScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .onSizeChanged { measuredSize ->
+                    if (bookViewportSize != measuredSize) bookViewportSize = measuredSize
+                }
         ) {
             val strokeWidths = listOf(4.5f, 8.0f, 13.0f)
             val currentStrokePx = strokeWidths.getOrElse(selectedStrokeSizeIndex) { 8.0f }
@@ -1265,7 +1327,7 @@ private fun BookPageTopBar345(
  * GERÇEK KİTAP SAYFASI DÜZENİ (ÇİFT SÜTUNLU SAYFA):
  * - Sorular ayrı ayrı kutu/kart içine KONULMAZ!
  * - Tek bir beyaz kitap sayfası zemini üzerinde ortadan ince dikey çizgiyle ayrılmış
- *   2 SÜTUNLU (Sol Sütun: 1 ve 2, Sağ Sütun: 3 ve 4) gerçek soru bankası sayfası düzeni.
+ *   2 SÜTUNLU; her sütundaki soru sayısı soruların yüksekliğine göre değişir.
  */
 @Composable
 private fun RealTwoColumnBookPageSurface(
@@ -1329,7 +1391,7 @@ private fun RealTwoColumnBookPageSurface(
                 horizontalArrangement = Arrangement.spacedBy(0.dp),
                 verticalAlignment = Alignment.Top
             ) {
-                // SOL SÜTUN (Soru 1 ve 2) — Gerçek kitap sayfası gibi dengeli dikey yerleşim
+                // SOL SÜTUN — Gerçek soru boyuna göre değişken sayıda soru.
                 val isLeftPopoverOpen = leftColumnQuestions.any { it.number == openThreeDotQuestionNumber }
                 Column(
                     modifier = Modifier
@@ -1367,7 +1429,7 @@ private fun RealTwoColumnBookPageSurface(
                         .background(Color(0xFFD6DCE5))
                 )
 
-                // SAĞ SÜTUN (Soru 3 ve 4) — Gerçek kitap sayfası gibi dengeli dikey yerleşim
+                // SAĞ SÜTUN — Sabit soru sayısı yok, uygun yüksekliğe göre yerleşir.
                 val isRightPopoverOpen = rightColumnQuestions.any { it.number == openThreeDotQuestionNumber }
                 Column(
                     modifier = Modifier

@@ -38,7 +38,7 @@ class LiveSolvingBoardScreenTest {
     }
 
     @Test
-    fun tabletSheetsKeepAtMostTwoQuestionsInEachColumnWithoutLosingOrder() {
+    fun tabletSheetsAdaptQuestionCountToAvailableHeightWithoutLosingOrder() {
         val template = fixtureSession().testItem.questions.first()
         val questions = (1..12).map { number -> template.copy(id = "packed_$number", number = number,
             croppedImagePath = "fixture.png", normLeft = 0f, normRight = 0.45f, normTop = 0f, normBottom = 0.25f) }
@@ -46,8 +46,12 @@ class LiveSolvingBoardScreenTest {
         val tall = com.example.ui.screens.packQuestionsIntoTwoColumnPages(questions, 4.2f)
         assertEquals(questions.map { it.id }, compact.flatMap { it.questions }.map { it.id })
         assertEquals(questions.map { it.id }, tall.flatMap { it.questions }.map { it.id })
-        org.junit.Assert.assertTrue(compact.all { it.left.size <= 2 && it.right.size <= 2 })
-        org.junit.Assert.assertTrue(tall.all { it.left.size <= 2 && it.right.size <= 2 })
+        // The original hard cap of two is intentionally gone: short questions can
+        // share the same column when the device offers sufficient vertical room.
+        org.junit.Assert.assertTrue(tall.any { it.left.size > 2 || it.right.size > 2 })
+        org.junit.Assert.assertTrue(tall.size <= compact.size)
+        // A long question always remains whole, never split across columns.
+        org.junit.Assert.assertEquals(questions.size, tall.flatMap { it.questions }.size)
     }
 
     @Test

@@ -29,10 +29,15 @@ internal object LevelQuestionPolicy {
             return eligible.take(count)
         }
         val byLevel = eligible.groupBy { it.difficulty }
-            .mapValues { (_, items) ->
-                items.sortedWith(compareBy<YksQuestion> {
-                    if (stableId(it) in previouslyUsed) 1 else 0
-                }.thenBy { stableId(it) }).toMutableList()
+            .mapValues { (difficulty, items) ->
+                // Preserve fresh-question priority, but make publisher choices
+                // independent of import order and alphabetical source IDs.
+                val fresh = items.filter { stableId(it) !in previouslyUsed }
+                val used = items.filter { stableId(it) in previouslyUsed }
+                val seed = 31 * level.name.hashCode() + difficulty.ordinal * 17 +
+                    previouslyUsed.hashCode() + items.size
+                (PublisherMixingPolicy.mix(fresh, seed) +
+                    PublisherMixingPolicy.mix(used, seed xor 0x53281A)).toMutableList()
             }
         if (level == TopicTestLevel.SEVIYE_TESPIT &&
             (count < 5 || diagnosticOrder.any { byLevel[it].isNullOrEmpty() })

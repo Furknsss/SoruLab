@@ -3183,7 +3183,7 @@ private fun SoruLabAiTestGeneratorDialog(
         ) ?: poolCheck.availableQuestionCount
     }
     val maxAvailableCount = matchingDiffCount.coerceAtLeast(0)
-    val minimumQuestionCount = if (level == TopicTestLevel.SEVIYE_TESPIT) 5 else 1
+    val minimumQuestionCount = 1 // Incomplete diagnostics are practice only, never graded placement.
     var selectedQuestionCount by remember(maxAvailableCount, level, selectedPublisherKey) {
         mutableIntStateOf(
             if (maxAvailableCount >= minimumQuestionCount)
@@ -3197,124 +3197,8 @@ private fun SoruLabAiTestGeneratorDialog(
     var createdTest by remember { mutableStateOf<YksTestItem?>(null) }
     var generationFailed by remember { mutableStateOf(false) }
 
-    // Never show "Soru Bulunamadı" if a test was already created or if poolCheck.canGenerate is true!
-    if (!poolCheck.canGenerate && createdTest == null && currentStep <= 1) {
-        Dialog(onDismissRequest = onDismiss) {
-            Card(
-                shape = RoundedCornerShape(26.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
-                modifier = Modifier
-                    .widthIn(max = 430.dp)
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .testTag("no_questions_found_dialog")
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(62.dp)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(SoruLabCoralLight),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.SearchOff,
-                            contentDescription = null,
-                            tint = SoruLabCoralRed,
-                            modifier = Modifier.size(34.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text(
-                        text = poolCheck.reasonTitle,
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 20.sp
-                        ),
-                        color = Color(0xFF0F172A),
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Surface(
-                        color = Color(level.wedgeColorHex).copy(alpha = 0.25f),
-                        shape = RoundedCornerShape(50)
-                    ) {
-                        Text(
-                            text = "${topic.name} - Test $nextTestNumber",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = Color(0xFF0F172A),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text(
-                        text = if (poolCheck.canGenerate && !hasStandardTestPool) {
-                            "Bu filtrelerle 12 soruluk standart test oluşturmak için en az 12 görseli doğrulanmış soru gerekir. Şu an $maxAvailableCount soru bulundu."
-                        } else {
-                            poolCheck.reasonMessage
-                        },
-                        style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
-                        color = Color(0xFF475569),
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(modifier = Modifier.height(22.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = onDismiss,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(46.dp)
-                                .testTag("no_question_close_button")
-                        ) {
-                            Text(
-                                text = "Kapat",
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
-
-                        if (level != TopicTestLevel.IKIZ) {
-                            Button(
-                                onClick = onGoToPdfStudio,
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF1D63DC),
-                                    contentColor = Color.White
-                                ),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(46.dp)
-                                    .testTag("no_question_pdf_studio_button")
-                            ) {
-                                Text(
-                                    text = "PDF'ten Soru Ekle",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return
-    }
+    // Keep the test builder visible even when a difficulty/publisher is empty.
+    // Otherwise the Filter action is inaccessible exactly when it is needed.
 
     // İNTERAKTİF TEST OLUŞTURMA PANELİ (5'li Zorluk Seçici + Akıllı Kaynak Filtresi + Esnek Soru Sayısı Slider/Seçici + Otomatik "[Konu Adı] - Test [X]" İsimlendirme)
     if (isSetupPhase) {
@@ -3364,16 +3248,19 @@ private fun SoruLabAiTestGeneratorDialog(
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box {
-                                IconButton(
+                                TextButton(
                                     onClick = { showPublisherFilter = true },
                                     modifier = Modifier.testTag("test_publisher_filter_button")
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.FilterList,
                                         contentDescription = "Yayına göre filtrele",
-                                        tint = if (selectedPublisherKey != null) Color(0xFF1D63DC)
-                                            else Color(0xFF475569)
+                                        tint = Color(0xFF1D63DC),
+                                        modifier = Modifier.size(19.dp)
                                     )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Yayın filtresi", color = Color(0xFF1D63DC),
+                                        fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                                 DropdownMenu(
                                     expanded = showPublisherFilter,
@@ -3540,7 +3427,7 @@ private fun SoruLabAiTestGeneratorDialog(
                             Text(
                                 text = if (selectedPublisherKey != null)
                                     "Bu yayından bu seviyenin soru dağılımına uygun yeterli soru bulunamadı. Başka bir yayın seç veya Karışık'a dön."
-                                else "Bu seviyenin kurallarına uygun yeterli soru yok. Kaynak ekleyebilirsin.",
+                                else poolCheck.reasonMessage,
                                 color = Color(0xFFB91C1C),
                                 style = MaterialTheme.typography.bodySmall
                             )

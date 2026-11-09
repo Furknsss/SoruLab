@@ -17,6 +17,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
@@ -559,317 +560,23 @@ fun AnaSayfaScreen(
             }
         }
 
-        // 2. Premium Midnight Blue Hero Card (Google Stitch Spec)
+        // Premium white dashboard: existing callbacks and practice flow stay untouched.
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(26.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF111A36))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF10152D),
-                                    Color(0xFF1A2E66),
-                                    Color(0xFF333182)
-                                )
-                            )
-                        )
-                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(26.dp))
-                        .drawWithCache {
-                            val ringColor = Color(0xFF38BDF8).copy(alpha = 0.06f)
-                            val accentGlow = Color(0xFF2563EB).copy(alpha = 0.15f)
-                            onDrawBehind {
-                                drawCircle(
-                                    color = accentGlow,
-                                    radius = size.width * 0.40f,
-                                    center = Offset(size.width * 0.90f, size.height * 0.20f)
-                                )
-                                drawCircle(
-                                    color = ringColor,
-                                    radius = size.width * 0.28f,
-                                    center = Offset(size.width * 0.88f, size.height * 0.22f),
-                                    style = Stroke(width = 2.dp.toPx())
-                                )
-                            }
-                        }
-                        .padding(20.dp)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "HER SORUDA BİR ADIM İLERİ",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 12.sp,
-                                    letterSpacing = 0.8.sp
-                                ),
-                                color = Color(0xFF38BDF8)
-                            )
-
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.12f),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    Text(
-                                        text = "★",
-                                        color = Color(0xFFFBBF24),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "$totalSolvedTests test tamamlandı",
-                                        color = Color(0xFFFDE68A),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.5.sp
-                                    )
-                                }
-                            }
-                        }
-
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = "Merhaba, $firstName",
-                                style = MaterialTheme.typography.headlineMedium.copy(
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 24.sp
-                                ),
-                                color = Color.White
-                            )
-                            Text(
-                                text = "Kitapların, denemelerin ve soruların tek bir çalışma alanında.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFCBD5E1),
-                                maxLines = 2
-                            )
-                        }
-
-                        // Translucent Real Live Metrics Strip
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0xFF0A162B).copy(alpha = 0.65f))
-                                .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
-                                .padding(vertical = 14.dp, horizontal = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "$totalSolvedTests",
-                                    style = MaterialTheme.typography.titleLarge.copy(
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 22.sp
-                                    ),
-                                    color = Color.White
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Çözülen Test",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Medium,
-                                        fontSize = 11.sp
-                                    ),
-                                    color = Color(0xFF94A3B8)
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .height(30.dp)
-                                    .background(Color.White.copy(alpha = 0.12f))
-                            )
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "$totalSolvedQuestions",
-                                    style = MaterialTheme.typography.titleLarge.copy(
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 22.sp
-                                    ),
-                                    color = Color.White
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Çözülen Soru",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Medium,
-                                        fontSize = 11.sp
-                                    ),
-                                    color = Color(0xFF94A3B8)
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .height(30.dp)
-                                    .background(Color.White.copy(alpha = 0.12f))
-                            )
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "$customQuestionsCount",
-                                    style = MaterialTheme.typography.titleLarge.copy(
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 22.sp
-                                    ),
-                                    color = Color.White
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Havuz Sorusu",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Medium,
-                                        fontSize = 11.sp
-                                    ),
-                                    color = Color(0xFF94A3B8)
-                                )
-                            }
-                        }
-
-                        // Action Buttons: White primary button + glassy dark secondary button
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Button(
-                                onClick = { onNavigateTab(MainNavTab.SORU_PRATIGI) },
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.White,
-                                    contentColor = Color(0xFF0F172A)
-                                ),
-                                modifier = Modifier
-                                    .weight(1.25f)
-                                    .height(48.dp)
-                                    .testTag("hero_soru_pratigi_button")
-                            ) {
-                                Text(
-                                    text = "Soru Pratiğine Başla",
-                                    style = MaterialTheme.typography.labelLarge.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
-                                    )
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                    contentDescription = null,
-                                    tint = Color(0xFF2563EB),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-
-                            OutlinedButton(
-                                onClick = { onNavigateTab(MainNavTab.DENEMELER) },
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = Color.White.copy(alpha = 0.12f),
-                                    contentColor = Color.White
-                                ),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f)),
-                                modifier = Modifier
-                                    .weight(0.95f)
-                                    .height(48.dp)
-                                    .testTag("hero_denemeler_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Assignment,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Denemeler",
-                                    style = MaterialTheme.typography.labelLarge.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
-                                    ),
-                                    color = Color.White
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+            PremiumLightHomeHero(
+                firstName = firstName,
+                solvedTests = totalSolvedTests,
+                solvedQuestions = totalSolvedQuestions,
+                questionPool = customQuestionsCount,
+                onPractice = { onNavigateTab(MainNavTab.SORU_PRATIGI) },
+                onExams = { onNavigateTab(MainNavTab.DENEMELER) }
+            )
         }
 
-        // Primary content action: import the next book without navigating through
-        // practice screens. No fake streak/goal data is displayed anywhere above.
         item {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("home_add_book_quick_action")
-                    .clickable(onClick = onOpenPdfCropper),
-                shape = RoundedCornerShape(20.dp),
-                color = Color(0xFFEAF1FF),
-                border = BorderStroke(1.dp, Color(0xFFCCDDFD))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 17.dp, vertical = 15.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(13.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0xFF2563EB)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.CollectionsBookmark,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(23.dp)
-                        )
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Kitaplığını büyüt",
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 15.sp,
-                            color = Color(0xFF14254C)
-                        )
-                        Text(
-                            text = "PDF soru bankası ekle ve kaldığın yerden çalış",
-                            fontSize = 12.sp,
-                            color = Color(0xFF526784),
-                            maxLines = 2
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        tint = Color(0xFF2563EB),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
+            PremiumSevenDayActivity(
+                results = allTestResults,
+                onOpenStatistics = { onNavigateTab(MainNavTab.ISTATISTIKLERIM) }
+            )
         }
 
         // 3. Premium "SON ÇÖZÜLEN TEST" Section with 4-Pack Metrics (DOĞRU, YANLIŞ, BOŞ, NET)
@@ -1398,77 +1105,95 @@ private fun StitchQuickBentoCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val pressSource = remember { MutableInteractionSource() }
+    val pressed by pressSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.965f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 650f),
+        label = "bento_press_scale"
+    )
+
     Card(
-        modifier = modifier.clickable { onClick() },
-        shape = RoundedCornerShape(22.dp),
+        modifier = modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clickable(
+                interactionSource = pressSource,
+                indication = null,
+                onClick = onClick
+            ),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        border = BorderStroke(1.dp, tintColor.copy(alpha = 0.14f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .heightIn(min = 145.dp)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.White, tintBg.copy(alpha = 0.56f))
+                    )
+                )
+                .padding(15.dp),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Top
             ) {
                 Box(
                     modifier = Modifier
                         .size(44.dp)
-                        .clip(RoundedCornerShape(13.dp))
-                        .background(tintBg),
+                        .clip(RoundedCornerShape(15.dp))
+                        .background(tintColor.copy(alpha = 0.10f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = title,
                         tint = tintColor,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(23.dp)
                     )
                 }
-
-                Surface(
-                    color = tintBg,
-                    shape = RoundedCornerShape(50),
-                    border = BorderStroke(1.dp, badgeBorder)
-                ) {
-                    Text(
-                        text = badgeText,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 10.5.sp
-                        ),
-                        color = tintColor,
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
-                    )
-                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = tintColor,
+                    modifier = Modifier.size(17.dp)
+                )
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 16.sp
-                ),
-                color = Color(0xFF0F172A)
-            )
-
-            Spacer(modifier = Modifier.height(3.dp))
-
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = 12.sp
-                ),
-                color = Color(0xFF64748B),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 16.sp
+                    ),
+                    color = Color(0xFF111B34),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                    color = Color(0xFF60718B),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = badgeText,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp
+                    ),
+                    color = tintColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -1631,14 +1356,16 @@ private fun ProfileCenterBottomSheet(
                                 .clickable { onOpenSoruHavuzu() }
                                 .testTag("profile_open_soru_havuzu_card"),
                             shape = RoundedCornerShape(18.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, Color(0xFFDCE6FA)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(
                                         Brush.horizontalGradient(
-                                            listOf(Color(0xFF0F2557), Color(0xFF1D4ED8))
+                                            listOf(Color.White, Color(0xFFEFF4FF))
                                         )
                                     )
                                     .padding(16.dp),
@@ -1654,13 +1381,13 @@ private fun ProfileCenterBottomSheet(
                                         modifier = Modifier
                                             .size(44.dp)
                                             .clip(RoundedCornerShape(12.dp))
-                                            .background(Color(0xFF2563EB).copy(alpha = 0.16f)),
+                                            .background(Color(0xFF2563EB).copy(alpha = 0.10f)),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = Icons.Filled.AutoStories,
                                             contentDescription = null,
-                                            tint = Color.White,
+                                            tint = Color(0xFF315CF0),
                                             modifier = Modifier.size(22.dp)
                                         )
                                     }
@@ -1668,12 +1395,12 @@ private fun ProfileCenterBottomSheet(
                                         Text(
                                             text = "Soru Havuzu",
                                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
-                                            color = Color.White
+                                            color = Color(0xFF122142)
                                         )
                                         Text(
                                             text = "PDF yükle, otomatik kırp ve yayın logosuyla havuza ekle ($customQuestionsCount soru)",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = Color.White.copy(alpha = 0.85f)
+                                            color = Color(0xFF657590)
                                         )
                                     }
                                 }

@@ -24,9 +24,12 @@ internal object PublisherMixingPolicy {
         key(question.publisherId, question.publisherName)
 
     /**
-     * Weighted random publisher selection prevents predictable 2+2 or
-     * A-B-A-B round-robin patterns and avoids consecutive publisher repeats
-     * whenever more than one distinct source still has questions.
+     * Weighted, seeded random sampling deliberately avoids rigid two-by-two
+     * import order and artificial A-B-A-B round-robin ordering.
+     *
+     * Adjacent publishers may occasionally repeat naturally, but a third
+     * consecutive match is avoided if another publisher still has questions.
+     * More questions in a source means a proportionally higher pick chance.
      */
     fun <T> mix(
         questions: List<T>,
@@ -41,23 +44,35 @@ internal object PublisherMixingPolicy {
 
         val result = ArrayList<T>(questions.size)
         var previousKey: String? = null
+        var streak = 0
         while (result.size < questions.size) {
             val remaining = buckets.filterValues { it.isNotEmpty() }
             if (remaining.isEmpty()) break
-            val alternatives = remaining.filterKeys { it != previousKey }
-            val candidates = if (alternatives.isNotEmpty()) alternatives else remaining
-
-            val total = candidates.values.sumOf { it.size }
-            var lottery = rng.nextInt(total)
-            val pickedKey = candidates.entries.first { (_, items) ->
-                lottery -= items.size
-                lottery < 0
-            }.key
-
+            val choices = remaining.entries.filter {
+                it.key != previousKey || streak < 2 || remaining.size == 1
+            }
+            val weightedTotal = choices.sumOf { (key, bucket) ->
+                bucket.size * if (key == previousKey) 0.42 else 1.0
+            }
+            var ticket = rng.nextDouble(weightedTotal)
+            val pickedKey = (choices.firstOrNull { (key, bucket) ->
+                ticket -= bucket.size * if (key == previousKey) 0.42 else 1.0
+                ticket < 0.0
+            } ?: choices.last()).key
             result += buckets.getValue(pickedKey).removeAt(0)
+            streak = if (pickedKey == previousKey) streak + 1 else 1
             previousKey = pickedKey
         }
         return result
+    }
+
+    fun onlySelected(
+        questions: List<YksQuestion>,
+        selectedPublisherKey: String?
+    ): List<YksQuestion> = if (selectedPublisherKey == null) {
+        questions
+    } else {
+        questions.filter { key(it) == selectedPublisherKey }
     }
 
     fun mix(questions: List<YksQuestion>, seed: Int): List<YksQuestion> =

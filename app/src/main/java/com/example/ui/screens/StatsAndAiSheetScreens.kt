@@ -446,129 +446,18 @@ private fun StatsOverviewCard(
     net: Double?,
     questionPoolCount: Int
 ) {
-    val shape = RoundedCornerShape(24.dp)
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(14.dp, shape, ambientColor = SoruLabRoyalBlue.copy(alpha = 0.18f))
-            .clip(shape)
-            .background(Brush.linearGradient(listOf(Color(0xFF101B3C), Color(0xFF1D4ED8))))
-    ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .offset(x = 58.dp, y = (-72).dp)
-                .size(190.dp)
-                .background(Color.White.copy(alpha = 0.055f), CircleShape)
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .offset(x = 26.dp, y = 52.dp)
-                .size(112.dp)
-                .background(Color.White.copy(alpha = 0.045f), CircleShape)
-        )
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(7.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.AutoGraph,
-                            contentDescription = null,
-                            tint = Color(0xFFBFDBFE),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "${exam.name} • GENEL PERFORMANS",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.7.sp
-                            ),
-                            color = Color(0xFFBFDBFE)
-                        )
-                    }
-                    Text(
-                        text = net?.let { String.format(Locale.forLanguageTag("tr-TR"), "%.2f", it) } ?: "—",
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontSize = 36.sp,
-                            lineHeight = 42.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        ),
-                        color = Color.White
-                    )
-                    Text(
-                        text = "NET PUAN",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.1.sp
-                        ),
-                        color = Color.White.copy(alpha = 0.72f)
-                    )
-                    Text(
-                        text = "$testCount test  •  $questionCount soru",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.82f)
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .padding(top = 5.dp)
-                        .size(76.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        progress = { (accuracy ?: 0) / 100f },
-                        modifier = Modifier.fillMaxSize(),
-                        color = Color.White,
-                        trackColor = Color.White.copy(alpha = 0.22f),
-                        strokeWidth = 6.dp
-                    )
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = accuracy?.let { "$it%" } ?: "—",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                            color = Color.White
-                        )
-                        Text(
-                            text = "doğruluk",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                            color = Color.White.copy(alpha = 0.78f)
-                        )
-                    }
-                }
-            }
-            HorizontalDivider(color = Color.White.copy(alpha = 0.18f))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                SummaryValue("Doğru", "$correct", Color(0xFF6EE7B7), modifier = Modifier.weight(1f), inverse = true)
-                SummaryValue("Yanlış", "$wrong", Color(0xFFFCA5A5), modifier = Modifier.weight(1f), inverse = true)
-                SummaryValue("Boş", "$empty", Color.White, modifier = Modifier.weight(1f), inverse = true)
-                SummaryValue("Bekleyen", "$ungraded", Color(0xFFFDE68A), modifier = Modifier.weight(1f), inverse = true)
-            }
-            Text(
-                text = "Soru havuzunda $questionPoolCount soru",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.68f)
-            )
-        }
-    }
+    PremiumLightStatsOverview(
+        examName = exam.name,
+        testCount = testCount,
+        questionCount = questionCount,
+        accuracy = accuracy,
+        correct = correct,
+        wrong = wrong,
+        empty = empty,
+        ungraded = ungraded,
+        net = net,
+        questionPoolCount = questionPoolCount
+    )
 }
 
 @Composable

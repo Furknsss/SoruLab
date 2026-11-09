@@ -20,7 +20,8 @@ class PublisherMixingPolicyTest {
             stemTop = "Bir trigonometrik ifade veriliyor.",
             stemBottom = "Sonuç kaçtır?",
             options = mapOf("A" to "1", "B" to "2", "C" to "3", "D" to "4", "E" to "5"),
-            correctOption = "B"
+            correctOption = "B",
+            stepByStepSolution = "Doğrulanmış çözüm."
         )
 
     @Test fun mixedTestKeepsEveryOriginalAndPublisherProportions() {

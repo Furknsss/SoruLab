@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Card
@@ -683,5 +684,94 @@ private fun PremiumStatsMini(
             color = Color(0xFF53627D),
             maxLines = 1
         )
+    }
+}
+
+/** White premium entrance for the deneme center; real counts only. */
+@Composable
+internal fun PremiumLightExamsHero(
+    totalExams: Int,
+    solvedCount: Int
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("premium_exams_hero"),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        border = BorderStroke(1.dp, Color(0xFFDCE6FA))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color.White, Color(0xFFF1F7FF), Color(0xFFFAF5FF))
+                    )
+                )
+                .padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(13.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(Color(0xFFE8F0FF))
+                        .padding(horizontal = 11.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.WorkspacePremium,
+                        contentDescription = null,
+                        tint = Color(0xFF315CF0),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "DENEME MERKEZİ",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 0.6.sp
+                        ),
+                        color = Color(0xFF315CF0)
+                    )
+                }
+                Text(
+                    text = "$solvedCount çözüldü",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.ExtraBold
+                    ),
+                    color = Color(0xFF008E82),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(Color(0xFFE1FAF2))
+                        .padding(horizontal = 11.dp, vertical = 7.dp)
+                )
+            }
+            Text(
+                text = "Kurumsal TYT & AYT Denemeleri",
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 23.sp,
+                    lineHeight = 30.sp
+                ),
+                color = Color(0xFF112044)
+            )
+            Text(
+                text = "Sınavlarını çöz, sonuçlarını incele ve ilerlemeni analiz et.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFF60728D)
+            )
+            Text(
+                text = "$totalExams deneme listeleniyor",
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.Bold
+                ),
+                color = Color(0xFF6D4EEA)
+            )
+        }
     }
 }

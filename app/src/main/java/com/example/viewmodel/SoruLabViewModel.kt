@@ -1182,7 +1182,6 @@ class SoruLabViewModel(
                 onGenerateCustomTest = customBuilder,
                 questionCountForSelection = questionCountForSelection,
                 questionCountForDifficulty = questionCountForDifficulty,
-            availablePublishers = publisherChoices,
                 availablePublishers = publisherChoices
             )
         }
@@ -1231,7 +1230,8 @@ class SoruLabViewModel(
             matchingQuestions = eligibleForLevel,
             onGenerateCustomTest = customBuilder,
             questionCountForSelection = questionCountForSelection,
-            questionCountForDifficulty = questionCountForDifficulty
+            questionCountForDifficulty = questionCountForDifficulty,
+            availablePublishers = publisherChoices
         )
     }
 

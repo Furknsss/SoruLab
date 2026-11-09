@@ -39,9 +39,6 @@ internal object LevelQuestionPolicy {
                     seed = mixSeed xor ((difficulty.ordinal + 1) * 1499)
                 ).toMutableList()
             }
-        if (level == TopicTestLevel.SEVIYE_TESPIT &&
-            (count < 5 || diagnosticOrder.any { byLevel[it].isNullOrEmpty() })
-        ) return emptyList()
 
         val slots = when (level) {
             TopicTestLevel.SEVIYE_TESPIT -> diagnosticOrder
@@ -76,10 +73,14 @@ internal object LevelQuestionPolicy {
             // Fairness is a hard constraint, not a best-effort average.
             // If one band runs out, stop before another band exceeds it by
             // more than one question. Do not claim a skewed test is balanced.
-            val pickedByBand = diagnosticOrder.associateWith { 0 }.toMutableMap()
+            // Imported books can predate the five-tier tagging scheme. Use the
+            // bands that really exist without inventing missing classifications.
+            // A full placement still requires all five bands in LevelPlacementAdvisor.
+            val availableBands = diagnosticOrder.filter { !byLevel[it].isNullOrEmpty() }
+            val pickedByBand = availableBands.associateWith { 0 }.toMutableMap()
             while (selected.size < count) {
                 var added = false
-                for (difficulty in slots) {
+                for (difficulty in availableBands) {
                     if (selected.size == count) break
                     val bucket = byLevel[difficulty] ?: continue
                     val minimum = pickedByBand.values.minOrNull() ?: 0
@@ -94,21 +95,22 @@ internal object LevelQuestionPolicy {
         } else if (level == TopicTestLevel.OSYM) {
             selected.addAll(byLevel[DifficultyLevel.OSYM].orEmpty().take(count))
         } else {
-            // Only the permitted one/two secondary questions, never spill
-            // into unrequested categories as a "nearest difficulty" fallback.
-            val quotas = slots.groupingBy { it }.eachCount()
-            for ((difficulty, number) in quotas) {
-                selected.addAll(byLevel[difficulty].orEmpty().take(number))
+            // Secondary difficulty suggestions are OPTIONAL. Previously a book
+            // with 200 verified Kolay questions but no Orta questions could only
+            // make a three-question Başlangıç test. Fill with the chosen primary
+            // band instead, never with unrelated difficulties.
+            val primary = slots.first()
+            val primaryItems = byLevel[primary].orEmpty()
+            val secondaryQuotas = slots.filter { it != primary }.groupingBy { it }.eachCount()
+            val candidateExtras = secondaryQuotas.flatMap { (difficulty, quota) ->
+                byLevel[difficulty].orEmpty().take(quota)
             }
-            // A level without its dominant band must NOT be filled by
-            // only secondary questions. Ensure strict primary majority.
-            val main = selected.filter { it.difficulty == slots.first() }
-            val secondary = selected.filter { it.difficulty != slots.first() }
-                .take((main.size - 1).coerceAtLeast(0))
-            selected.clear()
-            selected.addAll(main.take((main.size + 1) / 2))
-            selected.addAll(secondary)
-            selected.addAll(main.drop((main.size + 1) / 2))
+            val mainCount = minOf(primaryItems.size, count - candidateExtras.size)
+            val allowedExtras = candidateExtras.take((mainCount - 1).coerceAtLeast(0))
+            val finalMain = primaryItems.take(count - allowedExtras.size)
+            selected.addAll(finalMain.take((finalMain.size + 1) / 2))
+            selected.addAll(allowedExtras)
+            selected.addAll(finalMain.drop((finalMain.size + 1) / 2))
         }
         // The final display order must not follow visible publisher rounds
         // or fixed easy/easy/medium patterns; seed varies per generated test.

@@ -3503,7 +3503,7 @@ private fun FullScreenTwinQuestionComparisonView(
                                 CircularProgressIndicator(color = Color(0xFFEA580C))
                                 Spacer(modifier = Modifier.height(14.dp))
                                 Text(
-                                    text = "${originalQuestion.topicHeader} kazanımına uygun İkiz Soru hazırlanıyor...",
+                                    text = "${originalQuestion.topicHeader} sorusunun birebir çözüm kalıbı analiz edilip yeni verilerle doğrulanıyor...",
                                     color = Color(0xFF475569),
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 13.sp,
@@ -3540,7 +3540,7 @@ private fun FullScreenTwinQuestionComparisonView(
                                 ) {
                                     if (twinData.sourceDescription.isNotBlank()) {
                                         Text(
-                                            text = "Havuzdaki farklı soru • ${twinData.sourceDescription}",
+                                            text = twinData.sourceDescription,
                                             color = Color(0xFF64748B),
                                             fontSize = 12.sp,
                                             modifier = Modifier.testTag("twin_question_provenance")
@@ -3581,12 +3581,11 @@ private fun FullScreenTwinQuestionComparisonView(
                                         fontSize = 12.sp
                                     )
 
-                                    Row(
+                                    Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(top = 8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         listOf("A", "B", "C", "D", "E").forEach { optKey ->
                                             val optVal = twinData.options[optKey] ?: optKey
@@ -3601,8 +3600,8 @@ private fun FullScreenTwinQuestionComparisonView(
                                                 onClick = {
                                                     if (!isTwinAnswerRevealed) twinSelectedOption = optKey
                                                 },
-                                                modifier = Modifier.testTag("twin_answer_$optKey"),
-                                                shape = RoundedCornerShape(8.dp),
+                                                modifier = Modifier.fillMaxWidth().testTag("twin_answer_$optKey"),
+                                                shape = RoundedCornerShape(12.dp),
                                                 color = when {
                                                     isCorrectOpt -> Color(0xFFDCFCE7)
                                                     isWrongSelected -> Color(0xFFFEE2E2)
@@ -3625,7 +3624,7 @@ private fun FullScreenTwinQuestionComparisonView(
                                                     color = Color(0xFF1E293B),
                                                     fontWeight = if (isSelected || isCorrectOpt) FontWeight.ExtraBold else FontWeight.SemiBold,
                                                     fontSize = 13.sp,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
                                                 )
                                             }
                                         }
@@ -4213,7 +4212,7 @@ private fun FullScreenSuccessReportCardView(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Yanlış ve boşlarını pekiştir.\nHavuzundaki farklı, doğrulanmış sorularla ikiz test oluştur.",
+                            text = "Yanlış ve boşlarını pekiştir.\nHavuzunda aynı alt kazanım ve çözüm kalıbında doğrulanmış örnek varsa ikiz test oluştur.",
                             color = Color(0xFF1E293B),
                             fontWeight = FontWeight.Medium,
                             fontSize = 13.5.sp,

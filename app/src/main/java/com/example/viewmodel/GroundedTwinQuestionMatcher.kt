@@ -19,6 +19,27 @@ internal object GroundedTwinQuestionMatcher {
         value.trim().lowercase(Locale.forLanguageTag("tr-TR"))
             .replace(Regex("\\s+"), " ")
 
+    // A pool-based twin requires independently published source questions with
+    // verifiable, very similar question architecture. Topic alone is never enough.
+    // This numerical/variable mask compares question FORM, not the answer values.
+    private fun questionShape(raw: String): String = normalized(raw)
+        .replace(Regex("(?<![a-z])(?:f|g|h)\\(x\\)"), "k(x)")
+        .replace(Regex("\\d+(?:[.,]\\d+)?"), "#")
+        .replace(Regex("\\s+"), " ")
+        .take(1000)
+
+    private fun shapeSimilarity(first: String, second: String): Double {
+        if (first.length < 40 || second.length < 40) return 0.0
+        val lengthRatio = first.length.toDouble() / second.length.toDouble()
+        if (lengthRatio !in 0.72..1.38) return 0.0
+        fun grams(text: String): Set<String> =
+            text.windowed(4, step = 1, partialWindows = false).toSet()
+        val a = grams(first)
+        val b = grams(second)
+        if (a.isEmpty() || b.isEmpty()) return 0.0
+        return 2.0 * a.intersect(b).size / (a.size + b.size)
+    }
+
     fun select(
         source: YksQuestion,
         subjectId: String,
@@ -38,10 +59,14 @@ internal object GroundedTwinQuestionMatcher {
         val originalImage = source.croppedImagePath
         val sourceBook = normalized(source.sourceBookTitle)
         val verifiedOutcome = normalized(source.learningOutcome)
+        val verifiedQuestionType = normalized(source.questionType)
+        val sourceShape = questionShape(originalText)
         val originSubject = normalized(subjectId)
         val originTopicId = normalized(topicId)
         val originTopic = normalized(topicName.ifBlank { source.topicHeader })
-        if (originSubject.isBlank() || (originTopic.isBlank() && originTopicId.isBlank())) {
+        if (!source.answerKeyVerified || verifiedOutcome.isBlank() ||
+            verifiedQuestionType.isBlank() || sourceShape.length < 40 ||
+            originSubject.isBlank() || (originTopic.isBlank() && originTopicId.isBlank())) {
             return null
         }
 
@@ -51,10 +76,11 @@ internal object GroundedTwinQuestionMatcher {
                 candidate.answerKeyVerified &&
                 candidate.correctOption.uppercase(Locale.ROOT) in options &&
                 normalized(candidate.subjectId) == originSubject &&
-                // If original has a verified sub-outcome, only an identical
-                // publisher/ZIP outcome tag is allowed; no guessed mapping.
-                (verifiedOutcome.isBlank() ||
-                    normalized(candidate.learningOutcome) == verifiedOutcome) &&
+                // Identical verified sub-outcome AND exact question architecture.
+                // Same topic with unrelated reasoning is strictly rejected.
+                normalized(candidate.learningOutcome) == verifiedOutcome &&
+                normalized(candidate.questionType) == verifiedQuestionType &&
+                shapeSimilarity(sourceShape, questionShape(candidate.questionText)) >= 0.78 &&
                 (
                     (originTopicId.isNotBlank() && normalized(candidate.topicId) == originTopicId) ||
                         (originTopic.isNotBlank() && normalized(candidate.topicName) == originTopic)

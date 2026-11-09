@@ -12,10 +12,8 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class OfflineAiPolicyTest {
-    @Test fun generatedCloudModelIsNotPackagedInTheFreeBuild() {
-        assertThrows(ClassNotFoundException::class.java) {
-            Class.forName("com.google.firebase.ai.GenerativeModel")
-        }
+    @Test fun explicitTwinEngineIsAvailableButOrdinarySolutionsStayLocal() {
+        assertNotNull(Class.forName("com.google.firebase.ai.GenerativeModel"))
     }
 
     @Test fun solutionControlsReturnOnlyStoredSolutionsWithoutFirebaseInitialization() {
@@ -31,7 +29,6 @@ class OfflineAiPolicyTest {
         assertEquals(q.stepByStepSolution, solution)
         model.askAboutQuestion(q, context)
         assertEquals(q.stepByStepSolution, model.messages.value.last().text)
-        model.generateTwinQuestionOnDemand(q, context) { assertNotNull(it.errorMessage) }
         model.sendFreeMessage("Soruyu çöz")
         assertTrue(model.messages.value.last().text.contains("bulut AI çağrısı yapılmaz"))
         model.generateQuestionSolutionOnDemand(q.copy(stepByStepSolution = ""), context) {

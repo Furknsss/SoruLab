@@ -17,7 +17,9 @@ class GroundedTwinQuestionMatcherTest {
         sourceQuestionId = "original",
         sourceBookTitle = "Kitap 1",
         sourcePrintedQuestionNumber = 1,
-        analyticsText = "f(x) fonksiyonunun değerlerini bulunuz.",
+        analyticsText = "f(x) = 2x + 3 fonksiyonu veriliyor. Buna göre f(4) değeri kaçtır?",
+        learningOutcome = "Doğrusal fonksiyonda değer hesaplama",
+        questionType = "Fonksiyon değer bulma",
         stemTop = "",
         stemBottom = "",
         options = mapOf("A" to "1", "B" to "2", "C" to "3", "D" to "4", "E" to "5"),
@@ -36,12 +38,13 @@ class GroundedTwinQuestionMatcherTest {
         difficulty: String = "Orta",
         sourceBook: String = "Kitap 2",
         printedQuestion: Int = 2,
-        learningOutcome: String = ""
+        learningOutcome: String = "Doğrusal fonksiyonda değer hesaplama"
     ) = CustomQuestionRecord(
         id = id, userId = "student",
         examType = "AYT", subjectId = subjectId, subjectName = "Matematik",
         topicId = topicId, topicName = topic,
-        questionText = "Aşağıdaki ifadeye göre f(2) kaçtır? Soru: $id",
+        questionText = "g(x) = 3x + 5 fonksiyonu veriliyor. Buna göre g(4) değeri kaçtır? Soru: $id",
+        questionType = "Fonksiyon değer bulma",
         learningOutcome = learningOutcome,
         difficulty = difficulty, correctOption = "B",
         sourceBookTitle = sourceBook,
@@ -122,5 +125,14 @@ class GroundedTwinQuestionMatcherTest {
 
     @Test fun emptyPoolGivesNoInventedQuestion() {
         assertNull(choose(emptyList()))
+    }
+
+    @Test fun sameTopicButDifferentProblemStructureIsNotATwin() {
+        val unrelated = record("topic_only").copy(
+            questionText = "Fonksiyonların bileşkesinde (f o g)(x) ifadesinin tanım kümesini belirleyiniz."
+        )
+        assertNull(choose(listOf(unrelated)))
+        assertNull(choose(listOf(record("missing_outcome", learningOutcome = ""))))
+        assertNull(choose(listOf(record("wrong_question_type").copy(questionType = "Fonksiyon grafiği çizimi"))))
     }
 }

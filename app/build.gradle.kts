@@ -72,7 +72,7 @@ android {
           Instant.parse("2026-01-01T00:00:00Z").epochSecond / 60L
       )
     ).coerceIn(35L, 2_100_000_000L).toInt()
-    versionName = "1.2.9"
+    versionName = "1.3.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -259,6 +259,8 @@ dependencies {
   // Uncomment ALL FOUR of the following dependencies together to use Firebase Auth and Google
   // Sign-In via Credential Manager:
   implementation(libs.firebase.auth)
+  // Only the explicitly invoked twin-question engine uses Firebase AI Logic.
+  implementation(libs.firebase.ai)
   implementation(libs.mlkit.text.recognition)
   implementation(libs.pdfbox.android)
   implementation(libs.androidx.credentials)

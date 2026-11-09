@@ -38,7 +38,8 @@ class SoruLabQuestionClassificationTest {
 
         val chunks = automaticBookTestChunks(questions, TopicTestLevel.DERECE)
 
-        assertEquals(listOf(12, 2), chunks.map { it.size })
+        // Degree now accepts only Zor / Çok Zor (not ÖSYM).
+        assertEquals(listOf(12, 1), chunks.map { it.size })
         assertTrue(chunks.flatten().all { it.difficultyLevel5 in TopicTestLevel.DERECE.recommendedDifficultyLevels() })
         assertEquals(listOf(1), automaticBookTestChunks(questions, TopicTestLevel.BASLANGIC).map { it.size })
     }

@@ -3578,8 +3578,8 @@ private fun SoruLabAiTestGeneratorDialog(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = if (generationFailed) "Bu kriterlere uygun soru bulunamadı. Konu, zorluk veya kaynak filtresini değiştirip tekrar deneyin."
-                    else "${topic.name} • ${level.displayTitle} Test-$nextTestNumber ($realCount Soru)",
+                    text = if (generationFailed) "Seviye için gerekli zorluk dağılımı sağlanamadı. Aynı seviyede daha fazla doğrulanmış soru ekleyebilirsin."
+                    else "${topic.name} • ${level.displayTitle} Test-$nextTestNumber (${createdTest?.questions?.size ?: realCount} Soru)",
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = Color(0xFF1D63DC),
                     textAlign = TextAlign.Center

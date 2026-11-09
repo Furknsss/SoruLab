@@ -107,7 +107,9 @@ internal class TwinQuestionGenerationEngine {
                 normBottom = question.normBottom
             )?.copy(Bitmap.Config.ARGB_8888, false)
         }
-        if (bitmap == null && textContext.length < 100) {
+        val hasCompleteWrittenSource =
+            question.stemTop.trim().length >= 40 || question.analyticsText.trim().length >= 65
+        if (bitmap == null && !hasCompleteWrittenSource) {
             return reject(question, "Kaynak soru görseli ya da tam soru metni yok.")
         }
         try {

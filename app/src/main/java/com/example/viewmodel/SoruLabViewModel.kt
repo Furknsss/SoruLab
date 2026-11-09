@@ -640,8 +640,12 @@ class SoruLabViewModel(
     fun getTestsForTopicAndLevel(topic: YksTopic, level: TopicTestLevel): List<YksTestItem> {
         val map = _generatedTopicTests.value
         val levelSpecific = map["${topic.id}_${level.name}"].orEmpty()
+        // Previously generated GELISIYORUM tests remain visible after wheel rename.
+        val legacy = if (level == TopicTestLevel.SEVIYE_TESPIT) {
+            map["${topic.id}_GELISIYORUM"].orEmpty().map { it.copy(level = level) }
+        } else emptyList()
         val deleted = _deletedTestIds.value
-        return levelSpecific
+        return (levelSpecific + legacy)
             .filter { it.id !in deleted }
             .distinctBy { it.id }
     }
@@ -702,12 +706,14 @@ class SoruLabViewModel(
         } catch (_: Exception) {
         }
         for (level in TopicTestLevel.entries) {
-            val token = "_${level.name.lowercase()}_test_"
-            if (rec.testId.contains(token)) {
-                val topicId = rec.testId.substringBefore(token).ifBlank { rec.topicId }
-                val num = rec.testId.substringAfter(token).toIntOrNull() ?: 1
-                if (topicId.isNotBlank()) {
-                    return Triple(topicId, level, num)
+            val tokens = if (level == TopicTestLevel.SEVIYE_TESPIT) {
+                listOf("_seviye_tespit_test_", "_gelisiyorum_test_")
+            } else listOf("_${level.name.lowercase()}_test_")
+            for (token in tokens) {
+                if (rec.testId.contains(token)) {
+                    val topicId = rec.testId.substringBefore(token).ifBlank { rec.topicId }
+                    val num = rec.testId.substringAfter(token).toIntOrNull() ?: 1
+                    if (topicId.isNotBlank()) return Triple(topicId, level, num)
                 }
             }
         }
@@ -728,7 +734,11 @@ class SoruLabViewModel(
             val topic = allTopicsById[topicId] ?: continue
             val key = "${topic.id}_${level.name}"
             val currentList = updatedMap[key].orEmpty()
-            val expectedTestId = "${topic.id}_${level.name.lowercase()}_test_$testNumber"
+            val generatedId = "${topic.id}_${level.name.lowercase()}_test_$testNumber"
+            val oldId = "${topic.id}_gelisiyorum_test_$testNumber"
+            val expectedTestId = if (level == TopicTestLevel.SEVIYE_TESPIT &&
+                (oldId in cachedSnapshots || oldId in snapshotJsonByTestId)
+            ) oldId else generatedId
             if (expectedTestId !in deleted && currentList.none { it.id == expectedTestId }) {
                 val snapshot = TestSnapshotCodec.decode(
                     snapshotJsonByTestId[expectedTestId] ?: cachedSnapshots[expectedTestId].orEmpty()
@@ -789,7 +799,7 @@ class SoruLabViewModel(
 
     /**
      * Collects ONLY real questions belonging to [topic] and [level] (0-hallucination policy):
-     * 1. For IKIZ level: only questions the user actually answered wrong or left blank in solved tests of this topic.
+     * 1. For IKIZ level: only verified questions the user actually answered incorrectly in this topic.
      * 2. For standard levels: user's cropped/custom questions for this topic calibrated to the requested 6-level wheel category.
      */
     private fun matchesTopic(

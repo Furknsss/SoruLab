@@ -82,7 +82,13 @@ internal object TwinQuestionQualityGate {
             return "Özgün soru kalıbı ve çözüm adımları eşleştirilmemiş."
         }
         // A direct copy with a different answer key is not a twin.
-        if (cleanStem == normalized(source.transcript.substringBefore("\nA)"))) {
+        // The PDF transcription may put the A-E options inline after the
+        // question stem, not on a new line. Compare against the pure stem too.
+        val firstAnswerMarker = Regex("""(?i)(?:^|\s)A[).]\s*""")
+            .find(source.transcript)?.range?.first ?: source.transcript.length
+        val originalStemWithoutOptions = source.transcript.take(firstAnswerMarker).trim()
+        if (originalStemWithoutOptions.isNotBlank() &&
+            cleanStem == normalized(originalStemWithoutOptions)) {
             return "Soru kökü kaynakla aynı."
         }
         val sourceNumbers = Regex("""\d+(?:[.,]\d+)?""").findAll(source.transcript)

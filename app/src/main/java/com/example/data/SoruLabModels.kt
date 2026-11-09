@@ -431,75 +431,50 @@ enum class TopicTestLevel(
     val defaultDifficulty: DifficultyLevel,
     val poolDistributionLabel: String
 ) {
+    SEVIYE_TESPIT(
+        "SEVİYE TESPİT", "Seviye Tespit", "Seviye Tespit",
+        0xFF2563EB, 0xFFFFFFFF, 0.5f, DifficultyLevel.OSYM,
+        "Bu konuda Kolay, Orta, ÖSYM, Zor ve Çok Zor etiketlerinden dengeli karma test"
+    ),
     BASLANGIC(
-        wheelLabel = "BAŞLANGIÇ",
-        displayTitle = "Başlangıç Tarzı",
-        shortTag = "Başlangıç",
-        wedgeColorHex = 0xFFD4C585,
-        textColorHex = 0xFF9C7214,
-        difficultyPosition = 0.15f,
-        defaultDifficulty = DifficultyLevel.KOLAY,
-        poolDistributionLabel = "Temel işlem ve tanım odaklı (Kolay & Orta seviye sorular)"
+        "BAŞLANGIÇ", "Başlangıç", "Başlangıç",
+        0xFF16A34A, 0xFFFFFFFF, 0.15f, DifficultyLevel.KOLAY,
+        "Ağırlık Kolay; uygun olduğunda yalnızca 1-2 Orta soru"
     ),
     IKIZ(
-        wheelLabel = "İKİZ",
-        displayTitle = "İkiz Tarzı",
-        shortTag = "İkiz",
-        wedgeColorHex = 0xFFD3B484,
-        textColorHex = 0xFFB86614,
-        difficultyPosition = 0.48f,
-        defaultDifficulty = DifficultyLevel.OSYM,
-        poolDistributionLabel = "Bu konuda yanlış yaptığın veya boş bıraktığın soruların birebir ikizleri"
+        "İKİZ", "İkiz • Yanlışlarım", "İkiz",
+        0xFFF59E0B, 0xFF422006, 0.48f, DifficultyLevel.ORTA,
+        "Bu konudaki geçmiş testlerinde yanlış cevapladığın soruların tekrarı"
     ),
     PEKISTIRME(
-        wheelLabel = "PEKİŞTİRME",
-        displayTitle = "Pekiştirme Tarzı",
-        shortTag = "Pekiştirme",
-        wedgeColorHex = 0xFFD99588,
-        textColorHex = 0xFFC72C2C,
-        difficultyPosition = 0.36f,
-        defaultDifficulty = DifficultyLevel.ORTA,
-        poolDistributionLabel = "Standart müfredat kazanımlarını pekiştiren Orta seviye sorular"
-    ),
-    GELISIYORUM(
-        wheelLabel = "GELİŞİYORUM",
-        displayTitle = "Gelişiyorum Tarzı",
-        shortTag = "Gelişiyorum",
-        wedgeColorHex = 0xFF1574E5,
-        textColorHex = 0xFFEFF6FF,
-        difficultyPosition = 0.42f,
-        defaultDifficulty = DifficultyLevel.ORTA,
-        poolDistributionLabel = "Orta ve ÖSYM geçiş düzeyinde yorum becerisi geliştiren sorular"
+        "PEKİŞTİRME", "Pekiştirme", "Pekiştirme",
+        0xFFF97316, 0xFFFFFFFF, 0.36f, DifficultyLevel.ORTA,
+        "Ağırlık Orta; uygun olduğunda 1 Kolay ve 1 Zor soru"
     ),
     OSYM(
-        wheelLabel = "ÖSYM",
-        displayTitle = "ÖSYM Tarzı",
-        shortTag = "ÖSYM",
-        wedgeColorHex = 0xFF6BA5CE,
-        textColorHex = 0xFF0F3D7A,
-        difficultyPosition = 0.56f,
-        defaultDifficulty = DifficultyLevel.OSYM,
-        poolDistributionLabel = "Hikayeli, yorum ve grafik ağırlıklı gerçek ÖSYM tarzı sorular"
+        "ÖSYM", "ÖSYM", "ÖSYM",
+        0xFF6366F1, 0xFFFFFFFF, 0.56f, DifficultyLevel.OSYM,
+        "Sadece ÖSYM etiketli sorular"
     ),
     DERECE(
-        wheelLabel = "DERECE",
-        displayTitle = "Derece Tarzı",
-        shortTag = "Derece",
-        wedgeColorHex = 0xFF7B88CC,
-        textColorHex = 0xFF1D2268,
-        difficultyPosition = 0.88f,
-        defaultDifficulty = DifficultyLevel.COK_ZOR,
-        poolDistributionLabel = "Tümevarım, Zor ve Çok Zor etiketli ileri seviye derece soruları"
-    )
+        "DERECE", "Derece", "Derece",
+        0xFFDB2777, 0xFFFFFFFF, 0.88f, DifficultyLevel.ZOR,
+        "Ağırlık Zor; uygun olduğunda 1-2 Çok Zor soru"
+    );
+
+    companion object {
+        fun fromPersistedName(value: String): TopicTestLevel? =
+            if (value.equals("GELISIYORUM", ignoreCase = true)) SEVIYE_TESPIT
+            else entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+    }
 }
 
 fun TopicTestLevel.recommendedDifficultyLevels(): Set<DifficultyLevel> = when (this) {
+    TopicTestLevel.SEVIYE_TESPIT, TopicTestLevel.IKIZ -> DifficultyLevel.entries.toSet()
     TopicTestLevel.BASLANGIC -> setOf(DifficultyLevel.KOLAY, DifficultyLevel.ORTA)
-    TopicTestLevel.IKIZ -> DifficultyLevel.entries.toSet()
-    TopicTestLevel.PEKISTIRME -> setOf(DifficultyLevel.KOLAY, DifficultyLevel.ORTA, DifficultyLevel.OSYM)
-    TopicTestLevel.GELISIYORUM -> setOf(DifficultyLevel.ORTA, DifficultyLevel.OSYM, DifficultyLevel.ZOR)
-    TopicTestLevel.OSYM -> setOf(DifficultyLevel.ORTA, DifficultyLevel.OSYM, DifficultyLevel.ZOR)
-    TopicTestLevel.DERECE -> setOf(DifficultyLevel.OSYM, DifficultyLevel.ZOR, DifficultyLevel.COK_ZOR)
+    TopicTestLevel.PEKISTIRME -> setOf(DifficultyLevel.KOLAY, DifficultyLevel.ORTA, DifficultyLevel.ZOR)
+    TopicTestLevel.OSYM -> setOf(DifficultyLevel.OSYM)
+    TopicTestLevel.DERECE -> setOf(DifficultyLevel.ZOR, DifficultyLevel.COK_ZOR)
 }
 
 const val AUTOMATIC_TEST_QUESTION_COUNT = 12

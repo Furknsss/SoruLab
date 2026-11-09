@@ -1729,7 +1729,7 @@ private fun RealTwoColumnBookPageSurface(
                     leftColumnQuestions.forEachIndexed { idx, q ->
                         Box(
                             modifier = Modifier.weight(
-                                estimatedBookQuestionUnits(q, ((pageMinHeight.value * 0f) + 340f), emptyMap())
+                                estimatedBookQuestionUnits(q, 340f, emptyMap())
                                     .coerceAtLeast(0.3f), fill = true
                             ).fillMaxWidth(),
                             contentAlignment = Alignment.TopStart

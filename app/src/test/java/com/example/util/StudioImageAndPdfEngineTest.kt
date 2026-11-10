@@ -11,6 +11,36 @@ import org.robolectric.RobolectricTestRunner
 class StudioImageAndPdfEngineTest {
 
     @Test
+    fun selectedGalleryLogoIsNeverLostWhenBackgroundRemovalErasesSolidArtwork() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        val source = java.io.File(context.cacheDir, "publisher_logo_solid_test.png")
+        val original = android.graphics.Bitmap.createBitmap(
+            80, 80, android.graphics.Bitmap.Config.ARGB_8888
+        )
+        original.eraseColor(android.graphics.Color.rgb(30, 116, 205))
+        source.outputStream().use { out ->
+            assertTrue(original.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out))
+        }
+        original.recycle()
+        try {
+            val path = StudioImageAndPdfEngine.importPublisherLogoSafely(
+                context, android.net.Uri.fromFile(source)
+            )
+            val saved = java.io.File(path)
+            assertTrue(saved.isFile)
+            assertTrue(saved.length() in 100L..(256L * 1024L))
+            val bitmap = android.graphics.BitmapFactory.decodeFile(path)
+            assertTrue(bitmap != null)
+            val pixel = bitmap!!.getPixel(bitmap.width / 2, bitmap.height / 2)
+            assertTrue(((pixel ushr 24) and 0xff) > 32)
+            bitmap.recycle()
+            saved.delete()
+        } finally {
+            source.delete()
+        }
+    }
+
+    @Test
     fun `normalizes inverted and out of range crop coordinates`() {
         val bounds = normalizeCropBounds(
             ymin = 980,

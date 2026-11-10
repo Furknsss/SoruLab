@@ -34,9 +34,9 @@ internal object TwinLocalTemplateEngine {
 
         val random = Random(question.id.hashCode().toLong() xor (oldAnswer.toLong() shl 16))
         val newA = ((2 + random.nextInt(7)) * if (oldA < 0) -1 else 1)
-            .let { if (it == oldA) it + if (it < 0) -1 else 1 else it }
+            .let { if (it == oldA) it + (if (it < 0) -1 else 1) else it }
         val newB = ((2 + random.nextInt(11)) * if (oldB < 0) -1 else 1)
-            .let { if (it == oldB) it + if (it < 0) -1 else 1 else it }
+            .let { if (it == oldB) it + (if (it < 0) -1 else 1) else it }
         val newX = (2 + random.nextInt(8)).let { if (it == oldX) it + 1 else it }
         val answer = newA * newX + newB
         val answerIndex = random.nextInt(5)

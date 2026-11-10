@@ -559,9 +559,10 @@ fun SoruHavuzuAndPdfStudioView(
         SoruLabPublisherPresets.mergedPublishers(customPublishers)
     }
 
-    var selectedPublisher by remember(allPublishers) {
-        mutableStateOf(allPublishers.firstOrNull())
-    }
+    // Preserve explicit choice even when the publisher list refreshes.
+    var selectedPublisherId by remember { mutableStateOf<String?>(null) }
+    val selectedPublisher = allPublishers.firstOrNull { it.id == selectedPublisherId }
+        ?: if (selectedPublisherId == null) allPublishers.firstOrNull() else null
     var selectedPdfUri by remember { mutableStateOf<Uri?>(null) }
     var selectedPdfFileName by remember { mutableStateOf("") }
 
@@ -598,7 +599,7 @@ fun SoruHavuzuAndPdfStudioView(
             scope.launch {
                 try {
                     val savedPath = withContext(Dispatchers.IO) {
-                        StudioImageAndPdfEngine.processPublisherLogoFloodFillAndTrim(
+                        StudioImageAndPdfEngine.importPublisherLogoSafely(
                             context = context,
                             logoUri = uri
                         )
@@ -987,7 +988,7 @@ fun SoruHavuzuAndPdfStudioView(
                                 allPublishers.forEach { pub ->
                                     val isSelected = selectedPublisher?.id == pub.id
                                     Surface(
-                                        onClick = { selectedPublisher = pub },
+                                        onClick = { selectedPublisherId = pub.id },
                                         enabled = !batchCropState.isAnalyzing,
                                         shape = RoundedCornerShape(14.dp),
                                         color = if (isSelected) Color(0xFFEFF6FF) else Color(0xFFF7F6FB),
@@ -2033,9 +2034,20 @@ fun SoruHavuzuAndPdfStudioView(
                                     .joinToString("")
                                     .take(3)
                                     .ifBlank { cleanTitle.take(3).uppercase() }
-                                val created = onAddCustomPublisher(cleanTitle, code, newPubSavedPath)
-                                selectedPublisher = created
-                                showAddPublisherModal = false
+                                try {
+                                    check(File(newPubSavedPath).isFile && File(newPubSavedPath).length() > 100L) {
+                                        "Seçilen yayın logosu kaydedilemedi; yeniden seç."
+                                    }
+                                    val created = onAddCustomPublisher(cleanTitle, code, newPubSavedPath)
+                                    selectedPublisherId = created.id
+                                    showAddPublisherModal = false
+                                    newPubName = ""
+                                    newPubSavedPath = ""
+                                    newPubBitmap = null
+                                    logoProcessingError = null
+                                } catch (e: Exception) {
+                                    logoProcessingError = e.message ?: "Yayın ve logosu kaydedilemedi."
+                                }
                             },
                             enabled = newPubName.isNotBlank() &&
                                 newPubBitmap != null &&

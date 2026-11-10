@@ -17,6 +17,13 @@ internal object TwinLocalTemplateEngine {
     private val deviations = listOf(-7, -4, -2, -1, 1, 2, 4, 7)
 
     fun generate(question: YksQuestion): TwinQuestionModalData? {
+        // A crop/PDF may contain essential constraints that OCR text omitted.
+        // Never apply a text-only numeric template to an uninspected source image.
+        // Multimodal analysis must handle original drawings and scanned figures.
+        if (question.croppedImagePath.isNotBlank() ||
+            question.imageBase64.isNotBlank() ||
+            question.pdfFilePath.isNotBlank()
+        ) return null
         if (!question.answerKeyVerified || question.visualType != QuestionVisualType.NONE) return null
         val original = (question.stemTop + " " + question.stemBottom)
             .replace(Regex("""\s+"""), " ").trim()

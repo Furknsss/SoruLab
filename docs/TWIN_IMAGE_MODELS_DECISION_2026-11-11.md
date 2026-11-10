@@ -71,5 +71,12 @@ olmalı. Bu gereksinimler karşılanmadan genel sorularda
 '345 Allstar ile aynı kalite' veya 'sınırsız otomatik görsel'
 iddiası yapılmaz.
 
-**Uygulama durumu:** Karar ve entegrasyon sınırları kayıt altındadır;
-ücretli Nano Banana API bağlantısı kurulmuş/etkinleştirilmiş değildir.
+**Uygulama durumu (güncellendi):** Nano Banana 2.1 ve Pro için
+isteğe bağlı sunucu tarafı üretim adaptörü, JPEG doğrulama/ölçekleme,
+iki ayrı kör görsel denetim ve Android görsel gösterim yolu kodlandı.
+`tools/twin_engine/nano_banana_provider.py` bu görevi yapar.
+`SORULAB_NANO_BANANA_ENABLE=0` varsayılanıdır: API aboneliği,
+anahtarı ve açık maliyet onayı olmadan gerçek istek gönderilmez.
+Canlı Nano Banana API'siyle gerçek görüntü üretimi henüz
+doğrulanmamıştır; görüntü üretimi/testi, model kurulumunu ve
+ödemeyi gerektirir.

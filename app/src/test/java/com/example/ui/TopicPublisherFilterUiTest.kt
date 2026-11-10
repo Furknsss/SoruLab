@@ -37,6 +37,8 @@ class TopicPublisherFilterUiTest {
         compose.onNodeWithTag("topic_publisher_option_drbiyoloji").performClick()
         compose.onNodeWithTag("interactive_test_builder_dialog").assertDoesNotExist()
         compose.onNodeWithTag("topic_detail_olustur_button").performClick()
+        compose.onNodeWithTag("automatic_test_preparation_sheet").assertIsDisplayed()
+        compose.onNodeWithTag("start_prepared_test_button").performClick()
         compose.waitUntil(8000) { created.get() }
         assertEquals("drbiyoloji", choice.get())
     }
@@ -46,6 +48,8 @@ class TopicPublisherFilterUiTest {
         val created = AtomicBoolean(false)
         showTopic(choice, created)
         compose.onNodeWithTag("topic_detail_olustur_button").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("automatic_test_preparation_sheet").assertIsDisplayed()
+        compose.onNodeWithTag("start_prepared_test_button").performClick()
         compose.waitUntil(8000) { created.get() }
         assertNull(choice.get())
         assertFalse(
@@ -95,7 +99,18 @@ class TopicPublisherFilterUiTest {
                                     fullTitle = "Sinir Sistemi - Test 1",
                                     difficulty = DifficultyLevel.OSYM,
                                     difficultyPosition = 0.6f,
-                                    questions = emptyList()
+                                    questions = listOf(YksQuestion(
+                                        id = "verified_fixture_1", number = 1, publisherName =
+                                            if (publisher == null) "Biyotik" else "Dr. Biyoloji",
+                                        publisherStamp = if (publisher == null) "Biyotik" else "Dr. Biyoloji",
+                                        stemTop = "Bir hormonun salgılandığı organ hangisidir?",
+                                        stemBottom = "Doğru yanıt?",
+                                        options = mapOf("A" to "1", "B" to "2", "C" to "3",
+                                            "D" to "4", "E" to "5"),
+                                        correctOption = "B",
+                                        difficulty = DifficultyLevel.OSYM, isOsymType = true,
+                                        answerKeyVerified = true
+                                    ))
                                 )
                             }
                         )

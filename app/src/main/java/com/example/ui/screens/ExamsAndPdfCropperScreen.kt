@@ -79,7 +79,8 @@ internal fun publisherForZipImport(
     explicitPublisherId: String?,
     publisherChoices: List<YksPublisherInfo>
 ): YksPublisherInfo =
-    publisherChoices.firstOrNull { it.id == explicitPublisherId && explicitPublisherId != null }
+    SoruLabPublisherPresets.mergedPublishers(publisherChoices)
+        .firstOrNull { it.id == explicitPublisherId && explicitPublisherId != null }
         ?: SoruLabPublisherPresets.resolvePublisher(zipPublisher, publisherChoices)
 
 @Composable
@@ -95,7 +96,10 @@ fun PublisherLogoEmblem(
     val publisherFilePath = publisher.customLogoPath.removePrefix("file://")
     // A publisher selected by the student is authoritative. ZIP metadata
     // is only a fallback, never an override for the saved publisher artwork.
-    val effectivePath = preferredPublisherLogoPath(publisherFilePath, overrideFilePath)
+    // A publisher without a chosen image must never inherit a ZIP logo
+    // carrying another publisher identity (e.g. OKS on a 345 question).
+    // Legacy artwork is allowed only if the record has no selected identity.
+    val effectivePath = preferredPublisherLogoPath(publisherFilePath, "")
     val customBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(effectivePath)
 
     if (customBitmap != null) {
@@ -817,7 +821,7 @@ fun SoruHavuzuAndPdfStudioView(
                             publisherName = resolvedPub.name,
                             publisherInfo = resolvedPub.copy(
                                 customLogoPath = preferredPublisherLogoPath(
-                                    resolvedPub.customLogoPath, first.publisherLogoUri
+                                    resolvedPub.customLogoPath, ""
                                 )
                             ),
                             coverImagePath = coverPath,

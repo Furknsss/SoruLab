@@ -15,6 +15,7 @@ import org.json.JSONObject
  * SQLite store becomes authoritative, so deletions cannot resurrect old caches.
  */
 internal class QuestionLibrarySqliteStore(context: Context, userId: String) : java.io.Closeable {
+    private val ownerUid = userId
     private val safeUid = userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
     private val helper = object : SQLiteOpenHelper(
         context.applicationContext, "sorulab_library_${safeUid}.db", null, 1
@@ -41,7 +42,13 @@ internal class QuestionLibrarySqliteStore(context: Context, userId: String) : ja
         }
         val output = ArrayList<CustomQuestionRecord>()
         db.rawQuery("SELECT payload FROM questions ORDER BY rowid ASC", null).use { rows ->
-            while (rows.moveToNext()) output.add(decode(JSONObject(rows.getString(0))))
+            while (rows.moveToNext()) {
+                val record = decode(JSONObject(rows.getString(0)))
+                check(record.userId.isBlank() || record.userId == ownerUid) {
+                    "Soru kaydı başka kullanıcıya ait. Hesaplar karıştırılamaz."
+                }
+                output.add(if (record.userId.isBlank()) record.copy(userId = ownerUid) else record)
+            }
         }
         return output
     }
@@ -66,7 +73,8 @@ internal class QuestionLibrarySqliteStore(context: Context, userId: String) : ja
                     insert.bindString(1, record.id.ifBlank { "_legacy_$index" })
                     insert.bindString(2, record.bookId)
                     insert.bindString(3, record.topicId)
-                    insert.bindString(4, encode(record).toString())
+                    insert.bindString(4, encode(if (record.userId.isBlank())
+                        record.copy(userId = ownerUid) else record).toString())
                     insert.executeInsert()
                 }
             }

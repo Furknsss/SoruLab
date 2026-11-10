@@ -116,9 +116,9 @@ internal fun <T> interleaveByGroup(items: List<T>, groupKey: (T) -> String): Lis
 internal fun difficultyFallbackOrder(
     preferredDifficulties: Set<DifficultyLevel>
 ): List<DifficultyLevel> {
-    val preferredOrder = DifficultyLevel.entries.filter { it in preferredDifficulties }
-        .ifEmpty { DifficultyLevel.entries }
-    val fallbackOrder = DifficultyLevel.entries
+    val preferredOrder = QUESTION_DIFFICULTY_BANDS.filter { it in preferredDifficulties.mapTo(mutableSetOf()) { d -> d.fourTier() } }
+        .ifEmpty { QUESTION_DIFFICULTY_BANDS }
+    val fallbackOrder = QUESTION_DIFFICULTY_BANDS
         .filterNot { it in preferredOrder }
         .sortedWith(
             compareBy<DifficultyLevel> { difficulty ->
@@ -1053,9 +1053,10 @@ class SoruLabViewModel(
             }
         }
 
-        val activeDiffs = selectedDifficulties.ifEmpty { DifficultyLevel.entries.toSet() }
+        val activeDiffs = selectedDifficulties.ifEmpty { QUESTION_DIFFICULTY_BANDS.toSet() }
+            .mapTo(mutableSetOf()) { it.fourTier() }
         val difficultyFilteredPool = sourceFilteredPool.filter { cq ->
-            cq.difficultyLevel5 in activeDiffs.mapTo(mutableSetOf()) { it.fourTier() }
+            cq.difficultyLevel5 in activeDiffs
         }
 
         // Aynı konu testinde kaynak çeşitliliğini korumak için yayınevlerini tur tur karıştırır.
@@ -1173,7 +1174,10 @@ class SoruLabViewModel(
         // Make ALL registered/imported publishers selectable from the topic screen.
         // The number shown is the actual number of matching question images in
         // this topic; a publisher with zero questions is displayed as zero.
-        val availableForTopic = PublisherQuestionMixer.options(allTopicQuestions)
+        val availableForTopic = PublisherQuestionMixer.options(
+            if (level == TopicTestLevel.IKIZ) eligibleForLevel
+            else allTopicQuestions.filter { it.answerKeyVerified && it.isEligibleForLevel(level) }
+        )
         val availableByPublisher = availableForTopic.associateBy { it.key }
         val publisherNames = (
             availableForTopic.map { it.title } +
@@ -1396,7 +1400,7 @@ class SoruLabViewModel(
         val dominantDiff = when {
             avgWeight < 0.25f -> DifficultyLevel.KOLAY
             avgWeight < 0.45f -> DifficultyLevel.ORTA
-            avgWeight < 0.65f -> DifficultyLevel.OSYM
+            avgWeight < 0.65f -> DifficultyLevel.ORTA
             avgWeight < 0.84f -> DifficultyLevel.ZOR
             else -> DifficultyLevel.COK_ZOR
         }
@@ -1588,7 +1592,7 @@ class SoruLabViewModel(
             selected == null || actual.trim().equals(selected.trim(), ignoreCase = true)
 
         val available = collectQuestionsByTopicSourceAndDifficulty(
-            topic, DifficultyLevel.entries.toSet(), QuestionSourceFilter.TUM_SORULAR
+            topic, QUESTION_DIFFICULTY_BANDS.toSet(), QuestionSourceFilter.TUM_SORULAR
         ).filter { question ->
             question.answerKeyVerified &&
                 matchesTag(question.learningOutcome, target.learningOutcome) &&

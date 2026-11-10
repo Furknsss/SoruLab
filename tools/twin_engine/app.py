@@ -76,7 +76,7 @@ def health() -> dict:
 
 @api.post("/api/twin")
 def generate_twin(request: TwinRequest) -> dict:
-    if request.verifiedOriginalOption not in "ABCDE":
+    if request.verifiedOriginalOption not in set("ABCDE"):
         raise HTTPException(status_code=422, detail="Verified source answer required")
     try:
         source = ask(

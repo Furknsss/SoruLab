@@ -820,7 +820,7 @@ class SoruLabRepository(
         // Transactionally committed, per-question index; existing JSON libraries
         // remain readable until their first successful SQLite migration.
         val indexed = runCatching {
-            QuestionLibrarySqliteStore(ctx, userId).read()
+            QuestionLibrarySqliteStore(ctx, userId).use { it.read() }
         }.getOrNull()
         if (indexed != null) return indexed.map(::normalizeLegacyBiologyQuestion)
         return try {
@@ -974,10 +974,11 @@ class SoruLabRepository(
             val durableRecords = if (allowRemovals) incoming else
                 incoming + previous.filterNot { it.id in incomingIds }
             // A transaction must succeed before the newly imported book is visible.
-            val indexed = QuestionLibrarySqliteStore(ctx, userId)
-            indexed.save(durableRecords, replace = allowRemovals)
-            check(indexed.count() >= durableRecords.map { it.id }.distinct().size) {
-                "SQLite kitaplık doğrulaması başarısız."
+            QuestionLibrarySqliteStore(ctx, userId).use { indexed ->
+                indexed.save(durableRecords, replace = allowRemovals)
+                check(indexed.count() >= durableRecords.map { it.id }.distinct().size) {
+                    "SQLite kitaplık doğrulaması başarısız."
+                }
             }
             if (durableRecords.size > 400) {
                 // Avoid repeatedly rewriting a growing multi-book JSON snapshot.

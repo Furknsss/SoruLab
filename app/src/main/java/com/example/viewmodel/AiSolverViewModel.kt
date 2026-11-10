@@ -235,6 +235,18 @@ class AiSolverViewModel : ViewModel() {
             ?: "Bu soru için kayıtlı çözüm bulunmuyor. Ücretsiz sürümde bulutla çözüm üretilmez."
 
     private val twinGenerationEngine by lazy { TwinQuestionGenerationEngine() }
+    private val twinVariantCounters = linkedMapOf<String, Int>()
+
+    private fun nextTwinVariant(question: YksQuestion): Int =
+        synchronized(twinVariantCounters) {
+            val key = question.id + ":" + question.analyticsText.hashCode()
+            val next = twinVariantCounters[key] ?: 0
+            twinVariantCounters[key] = (next + 1) % 100_000
+            if (twinVariantCounters.size > 200) {
+                twinVariantCounters.remove(twinVariantCounters.keys.first())
+            }
+            next
+        }
 
     fun generateTwinQuestionOnDemand(
         question: YksQuestion, context: Context, onResult: (TwinQuestionModalData) -> Unit
@@ -244,13 +256,14 @@ class AiSolverViewModel : ViewModel() {
         viewModelScope.launch {
             // Local, independently calculated templates never consume an API quota.
             // Unrecognised sources keep the image-aware generation + blind review path.
-            val result = TwinLocalTemplateEngine.generate(question)
-                ?: TwinRightTriangleTemplate.generate(question)
-                ?: TwinDoubleAngleTemplate.generate(question)
+            val variantIndex = nextTwinVariant(question)
+            val result = TwinLocalTemplateEngine.generate(question, variantIndex)
+                ?: TwinRightTriangleTemplate.generate(question, variantIndex)
+                ?: TwinDoubleAngleTemplate.generate(question, variantIndex)
                 ?: if (TwinRemoteService.configured) {
-                    TwinRemoteService.generate(question, context.applicationContext)
+                    TwinRemoteService.generate(question, context.applicationContext, variantIndex)
                 } else {
-                    twinGenerationEngine.generate(question, context.applicationContext)
+                    twinGenerationEngine.generate(question, context.applicationContext, variantIndex)
                 }
             onResult(result)
         }

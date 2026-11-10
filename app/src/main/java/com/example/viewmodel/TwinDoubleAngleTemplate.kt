@@ -53,7 +53,7 @@ internal object TwinDoubleAngleTemplate {
         return normalized(n, d)
     }
 
-    fun generate(question: YksQuestion): TwinQuestionModalData? {
+    fun generate(question: YksQuestion, variantIndex: Int = 0): TwinQuestionModalData? {
         // A crop/PDF may contain essential constraints that OCR text omitted.
         // Never apply a text-only numeric template to an uninspected source image.
         // Multimodal analysis must handle original drawings and scanned figures.
@@ -80,9 +80,9 @@ internal object TwinDoubleAngleTemplate {
             question.options.values.count { fraction(it) == oldValue } != 1
         ) return null
 
-        val random = Random(question.id.hashCode().toLong() xor oldNumerator.toLong())
-        val chosen = rationalSines.filterNot { it.first == p && it.second == q }
-            .let { it[random.nextInt(it.size)] }
+        val random = Random(question.id.hashCode().toLong() xor oldNumerator.toLong() xor (variantIndex.toLong() * 0x9E3779B9L))
+        val allowedSines = rationalSines.filterNot { it.first == p && it.second == q }
+        val chosen = allowedSines[Math.floorMod(question.id.hashCode() + variantIndex, allowedSines.size)]
         val newP = chosen.first
         val newQ = chosen.second
         val denominator = newQ * newQ

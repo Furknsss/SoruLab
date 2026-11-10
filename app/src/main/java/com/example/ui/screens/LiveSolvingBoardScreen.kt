@@ -3919,6 +3919,12 @@ private fun FullScreenTwinQuestionComparisonView(
                                             fontWeight = FontWeight.Medium
                                         )
                                     }
+                                    if (twinData.diagramJson.isNotBlank()) {
+                                        TwinDiagramCanvas(
+                                            diagramJson = twinData.diagramJson,
+                                            modifier = Modifier.testTag("twin_generated_diagram")
+                                        )
+                                    }
                                     Text(
                                         text = "Cevabını işaretle; ardından kontrol et.",
                                         color = Color(0xFF64748B),

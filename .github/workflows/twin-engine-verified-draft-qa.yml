@@ -57,6 +57,19 @@ jobs:
           --tests 'com.example.viewmodel.TwinQuestionQualityGateTest'
           --no-daemon --no-configuration-cache --max-workers=2
 
+      - name: Generate ephemeral debug signing key for preview only
+        run: |
+          # GitHub runners do not receive the developer's private debug keystore.
+          # Generate a disposable standard Android debug key; never touch release keys.
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -v -keystore debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 365 \
+              -dname "CN=Android Debug,O=Android,C=US" -noprompt
+          fi
+          keytool -list -keystore debug.keystore \
+            -storepass android -alias androiddebugkey > /dev/null
+
       - name: Compile debug app including shape-preview activity
         run: bash ./gradlew :app:assembleDebug --no-daemon --no-configuration-cache --max-workers=2
 

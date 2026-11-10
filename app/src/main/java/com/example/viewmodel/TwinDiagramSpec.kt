@@ -20,12 +20,14 @@ internal data class TwinDiagramLine(
 )
 internal data class TwinDiagramCircle(val cx: Float, val cy: Float, val radius: Float)
 internal data class TwinDiagramLabel(val x: Float, val y: Float, val text: String)
+internal data class TwinDiagramCurve(val points: List<Pair<Float, Float>>)
 
 internal data class TwinDiagramSpec(
     val kind: String,
     val lines: List<TwinDiagramLine>,
     val circles: List<TwinDiagramCircle>,
-    val labels: List<TwinDiagramLabel>
+    val labels: List<TwinDiagramLabel>,
+    val curves: List<TwinDiagramCurve> = emptyList()
 ) {
     companion object {
         private val kinds = setOf("triangle", "circle", "graph", "vectors", "schematic", "table", "flowchart", "timeline")
@@ -78,20 +80,36 @@ internal data class TwinDiagramSpec(
                 require(!text.any { it.isISOControl() })
                 TwinDiagramLabel(coordinate(item, "x"), coordinate(item, "y"), text)
             }
-            require(lines.size + circles.size >= 1)
+            val curveArray = array("paths", 8)
+            val curves = (0 until curveArray.length()).map { index ->
+                val item = curveArray.getJSONObject(index)
+                val pointsArray = item.getJSONArray("points")
+                require(pointsArray.length() in 3..64)
+                val points = (0 until pointsArray.length()).map { position ->
+                    val point = pointsArray.getJSONObject(position)
+                    coordinate(point, "x") to coordinate(point, "y")
+                }
+                // A curve must not be an array of repeated / invisible points.
+                require(points.zipWithNext().count { (a, b) ->
+                    hypot((a.first - b.first).toDouble(),
+                        (a.second - b.second).toDouble()) > .004
+                } >= 2)
+                TwinDiagramCurve(points)
+            }
+            require(lines.size + circles.size + curves.size >= 1)
             require(labels.isNotEmpty())
             when (kind) {
                 "triangle" -> require(lines.size >= 3)
                 "circle" -> require(circles.isNotEmpty())
                 "graph" -> require(lines.size >= 2)
                 "vectors" -> require(lines.any { it.arrow })
-                "schematic" -> require(lines.size + circles.size >= 2)
+                "schematic" -> require(lines.size + circles.size + curves.size >= 2)
                 "table" -> require(lines.size >= 4 && labels.size >= 4)
                 "flowchart" -> require(lines.size >= 2 && labels.size >= 2 &&
                     lines.any { it.arrow })
                 "timeline" -> require(lines.isNotEmpty() && labels.size >= 2)
             }
-            TwinDiagramSpec(kind, lines, circles, labels)
+            TwinDiagramSpec(kind, lines, circles, labels, curves)
         }.getOrNull()
     }
 }

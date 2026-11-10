@@ -3006,21 +3006,119 @@ internal fun TopicTestsDetailView(
             )
         }
 
-        if (isCreatingTest) {
-            Dialog(onDismissRequest = {}) {
-                Surface(shape = RoundedCornerShape(24.dp), color = Color.White,
-                    modifier = Modifier.fillMaxWidth().padding(20.dp)) {
-                    Row(
-                        modifier = Modifier.padding(24.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+        // Real bottom-sheet checklist rather than immediately opening the test.
+        // The final report remains visible, so the student can inspect which
+        // publishers contributed the actual selected questions.
+        if (isCreatingTest || preparedTest != null) {
+            Box(
+                modifier = Modifier.fillMaxSize().zIndex(100f)
+                    .testTag("automatic_test_preparation_sheet")
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.28f))
+                        .clickable(enabled = !isCreatingTest) { preparedTest = null }
+                )
+                Surface(
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                    shape = RoundedCornerShape(topStart = 25.dp, topEnd = 25.dp),
+                    color = Color.White,
+                    shadowElevation = 12.dp
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(11.dp)
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(28.dp), strokeWidth = 3.dp,
-                            color = Color(0xFF3674F4)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            if (isCreatingTest) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    strokeWidth = 2.5.dp, color = Color(0xFF2563EB)
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Filled.CheckCircle, contentDescription = null,
+                                    tint = Color(0xFF16A34A), modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            Text(
+                                if (isCreatingTest) "Test özenle hazırlanıyor"
+                                else "Test hazır • ${preparedTest?.questions?.size ?: 0} soru",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp, color = Color(0xFF172554)
+                            )
+                        }
+                        Text(
+                            "${topic.name} • ${selectedTestLevel.displayTitle}",
+                            color = Color(0xFF64748B), fontSize = 13.sp
                         )
-                        Text("Sistem testi oluşturuyor…",
-                            color = Color(0xFF1E293B), fontWeight = FontWeight.SemiBold)
+                        val stages = listOf(
+                            "Konu ve seviye havuzu kontrol ediliyor",
+                            "Soru sayısı ve cevap anahtarı doğrulanıyor",
+                            "Yayınevleri seçiliyor, tekrarlar ayıklanıyor",
+                            "Son konu ve zorluk denetimi yapılıyor"
+                        )
+                        stages.forEachIndexed { index, stage ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                when {
+                                    creationStage > index -> Icon(
+                                        Icons.Filled.CheckCircle, contentDescription = null,
+                                        tint = Color(0xFF16A34A),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    isCreatingTest && creationStage == index ->
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                            color = Color(0xFF2563EB)
+                                        )
+                                    else -> Icon(
+                                        Icons.Filled.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        tint = Color(0xFF94A3B8),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Text(stage, color = Color(0xFF334155), fontSize = 12.5.sp)
+                            }
+                        }
+                        if (preparedTest != null) {
+                            HorizontalDivider(color = Color(0xFFE2E8F0))
+                            Text(
+                                preparationCountsNote, color = Color(0xFF334155),
+                                fontSize = 13.sp
+                            )
+                            Text(
+                                preparationPublisherBreakdown,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF2563EB), fontSize = 13.sp,
+                                modifier = Modifier.testTag("prepared_publisher_distribution")
+                            )
+                            Button(
+                                onClick = {
+                                    val test = preparedTest
+                                    preparedTest = null
+                                    if (test != null) onStartTestImmediately(test)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                                    .testTag("start_prepared_test_button"),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF2563EB)
+                                ),
+                                shape = RoundedCornerShape(14.dp)
+                            ) { Text("Teste başla", fontWeight = FontWeight.Bold) }
+                            TextButton(
+                                onClick = { preparedTest = null },
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            ) { Text("Test listesinde kal") }
+                        }
                     }
                 }
             }

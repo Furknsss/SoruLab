@@ -30,13 +30,13 @@ internal class TwinQuestionGenerationEngine {
         "transcript" to Schema.string("Accurate original question transcription, including givens and options"),
         "subSkill" to Schema.string("Very specific tested skill, narrower than topic"),
         "exactQuestionPattern" to Schema.string("Specific roles of givens, conditions and required result"),
-        "orderedSolutionOperations" to Schema.string("Ordered types of operations required to solve original"),
+        "orderedSolutionOperations" to Schema.string("Ordered reasoning steps (logical inference, concept comparison, calculations, interpretation) required to solve original"),
         "independentlySolvedOriginalOption" to Schema.enumeration(answers + "UNKNOWN", "Original answer computed from question image"),
         "legible" to Schema.enumeration(yesNo, "All necessary text and mathematical information legible"),
         "canWriteStandaloneTextTwin" to Schema.enumeration(yesNo, "Equivalent question can be expressed in full in text"),
         "requiresDiagram" to Schema.enumeration(yesNo, "Source requires a geometric or coordinate figure"),
         "diagramFamily" to Schema.enumeration(
-            listOf("none", "triangle", "circle", "graph", "vectors", "schematic", "unsupported"),
+            listOf("none", "triangle", "circle", "graph", "vectors", "schematic", "table", "flowchart", "timeline", "unsupported"),
             "Figure class or unsupported when not representable"
         )
     ))
@@ -48,15 +48,15 @@ internal class TwinQuestionGenerationEngine {
         "optionD" to Schema.string("D"),
         "optionE" to Schema.string("E"),
         "correctOption" to Schema.enumeration(answers, "Newly computed correct choice"),
-        "solutionExplanation" to Schema.string("New full calculation with intermediate steps"),
+        "solutionExplanation" to Schema.string("Complete independent solution, logical proof or subject-specific scientific explanation with reasoning steps"),
         "transformationLog" to Schema.string("Exactly which variables, quantities and contextual terms were changed"),
         "originalPatternKept" to Schema.string("How the original question architecture was retained"),
-        "orderedOperationsKept" to Schema.string("Exact same ordered mathematical operations"),
+        "orderedOperationsKept" to Schema.string("Same ordered reasoning, operations or inferential steps"),
         "diagramJson" to Schema.string("JSON-encoded newly generated figure or empty string. Fields: kind, lines, circles, labels; coordinates 0..1")
     ))
     private val reviewerSchema = Schema.obj(mapOf(
         "solvedOptionWithoutAnswerKey" to Schema.enumeration(answers + "UNKNOWN", "Blind independent solution of new question"),
-        "independentSolution" to Schema.string("Full calculation explaining the independent answer from first principles"),
+        "independentSolution" to Schema.string("Independent evidence-based solution with all reasoning steps, numeric or conceptual"),
         "sameSpecificSubSkill" to Schema.enumeration(yesNo, "Same very specific skill"),
         "sameProblemArchitecture" to Schema.enumeration(yesNo, "Same architecture, not merely the same topic"),
         "sameOrderedReasoning" to Schema.enumeration(yesNo, "Same ordered solution steps"),
@@ -122,7 +122,11 @@ internal class TwinQuestionGenerationEngine {
         }
         try {
             val sourcePrompt = """
-                Sen ÖSYM soru çözümleme editörüsün. Kaynak görseldeki soruyu
+                Sen TÜM TYT ve AYT derslerinde ÖSYM soru çözümleme editörüsün.
+                Türkçe, matematik, geometri, fizik, kimya, biyoloji, tarih,
+                coğrafya, felsefe, din kültürü dahil tüm alanlarda çalış.
+                Metin, paragraf, öncül, deney, şema, grafik ve tablo sorularını
+                ayrıntılı incele. Kaynak görseldeki soruyu
                 tamamen oku, tahmin etme. Aynı konuda başka soru yazma.
                 Özgün sorunun tam alt kazanımını, veri rollerini, koşul sayısını,
                 istenen sonucu ve sıra sıra gereken işlem türlerini belirle.
@@ -130,8 +134,14 @@ internal class TwinQuestionGenerationEngine {
                 KULLANMADAN bağımsız çöz. Emin değilsen UNKNOWN.
                 Şekil veya önemli veri belirsizse legible NO.
                 Kaynak şekil gerektiriyorsa requiresDiagram YES ve
-                diagramFamily triangle/circle/graph/vectors/schematic döndür.
-                Fotoğraf, tablo, kompleks devre desteklenmiyorsa unsupported.
+                diagramFamily triangle/circle/graph/vectors/schematic,
+                table/flowchart/timeline biçiminde tanımla. Özgün görsel
+                yalnızca fotoğraflardan veya yeniden üretilemeyecek özgül
+                çizimlerden oluşuyorsa unsupported döndür.
+                Bir metinden yeterince tam öğrenme hedefi çıkarılabiliyorsa
+                şekilsiz özgün eşdeğer soru oluşturabilmek için
+                canWriteStandaloneTextTwin YES verebilirsin, ancak kaynakta
+                şekil zorunluysa requiresDiagram YES değerini koru.
                 Şekil gerekmiyorsa requiresDiagram NO, diagramFamily none.
                 Yeni bağımsız sorunun tümü şekilsiz ve eksiksiz bir metinle
                 anlatılamayacaksa canWriteStandaloneTextTwin NO.
@@ -162,7 +172,15 @@ internal class TwinQuestionGenerationEngine {
                     SENİN GÖREVİN aynı konudan rastgele başka soru yazmak DEĞİL.
                     KAYNAK SORUNUN İKİZİNİ yaz: aynı özgün alt kazanım,
                     aynı koşul örgüsü, aynı verilmiş büyüklüklerin rolleri,
-                    aynı soru tipi, aynı zorluk ve AYNI SIRALI ÇÖZÜM İŞLEMLERİ.
+                    aynı soru tipi, aynı zorluk ve AYNI SIRALI ÇÖZÜM
+                    VE ÇIKARIM ADIMLARI. Yalnızca matematik üretme.
+                    Fizikte temel yasa, birimler ve referans çerçevesi;
+                    kimyada element, yük, atom dengesi, tepkime koşulu;
+                    biyolojide mekanizma, canlı, yapı ve işlev ilişkisi;
+                    Türkçede paragrafın mantık örgüsü, anlam/gramer kazanımı;
+                    tarihte kaynak/olay/yıl, coğrafyada konum ve iklim
+                    doğruluğu mutlaka korunmalı. Aynı konudan rastgele soru
+                    üretmek ikiz sayılmaz.
                     Yalnızca sayıları, değişkenleri, eşdeğer kavramları veya
                     tutarlı bağlamsal nesneleri değiştir. Kaynak şıkları ve
                     doğru şıkkı kopyalama. Yeni soruyu yeniden çöz ve beş ayrı
@@ -174,6 +192,10 @@ internal class TwinQuestionGenerationEngine {
                     {"kind":"triangle","lines":[{"x1":0.2,"y1":0.8,
                     "x2":0.8,"y2":0.8,"arrow":false}],"circles":[],
                     "labels":[{"x":0.2,"y":0.9,"text":"A"}]}
+                    kind: triangle/circle/graph/vectors/schematic/table/
+                    flowchart/timeline olabilir. Tablolardaki satır/sütun
+                    ilişkilerini koru. Fotoğraf veya güvenilir yeniden
+                    çizilemeyen molekül/hücre görüntüsünü uydurma.
                     Koordinatlar 0..1, çizgi ve dairelerin tüm ölçüleri yeni
                     soruyla tutarlı olmalı. İçerik görsel gerektirmiyorsa
                     diagramJson boş string. Desteklenmeyen şekli UYDURMA.
@@ -207,7 +229,11 @@ internal class TwinQuestionGenerationEngine {
                 // Blind checker sees NEITHER the claimed correct answer NOR
                 // the generator's solution. It must solve from scratch.
                 val reviewerPrompt = """
-                    Bağımsız YKS denetmenisin. Aşağıdaki YENİ soruyu cevap
+                    Bağımsız TÜM DERSLERDE UZMAN YKS denetmenisin.
+                    Türkçe paragraf, biyoloji mekanizması, fizik kanunu,
+                    kimya dengesi, tarihsel olgu, coğrafi ilişki ve kavramsal
+                    mantık sorularında da geçerli bilimsel ve dilsel
+                    kanıta dayan. Aşağıdaki YENİ soruyu cevap
                     anahtarı olmadan SIFIRDAN çöz; seçenekleri kendin kontrol
                     et ve bağımsız adım adım çözümünü independentSolution'a
                     yaz. Bulduğun şık UNKNOWN olabilir. Sonra kaynak sorunun

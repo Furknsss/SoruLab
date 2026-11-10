@@ -21,6 +21,13 @@ internal object TwinRightTriangleTemplate {
     )
 
     fun generate(question: YksQuestion): TwinQuestionModalData? {
+        // A crop/PDF may contain essential constraints that OCR text omitted.
+        // Never apply a text-only numeric template to an uninspected source image.
+        // Multimodal analysis must handle original drawings and scanned figures.
+        if (question.croppedImagePath.isNotBlank() ||
+            question.imageBase64.isNotBlank() ||
+            question.pdfFilePath.isNotBlank()
+        ) return null
         if (!question.answerKeyVerified || question.visualType !in
             setOf(QuestionVisualType.NONE, QuestionVisualType.GEOMETRY_TRIANGLE)) return null
         val text = (question.stemTop + " " + question.stemBottom)

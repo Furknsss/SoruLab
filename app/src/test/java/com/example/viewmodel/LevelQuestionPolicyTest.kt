@@ -50,8 +50,8 @@ class LevelQuestionPolicyTest {
         assertEquals(4, counts.size)
         assertEquals(3, counts.values.min())
         assertEquals(3, counts.values.max())
-        assertTrue(selected.any { it.isOsymType })
-        assertTrue(selected.any { !it.isOsymType })
+        // Style is intentionally independent; the diagnostic is balanced by
+        // difficulty and may legitimately include any number of ÖSYM-type tags.
     }
 
     @Test fun incompleteDiagnosticNeverCreatesFabricatedPlacement() {

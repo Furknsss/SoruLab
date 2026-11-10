@@ -99,6 +99,23 @@ class TwinDiagramSpecTest {
         ))
     }
 
+    @Test fun nonlinearGraphPathsAreValidated() {
+        val graph = """{"kind":"graph",
+            "lines":[{"x1":0.1,"y1":0.8,"x2":0.9,"y2":0.8},
+                     {"x1":0.1,"y1":0.8,"x2":0.1,"y2":0.1}],
+            "paths":[{"points":[
+                {"x":0.2,"y":0.7},{"x":0.4,"y":0.4},{"x":0.6,"y":0.7}]}],
+            "labels":[{"x":0.95,"y":0.8,"text":"x"}]}"""
+        val parsed = requireNotNull(TwinDiagramSpec.parse(graph))
+        assertEquals(1, parsed.curves.size)
+        assertEquals(3, parsed.curves[0].points.size)
+        assertNull(TwinDiagramSpec.parse(graph.replace("\"x\":0.4", "\"x\":1.8")))
+        assertNull(TwinDiagramSpec.parse(graph.replace(
+            """{"x":0.4,"y":0.4},{"x":0.6,"y":0.7}""",
+            """{"x":0.2,"y":0.7},{"x":0.2,"y":0.7}"""
+        )))
+    }
+
     @Test fun qualityGateRejectsMissingDiagramAndWrongFamily() {
         val source = TwinSourceAnalysis(
             transcript = "ABC üçgeninde AB=5, AC=12 ve A açısı 90 derece. BC uzunluğu nedir?",

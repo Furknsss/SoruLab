@@ -85,21 +85,45 @@ jobs:
       - name: Capture real Android triangle twin preview
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 33
           target: google_apis
           arch: x86_64
           disable-animations: true
           emulator-options: '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none'
           emulator-boot-timeout: 600
           script: |
-            adb shell wm size 1200x2000
-            adb shell wm density 320
+            adb shell wm size 720x1280
+            adb shell wm density 240
             adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb shell am start -W -n com.aistudio.sorulab.ykslab/com.example.ui.screens.TwinDiagramPreviewActivity
-            sleep 5
             mkdir -p out/twin-visual
+            # A screenshot that contains a black launch screen or System UI ANR
+            # is NOT proof that Compose drew the checked twin. Assert UI semantics.
+            READY=0
+            for attempt in 1 2 3; do
+              adb shell am start -W -n com.aistudio.sorulab.ykslab/com.example.ui.screens.TwinDiagramPreviewActivity || true
+              sleep 16
+              adb shell uiautomator dump /sdcard/twin-view.xml >/dev/null 2>&1 || true
+              adb shell cat /sdcard/twin-view.xml > out/twin-visual/screen.xml 2>/dev/null || true
+              if grep -q "SoruLab" out/twin-visual/screen.xml && grep -q "YENİ İKİZ" out/twin-visual/screen.xml; then
+                READY=1
+                break
+              fi
+              adb shell input keyevent 4 || true
+            done
+            test "$READY" -eq 1
             adb exec-out screencap -p > out/twin-visual/native-triangle-twin.png
-            test "$(stat -c%s out/twin-visual/native-triangle-twin.png)" -gt 20000
+            pip install -q pillow
+            python - <<'PY'
+            from PIL import Image
+            path = "out/twin-visual/native-triangle-twin.png"
+            with Image.open(path) as original:
+                image = original.convert("RGB")
+                image.thumbnail((160, 240))
+                bright = sum(max(p) >= 215 and min(p) >= 185 for p in image.getdata())
+                coverage = bright / (image.width * image.height)
+                print("Bright canvas fraction", coverage)
+                assert coverage > 0.40, "Black screen / system ANR is NOT visual QA"
+            PY
 
       - name: Preserve real rendered native figure screenshot
         uses: actions/upload-artifact@v4

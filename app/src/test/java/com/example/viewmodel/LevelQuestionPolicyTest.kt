@@ -41,10 +41,26 @@ class LevelQuestionPolicyTest {
         assertTrue(distribution.values.max() - distribution.values.min() <= 1)
     }
 
-    @Test fun diagnosticWillNotInventMissingBand() {
+    @Test fun diagnosticUsesAvailableLegacyBandsWithoutInventingMissingBand() {
         val missingVeryHard = pool().filter { it.difficulty != DifficultyLevel.COK_ZOR }
-        assertTrue(LevelQuestionPolicy.select(TopicTestLevel.SEVIYE_TESPIT, missingVeryHard, 12).isEmpty())
-        assertTrue(LevelQuestionPolicy.select(TopicTestLevel.SEVIYE_TESPIT, pool(), 4).isEmpty())
+        val chosen = LevelQuestionPolicy.select(TopicTestLevel.SEVIYE_TESPIT, missingVeryHard, 12)
+        assertEquals(12, chosen.size)
+        assertEquals(4, chosen.map { it.difficulty }.distinct().size)
+        // Partial diagnostic is useful practice but MUST NOT issue a placement.
+        assertNull(LevelPlacementAdvisor.evaluate(chosen, chosen.associate { it.number to "B" }))
+        assertEquals(4, LevelQuestionPolicy.select(TopicTestLevel.SEVIYE_TESPIT, pool(), 4).size)
+    }
+
+    @Test fun primaryOnlyBooksStillBuildFullTwelveQuestionTests() {
+        val easyOnly = (1..20).map { question(DifficultyLevel.KOLAY, it) }
+        val selected = LevelQuestionPolicy.select(TopicTestLevel.BASLANGIC, easyOnly, 12)
+        assertEquals(12, selected.size)
+        assertTrue(selected.all { it.difficulty == DifficultyLevel.KOLAY })
+        assertEquals(12, LevelQuestionPolicy.maximumConstructibleCount(TopicTestLevel.BASLANGIC, easyOnly))
+        val mediumOnly = (1..20).map { question(DifficultyLevel.ORTA, it) }
+        assertEquals(12, LevelQuestionPolicy.maximumConstructibleCount(TopicTestLevel.PEKISTIRME, mediumOnly))
+        val hardOnly = (1..20).map { question(DifficultyLevel.ZOR, it) }
+        assertEquals(12, LevelQuestionPolicy.maximumConstructibleCount(TopicTestLevel.DERECE, hardOnly))
     }
 
     @Test fun beginningContainsTenEasyAndAtMostTwoMedium() {

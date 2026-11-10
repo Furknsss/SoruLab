@@ -456,9 +456,17 @@ class SoruLabViewModel(
                     val cloudPreservingArt = cloudPublishers.map { remote ->
                         val local = localPublishers.firstOrNull { it.id == remote.id }
                             ?: localByName[com.example.data.PublisherNameKey.from(remote.name)]
-                        if (remote.customLogoPath.isBlank() && local != null &&
-                            java.io.File(local.customLogoPath).isFile
-                        ) remote.copy(customLogoPath = local.customLogoPath) else remote
+                        when {
+                            // A freshly selected logo may not yet be uploaded.
+                            // Prefer that local publisher over an older remote
+                            // record with an alias (Dr.Biyoloji vs Dr Biyoloji).
+                            local != null && local.id != remote.id &&
+                                java.io.File(local.customLogoPath).isFile -> local
+                            remote.customLogoPath.isBlank() && local != null &&
+                                java.io.File(local.customLogoPath).isFile ->
+                                    remote.copy(customLogoPath = local.customLogoPath)
+                            else -> remote
+                        }
                     }
                     val cloudIds = cloudPreservingArt.mapTo(mutableSetOf()) { it.id }
                     val cloudNames = cloudPreservingArt.mapTo(mutableSetOf()) {
@@ -2351,7 +2359,8 @@ class SoruLabViewModel(
             customLogoPath = customLogoPath
         )
         val updated = listOf(newPub) + _customPublishers.value.filterNot {
-            it.name.equals(cleanName, ignoreCase = true)
+            com.example.data.PublisherNameKey.from(it.name) ==
+                com.example.data.PublisherNameKey.from(cleanName)
         }
         _customPublishers.value = updated
         repository.saveCustomPublishers(updated, effectiveUserId())

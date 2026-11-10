@@ -56,6 +56,13 @@ class NanoBananaSafetyTest(unittest.TestCase):
             **DRAFT,
             "answerMode": "conceptual",
             "answerExpression": "",
+            "options": {
+                "A": "Kütikula tabakası",
+                "B": "Ksilem dokusu",
+                "C": "Kloroplast granaları",
+                "D": "Stoma hücreleri",
+                "E": "Floem iletim demetleri",
+            },
             "illustrationPrompt": (
                 "Cross-section of a plant leaf with a labelled upper epidermis, "
                 "mesophyll, stomata and arrows indicating gas transport."

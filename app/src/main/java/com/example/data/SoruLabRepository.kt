@@ -1193,13 +1193,16 @@ class SoruLabRepository(
             val publisherCollection = customPublishersCollection
                 .document(userId)
                 .collection("publishers")
-            publisherCollection.whereEqualTo("name", publisher.name.take(120))
-                .get()
-                .await()
-                .documents
-                .filter { it.id != publisherId }
-                .forEach { it.reference.delete().await() }
+            // Commit the selected new artwork FIRST. An offline/failed upload
+            // must never delete the previously working logo document.
             publisherCollection.document(publisherId).set(payload).await()
+            publisherCollection.get().await().documents
+                .filter { document ->
+                    document.id != publisherId &&
+                        PublisherNameKey.from(document.getString("name").orEmpty()) ==
+                        PublisherNameKey.from(publisher.name)
+                }
+                .forEach { it.reference.delete().await() }
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.CREATE, "users/$userId/publishers/$publisherId")
             throw e

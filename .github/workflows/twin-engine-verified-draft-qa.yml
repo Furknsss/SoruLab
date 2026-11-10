@@ -53,6 +53,7 @@ jobs:
           --tests 'com.example.viewmodel.TwinLocalTemplateEngineTest'
           --tests 'com.example.viewmodel.TwinDiagramSpecTest'
           --tests 'com.example.viewmodel.TwinRightTriangleTemplateTest'
+          --tests 'com.example.viewmodel.TwinDoubleAngleTemplateTest'
           --tests 'com.example.viewmodel.TwinQuestionQualityGateTest'
           --no-daemon --no-configuration-cache --max-workers=2
 

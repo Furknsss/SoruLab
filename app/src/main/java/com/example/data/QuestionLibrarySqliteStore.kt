@@ -14,7 +14,7 @@ import org.json.JSONObject
  * After a successful transaction (including an intentionally empty library) the
  * SQLite store becomes authoritative, so deletions cannot resurrect old caches.
  */
-internal class QuestionLibrarySqliteStore(context: Context, userId: String) {
+internal class QuestionLibrarySqliteStore(context: Context, userId: String) : java.io.Closeable {
     private val safeUid = userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
     private val helper = object : SQLiteOpenHelper(
         context.applicationContext, "sorulab_library_${safeUid}.db", null, 1
@@ -31,6 +31,8 @@ internal class QuestionLibrarySqliteStore(context: Context, userId: String) {
             error("Unsupported library database schema: $oldVersion → $newVersion")
         }
     }.apply { setWriteAheadLoggingEnabled(true) }
+
+    override fun close() = helper.close()
 
     fun read(): List<CustomQuestionRecord>? {
         val db = helper.readableDatabase

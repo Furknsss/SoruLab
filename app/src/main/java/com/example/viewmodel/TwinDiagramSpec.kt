@@ -28,7 +28,7 @@ internal data class TwinDiagramSpec(
     val labels: List<TwinDiagramLabel>
 ) {
     companion object {
-        private val kinds = setOf("triangle", "circle", "graph", "vectors", "schematic")
+        private val kinds = setOf("triangle", "circle", "graph", "vectors", "schematic", "table", "flowchart", "timeline")
         fun supports(kind: String): Boolean = kind in kinds
 
         fun parse(raw: String): TwinDiagramSpec? = runCatching {
@@ -86,6 +86,10 @@ internal data class TwinDiagramSpec(
                 "graph" -> require(lines.size >= 2)
                 "vectors" -> require(lines.any { it.arrow })
                 "schematic" -> require(lines.size + circles.size >= 2)
+                "table" -> require(lines.size >= 4 && labels.size >= 4)
+                "flowchart" -> require(lines.size >= 2 && labels.size >= 2 &&
+                    lines.any { it.arrow })
+                "timeline" -> require(lines.isNotEmpty() && labels.size >= 2)
             }
             TwinDiagramSpec(kind, lines, circles, labels)
         }.getOrNull()

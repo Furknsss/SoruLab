@@ -12,6 +12,8 @@ import math
 import re
 from fractions import Fraction
 
+import sympy as sp
+
 MAX_EXPRESSION_LEN = 120
 MAX_MAGNITUDE = 10**12
 
@@ -89,6 +91,15 @@ def verify_numeric_choices(
     matches = [letter for letter, value in values.items() if value == proof_value]
     if matches != [correct_option]:
         raise VerificationError("Computed value disagrees with options")
+    # Second exact-arithmetic consistency check using SymPy. Never parse
+    # model-supplied code with sympify: only validated Fraction numerators
+    # and denominators enter the symbolic algebra engine.
+    expected = sp.Rational(proof_value.numerator, proof_value.denominator)
+    for label, value in values.items():
+        option = sp.Rational(value.numerator, value.denominator)
+        same = sp.simplify(expected - option) == 0
+        if same != (label == correct_option):
+            raise VerificationError("SymPy disagrees with numeric proof")
     return proof_value
 
 

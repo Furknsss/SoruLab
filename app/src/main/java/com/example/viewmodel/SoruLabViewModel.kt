@@ -890,7 +890,10 @@ class SoruLabViewModel(
                 ?: knownTests.firstOrNull { it.id == record.testId }?.questions
                 ?: continue
             val answers = parseAnswersJson(record.answersMapJson).orEmpty()
+            val originalById = _userCustomQuestions.value.associateBy { it.id }
             MistakeReviewPolicy.wrongAnswersOnly(questions, answers).forEach { q ->
+                val source = originalById[q.sourceQuestionId]
+                if (source == null || !TopicIntegrityPolicy.isSuitable(source, topic)) return@forEach
                 val key = LevelQuestionPolicy.stableId(q)
                 if (seen.add(key)) errors.add(q)
             }
@@ -914,7 +917,7 @@ class SoruLabViewModel(
         levelFilter: TopicTestLevel?
     ): List<YksQuestion> {
         val topicPool = _userCustomQuestions.value.filter { question ->
-            matchesTopic(question.subjectId, question.topicId, question.topicName, topic) &&
+            TopicIntegrityPolicy.isSuitable(question, topic) &&
                 repository.hasRecoverableQuestionImage(question)
         }
 
@@ -1007,7 +1010,7 @@ class SoruLabViewModel(
         sourceFilter: QuestionSourceFilter
     ): List<YksQuestion> {
         val strictTopicPool = _userCustomQuestions.value.filter { cq ->
-            matchesTopic(cq.subjectId, cq.topicId, cq.topicName, topic) &&
+            TopicIntegrityPolicy.isSuitable(cq, topic) &&
                 repository.hasRecoverableQuestionImage(cq)
         }
         if (strictTopicPool.isEmpty()) return emptyList()
@@ -1135,7 +1138,7 @@ class SoruLabViewModel(
      */
     fun checkPoolAvailability(topic: YksTopic, level: TopicTestLevel): PoolAvailabilityCheck {
         val strictTopicPool = _userCustomQuestions.value.filter { cq ->
-            matchesTopic(cq.subjectId, cq.topicId, cq.topicName, topic) &&
+            TopicIntegrityPolicy.isSuitable(cq, topic) &&
                 repository.hasRecoverableQuestionImage(cq)
         }
         val countsByDiff = QUESTION_DIFFICULTY_BANDS.associateWith { diff ->
@@ -1362,7 +1365,11 @@ class SoruLabViewModel(
             sourceCandidates, selectedPublisherKey
         )
         if (publisherFiltered.isEmpty()) return null
-        val strictCandidates = publisherFiltered.distinctBy { LevelQuestionPolicy.stableId(it) }
+        val bySourceId = _userCustomQuestions.value.associateBy { it.id }
+        val strictCandidates = publisherFiltered.filter { q ->
+            bySourceId[q.sourceQuestionId]?.let { TopicIntegrityPolicy.isSuitable(it, topic) }
+                ?: false
+        }.distinctBy { LevelQuestionPolicy.stableId(it) }
 
         val key = "${topic.id}_${level.name}"
         val existingList = _generatedTopicTests.value[key].orEmpty()
@@ -1386,7 +1393,20 @@ class SoruLabViewModel(
             previouslyUsed = usedSignatures,
             mixSeed = (topic.id + level.name + nextTestNumber + selectedPublisherKey.orEmpty()).hashCode()
         )
-        if (questionsToUse.isEmpty()) return null
+        // Last, independent pre-persistence audit: never save a test if a
+        // stale ZIP label, another subject, duplicated ID or answer-key
+        // problem survived an earlier filter.
+        if (questionsToUse.isEmpty() ||
+            questionsToUse.any { q ->
+                !q.answerKeyVerified ||
+                    q.correctOption !in setOf("A", "B", "C", "D", "E") ||
+                    !q.isEligibleForLevel(level) ||
+                    bySourceId[q.sourceQuestionId]?.let {
+                        !TopicIntegrityPolicy.isSuitable(it, topic)
+                    } != false
+            } ||
+            questionsToUse.map(LevelQuestionPolicy::stableId).distinct().size != questionsToUse.size
+        ) return null
 
         // Otomatik İsimlendirme: "[Konu Adı] - Test [X]" (Kesinlikle kitap adı kullanılmaz)
         val label = customTestTitle.trim().take(72)
@@ -1885,22 +1905,49 @@ class SoruLabViewModel(
     ) {
         if (records.isEmpty()) return
         val level = _selectedTestLevel.value
+        if (level == TopicTestLevel.IKIZ) {
+            showBanner("İkiz testinde yalnızca gerçekten yanlış cevaplanan sorular kullanılır. Konu ekranındaki İkiz seviyesini seç.")
+            return
+        }
         val eligibleRecords = records
-            .filter { it.isEligibleForLevel(level) }
+            .filter { record ->
+                val actualTopic = SoruLabCatalog.resolveTopicFast(record.topicId, record.topicName)
+                actualTopic != null &&
+                    TopicIntegrityPolicy.isSuitable(record, actualTopic) &&
+                    record.answerKeyVerified &&
+                    record.correctOption in setOf("A", "B", "C", "D", "E") &&
+                    record.isEligibleForLevel(level)
+            }
+            .distinctBy { it.id }
             .sortedBy {
                 if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE
             }
         if (eligibleRecords.isEmpty()) {
-            showBanner("Seçili ${level.displayTitle} seviyesine uygun kitap sorusu bulunamadı.")
+            showBanner("Seçili ${level.displayTitle} seviyesinde konu ve cevap anahtarı doğrulanmış soru bulunamadı.")
+            return
+        }
+        // Book imports may contain multiple chapters. Never label a multi-topic
+        // question set with the topic of its first record (old Endocrine vs
+        // Plant Biology contamination). The UI forms chapter-isolated chunks.
+        val distinctChapters = eligibleRecords
+            .map { it.subjectId.lowercase() to it.topicId.lowercase() }.distinct()
+        if (distinctChapters.size != 1) {
+            showBanner("Bu kitapta birden fazla konu var. Test oluşturmak için önce kitap panelinden tek bir konu seç.")
             return
         }
         val firstRecord = eligibleRecords.first()
-        val matchedSubject = SoruLabCatalog.allSubjects.find { it.id == firstRecord.subjectId }
-            ?: SoruLabCatalog.allSubjects.find { it.name.equals(firstRecord.subjectName, ignoreCase = true) }
-            ?: SoruLabCatalog.allSubjects.first()
-        val matchedTopic = matchedSubject.topics.find { it.id == firstRecord.topicId }
-            ?: matchedSubject.topics.find { it.name.equals(firstRecord.topicName, ignoreCase = true) }
-            ?: matchedSubject.topics.first()
+        val matchedSubject = SoruLabCatalog.allSubjects
+            .firstOrNull { it.id.equals(firstRecord.subjectId, true) }
+            ?: run {
+                showBanner("Bu kitabın dersi müfredatla eşleştirilemedi.")
+                return
+            }
+        val matchedTopic = matchedSubject.topics
+            .firstOrNull { it.id.equals(firstRecord.topicId, true) }
+            ?: run {
+                showBanner("Bu kitabın konusu müfredatla eşleştirilemedi.")
+                return
+            }
 
         val effectiveRecords = if (questionsPerTest > 0) {
             val chunks = eligibleRecords.chunked(questionsPerTest)
@@ -2350,6 +2397,86 @@ class SoruLabViewModel(
         _showPdfCropperStudio.value = false
     }
 
+    /**
+     * Reassign an already-imported book's publisher from the selected local
+     * publisher catalog. This edits existing records, not just a UI preview,
+     * so regenerated tests and restored snapshots receive the same artwork.
+     * Retain the original cropped image, answer key, question source and
+     * difficulty information without re-importing the ZIP.
+     */
+    fun updateLibraryBookPublisher(
+        questionIds: List<String>,
+        publisher: YksPublisherInfo,
+        onSaved: (Boolean, String) -> Unit
+    ) {
+        val selectedIds = questionIds.toSet()
+        if (selectedIds.isEmpty()) {
+            onSaved(false, "Bu kitapta değiştirilecek soru bulunamadı.")
+            return
+        }
+        val savedPublisher = _customPublishers.value.firstOrNull { it.id == publisher.id }
+        val logoPath = savedPublisher?.customLogoPath.orEmpty().removePrefix("file://")
+        if (savedPublisher == null || !java.io.File(logoPath).isFile) {
+            onSaved(false, "Seçilen yayınevinin logosu cihazda bulunamadı. Önce logoyu yeniden seç.")
+            return
+        }
+        val oldRecords = _userCustomQuestions.value
+        val targetRecords = oldRecords.filter { it.id in selectedIds }
+        if (targetRecords.isEmpty()) {
+            onSaved(false, "Kitap kayıtları bulunamadı; mevcut kitaplığa dokunulmadı.")
+            return
+        }
+        val updatedRecords = oldRecords.map { record ->
+            if (record.id !in selectedIds) record else record.copy(
+                publisherTag = savedPublisher.name,
+                publisherId = savedPublisher.id,
+                aiSolutionSummary = CustomQuestionRecord.packSolutionWithMeta(
+                    solutionText = record.cleanSolutionSummary,
+                    targetLevel = record.targetLevelName,
+                    croppedImagePath = record.croppedImagePath,
+                    publisherLogoUri = logoPath,
+                    answerKeyVerified = record.answerKeyVerified,
+                    questionNumberInBook = record.questionNumberInBook,
+                    bookOrTestName = record.bookOrTestName,
+                    bookCoverPath = record.bookCoverPath,
+                    isInKumbara = record.isInKumbara,
+                    fiveTierDifficulty = record.effectiveDifficultyLabel,
+                    sourceTestId = record.sourceTestId,
+                    osymType = record.isOsymType
+                )
+            )
+        }
+        val uid = effectiveUserId() ?: "device_yks_student_tr"
+        viewModelScope.launch {
+            try {
+                val durable = withContext(Dispatchers.IO) {
+                    repository.saveCachedCustomQuestions(uid, updatedRecords)
+                }
+                _userCustomQuestions.value = durable
+                syncPdfPoolToPracticeTests(durable)
+                onSaved(true, "${targetRecords.size} sorunun yayınevi ve logosu güncellendi.")
+                val cloudUid = _currentUser.value?.uid
+                if (cloudUid != null) {
+                    val changed = durable.filter { it.id in selectedIds }
+                        .map { it.copy(userId = cloudUid) }
+                    try {
+                        withContext(Dispatchers.IO) {
+                            repository.saveCustomQuestionsBatch(changed)
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        showBanner("Logo cihazda düzeltildi ancak bulut eşitlemesi tamamlanamadı.")
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onSaved(false, "Yayınevi logosu güncellenemedi: ${e.message.orEmpty().take(140)}")
+            }
+        }
+    }
+
     fun addCustomPublisher(
         name: String,
         shortCode: String,
@@ -2668,14 +2795,22 @@ class SoruLabViewModel(
 
                 val resolvedExamType = matchedSubject?.examType?.name ?: item.examType
                 val subjectId = matchedSubject?.id.orEmpty()
+                // An inherited chapter hint is not proof of the current crop.
+                // Quarantine contradictory content rather than silently
+                // placing a plant physiology question in Endocrine System.
+                val contradictoryPlantTopic = matchedTopic?.id == "endokrin_sistem" &&
+                    TopicIntegrityPolicy.containsIndependentPlantEvidence(
+                        item.questionText, item.learningOutcome
+                    )
                 // ZIP imports can carry authentic subject/topic labels for a
                 // publisher's chapter even when that chapter is not an exact
                 // match for the built-in catalog. Never silently erase them.
                 val resolvedSubjectName = matchedSubject?.name
                     ?.takeIf { it.isNotBlank() } ?: item.subjectName
-                val topicId = matchedTopic?.id.orEmpty()
-                val resolvedTopicName = matchedTopic?.name
-                    ?.takeIf { it.isNotBlank() } ?: item.topicName
+                val topicId = if (contradictoryPlantTopic) "" else matchedTopic?.id.orEmpty()
+                val resolvedTopicName = if (contradictoryPlantTopic)
+                    "Konu doğrulama gerekli"
+                else matchedTopic?.name?.takeIf { it.isNotBlank() } ?: item.topicName
 
                 val effectiveCover = bookCoverPath.ifBlank { item.bookCoverPath }
                 val packedSolution = CustomQuestionRecord.packSolutionWithMeta(

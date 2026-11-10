@@ -64,6 +64,25 @@ import kotlin.coroutines.resume
 import kotlinx.coroutines.withContext
 import java.io.File
 
+/** The student's current publisher logo always outranks obsolete ZIP artwork. */
+internal fun preferredPublisherLogoPath(selectedLogoPath: String, zipLogoPath: String): String {
+    val chosen = selectedLogoPath.removePrefix("file://").trim()
+    // If a publisher is explicitly assigned, never substitute a different
+    // ZIP publisher's artwork when the chosen file is unavailable.
+    if (chosen.isNotBlank()) return chosen.takeIf { File(it).isFile }.orEmpty()
+    val legacy = zipLogoPath.removePrefix("file://").trim()
+    return legacy.takeIf { it.isNotBlank() && File(it).isFile }.orEmpty()
+}
+
+internal fun publisherForZipImport(
+    zipPublisher: String,
+    explicitPublisherId: String?,
+    publisherChoices: List<YksPublisherInfo>
+): YksPublisherInfo =
+    SoruLabPublisherPresets.mergedPublishers(publisherChoices)
+        .firstOrNull { it.id == explicitPublisherId && explicitPublisherId != null }
+        ?: SoruLabPublisherPresets.resolvePublisher(zipPublisher, publisherChoices)
+
 @Composable
 fun PublisherLogoEmblem(
     publisher: YksPublisherInfo,
@@ -75,10 +94,12 @@ fun PublisherLogoEmblem(
     // Never show a random publisher's artwork if this question's image is missing.
     val overrideFilePath = overrideLogoPath.removePrefix("file://")
     val publisherFilePath = publisher.customLogoPath.removePrefix("file://")
-    val effectivePath = overrideFilePath
-        .takeIf { it.isNotBlank() && File(it).isFile }
-        ?: publisherFilePath.takeIf { it.isNotBlank() && File(it).isFile }
-        .orEmpty()
+    // A publisher selected by the student is authoritative. ZIP metadata
+    // is only a fallback, never an override for the saved publisher artwork.
+    // A publisher without a chosen image must never inherit a ZIP logo
+    // carrying another publisher identity (e.g. OKS on a 345 question).
+    // Legacy artwork is allowed only if the record has no selected identity.
+    val effectivePath = preferredPublisherLogoPath(publisherFilePath, "")
     val customBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(effectivePath)
 
     if (customBitmap != null) {
@@ -542,6 +563,10 @@ fun SoruHavuzuAndPdfStudioView(
         onSaved: (Boolean, String) -> Unit
     ) -> Unit,
     onDeleteLibraryBook: (List<String>) -> Unit,
+    onUpdateLibraryBookPublisher: (
+        questionIds: List<String>, publisher: YksPublisherInfo,
+        onSaved: (Boolean, String) -> Unit
+    ) -> Unit,
     onRestorePreviousQuestions: () -> Unit = {},
     onClearAllData: () -> Unit = {},
     onDismissError: () -> Unit = {},
@@ -629,6 +654,9 @@ fun SoruHavuzuAndPdfStudioView(
     }
 
     var selectedBookForTestPanel by remember { mutableStateOf<LibraryBookCardModel?>(null) }
+    var bookForPublisherEdit by remember { mutableStateOf<LibraryBookCardModel?>(null) }
+    var publisherReassignmentError by remember { mutableStateOf<String?>(null) }
+    var isApplyingBookPublisher by remember { mutableStateOf(false) }
 
 
     // Multi-file picker is safe: unpack and commit one book at a time.
@@ -656,15 +684,16 @@ fun SoruHavuzuAndPdfStudioView(
                                 SoruLabQuestionZipImporter.import(context, uri)
                             }
                             val bookId = pack.questions.firstOrNull()?.bookId.orEmpty()
+                            val authoritativePublisher = publisherForZipImport(
+                                pack.publisher, selectedPublisherId, customPublishers
+                            )
                             val identity = pack.bookTitle.trim().lowercase() to
-                                PublisherNameKey.from(pack.publisher)
+                                PublisherNameKey.from(authoritativePublisher.name)
                             require(bookId.isNotBlank()) { "ZIP kitap kimliği eksik." }
                             val existing = customQuestions.firstOrNull { it.bookId == bookId }
-                            require(existing == null || (
-                                existing.sourceBookTitle.trim().equals(pack.bookTitle.trim(), true) &&
-                                PublisherNameKey.from(existing.publisherTag) ==
-                                    PublisherNameKey.from(pack.publisher)
-                            )) {
+                            require(existing == null ||
+                                existing.sourceBookTitle.trim().equals(pack.bookTitle.trim(), true)
+                            ) {
                                 "Kitap kimliği başka kitaba ait: ${pack.bookTitle}."
                             }
                             val batchIdentity = selectedBookIds.putIfAbsent(bookId, identity)
@@ -676,12 +705,10 @@ fun SoruHavuzuAndPdfStudioView(
                                 continue
                             }
                             zipBatchProgress = "${index + 1}/${chosen.size} · ${pack.bookTitle} kaydediliyor…"
-                            val pub = SoruLabPublisherPresets.resolvePublisher(
-                                pack.publisher, customPublishers
-                            )
                             val (saved, message) = suspendCancellableCoroutine<Pair<Boolean, String>> { waiter ->
                                 onSaveExtractedPdfBatch(
-                                    pack.questions, pack.publisher, pub.customLogoPath,
+                                    pack.questions, authoritativePublisher.name,
+                                    authoritativePublisher.customLogoPath,
                                     pack.bookTitle, pack.bookCoverPath
                                 ) { success, report ->
                                     if (waiter.isActive) waiter.resume(success to report)
@@ -793,7 +820,9 @@ fun SoruHavuzuAndPdfStudioView(
                             bookTitle = bookTitle,
                             publisherName = resolvedPub.name,
                             publisherInfo = resolvedPub.copy(
-                                customLogoPath = first.publisherLogoUri.ifBlank { resolvedPub.customLogoPath }
+                                customLogoPath = preferredPublisherLogoPath(
+                                    resolvedPub.customLogoPath, ""
+                                )
                             ),
                             coverImagePath = coverPath,
                             activeQuestionCount = questionsInBook.size,
@@ -1633,6 +1662,75 @@ fun SoruHavuzuAndPdfStudioView(
         )
     }
 
+    // Existing ZIP books can be corrected without importing them again.
+    bookForPublisherEdit?.let { book ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!isApplyingBookPublisher) bookForPublisherEdit = null
+            },
+            title = { Text("Yayınevi logosunu seç") },
+            text = {
+                Column(
+                    modifier = Modifier.heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "${book.bookTitle} içindeki ${book.questions.size} soruda seçtiğin yayın ve logo kullanılacak. ZIP logosu artık bu seçimi değiştirmeyecek.",
+                        color = Color(0xFF475569), fontSize = 13.sp
+                    )
+                    allPublishers.forEach { publisher ->
+                        Surface(
+                            onClick = {
+                                if (!isApplyingBookPublisher) {
+                                    isApplyingBookPublisher = true
+                                    publisherReassignmentError = null
+                                    onUpdateLibraryBookPublisher(
+                                        book.questions.map { it.id }, publisher
+                                    ) { ok, result ->
+                                        isApplyingBookPublisher = false
+                                        if (ok) {
+                                            bookForPublisherEdit = null
+                                            importSaveSuccess = result
+                                        } else publisherReassignmentError = result
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                                .testTag("book_publisher_option_${publisher.id}")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                PublisherLogoEmblem(publisher = publisher, size = 36.dp)
+                                Text(publisher.name, color = Color(0xFF0F172A),
+                                    fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                    if (isApplyingBookPublisher) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    publisherReassignmentError?.let {
+                        Text(it, color = Color(0xFFB91C1C), fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !isApplyingBookPublisher,
+                    onClick = { bookForPublisherEdit = null }
+                ) { Text("Kapat") }
+            },
+            containerColor = Color.White
+        )
+    }
+
     // =======================================================================
     // KİTAP KARTINA TIKLANDIĞINDA AÇILAN "TEST OLUŞTURMA PANELİ"
     // - Kullanıcı testlerin kaç soruluk olacağını (8, 10, 12, 16, 20 veya Tümünü Al) seçer.
@@ -1751,6 +1849,21 @@ fun SoruHavuzuAndPdfStudioView(
                                 Icon(Icons.Default.Close, contentDescription = "Kapat", tint = Color(0xFF64748B))
                             }
                         }
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            publisherReassignmentError = null
+                            bookForPublisherEdit = activeBookPanel
+                            selectedBookForTestPanel = null
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                            .testTag("change_library_book_publisher_logo")
+                    ) {
+                        Icon(Icons.Filled.PhotoLibrary, contentDescription = null,
+                            modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Bu kitabın yayınevi ve logosunu değiştir")
                     }
 
                     // Konu Filtresi (Çok konulu büyük kitaplarda konulara göre anında filtreleme)

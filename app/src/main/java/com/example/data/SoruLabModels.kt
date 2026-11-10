@@ -561,19 +561,17 @@ fun automaticBookTestChunks(
     questions: List<CustomQuestionRecord>,
     level: TopicTestLevel
 ): List<List<CustomQuestionRecord>> {
+    // Direct book tests must not turn every chapter into an "İkiz" test.
+    // Those are created exclusively from the student's recorded mistakes.
+    if (level == TopicTestLevel.IKIZ) return emptyList()
     val eligible = questions.filter {
-        it.isEligibleForLevel(level)
+        it.isEligibleForLevel(level) &&
+            it.answerKeyVerified && it.correctOption in setOf("A", "B", "C", "D", "E")
     }
     if (eligible.isEmpty()) return emptyList()
-    // Books imported before source test detection still use the old 12-question
-    // chunks. New imports must never mix the end of one printed test with the
-    // start of the next. Preserve page/order and split larger tests at 12.
-    if (eligible.none { it.sourceTestId.isNotBlank() } &&
-        eligible.all { it.pageIndex < 0 }) {
-        // Only truly legacy records without any source-page metadata may
-        // retain the original arbitrary 12-question batching behavior.
-        return eligible.chunked(AUTOMATIC_TEST_QUESTION_COUNT)
-    }
+    // All books, including legacy ZIPs without page/test metadata, must use
+    // chapter-aware partitions. The old legacy 12-question shortcut mixed
+    // Endocrine and Plant Biology and mislabeled the whole test as Endocrine.
     val groups = mutableListOf<List<CustomQuestionRecord>>()
     var activeKey: String? = null
     var active = mutableListOf<CustomQuestionRecord>()
@@ -583,8 +581,14 @@ fun automaticBookTestChunks(
         // assigned the last chapter's scope to a new page. Likewise all
         // source-unidentified questions must not share one global 'legacy'
         // group across unrelated PDF pages.
-        val topicKey = item.topicName.trim().lowercase(java.util.Locale.ROOT)
-            .ifBlank { "unverified-topic" }
+        val topicKey = buildString {
+            append(item.subjectId.trim().lowercase(java.util.Locale.ROOT))
+            append(':')
+            append(item.topicId.trim().lowercase(java.util.Locale.ROOT))
+            append(':')
+            append(item.topicName.trim().lowercase(java.util.Locale.ROOT)
+                .ifBlank { "unverified-topic" })
+        }
         val sourceKey = item.sourceTestId.takeIf(String::isNotBlank)?.let {
             "source:$it"
         } ?: if (item.pageIndex >= 0) {

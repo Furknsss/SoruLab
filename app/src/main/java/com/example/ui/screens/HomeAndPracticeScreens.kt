@@ -64,6 +64,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -2520,6 +2521,10 @@ internal fun TopicTestsDetailView(
     var publisherOptionsLoading by remember(topic.id, selectedTestLevel) { mutableStateOf(false) }
     var selectedPublisherKey by remember(topic.id) { mutableStateOf<String?>(null) }
     var isCreatingTest by remember(topic.id) { mutableStateOf(false) }
+    var creationStage by remember(topic.id) { mutableIntStateOf(0) }
+    var preparedTest by remember(topic.id) { mutableStateOf<YksTestItem?>(null) }
+    var preparationPublisherBreakdown by remember(topic.id) { mutableStateOf("") }
+    var preparationCountsNote by remember(topic.id) { mutableStateOf("") }
     var creationError by remember(topic.id) { mutableStateOf<String?>(null) }
     val createScope = rememberCoroutineScope()
 
@@ -2543,38 +2548,76 @@ internal fun TopicTestsDetailView(
         }
     }
     val createAutomaticTest: () -> Unit = {
-        if (!isCreatingTest) {
+        if (!isCreatingTest && preparedTest == null) {
             isCreatingTest = true
+            creationStage = 0
+            preparationPublisherBreakdown = ""
+            preparationCountsNote = ""
             creationError = null
+            val requestedLevel = selectedTestLevel
+            val requestedPublisherKey = selectedPublisherKey
             createScope.launch {
                 try {
-                    val (test, reason) = withContext(Dispatchers.Default) {
-                        val pool = onCheckPoolAvailability()
-                        val difficulty = selectedTestLevel.recommendedDifficultyLevels()
-                        val source = if (selectedTestLevel == TopicTestLevel.IKIZ)
-                            QuestionSourceFilter.YANLIS_YAPTIKLARIM
-                            else QuestionSourceFilter.TUM_SORULAR
-                        val count = (pool.questionCountForSelection?.invoke(
-                            difficulty, source, selectedPublisherKey
-                        ) ?: pool.availableQuestionCount)
-                            .coerceIn(0, AUTOMATIC_TEST_QUESTION_COUNT)
-                        val generated = if (count > 0) pool.onGenerateCustomTest?.invoke(
-                            difficulty, source, count, selectedPublisherKey
-                        ) else null
-                        generated to pool.reasonMessage
+                    val pool = withContext(Dispatchers.Default) { onCheckPoolAvailability() }
+                    creationStage = 1
+                    val difficulty = requestedLevel.recommendedDifficultyLevels()
+                    val source = if (requestedLevel == TopicTestLevel.IKIZ)
+                        QuestionSourceFilter.YANLIS_YAPTIKLARIM
+                    else QuestionSourceFilter.TUM_SORULAR
+                    val count = withContext(Dispatchers.Default) {
+                        (pool.questionCountForSelection?.invoke(
+                            difficulty, source, requestedPublisherKey
+                        ) ?: pool.availableQuestionCount).coerceIn(0, AUTOMATIC_TEST_QUESTION_COUNT)
                     }
-                    if (test != null) {
-                        onStartTestImmediately(test)
+                    creationStage = 2
+                    val generated = withContext(Dispatchers.Default) {
+                        if (count > 0) pool.onGenerateCustomTest?.invoke(
+                            difficulty, source, count, requestedPublisherKey
+                        ) else null
+                    }
+                    creationStage = 3
+                    if (generated == null) {
+                        val title = pool.availablePublishers
+                            .firstOrNull { it.key == requestedPublisherKey }?.title
+                        creationError = if (requestedPublisherKey != null)
+                            "${title ?: "Seçili yayın"} için uygun doğrulanmış soru bulunamadı; filtreyi ya da seviyeyi değiştirebilirsin."
+                        else pool.reasonMessage
                     } else {
-                        val publisherTitle = publisherOptions.firstOrNull { it.key == selectedPublisherKey }?.title
-                        creationError = if (selectedPublisherKey != null)
-                            "${publisherTitle ?: "Seçili yayın"} için bu konuda doğrulanmış, kullanılabilir soru bulunamadı. Başka seviye veya Akıllı karışım seçebilirsin."
-                        else reason
+                        val selectedQuestions = generated.questions
+                        val ids = selectedQuestions.map(com.example.viewmodel.LevelQuestionPolicy::stableId)
+                        val invalid = selectedQuestions.any { q ->
+                            !q.answerKeyVerified ||
+                                q.correctOption !in setOf("A", "B", "C", "D", "E") ||
+                                !q.isEligibleForLevel(requestedLevel) ||
+                                (requestedPublisherKey != null &&
+                                    com.example.viewmodel.PublisherQuestionMixer.key(q) != requestedPublisherKey)
+                        }
+                        if (selectedQuestions.isEmpty() || ids.size != ids.distinct().size ||
+                            invalid || selectedQuestions.size > count) {
+                            creationError = "Test denetimden geçmedi: konu/seviye, tekrarlı soru veya cevap anahtarı hatası."
+                        } else {
+                            val groups = selectedQuestions.groupBy {
+                                com.example.viewmodel.PublisherQuestionMixer.key(it)
+                            }
+                            preparationPublisherBreakdown = groups.entries
+                                .sortedWith(compareByDescending<Map.Entry<String, List<YksQuestion>>> {
+                                    it.value.size
+                                }.thenBy { it.key })
+                                .joinToString(" • ") { (_, items) ->
+                                    "${items.first().publisherName}: ${items.size}"
+                                }
+                            preparationCountsNote =
+                                if (selectedQuestions.size < AUTOMATIC_TEST_QUESTION_COUNT)
+                                    "Bu konu/seviye/yayın filtresinde yalnızca ${selectedQuestions.size} güvenilir soru bulundu. Uydurma soru ya da kolay soru eklenmedi."
+                                else "12 soru seçildi. Tekrarlı sorular ve filtre uyumu denetlendi."
+                            creationStage = 4
+                            preparedTest = generated
+                        }
                     }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    creationError = e.message ?: "Test oluşturulamadı; kitaplık ve soru etiketlerini kontrol et."
+                    creationError = e.message ?: "Test oluşturulamadı; soru kayıtlarını kontrol et."
                 } finally {
                     isCreatingTest = false
                 }
@@ -2964,21 +3007,119 @@ internal fun TopicTestsDetailView(
             )
         }
 
-        if (isCreatingTest) {
-            Dialog(onDismissRequest = {}) {
-                Surface(shape = RoundedCornerShape(24.dp), color = Color.White,
-                    modifier = Modifier.fillMaxWidth().padding(20.dp)) {
-                    Row(
-                        modifier = Modifier.padding(24.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+        // Real bottom-sheet checklist rather than immediately opening the test.
+        // The final report remains visible, so the student can inspect which
+        // publishers contributed the actual selected questions.
+        if (isCreatingTest || preparedTest != null) {
+            Box(
+                modifier = Modifier.fillMaxSize().zIndex(100f)
+                    .testTag("automatic_test_preparation_sheet")
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.28f))
+                        .clickable(enabled = !isCreatingTest) { preparedTest = null }
+                )
+                Surface(
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                    shape = RoundedCornerShape(topStart = 25.dp, topEnd = 25.dp),
+                    color = Color.White,
+                    shadowElevation = 12.dp
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(11.dp)
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(28.dp), strokeWidth = 3.dp,
-                            color = Color(0xFF3674F4)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            if (isCreatingTest) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    strokeWidth = 2.5.dp, color = Color(0xFF2563EB)
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Filled.CheckCircle, contentDescription = null,
+                                    tint = Color(0xFF16A34A), modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            Text(
+                                if (isCreatingTest) "Test özenle hazırlanıyor"
+                                else "Test hazır • ${preparedTest?.questions?.size ?: 0} soru",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp, color = Color(0xFF172554)
+                            )
+                        }
+                        Text(
+                            "${topic.name} • ${selectedTestLevel.displayTitle}",
+                            color = Color(0xFF64748B), fontSize = 13.sp
                         )
-                        Text("Sistem testi oluşturuyor…",
-                            color = Color(0xFF1E293B), fontWeight = FontWeight.SemiBold)
+                        val stages = listOf(
+                            "Konu ve seviye havuzu kontrol ediliyor",
+                            "Soru sayısı ve cevap anahtarı doğrulanıyor",
+                            "Yayınevleri seçiliyor, tekrarlar ayıklanıyor",
+                            "Son konu ve zorluk denetimi yapılıyor"
+                        )
+                        stages.forEachIndexed { index, stage ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                when {
+                                    creationStage > index -> Icon(
+                                        Icons.Filled.CheckCircle, contentDescription = null,
+                                        tint = Color(0xFF16A34A),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    isCreatingTest && creationStage == index ->
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                            color = Color(0xFF2563EB)
+                                        )
+                                    else -> Icon(
+                                        Icons.Filled.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        tint = Color(0xFF94A3B8),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Text(stage, color = Color(0xFF334155), fontSize = 12.5.sp)
+                            }
+                        }
+                        if (preparedTest != null) {
+                            HorizontalDivider(color = Color(0xFFE2E8F0))
+                            Text(
+                                preparationCountsNote, color = Color(0xFF334155),
+                                fontSize = 13.sp
+                            )
+                            Text(
+                                preparationPublisherBreakdown,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF2563EB), fontSize = 13.sp,
+                                modifier = Modifier.testTag("prepared_publisher_distribution")
+                            )
+                            Button(
+                                onClick = {
+                                    val test = preparedTest
+                                    preparedTest = null
+                                    if (test != null) onStartTestImmediately(test)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                                    .testTag("start_prepared_test_button"),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF2563EB)
+                                ),
+                                shape = RoundedCornerShape(14.dp)
+                            ) { Text("Teste başla", fontWeight = FontWeight.Bold) }
+                            TextButton(
+                                onClick = { preparedTest = null },
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            ) { Text("Test listesinde kal") }
+                        }
                     }
                 }
             }

@@ -2497,7 +2497,7 @@ private fun TopicLandscapeCard(
 }
 
 @Composable
-private fun TopicTestsDetailView(
+internal fun TopicTestsDetailView(
     topic: YksTopic,
     selectedTestLevel: TopicTestLevel,
     currentLevelTests: List<YksTestItem>,

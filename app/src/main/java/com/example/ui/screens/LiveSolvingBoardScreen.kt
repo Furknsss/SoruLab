@@ -1917,7 +1917,7 @@ private fun RealTwoColumnBookPageSurface(
                         BookPageQuestionItem345(
                             question = q,
                             // A tall image receives more height than a short one.
-                            maxImageHeight = (maxHeight - 58.dp).coerceAtLeast(8.dp),
+                            maxImageHeight = (maxHeight - 8.dp).coerceAtLeast(8.dp),
                             imageTypographyScale = imageTypographyScales[q.id] ?: 1f,
                             isReviewMode = session.isReviewMode,
                             selectedOption = session.selectedAnswers[q.number],
@@ -1966,7 +1966,7 @@ private fun RealTwoColumnBookPageSurface(
                             ) {
                             BookPageQuestionItem345(
                                 question = q,
-                                maxImageHeight = (maxHeight - 58.dp).coerceAtLeast(8.dp),
+                                maxImageHeight = (maxHeight - 8.dp).coerceAtLeast(8.dp),
                             imageTypographyScale = imageTypographyScales[q.id] ?: 1f,
                                 isReviewMode = session.isReviewMode,
                                 selectedOption = session.selectedAnswers[q.number],

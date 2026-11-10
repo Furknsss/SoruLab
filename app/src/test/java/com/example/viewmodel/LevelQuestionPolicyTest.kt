@@ -61,6 +61,36 @@ class LevelQuestionPolicyTest {
         assertNull(LevelPlacementAdvisor.evaluate(selected, selected.associate { it.number to "B" }))
     }
 
+    @Test fun scarceEasyBandNeverBlocksOtherRealDiagnosticQuestions() {
+        val scarce = listOf(question(DifficultyLevel.KOLAY, 1)) +
+            (1..20).flatMap { n ->
+                listOf(
+                    question(DifficultyLevel.ORTA, n),
+                    question(DifficultyLevel.ZOR, n),
+                    question(DifficultyLevel.COK_ZOR, n)
+                )
+            }
+        val selected = LevelQuestionPolicy.select(TopicTestLevel.SEVIYE_TESPIT, scarce, 12)
+        assertEquals(12, selected.size)
+        assertEquals(1, selected.count { it.difficulty == DifficultyLevel.KOLAY })
+        assertEquals(12, LevelQuestionPolicy.maximumConstructibleCount(
+            TopicTestLevel.SEVIYE_TESPIT, scarce
+        ))
+    }
+
+    @Test fun osymStyleDoesNotCreateArtificialFifthDifficulty() {
+        val tagged = QUESTION_DIFFICULTY_BANDS.mapIndexed { index, difficulty ->
+            question(difficulty, index + 1, osymType = true)
+        }
+        assertEquals(4, tagged.map { it.difficulty.fourTier() }.distinct().size)
+        assertTrue(LevelQuestionPolicy.select(TopicTestLevel.OSYM, tagged, 12).all {
+            it.isOsymType
+        })
+        assertTrue(LevelQuestionPolicy.select(TopicTestLevel.DERECE, tagged, 12).all {
+            it.difficulty in setOf(DifficultyLevel.ZOR, DifficultyLevel.COK_ZOR)
+        })
+    }
+
     @Test fun beginningUsesOnlyEasyEvenIfOtherDifficultiesArePlentiful() {
         val result = LevelQuestionPolicy.select(TopicTestLevel.BASLANGIC, pool(), 12)
         assertEquals(12, result.size)

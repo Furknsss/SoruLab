@@ -81,14 +81,21 @@ internal object TwinDoubleAngleTemplate {
         val denominator = newQ * newQ
         val numerator = denominator - 2 * newP * newP
         val correctIndex = random.nextInt(5)
+        // Cosine must lie between -1 and 1. Exclude trivially
+        // impossible >1 or <-1 distractors even if they reflect a mistake.
         val incorrectNumerators = listOf(
             denominator - newP * newP,
             2 * newP * newP - denominator,
-            denominator + 2 * newP * newP,
             denominator - 4 * newP * newP,
+            denominator - 3 * newP * newP,
+            newP * newP,
+            2 * newP * newP,
             numerator + newQ,
-            numerator - newQ
-        ).filter { normalized(it, denominator) != normalized(numerator, denominator) }
+            numerator - newQ,
+            numerator + newP,
+            numerator - newP
+        ).filter { abs(it) <= denominator }
+            .filter { normalized(it, denominator) != normalized(numerator, denominator) }
             .map { normalized(it, denominator) }.distinct()
             .shuffled(kotlin.random.Random(random.nextLong()))
             .take(4)

@@ -86,6 +86,10 @@ data class TwinQuestionModalData(
     val croppedImagePath: String = "",
     val imageBase64: String = "",
     val sourceQuestionId: String = "",
+    /** Validated generated diagram specification, never raw HTML/SVG. */
+    val diagramJson: String = "",
+    /** NEW verified illustration from optional private image pipeline; not source crop. */
+    val generatedIllustrationBase64: String = "",
     val sourceDescription: String = "",
     val errorMessage: String? = null
 )
@@ -231,6 +235,18 @@ class AiSolverViewModel : ViewModel() {
             ?: "Bu soru için kayıtlı çözüm bulunmuyor. Ücretsiz sürümde bulutla çözüm üretilmez."
 
     private val twinGenerationEngine by lazy { TwinQuestionGenerationEngine() }
+    private val twinVariantCounters = linkedMapOf<String, Int>()
+
+    private fun nextTwinVariant(question: YksQuestion): Int =
+        synchronized(twinVariantCounters) {
+            val key = question.id + ":" + question.analyticsText.hashCode()
+            val next = twinVariantCounters[key] ?: 0
+            twinVariantCounters[key] = (next + 1) % 100_000
+            if (twinVariantCounters.size > 200) {
+                twinVariantCounters.remove(twinVariantCounters.keys.first())
+            }
+            next
+        }
 
     fun generateTwinQuestionOnDemand(
         question: YksQuestion, context: Context, onResult: (TwinQuestionModalData) -> Unit
@@ -238,7 +254,17 @@ class AiSolverViewModel : ViewModel() {
         // Network calls are triggered only by the explicit Twin button. Neither
         // PDF imports nor ordinary solution controls call the cloud model.
         viewModelScope.launch {
-            val result = twinGenerationEngine.generate(question, context.applicationContext)
+            // Local, independently calculated templates never consume an API quota.
+            // Unrecognised sources keep the image-aware generation + blind review path.
+            val variantIndex = nextTwinVariant(question)
+            val result = TwinLocalTemplateEngine.generate(question, variantIndex)
+                ?: TwinRightTriangleTemplate.generate(question, variantIndex)
+                ?: TwinDoubleAngleTemplate.generate(question, variantIndex)
+                ?: if (TwinRemoteService.configured) {
+                    TwinRemoteService.generate(question, context.applicationContext, variantIndex)
+                } else {
+                    twinGenerationEngine.generate(question, context.applicationContext, variantIndex)
+                }
             onResult(result)
         }
     }

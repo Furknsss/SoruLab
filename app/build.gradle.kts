@@ -75,6 +75,15 @@ android {
     versionName = "1.3.8"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    // Optional self-hosted Qwen+SymPy endpoint. Public URL is compiled into APK,
+    // never put passwords, tokens or private credentials here.
+    val twinEndpoint = (providers.gradleProperty("SORULAB_TWIN_ENGINE_URL").orNull
+      ?: System.getenv("SORULAB_TWIN_ENGINE_URL").orEmpty()).trim()
+    require(twinEndpoint.isEmpty() || (
+      twinEndpoint.startsWith("https://") &&
+        twinEndpoint.none { it.isWhitespace() || it == '"' || it == '\\' }
+    )) { "SORULAB_TWIN_ENGINE_URL must be a clean HTTPS URL or empty." }
+    buildConfigField("String", "TWIN_ENGINE_URL", "\"" + twinEndpoint.trimEnd('/') + "\"")
 
   }
 

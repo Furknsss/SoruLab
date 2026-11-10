@@ -756,6 +756,16 @@ fun LiveSolvingBoardScreen(
                 activeTwinScreenQuestion = null
                 activeTwinScreenData = null
                 showFullReportCardScreen = true
+            },
+            onRegenerateTwin = {
+                if (!isGeneratingTwin) {
+                    activeTwinScreenData = null
+                    isGeneratingTwin = true
+                    onGenerateTwinQuestion(twinTargetQ) { generated ->
+                        activeTwinScreenData = generated
+                        isGeneratingTwin = false
+                    }
+                }
             }
         )
         return
@@ -3709,7 +3719,8 @@ private fun FullScreenTwinQuestionComparisonView(
     onSelectStrokeSize: (Int) -> Unit,
     onSelectPenColor: (Long) -> Unit,
     onBackToBookReview: () -> Unit,
-    onOpenReportCard: () -> Unit
+    onOpenReportCard: () -> Unit,
+    onRegenerateTwin: () -> Unit
 ) {
     var isTwinExpanded by remember(originalQuestion.id) { mutableStateOf(false) }
     BackHandler(enabled = isTwinExpanded) { isTwinExpanded = false }
@@ -3717,6 +3728,15 @@ private fun FullScreenTwinQuestionComparisonView(
     var isTwinAnswerRevealed by remember(originalQuestion.id) { mutableStateOf(false) }
     var originalTwinStrokes by remember(originalQuestion.id) { mutableStateOf<List<DrawStroke>>(emptyList()) }
     var twinStrokes by remember(originalQuestion.id) { mutableStateOf<List<DrawStroke>>(emptyList()) }
+    LaunchedEffect(isLoadingTwin, twinData?.questionStem) {
+        // Never keep the previous twin's marked answer or sketches when a
+        // new variant is requested, even when the source question is unchanged.
+        if (isLoadingTwin || twinData != null) {
+            twinSelectedOption = null
+            isTwinAnswerRevealed = false
+            twinStrokes = emptyList()
+        }
+    }
 
     val originalBitmap = StudioImageAndPdfEngine.rememberGuaranteedQuestionBitmap(originalQuestion)
     val twinBitmap = twinData?.takeIf {
@@ -3919,6 +3939,18 @@ private fun FullScreenTwinQuestionComparisonView(
                                             fontWeight = FontWeight.Medium
                                         )
                                     }
+                                    if (twinData.diagramJson.isNotBlank()) {
+                                        TwinDiagramCanvas(
+                                            diagramJson = twinData.diagramJson,
+                                            modifier = Modifier.testTag("twin_generated_diagram")
+                                        )
+                                    }
+                                    if (twinData.generatedIllustrationBase64.isNotBlank()) {
+                                        TwinGeneratedIllustration(
+                                            imageBase64 = twinData.generatedIllustrationBase64,
+                                            modifier = Modifier.testTag("twin_generated_illustration")
+                                        )
+                                    }
                                     Text(
                                         text = "Cevabını işaretle; ardından kontrol et.",
                                         color = Color(0xFF64748B),
@@ -4009,6 +4041,21 @@ private fun FullScreenTwinQuestionComparisonView(
                                                     fontSize = 12.5.sp,
                                                     lineHeight = 18.sp
                                                 )
+                                                Surface(
+                                                    onClick = onRegenerateTwin,
+                                                    modifier = Modifier.testTag("generate_next_twin_btn"),
+                                                    shape = RoundedCornerShape(50),
+                                                    color = Color(0xFF1D4ED8)
+                                                ) {
+                                                    Text(
+                                                        text = "Bir İkiz Daha",
+                                                        color = Color.White,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(
+                                                            horizontal = 16.dp, vertical = 9.dp
+                                                        )
+                                                    )
+                                                }
                                             }
                                         }
                                     }

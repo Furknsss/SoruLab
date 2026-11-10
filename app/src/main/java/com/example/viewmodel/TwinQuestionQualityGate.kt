@@ -16,7 +16,9 @@ internal data class TwinSourceAnalysis(
     val orderedSolutionOperations: String,
     val independentlySolvedOriginalOption: String,
     val legible: Boolean,
-    val canWriteStandaloneTextTwin: Boolean
+    val canWriteStandaloneTextTwin: Boolean,
+    val requiresDiagram: Boolean = false,
+    val diagramFamily: String = "none"
 )
 
 internal data class TwinQuestionDraft(
@@ -26,7 +28,8 @@ internal data class TwinQuestionDraft(
     val explanation: String,
     val transformationLog: String,
     val originalPatternKept: String,
-    val orderedOperationsKept: String
+    val orderedOperationsKept: String,
+    val diagramJson: String = ""
 )
 
 internal data class TwinIndependentAudit(
@@ -38,7 +41,8 @@ internal data class TwinIndependentAudit(
     val independentOfUnavailableDiagram: Boolean,
     val singleUnambiguousAnswer: Boolean,
     val sufficientAndConsistentInformation: Boolean,
-    val notSourceCopy: Boolean
+    val notSourceCopy: Boolean,
+    val diagramMatchesQuestion: Boolean = true
 )
 
 internal object TwinQuestionQualityGate {
@@ -51,7 +55,12 @@ internal object TwinQuestionQualityGate {
 
     fun checkSource(source: TwinSourceAnalysis, verifiedOriginalOption: String?): String? {
         if (!source.legible || source.transcript.length < 25) return "Kaynak soru net okunamadı."
-        if (!source.canWriteStandaloneTextTwin) return "Bu soru çizim gerektiriyor; eksik görselle sahte ikiz üretilemez."
+        if (source.requiresDiagram && !TwinDiagramSpec.supports(source.diagramFamily)) {
+            return "Kaynak şeklin türü henüz güvenilir şekilde yeniden çizilemiyor."
+        }
+        if (!source.canWriteStandaloneTextTwin && !source.requiresDiagram) {
+            return "Kaynak sorunun gerekli bilgileri metinle verilemiyor."
+        }
         if (source.subSkill.trim().length < 6 || source.exactQuestionPattern.trim().length < 12 ||
             source.orderedSolutionOperations.trim().length < 12
         ) return "Kaynak sorunun özgün çözüm şablonu güvenilir biçimde çıkarılamadı."
@@ -99,12 +108,21 @@ internal object TwinQuestionQualityGate {
             sourceNumbers == twinNumbers) {
             return "Kaynağın sayısal verileri hiç değişmemiş."
         }
+        if (source.requiresDiagram) {
+            val diagram = TwinDiagramSpec.parse(draft.diagramJson)
+                ?: return "İkiz soru için gerekli yeni şekil eksik veya çizilemez."
+            if (diagram.kind != source.diagramFamily) {
+                return "Yeni şekil orijinalin şekil ailesini korumuyor."
+            }
+        } else if (draft.diagramJson.isNotBlank()) {
+            return "Orijinalde olmayan bir şekil eklenmiş."
+        }
         val danglingVisualReferences = listOf(
             "yukarıdaki şekil", "aşağıdaki şekil", "verilen grafiğe göre",
             "şekilde gösterilen", "yandaki grafik", "yukarıdaki tablo",
             "aşağıdaki görsel", "şekle göre"
         )
-        if (danglingVisualReferences.any { cleanStem.contains(it) }) {
+        if (danglingVisualReferences.any { cleanStem.contains(it) } && draft.diagramJson.isBlank()) {
             return "Yeni soruda gösterilmeyen bir görsele gönderme var."
         }
         return null
@@ -123,6 +141,9 @@ internal object TwinQuestionQualityGate {
         }
         if (!audit.independentOfUnavailableDiagram) {
             return "Yeni sorunun çözümü eksik bir şekil veya tabloya bağlı."
+        }
+        if (!audit.diagramMatchesQuestion) {
+            return "Yeniden çizilen şekil soru kökü ve çözüm ile tutarlı değil."
         }
         if (!audit.singleUnambiguousAnswer || !audit.sufficientAndConsistentInformation) {
             return "Tek ve tutarlı bir doğru seçenek bağımsız olarak onaylanmadı."

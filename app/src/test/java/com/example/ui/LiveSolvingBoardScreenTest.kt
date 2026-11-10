@@ -55,6 +55,70 @@ class LiveSolvingBoardScreenTest {
     }
 
     @Test
+    fun fourMixedSourceQuestionsUseBalancedTwoByTwoLayout() {
+        val original = fixtureSession().testItem.questions.first()
+        val source = (1..4).map { number ->
+            original.copy(
+                id = "balanced_$number",
+                number = number,
+                croppedImagePath = "book_" + number + ".png"
+            )
+        }
+        val ratios = source.associate { it.id to 0.55f }
+        val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
+            source, columnCapacity = 1.55f, maxQuestionsPerColumn = 4,
+            columnWidthDp = 240f, actualImageRatios = ratios
+        )
+        assertEquals(1, pages.size)
+        assertEquals(listOf(1, 2), pages[0].left.map { it.number })
+        assertEquals(listOf(3, 4), pages[0].right.map { it.number })
+    }
+
+    @Test
+    fun veryTallDrBiyolojiCropNeverGetsMixedIntoAnOverfilledColumn() {
+        val original = fixtureSession().testItem.questions.first()
+        val source = (1..7).map { number ->
+            original.copy(
+                id = "height_$number",
+                number = number,
+                croppedImagePath = "book_" + number + ".png"
+            )
+        }
+        val ratios = source.associate { question ->
+            question.id to if (question.number == 1 || question.number == 5) 4.5f else 0.6f
+        }
+        val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
+            source, columnCapacity = 2.15f, maxQuestionsPerColumn = 4,
+            columnWidthDp = 240f, actualImageRatios = ratios
+        )
+        assertEquals(source.map { it.id }, pages.flatMap { it.questions }.map { it.id })
+        org.junit.Assert.assertTrue(pages.size >= 2)
+        val tallPage = pages.first { page -> page.questions.any { it.number == 1 } }
+        assertEquals(listOf(1), tallPage.left.map { it.number })
+        org.junit.Assert.assertTrue(pages.all { it.left.size <= 4 && it.right.size <= 4 })
+    }
+
+    @Test
+    fun smallImageCropsUseRealImageRatiosRatherThanFixedTwoPerColumn() {
+        val original = fixtureSession().testItem.questions.first()
+        val source = (1..12).map { number ->
+            original.copy(
+                id = "compact_$number",
+                number = number,
+                croppedImagePath = "book_" + number + ".png"
+            )
+        }
+        val ratios = source.associate { it.id to 0.35f }
+        val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
+            source, columnCapacity = 2.7f, maxQuestionsPerColumn = 4,
+            columnWidthDp = 240f, actualImageRatios = ratios
+        )
+        assertEquals(source.map { it.id }, pages.flatMap { it.questions }.map { it.id })
+        org.junit.Assert.assertTrue(pages.any { it.left.size > 2 || it.right.size > 2 })
+        org.junit.Assert.assertTrue(pages.none { it.right.isEmpty() && it.questions.size > 1 })
+    }
+
+    @Test
     fun cancelFinishKeepsTheSessionActive() {
         var finishCount = 0
         showBoard(onFinish = { finishCount++ })

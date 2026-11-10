@@ -96,6 +96,9 @@ jobs:
           print("Firebase project, Google OAuth clients, and release certificate are consistent.")
           PY
 
+      - name: Build a debug-only visual preview APK
+        run: bash ./gradlew :app:assembleDebug --no-daemon --no-configuration-cache --max-workers=2
+
       - name: Build Release APK
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
@@ -150,7 +153,29 @@ jobs:
           emulator-options: '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none'
           disable-animations: true
           emulator-boot-timeout: 600
-          script: bash scripts/check_inplace_upgrade.sh "$(find baseline-v137 -name '*.apk' -type f -print -quit)" "$(find out -name '*.apk' -type f -print -quit)" --install
+          script: |
+            # Capture the actual Compose test sheet in a tablet-sized
+            # Android emulator, with mixed large/normal question graphics.
+            # This preview Activity exists only in app/src/debug.
+            adb shell wm size 1600x2560
+            adb shell wm density 320
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -W -n com.aistudio.sorulab.ykslab/com.example.PaperLayoutPreviewActivity
+            sleep 8
+            mkdir -p out/visual-qa
+            adb exec-out screencap -p > out/visual-qa/paper-layout-mixed-publishers.png
+            test "$(stat -c%s out/visual-qa/paper-layout-mixed-publishers.png)" -gt 20000
+            # Reset only this disposable test emulator before upgrading.
+            adb shell am force-stop com.aistudio.sorulab.ykslab
+            adb uninstall com.aistudio.sorulab.ykslab
+            bash scripts/check_inplace_upgrade.sh "$(find baseline-v137 -name '*.apk' -type f -print -quit)" "$(find out -name '*.apk' -type f -print -quit)" --install
+
+      - name: Upload the actual Android test-page screenshot for visual review
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoruLab-v1.3.8-Paper-Layout-Visual-QA
+          path: out/visual-qa/*.png
+          retention-days: 30
 
       - name: Upload Release APK Artifact
         uses: actions/upload-artifact@v4
@@ -159,20 +184,6 @@ jobs:
           path: out/*.apk
           retention-days: 30
 
-      - name: Publish signed v1.3.8 APK as a direct GitHub download
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        shell: bash
-        run: |
-          test -s out/SoruLab-v1.3.8.apk
-          unzip -tqq out/SoruLab-v1.3.8.apk
-          if gh release view v1.3.8 > /dev/null 2>&1; then
-            gh release upload v1.3.8 out/SoruLab-v1.3.8.apk --clobber
-          else
-            gh release create v1.3.8 out/SoruLab-v1.3.8.apk \
-              --target "$GITHUB_SHA" \
-              --title "SoruLab v1.3.8 - Gerçek test sayfası gibi dengeli yerleşim" \
-              --notes "Signed Android v1.3.8: proportional typography normalization across publishers, space-between paper column arrangement to avoid giant bottom gaps, image-size measurement for both file-backed and inline Base64 images, and intact whole-question fit. Retains automatic step-by-step test start, strict topic/difficulty checks and logo fixes. Automated Firebase unit tests, signing, and a no-uninstall v1.3.7 to v1.3.8 upgrade on emulator must pass. Existing app should not be uninstalled."
-          fi
-          echo "Direct APK: https://github.com/$GITHUB_REPOSITORY/releases/download/v1.3.8/SoruLab-v1.3.8.apk"
+      # Deliberately NO release publication here.
+      # User requires review of the real test-sheet screenshot before any APK
+      # can be approved. Release assets must be published only after review.

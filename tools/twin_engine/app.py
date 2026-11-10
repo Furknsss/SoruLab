@@ -53,6 +53,7 @@ SUBJECT_REVIEW_RUBRIC = (
 
 class TwinRequest(BaseModel):
     questionId: str = Field(max_length=160)
+    variantIndex: int = Field(default=0, ge=0, le=100_000)
     subject: str = Field(default="", max_length=120)
     topic: str = Field(max_length=200)
     difficulty: str = Field(default="", max_length=100)
@@ -187,7 +188,16 @@ def generate_twin(request: TwinRequest) -> dict:
                 "KAYNAK ANALİZ:\n" + json.dumps(source, ensure_ascii=False) +
                 "\nDERS/KONU: " + request.subject + "/" + request.topic +
                 "\nZORLUK: " + request.difficulty +
-                "\nŞEKİL: " + family + "\nÖNCEKİ RED: " + reason,
+                "\nŞEKİL: " + family +
+                "\nPEKİŞTİRME VARYANTI: " + str(request.variantIndex) +
+                "\nAŞAMA: " + (
+                    "Aynı işlem adımları, başka sayılar."
+                    if request.variantIndex % 3 == 0 else
+                    "Aynı işlem adımları, eşdeğer farklı anlatım."
+                    if request.variantIndex % 3 == 1 else
+                    "Aynı alt kazanım ve çözüm sırası, yeni bağlam."
+                ) +
+                "\nÖNCEKİ RED: " + reason,
                 request.imageBase64,
             )
             try:

@@ -267,7 +267,7 @@ internal fun estimateBookTypographyScale(bitmap: Bitmap, columnContentWidthDp: F
     return (11.5f / renderedGlyphDp).coerceIn(0.34f, 1.10f)
 }
 
-private fun estimateBookImageMeasurements(
+internal fun estimateBookImageMeasurements(
     question: YksQuestion, filesDir: File, columnContentWidthDp: Float
 ): BookImageMeasurements? {
     val fileCandidates = listOfNotNull(

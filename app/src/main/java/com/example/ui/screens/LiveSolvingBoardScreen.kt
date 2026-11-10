@@ -3925,6 +3925,12 @@ private fun FullScreenTwinQuestionComparisonView(
                                             modifier = Modifier.testTag("twin_generated_diagram")
                                         )
                                     }
+                                    if (twinData.generatedIllustrationBase64.isNotBlank()) {
+                                        TwinGeneratedIllustration(
+                                            imageBase64 = twinData.generatedIllustrationBase64,
+                                            modifier = Modifier.testTag("twin_generated_illustration")
+                                        )
+                                    }
                                     Text(
                                         text = "Cevabını işaretle; ardından kontrol et.",
                                         color = Color(0xFF64748B),

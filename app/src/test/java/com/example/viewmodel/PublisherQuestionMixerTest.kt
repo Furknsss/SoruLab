@@ -31,6 +31,24 @@ class PublisherQuestionMixerTest {
             (1..count).map { question(publisher, number = it) }
         }
 
+    @Test fun drBiyolojiVariantsAreTheSamePublisherAndNeverIncludeBiyotik() {
+        val source = listOf(
+            question("Dr. Biyoloji", number = 1),
+            question("Dr Biyoloji Yayınları", number = 2),
+            question("DRBIYOLOJI", number = 3),
+            question("Biyotik", number = 4),
+            question("Biyoloji", number = 5)
+        )
+        val canonicalKey = PublisherQuestionMixer.key(source.first())
+        assertEquals("drbiyoloji", canonicalKey)
+        val chosen = PublisherQuestionMixer.filter(source, canonicalKey)
+        assertEquals(3, chosen.size)
+        assertEquals(listOf(1, 2, 3), chosen.map { it.number })
+        val options = PublisherQuestionMixer.options(source)
+        assertEquals(3, options.size)
+        assertEquals(3, options.single { it.key == "drbiyoloji" }.availableQuestions)
+    }
+
     @Test fun onePublisherFilterIsStrict() {
         val pool = pool(12)
         val selected = PublisherQuestionMixer.options(pool)

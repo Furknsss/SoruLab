@@ -557,6 +557,10 @@ fun SoruHavuzuAndPdfStudioView(
         onSaved: (Boolean, String) -> Unit
     ) -> Unit,
     onDeleteLibraryBook: (List<String>) -> Unit,
+    onUpdateLibraryBookPublisher: (
+        questionIds: List<String>, publisher: YksPublisherInfo,
+        onSaved: (Boolean, String) -> Unit
+    ) -> Unit,
     onRestorePreviousQuestions: () -> Unit = {},
     onClearAllData: () -> Unit = {},
     onDismissError: () -> Unit = {},
@@ -644,6 +648,9 @@ fun SoruHavuzuAndPdfStudioView(
     }
 
     var selectedBookForTestPanel by remember { mutableStateOf<LibraryBookCardModel?>(null) }
+    var bookForPublisherEdit by remember { mutableStateOf<LibraryBookCardModel?>(null) }
+    var publisherReassignmentError by remember { mutableStateOf<String?>(null) }
+    var isApplyingBookPublisher by remember { mutableStateOf(false) }
 
 
     // Multi-file picker is safe: unpack and commit one book at a time.
@@ -1649,6 +1656,75 @@ fun SoruHavuzuAndPdfStudioView(
         )
     }
 
+    // Existing ZIP books can be corrected without importing them again.
+    bookForPublisherEdit?.let { book ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!isApplyingBookPublisher) bookForPublisherEdit = null
+            },
+            title = { Text("Yayınevi logosunu seç") },
+            text = {
+                Column(
+                    modifier = Modifier.heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "${book.bookTitle} içindeki ${book.questions.size} soruda seçtiğin yayın ve logo kullanılacak. ZIP logosu artık bu seçimi değiştirmeyecek.",
+                        color = Color(0xFF475569), fontSize = 13.sp
+                    )
+                    allPublishers.forEach { publisher ->
+                        Surface(
+                            onClick = {
+                                if (!isApplyingBookPublisher) {
+                                    isApplyingBookPublisher = true
+                                    publisherReassignmentError = null
+                                    onUpdateLibraryBookPublisher(
+                                        book.questions.map { it.id }, publisher
+                                    ) { ok, result ->
+                                        isApplyingBookPublisher = false
+                                        if (ok) {
+                                            bookForPublisherEdit = null
+                                            importSaveSuccess = result
+                                        } else publisherReassignmentError = result
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                                .testTag("book_publisher_option_${publisher.id}")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                PublisherLogoEmblem(publisher = publisher, size = 36.dp)
+                                Text(publisher.name, color = Color(0xFF0F172A),
+                                    fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                    if (isApplyingBookPublisher) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    publisherReassignmentError?.let {
+                        Text(it, color = Color(0xFFB91C1C), fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !isApplyingBookPublisher,
+                    onClick = { bookForPublisherEdit = null }
+                ) { Text("Kapat") }
+            },
+            containerColor = Color.White
+        )
+    }
+
     // =======================================================================
     // KİTAP KARTINA TIKLANDIĞINDA AÇILAN "TEST OLUŞTURMA PANELİ"
     // - Kullanıcı testlerin kaç soruluk olacağını (8, 10, 12, 16, 20 veya Tümünü Al) seçer.
@@ -1767,6 +1843,21 @@ fun SoruHavuzuAndPdfStudioView(
                                 Icon(Icons.Default.Close, contentDescription = "Kapat", tint = Color(0xFF64748B))
                             }
                         }
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            publisherReassignmentError = null
+                            bookForPublisherEdit = activeBookPanel
+                            selectedBookForTestPanel = null
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                            .testTag("change_library_book_publisher_logo")
+                    ) {
+                        Icon(Icons.Filled.PhotoLibrary, contentDescription = null,
+                            modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Bu kitabın yayınevi ve logosunu değiştir")
                     }
 
                     // Konu Filtresi (Çok konulu büyük kitaplarda konulara göre anında filtreleme)

@@ -112,7 +112,67 @@ internal data class TwoColumnQuestionPage(
     val questions: List<YksQuestion> get() = left + right
 }
 
-private fun estimateBookImageRatio(question: YksQuestion, filesDir: File): Float? {
+internal data class BookImageMeasurements(
+    val heightOverWidth: Float,
+    val typographyScale: Float
+)
+
+/**
+ * Match the optical size of printed text from very different publishers.
+ * The PDF crop's pixel dimensions alone are insufficient: two equally-wide
+ * book images can have 11dp and 26dp glyphs on the same SoruLab sheet.
+ * This analysis only samples a downscaled bitmap, never OCRs or edits content.
+ * A scale <= 1 is used: complete text, diagrams and answer options are kept.
+ */
+internal fun estimateBookTypographyScale(bitmap: Bitmap, columnContentWidthDp: Float): Float {
+    if (bitmap.width < 16 || bitmap.height < 16 || columnContentWidthDp <= 0f) return 1f
+    val sampleStep = 3
+    val left = (bitmap.width * 0.06f).toInt()
+    val right = (bitmap.width * 0.94f).toInt().coerceAtLeast(left + 1)
+    val top = (bitmap.height * 0.03f).toInt()
+    val bottom = (bitmap.height * 0.97f).toInt().coerceAtLeast(top + 1)
+    val sampledColumns = ((right - left) / sampleStep).coerceAtLeast(1)
+    val occupiedRows = BooleanArray(bottom - top)
+    for (y in top until bottom) {
+        var ink = 0
+        var x = left
+        while (x < right) {
+            val color = bitmap.getPixel(x, y)
+            val r = android.graphics.Color.red(color)
+            val g = android.graphics.Color.green(color)
+            val b = android.graphics.Color.blue(color)
+            if (android.graphics.Color.alpha(color) >= 100 &&
+                (r * 299 + g * 587 + b * 114) < 168_000) {
+                ink++
+            }
+            x += sampleStep
+        }
+        occupiedRows[y - top] = ink >= 2 && ink < sampledColumns * 0.50f
+    }
+    val bands = mutableListOf<Int>()
+    var runStart = -1
+    for (i in 0..occupiedRows.size) {
+        val occupied = i < occupiedRows.size && occupiedRows[i]
+        if (occupied && runStart < 0) runStart = i
+        if (!occupied && runStart >= 0) {
+            val height = i - runStart
+            if (height >= 3 && height <= bitmap.width * 0.085f) bands += height
+            runStart = -1
+        }
+    }
+    if (bands.size < 5) return 1f
+    bands.sort()
+    // Median measured ink-band approximates glyph cap height while rejecting
+    // large illustrations and single-pixel mathematical lines.
+    val typicalGlyphPx = bands[bands.size / 2].toFloat()
+    val renderedGlyphDp = typicalGlyphPx * columnContentWidthDp / bitmap.width
+    if (renderedGlyphDp < 8f) return 1f
+    return (14.5f / renderedGlyphDp).coerceIn(0.62f, 1f)
+}
+
+private fun estimateBookImageMeasurements(
+    question: YksQuestion, filesDir: File, columnContentWidthDp: Float
+): BookImageMeasurements? {
     val fileCandidates = listOfNotNull(
         question.imagePath.takeIf { it.isNotBlank() }?.let(::File),
         File(filesDir, "questions/q_${question.id}.jpg"),
@@ -121,11 +181,29 @@ private fun estimateBookImageRatio(question: YksQuestion, filesDir: File): Float
     )
     for (file in fileCandidates) {
         if (!file.isFile) continue
-        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.absolutePath, options)
-        if (options.outWidth > 0 && options.outHeight > 0) {
-            return options.outHeight.toFloat() / options.outWidth.toFloat()
-        }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) continue
+        val ratio = bounds.outHeight.toFloat() / bounds.outWidth
+        var sampleSize = 1
+        while (bounds.outWidth / sampleSize > 512 ||
+            bounds.outHeight / sampleSize > 2048) sampleSize *= 2
+        val sample = runCatching {
+            BitmapFactory.decodeFile(
+                file.absolutePath, BitmapFactory.Options().apply {
+                    inSampleSize = sampleSize
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                }
+            )
+        }.getOrNull()
+        val fontScale = if (sample != null) {
+            try {
+                estimateBookTypographyScale(sample, columnContentWidthDp)
+            } finally {
+                sample.recycle()
+            }
+        } else 1f
+        return BookImageMeasurements(ratio, fontScale)
     }
     return null
 }
@@ -133,13 +211,15 @@ private fun estimateBookImageRatio(question: YksQuestion, filesDir: File): Float
 private fun estimatedBookQuestionUnits(
     question: YksQuestion,
     columnWidthDp: Float,
-    actualImageRatios: Map<String, Float>
+    actualImageRatios: Map<String, Float>,
+    imageTypographyScales: Map<String, Float> = emptyMap()
 ): Float {
     val normalizedWidth = (question.normRight - question.normLeft).coerceAtLeast(0.08f)
     val normalizedHeight = (question.normBottom - question.normTop).coerceAtLeast(0.04f)
     // Match the ACTUAL drawing width: 42dp publisher/number gutter + 4dp gap.
     // The old 108dp deduction underestimated tall book crops by up to 50%.
-    val imageWidthDp = (columnWidthDp - 46f).coerceAtLeast(90f)
+    val imageWidthDp = (columnWidthDp - 46f).coerceAtLeast(90f) *
+        (imageTypographyScales[question.id] ?: 1f).coerceIn(0.62f, 1f)
     val isImage = question.imagePath.isNotBlank() ||
         question.imageBase64.isNotBlank() || question.pdfFilePath.isNotBlank()
     val contentHeightDp = if (isImage) {
@@ -167,7 +247,8 @@ internal fun packQuestionsIntoTwoColumnPages(
     columnCapacity: Float = 2.1f,
     maxQuestionsPerColumn: Int = 8,
     columnWidthDp: Float = 360f,
-    actualImageRatios: Map<String, Float> = emptyMap()
+    actualImageRatios: Map<String, Float> = emptyMap(),
+    imageTypographyScales: Map<String, Float> = emptyMap()
 ): List<TwoColumnQuestionPage> {
     if (questions.isEmpty()) return listOf(TwoColumnQuestionPage(emptyList(), emptyList()))
 
@@ -178,7 +259,7 @@ internal fun packQuestionsIntoTwoColumnPages(
     val capacity = columnCapacity.coerceAtLeast(0.5f)
     val columnLimit = maxQuestionsPerColumn.coerceIn(1, 8)
     val questionUnits = FloatArray(questions.size) { index ->
-        estimatedBookQuestionUnits(questions[index], width, actualImageRatios)
+        estimatedBookQuestionUnits(questions[index], width, actualImageRatios, imageTypographyScales)
     }
     val gap = 8f / width
     val pages = mutableListOf<TwoColumnQuestionPage>()
@@ -284,19 +365,26 @@ fun LiveSolvingBoardScreen(
     // Reserve only real paper gutters; the old 100dp deduction made columns narrow.
     val columnWidth = ((sheetWidthDp - 38f) / 2f).coerceAtLeast(145f)
     val columnCapacity = ((sheetHeightDp - 32f) / columnWidth).coerceAtLeast(0.5f)
-    val actualImageRatios by produceState<Map<String, Float>>(
+    val imageMeasurements by produceState<Map<String, BookImageMeasurements>>(
         initialValue = emptyMap(),
-        key1 = questions, key2 = context.filesDir.absolutePath
+        key1 = questions, key2 = context.filesDir.absolutePath, key3 = columnWidth
     ) {
         value = withContext(Dispatchers.IO) {
             questions.mapNotNull { question ->
-                estimateBookImageRatio(question, context.filesDir)?.let { question.id to it }
+                estimateBookImageMeasurements(question, context.filesDir, columnWidth - 46f)
+                    ?.let { question.id to it }
             }.toMap()
         }
     }
-    val packedBookPages = remember(questions, columnCapacity, columnWidth, actualImageRatios) {
+    val actualImageRatios = remember(imageMeasurements) {
+        imageMeasurements.mapValues { it.value.heightOverWidth }
+    }
+    val imageTypographyScales = remember(imageMeasurements) {
+        imageMeasurements.mapValues { it.value.typographyScale }
+    }
+    val packedBookPages = remember(questions, columnCapacity, columnWidth, imageMeasurements) {
         packQuestionsIntoTwoColumnPages(
-            questions, columnCapacity, 4, columnWidth, actualImageRatios
+            questions, columnCapacity, 4, columnWidth, actualImageRatios, imageTypographyScales
         )
     }
     val totalBookPages = packedBookPages.size.coerceAtLeast(1)
@@ -912,6 +1000,7 @@ fun LiveSolvingBoardScreen(
                                 session = session,
                                 pageQuestions = pageQuestions,
                                 actualImageRatios = actualImageRatios,
+                                imageTypographyScales = imageTypographyScales,
                                 currentBookPageIndex = pageIdx,
                                 totalBookPages = totalBookPages,
                                 customPublishers = customPublishers,
@@ -1698,6 +1787,7 @@ private fun RealTwoColumnBookPageSurface(
     session: ActiveSolvingSession,
     pageQuestions: TwoColumnQuestionPage,
     actualImageRatios: Map<String, Float>,
+    imageTypographyScales: Map<String, Float>,
     currentBookPageIndex: Int,
     totalBookPages: Int,
     customPublishers: List<YksPublisherInfo>,
@@ -1765,7 +1855,7 @@ private fun RealTwoColumnBookPageSurface(
                     leftColumnQuestions.forEachIndexed { idx, q ->
                         BoxWithConstraints(
                             modifier = Modifier.weight(
-                                estimatedBookQuestionUnits(q, actualColumnWidthDp, actualImageRatios)
+                                estimatedBookQuestionUnits(q, actualColumnWidthDp, actualImageRatios, imageTypographyScales)
                                     .coerceAtLeast(0.3f), fill = true
                             ).fillMaxWidth(),
                             contentAlignment = Alignment.TopStart
@@ -1774,6 +1864,7 @@ private fun RealTwoColumnBookPageSurface(
                             question = q,
                             // A tall image receives more height than a short one.
                             maxImageHeight = (maxHeight - 58.dp).coerceAtLeast(8.dp),
+                            imageTypographyScale = imageTypographyScales[q.id] ?: 1f,
                             isReviewMode = session.isReviewMode,
                             selectedOption = session.selectedAnswers[q.number],
                             isThreeDotMenuOpen = openThreeDotQuestionNumber == q.number,
@@ -1813,7 +1904,7 @@ private fun RealTwoColumnBookPageSurface(
                         rightColumnQuestions.forEachIndexed { idx, q ->
                             BoxWithConstraints(
                                 modifier = Modifier.weight(
-                                    estimatedBookQuestionUnits(q, actualColumnWidthDp, actualImageRatios).coerceAtLeast(0.3f),
+                                    estimatedBookQuestionUnits(q, actualColumnWidthDp, actualImageRatios, imageTypographyScales).coerceAtLeast(0.3f),
                                     fill = true
                                 ).fillMaxWidth(),
                                 contentAlignment = Alignment.TopStart
@@ -1821,6 +1912,7 @@ private fun RealTwoColumnBookPageSurface(
                             BookPageQuestionItem345(
                                 question = q,
                                 maxImageHeight = (maxHeight - 58.dp).coerceAtLeast(8.dp),
+                            imageTypographyScale = imageTypographyScales[q.id] ?: 1f,
                                 isReviewMode = session.isReviewMode,
                                 selectedOption = session.selectedAnswers[q.number],
                                 isThreeDotMenuOpen = openThreeDotQuestionNumber == q.number,
@@ -1858,6 +1950,7 @@ private fun RealTwoColumnBookPageSurface(
 private fun BookPageQuestionItem345(
     question: YksQuestion,
     maxImageHeight: Dp = 560.dp,
+    imageTypographyScale: Float = 1f,
     singleQuestionLayout: Boolean = false,
     isReviewMode: Boolean,
     selectedOption: String?,
@@ -2065,13 +2158,19 @@ private fun BookPageQuestionItem345(
                         // Exact bounded height avoids contradictory full-width /
                         // aspectRatio constraints cutting off tall PDF figures.
                         val ratio = bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1)
-                        val imageHeight = (maxWidth / ratio).coerceAtMost(maxImageHeight)
+                        // Optical typography normalization: Barış oversized
+                        // glyphs shrink to the same reading scale as other
+                        // sources. The ENTIRE bitmap always fits, never crops.
+                        val desiredWidth = maxWidth *
+                            (if (singleQuestionLayout) 1f else imageTypographyScale.coerceIn(0.62f, 1f))
+                        val fittedWidth = desiredWidth.coerceAtMost(maxImageHeight * ratio)
+                        val imageHeight = fittedWidth / ratio
                         Image(
                             bitmap = bitmap.asImageBitmap(),
                             contentDescription = "${question.number}. Soru",
                             contentScale = ContentScale.Fit,
                             alignment = Alignment.TopStart,
-                            modifier = Modifier.fillMaxWidth().height(imageHeight)
+                            modifier = Modifier.width(fittedWidth).height(imageHeight)
                                 .background(Color.White)
                                 // The tag exists only once the decoded bitmap is
                                 // actually composed, not while its IO is pending.

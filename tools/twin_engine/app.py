@@ -137,6 +137,7 @@ def generate_twin(request: TwinRequest) -> dict:
                 reviewer = ask(
                     "Bağımsız denetmensin. Yalnızca JSON döndür: "
                     "solvedOptionWithoutAnswerKey (A-E/UNKNOWN), independentSolution, "
+                    "independentAnswerExpression (new self-derived arithmetic expression), "
                     "sameSpecificSubSkill, sameProblemArchitecture, sameOrderedReasoning, "
                     "transformedMeaningfulParameters, diagramMatchesQuestion, "
                     "singleUnambiguousAnswer, sufficientAndConsistentInformation, "
@@ -152,6 +153,14 @@ def generate_twin(request: TwinRequest) -> dict:
                 if reviewer.get("solvedOptionWithoutAnswerKey") != correct:
                     raise VerificationError("Independent answer mismatch")
                 independent_solution = require_text(reviewer, "independentSolution", 40)
+                # The blind reviewer must also derive its OWN numeric expression. Merely
+                # agreeing on a letter is insufficient, even if the two LLM calls agree.
+                reviewer_expression = require_text(reviewer, "independentAnswerExpression", 1, 120)
+                independently_verified_value = verify_numeric_choices(
+                    options, correct, reviewer_expression
+                )
+                if independently_verified_value != verified_value:
+                    raise VerificationError("Independent symbolic solution differs")
                 require_yes(reviewer, [
                     "sameSpecificSubSkill", "sameProblemArchitecture",
                     "sameOrderedReasoning", "transformedMeaningfulParameters",

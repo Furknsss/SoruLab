@@ -97,8 +97,8 @@ internal class TwinQuestionGenerationEngine {
     }
     private val acceptedCache = LinkedHashMap<String, TwinQuestionModalData>()
 
-    suspend fun generate(question: YksQuestion, context: Context): TwinQuestionModalData {
-        val key = question.id + ":" + question.analyticsText.hashCode() + ":" + question.imagePath
+    suspend fun generate(question: YksQuestion, context: Context, variantIndex: Int = 0): TwinQuestionModalData {
+        val key = question.id + ":" + question.analyticsText.hashCode() + ":" + question.imagePath + ":" + variantIndex
         synchronized(acceptedCache) { acceptedCache[key] }?.let { return it }
         val textContext = sourceContext(question)
         val bitmap = withContext(Dispatchers.IO) {
@@ -213,6 +213,12 @@ internal class TwinQuestionGenerationEngine {
                     "\nZORLUK: " + question.difficulty.label +
                     "\nGEREKLİ ŞEKİL TÜRÜ: " + source.diagramFamily +
                     "\nŞEKİL ZORUNLU: " + source.requiresDiagram +
+                    "\nVARYANT NUMARASI: " + variantIndex +
+                    "\nPEKİŞTİRME AŞAMASI: " + when (variantIndex % 3) {
+                        0 -> "Aynı yöntemi yeni değerlerle uygulat."
+                        1 -> "Aynı yöntemi farklı fakat eşdeğer cümlelerle sor."
+                        else -> "Aynı alt kazanımı yeni bağlamla transfer ettir, işlem sırası değişmesin."
+                    } +
                     "\nÖNCEKİ DENEME RED NEDENİ: " + (if (attempt == 0) "yok" else lastError)
                 val json = call(draftModel, bitmap, generationPrompt)
                 val draft = TwinQuestionDraft(

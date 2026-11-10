@@ -147,7 +147,10 @@ internal fun estimateBookTypographyScale(bitmap: Bitmap, columnContentWidthDp: F
             }
             x += sampleStep
         }
-        occupiedRows[y - top] = ink >= 2 && ink < sampledColumns * 0.50f
+        // Thick glyphs and bold math can occupy most of a row. Previously
+        // rejecting rows above 50% ink caused precisely those large-print
+        // questions to fall back to an unscaled 1.0.
+        occupiedRows[y - top] = ink >= 2
     }
     val bands = mutableListOf<Int>()
     var runStart = -1

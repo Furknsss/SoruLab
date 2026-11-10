@@ -51,7 +51,10 @@ internal object LevelQuestionPolicy {
                     for (diff in available) {
                         if (selected.size >= count) break
                         val bucket = byLevel.getValue(diff)
-                        val minimum = counts.values.minOrNull() ?: 0
+                        // An exhausted scarce band must not block other real
+                        // questions from entering a mixed diagnostic test.
+                        val minimum = available.filter { !byLevel[it].isNullOrEmpty() }
+                            .minOfOrNull { counts[it] ?: 0 } ?: 0
                         if (bucket.isNotEmpty() && (counts[diff] ?: 0) <= minimum) {
                             selected += bucket.removeAt(0)
                             counts[diff] = (counts[diff] ?: 0) + 1
@@ -119,9 +122,24 @@ internal object LevelQuestionPolicy {
         level: TopicTestLevel,
         sourceQuestions: List<YksQuestion>,
         cap: Int = 12
-    ): Int = (cap.coerceAtLeast(0) downTo 1).firstOrNull {
-        select(level, sourceQuestions, it).size == it
-    } ?: 0
+    ): Int {
+        if (cap <= 0) return 0
+        // Counting a huge library must be O(N) and avoid constructing twelve
+        // complete shuffled test proposals just to enable the top filter.
+        val distinct = HashSet<String>()
+        var matching = 0
+        for (q in sourceQuestions) {
+            if (q.answerKeyVerified && q.isEligibleForLevel(level) &&
+                distinct.add(stableId(q))) {
+                // Pekiştirme is controlled by the main Orta band and may
+                // include only a couple of secondary Kolay/Zor questions.
+                if (level != TopicTestLevel.PEKISTIRME ||
+                    q.difficulty.fourTier() == DifficultyLevel.ORTA) matching++
+                if (matching >= cap) return cap
+            }
+        }
+        return matching
+    }
 
     fun stableId(question: YksQuestion): String =
         question.sourceQuestionId.ifBlank {

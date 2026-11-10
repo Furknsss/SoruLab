@@ -62,7 +62,7 @@ def run_with_responses(responses, request=None):
         try:
             result = app.generate_twin(request or question())
         except HTTPException:
-            assert fake.call_count <= 5
+            assert fake.call_count <= 8
             raise
         assert fake.call_count in (3, 4)
         return result

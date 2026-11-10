@@ -108,7 +108,7 @@ def validate_diagram(raw: str, required_kind: str) -> dict | None:
         if raw.strip():
             raise VerificationError("Unexpected diagram")
         return None
-    if required_kind not in {"triangle", "circle", "graph", "vectors", "schematic"}:
+    if required_kind not in {"triangle", "circle", "graph", "vectors", "schematic", "table", "flowchart", "timeline"}:
         raise VerificationError("Unsupported diagram class")
     if not raw or len(raw) > 12000:
         raise VerificationError("Missing/oversize diagram")
@@ -160,4 +160,13 @@ def validate_diagram(raw: str, required_kind: str) -> dict | None:
         raise VerificationError("Missing arrow")
     if required_kind == "schematic" and len(lines) + len(circles) < 2:
         raise VerificationError("Incomplete schematic")
+    if required_kind == "table" and (len(lines) < 4 or len(labels) < 4):
+        raise VerificationError("Incomplete table cells")
+    if required_kind == "flowchart" and (
+        len(lines) < 2 or len(labels) < 2 or
+        not any(line.get("arrow") is True for line in lines)
+    ):
+        raise VerificationError("Incomplete flowchart")
+    if required_kind == "timeline" and (len(lines) < 1 or len(labels) < 2):
+        raise VerificationError("Incomplete timeline")
     return diagram

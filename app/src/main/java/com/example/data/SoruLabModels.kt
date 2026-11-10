@@ -723,7 +723,7 @@ object SoruLabCatalog {
         val diff = when {
             pos < 0.24f -> DifficultyLevel.KOLAY
             pos < 0.44f -> DifficultyLevel.ORTA
-            pos < 0.65f -> DifficultyLevel.OSYM
+            pos < 0.65f -> DifficultyLevel.ORTA
             pos < 0.84f -> DifficultyLevel.ZOR
             else -> DifficultyLevel.COK_ZOR
         }
@@ -742,7 +742,7 @@ object SoruLabCatalog {
     }
 
     /**
-     * Classifies 5-tier difficulty (`Kolay`, `Orta`, `ÖSYM`, `Zor`, `Çok Zor`) from question text and structural signals:
+     * Estimates four-tier difficulty from text; this never grants an ÖSYM-type tag:
      * - İşlem adımı sayısı ve denklem/satır yoğunluğu
      * - Öncül sayısı (I, II, III, IV)
      * - Grafik/şekil/tablo varlığı
@@ -797,7 +797,7 @@ object SoruLabCatalog {
         return when {
             score <= 2 -> DifficultyLevel.KOLAY
             score in 3..4 -> DifficultyLevel.ORTA
-            score in 5..6 -> DifficultyLevel.OSYM
+            score in 5..6 -> DifficultyLevel.ORTA
             score in 7..8 -> DifficultyLevel.ZOR
             else -> DifficultyLevel.COK_ZOR
         }

@@ -89,6 +89,11 @@ class ServiceTests(unittest.TestCase):
                 app.generate_twin(question(verifiedOriginalOption=""))
             fake.assert_not_called()
 
+    def test_rejects_numeric_options_disguised_as_conceptual(self):
+        disguised = {**DRAFT, "answerMode": "conceptual"}
+        with self.assertRaises(HTTPException):
+            run_with_responses([SOURCE, disguised, disguised])
+
     def test_rejects_disagreeing_independent_calculation(self):
         bad = {**REVIEW, "independentAnswerExpression": "12+7"}
         with self.assertRaises(HTTPException):

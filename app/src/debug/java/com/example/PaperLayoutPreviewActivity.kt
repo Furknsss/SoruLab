@@ -29,24 +29,22 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.WHITE
         window.navigationBarColor = Color.BLACK
-        val questions = (1..6).map { index ->
-            val publisher = when (index) {
-                2, 5 -> "Barış"
-                4 -> "ÜçDörtBeş"
+        val questions = (1..12).map { index ->
+            val publisher = when (index % 3) {
+                0 -> "ÜçDörtBeş"
+                2 -> "Barış"
                 else -> "Ergi"
             }
-            val printSize = when (index) {
-                2, 5 -> 52f
-                4 -> 29f
+            val printSize = when (index % 3) {
+                0 -> 29f
+                2 -> 52f
                 else -> 24f
             }
-            val imageHeight = when(index) {
-                1 -> 300
-                2 -> 380
-                3 -> 250
-                4 -> 520
-                5 -> 315
-                else -> 270
+            val imageHeight = when {
+                index % 5 == 4 -> 520
+                index % 4 == 2 -> 380
+                index % 3 == 0 -> 315
+                else -> 260
             }
             YksQuestion(
                 id = "paper_preview_$index",
@@ -79,7 +77,10 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
                     subjectId = "ayt_mat",
                     subjectName = "Matematik",
                     topicId = "polinomlar",
-                    topicName = "Polinomlar"
+                    topicName = "Polinomlar",
+                    // Launch the final page separately in the visual-QA run.
+                    currentQuestionIndex = intent.getIntExtra("start_question_index", 0)
+                        .coerceIn(0, questions.lastIndex)
                 )
             }
             MyApplicationTheme {
@@ -111,40 +112,58 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
         }
     }
 
-    private fun makeQuestionImage(index: Int, fontSize: Float, height: Int): String {
-        val bitmap = Bitmap.createBitmap(780, height, Bitmap.Config.ARGB_8888)
+    private fun makeQuestionImage(index: Int, fontSize: Float, suggestedHeight: Int): String {
+        // Visual acceptance images MUST contain a complete prompt, graph (when
+        // applicable) and all five alternatives. The previous fixture silently
+        // omitted C/D/E when it ran out of bitmap height, falsely blaming the
+        // paper layout for missing source content.
+        val mediumSize = fontSize * 0.75f
+        val hasDiagram = index % 5 == 4
+        val statementY = fontSize + 16f
+        val contextY = statementY + fontSize * 1.5f
+        val diagramTop = contextY + fontSize * 1.45f + 16f
+        val questionY = if (hasDiagram) diagramTop + 228f else
+            contextY + fontSize * 1.45f
+        val optionsY = questionY + fontSize * 1.85f
+        val optionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(22, 27, 37)
+            textSize = mediumSize
+        }
+        val fullOptions = "A) 1     B) 2     C) 3     D) 4     E) 5"
+        val optionsNeedTwoLines = optionPaint.measureText(fullOptions) > 780f - 36f
+        val requiredHeight = kotlin.math.ceil(
+            optionsY + mediumSize * (if (optionsNeedTwoLines) 2.75f else 1.35f) + 18f
+        ).toInt()
+        // Never drop a question or answer to fit an artificially short crop.
+        val actualHeight = maxOf(suggestedHeight, requiredHeight)
+        val bitmap = Bitmap.createBitmap(780, actualHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
         val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(22, 27, 37)
             textSize = fontSize
         }
-        val medium = Paint(ink).apply { textSize = fontSize * 0.75f }
-        var baseline = fontSize + 16f
-        canvas.drawText("P(x) = x² + 2x + 1", 18f, baseline, ink)
-        baseline += fontSize * 1.5f
-        canvas.drawText("P(x) polinomu için", 18f, baseline, medium)
-        baseline += fontSize * 1.45f
-        if (index == 4) {
+        val medium = Paint(ink).apply { textSize = mediumSize }
+        canvas.drawText("P(x) = x² + 2x + 1", 18f, statementY, ink)
+        canvas.drawText("P(x) polinomu için", 18f, contextY, medium)
+        if (hasDiagram) {
             val shape = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.rgb(48, 76, 116)
                 style = Paint.Style.STROKE
                 strokeWidth = 4f
             }
             val left = 170f
-            val top = baseline + 16
-            canvas.drawLine(left, top + 142, left + 280, top + 142, shape)
-            canvas.drawLine(left + 130, top, left + 130, top + 200, shape)
-            canvas.drawLine(left + 30, top + 125, left + 235, top + 30, shape)
-            canvas.drawLine(left + 30, top + 30, left + 235, top + 125, shape)
-            baseline = top + 228
+            canvas.drawLine(left, diagramTop + 142, left + 280, diagramTop + 142, shape)
+            canvas.drawLine(left + 130, diagramTop, left + 130, diagramTop + 200, shape)
+            canvas.drawLine(left + 30, diagramTop + 125, left + 235, diagramTop + 30, shape)
+            canvas.drawLine(left + 30, diagramTop + 30, left + 235, diagramTop + 125, shape)
         }
-        if (baseline + fontSize * 2.7f < height) {
-            canvas.drawText("ifadelerin toplamı kaçtır?", 18f, baseline, medium)
-            baseline += fontSize * 1.85f
-        }
-        if (baseline + medium.textSize < height) {
-            canvas.drawText("A) 1     B) 2     C) 3     D) 4     E) 5", 18f, baseline, medium)
+        canvas.drawText("ifadelerin toplamı kaçtır?", 18f, questionY, medium)
+        if (optionsNeedTwoLines) {
+            canvas.drawText("A) 1     B) 2     C) 3", 18f, optionsY, medium)
+            canvas.drawText("D) 4     E) 5", 18f, optionsY + mediumSize * 1.4f, medium)
+        } else {
+            canvas.drawText(fullOptions, 18f, optionsY, medium)
         }
         val stream = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)

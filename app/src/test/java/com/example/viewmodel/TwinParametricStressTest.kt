@@ -4,8 +4,11 @@ import com.example.data.QuestionVisualType
 import com.example.data.YksQuestion
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
 /** Deterministic stress suite: 900 different source IDs, no model/API costs. */
+@RunWith(RobolectricTestRunner::class)
 class TwinParametricStressTest {
     private fun original(
         text: String,

@@ -88,9 +88,12 @@ def build(source_manifest, root, output):
             or any(not isinstance(tag, str) or len(tag) > 80 for tag in q["tags"])
         ):
             raise ValueError("tags must be a short list of strings at item " + str(index))
-        valid_difficulties = ("Kolay", "Orta", "Zor", "Çok Zor", "ÖSYM", "OSYM")
-        if "difficulty" in q and q["difficulty"] not in valid_difficulties:
-            raise ValueError("difficulty must use one of four bands at item " + str(index))
+        valid_difficulties = ("Kolay", "Orta", "Zor", "Çok Zor")
+        if q.get("difficulty") not in valid_difficulties:
+            raise ValueError(
+                f"Question {index}: difficulty must be Kolay, Orta, Zor or Çok Zor; "
+                "ÖSYM tipi is an independent osymType flag"
+            )
         if not q.get("answerVerified"):
             answer = ""  # Unverified guesses must never become a displayed key.
         q["answer"] = answer

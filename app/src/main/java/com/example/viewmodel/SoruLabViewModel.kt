@@ -447,13 +447,29 @@ class SoruLabViewModel(
                                 java.io.File(it.customLogoPath).isFile
                         }
                     }
-                    val cloudIds = cloudPublishers.mapTo(mutableSetOf()) { it.id }
-                    val cloudNames = cloudPublishers.mapTo(mutableSetOf()) { it.name.trim().lowercase() }
-                    val localOnly = localPublishers.filter {
-                        it.id !in cloudIds && it.name.trim().lowercase() !in cloudNames
+                    // A cloud snapshot may temporarily omit its logo while
+                    // uploads are pending. Never replace a working local logo
+                    // with a blank cloud entry for the same publisher.
+                    val localByName = localPublishers.associateBy {
+                        com.example.data.PublisherNameKey.from(it.name)
                     }
-                    val merged = (cloudPublishers + localOnly)
-                        .distinctBy { it.name.trim().lowercase() }
+                    val cloudPreservingArt = cloudPublishers.map { remote ->
+                        val local = localPublishers.firstOrNull { it.id == remote.id }
+                            ?: localByName[com.example.data.PublisherNameKey.from(remote.name)]
+                        if (remote.customLogoPath.isBlank() && local != null &&
+                            java.io.File(local.customLogoPath).isFile
+                        ) remote.copy(customLogoPath = local.customLogoPath) else remote
+                    }
+                    val cloudIds = cloudPreservingArt.mapTo(mutableSetOf()) { it.id }
+                    val cloudNames = cloudPreservingArt.mapTo(mutableSetOf()) {
+                        com.example.data.PublisherNameKey.from(it.name)
+                    }
+                    val localOnly = localPublishers.filter {
+                        it.id !in cloudIds &&
+                            com.example.data.PublisherNameKey.from(it.name) !in cloudNames
+                    }
+                    val merged = (cloudPreservingArt + localOnly)
+                        .distinctBy { com.example.data.PublisherNameKey.from(it.name) }
                     _customPublishers.value = merged
                     withContext(Dispatchers.IO) {
                         repository.saveCustomPublishers(merged, uid)
@@ -2321,6 +2337,10 @@ class SoruLabViewModel(
         val cleanName = name.trim().ifBlank { "Özel Yayın" }
         val cleanCode = shortCode.trim().uppercase().take(4).ifBlank {
             cleanName.take(3).uppercase()
+        }
+        val logoFile = java.io.File(customLogoPath.removePrefix("file://"))
+        require(logoFile.isFile && logoFile.length() in 100L..(256L * 1024L)) {
+            "Yayın logosu kaydedilemedi. Logoyu yeniden seç."
         }
         val newPub = YksPublisherInfo(
             id = "custom_${System.currentTimeMillis()}",

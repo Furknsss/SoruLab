@@ -23,7 +23,9 @@ internal object TopicIntegrityPolicy {
         "kollenki", "sklerenk", "periderm", "fototropizma",
         "auksin", "oksin", "giberellin", "sitokinin", "absisik",
         "yaprak", "transpirasyon", "fotosistem", "tohum", "cicek",
-        "odun borusu", "soymuk borusu", "bitkisel"
+        "odun borusu", "soymuk borusu", "bitkisel",
+        "yulaf", "koleoptil", "filiz", "agar", "mika",
+        "tropizma", "isiga yonelme", "bitki hormonu"
     )
 
     fun containsIndependentPlantEvidence(questionText: String, learningOutcome: String = ""): Boolean {

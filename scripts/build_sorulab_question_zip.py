@@ -82,6 +82,12 @@ def build(source_manifest, root, output):
         # true alongside Kolay, Orta, Zor or Çok Zor.
         if "osymType" in q and not isinstance(q["osymType"], bool):
             raise ValueError("osymType must be true or false at item " + str(index))
+        if "tags" in q and (
+            not isinstance(q["tags"], list)
+            or len(q["tags"]) > 20
+            or any(not isinstance(tag, str) or len(tag) > 80 for tag in q["tags"])
+        ):
+            raise ValueError("tags must be a short list of strings at item " + str(index))
         valid_difficulties = ("Kolay", "Orta", "Zor", "Çok Zor", "ÖSYM", "OSYM")
         if "difficulty" in q and q["difficulty"] not in valid_difficulties:
             raise ValueError("difficulty must use one of four bands at item " + str(index))

@@ -34,7 +34,7 @@ class SoruLabQuestionZipImporterTest {
             put("subject", "Biyoloji")
             put("questionCount", 2)
             put("questions", JSONArray()
-                .put(question("images/q0001.png", a, 1, "B", true))
+                .put(question("images/q0001.png", a, 1, "B", true, osym = true))
                 .put(question("images/q0002.png", b, 2, "C", false)))
         }
         val source = File(context.cacheDir, "test_$id.zip")
@@ -57,6 +57,9 @@ class SoruLabQuestionZipImporterTest {
                 assertEquals(1, pack.unresolvedAnswerCount)
                 assertTrue(pack.questions.all { File(it.croppedImagePath).isFile })
                 assertEquals("Dr. Biyoloji", pack.publisher)
+                assertEquals("Orta", pack.questions[0].difficulty)
+                assertTrue(pack.questions[0].isOsymType)
+                assertFalse(pack.questions[1].isOsymType)
                 assertTrue(pack.questions[0].answerKeyMatched)
                 assertFalse(pack.questions[1].answerKeyMatched)
                 assertEquals("", pack.questions[1].correctOption)
@@ -68,7 +71,7 @@ class SoruLabQuestionZipImporterTest {
         }
     }
 
-    private fun question(path: String, image: ByteArray, number: Int, answer: String, verified: Boolean) =
+    private fun question(path: String, image: ByteArray, number: Int, answer: String, verified: Boolean, osym: Boolean = false) =
         JSONObject().apply {
             put("image", path)
             put("sha256", MessageDigest.getInstance("SHA-256").digest(image)
@@ -80,6 +83,7 @@ class SoruLabQuestionZipImporterTest {
             put("answer", answer)
             put("answerVerified", verified)
             put("difficulty", "Orta")
+            put("osymType", osym)
         }
 
     private fun png(color: Int): ByteArray {

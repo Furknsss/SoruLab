@@ -140,6 +140,60 @@ class LiveSolvingBoardScreenTest {
     }
 
     @Test
+    fun paperFontCalibrationMakesThreePublishersOpticallyComparable() {
+        val measured = mapOf(
+            "ergi" to com.example.ui.screens.BookImageMeasurements(1.4f, 1f, 7.0f),
+            "baris" to com.example.ui.screens.BookImageMeasurements(1.2f, 1f, 18.0f),
+            "ucdortbes" to com.example.ui.screens.BookImageMeasurements(1.0f, 1f, 8.4f)
+        )
+        val scales = com.example.ui.screens.calibratedBookTypographyScales(measured)
+        val finalFonts = measured.map { (id, metrics) ->
+            metrics.printedGlyphDp!! * scales.getValue(id)
+        }
+        val smallest = finalFonts.minOrNull()!!
+        val largest = finalFonts.maxOrNull()!!
+        org.junit.Assert.assertTrue("Mixed publisher glyphs still vary too much: $finalFonts",
+            largest / smallest < 1.20f)
+        org.junit.Assert.assertTrue("Overprinted Baris must shrink", scales.getValue("baris") < 0.55f)
+    }
+
+    @Test
+    fun removingBlankMarginsNeverCropsBlackQuestionTextOrAnswers() {
+        val image = android.graphics.Bitmap.createBitmap(
+            800, 550, android.graphics.Bitmap.Config.ARGB_8888
+        )
+        val canvas = android.graphics.Canvas(image)
+        canvas.drawColor(android.graphics.Color.WHITE)
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.BLACK
+        }
+        canvas.drawRect(170f, 70f, 520f, 110f, paint)
+        canvas.drawRect(170f, 310f, 610f, 345f, paint)
+        canvas.drawRect(170f, 480f, 665f, 492f, paint) // Far-right option E
+        val trimmed = com.example.ui.screens.trimQuestionWhiteMargins(image)
+        try {
+            org.junit.Assert.assertTrue("Pure blank width was not removed",
+                trimmed.width < image.width)
+            val dark = android.graphics.Color.BLACK
+            var count = 0
+            for (y in 0 until trimmed.height) {
+                for (x in 0 until trimmed.width) {
+                    if (trimmed.getPixel(x, y) == dark) count++
+                }
+            }
+            val originalInk = ((520 - 170) * (110 - 70) +
+                (610 - 170) * (345 - 310) +
+                (665 - 170) * (492 - 480))
+            org.junit.Assert.assertEquals(
+                "Every part of the answer choices must survive", originalInk, count
+            )
+        } finally {
+            if (trimmed !== image) trimmed.recycle()
+            image.recycle()
+        }
+    }
+
+    @Test
     fun fullQuestionImageAlwaysFitsItsPaperSlotWithoutHorizontalOrVerticalClipping() {
         listOf(0.24f, 0.55f, 1f, 2.4f, 6f).forEach { widthOverHeight ->
             listOf(0.28f, 0.5f, 1f, 1.16f).forEach { printScale ->

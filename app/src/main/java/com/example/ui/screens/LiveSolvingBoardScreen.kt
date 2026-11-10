@@ -171,7 +171,11 @@ internal fun calibratedBookTypographyScales(
         it.value.typographyScale.coerceIn(0.28f, 1.25f)
     }
     val index = ((observed.size - 1) * 0.30f).toInt()
-    val commonFontDp = observed[index].coerceIn(7.2f, 10.2f)
+    // A hard 7.2dp minimum kept oversized Barış print nearly twice as
+    // large as its narrow-print Ergi neighbors. On a two-column phone
+    // paper the smaller legible source is the real optical baseline;
+    // adjust larger sources downward instead of forcing false parity.
+    val commonFontDp = observed[index].coerceIn(4.0f, 10.2f)
     return measurements.mapValues { (_, metric) ->
         metric.printedGlyphDp?.takeIf { it.isFinite() && it > 0f }
             ?.let { (commonFontDp / it).coerceIn(0.28f, 1.25f) }

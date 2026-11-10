@@ -160,14 +160,15 @@ internal fun estimateBookTypographyScale(bitmap: Bitmap, columnContentWidthDp: F
             runStart = -1
         }
     }
-    if (bands.size < 5) return 1f
+    if (bands.size < 3) return 1f
     bands.sort()
-    // Median measured ink-band approximates glyph cap height while rejecting
-    // large illustrations and single-pixel mathematical lines.
+    // A conservative visual font normalization, not OCR: measure dark
+    // printed-text rows. The old 0.62 floor left many large-print Barış
+    // crops at almost DOUBLE the size of the surrounding book questions.
     val typicalGlyphPx = bands[bands.size / 2].toFloat()
     val renderedGlyphDp = typicalGlyphPx * columnContentWidthDp / bitmap.width
-    if (renderedGlyphDp < 8f) return 1f
-    return (14.5f / renderedGlyphDp).coerceIn(0.62f, 1f)
+    if (!renderedGlyphDp.isFinite() || renderedGlyphDp <= 0f) return 1f
+    return (11.5f / renderedGlyphDp).coerceIn(0.28f, 1.16f)
 }
 
 private fun estimateBookImageMeasurements(
@@ -219,7 +220,7 @@ private fun estimatedBookQuestionUnits(
     // Match the ACTUAL drawing width: 42dp publisher/number gutter + 4dp gap.
     // The old 108dp deduction underestimated tall book crops by up to 50%.
     val imageWidthDp = (columnWidthDp - 46f).coerceAtLeast(90f) *
-        (imageTypographyScales[question.id] ?: 1f).coerceIn(0.62f, 1f)
+        (imageTypographyScales[question.id] ?: 1f).coerceIn(0.28f, 1.16f)
     val isImage = question.imagePath.isNotBlank() ||
         question.imageBase64.isNotBlank() || question.pdfFilePath.isNotBlank()
     val contentHeightDp = if (isImage) {
@@ -233,8 +234,45 @@ private fun estimatedBookQuestionUnits(
         ((textLength / charWidth + 2).coerceAtLeast(2) * 19f + 46f +
             if (question.visualType != QuestionVisualType.NONE) 155f else 0f)
     }
-    // Logo/number gutter, optional controls and whitespace need room too.
-    return (contentHeightDp + 54f).coerceAtLeast(116f) / columnWidthDp.coerceAtLeast(120f)
+    // The logo/number gutter is 72dp tall; tall figures need only a small
+    // 12dp breathing margin, not 54dp of artificial whitespace per question.
+    return (contentHeightDp + 12f).coerceAtLeast(78f) / columnWidthDp.coerceAtLeast(120f)
+}
+
+/** Fit the *entire* cropped image inside its allotted paper slot. */
+internal fun fittedBookImageSizeDp(
+    availableWidth: Float,
+    availableHeight: Float,
+    widthOverHeight: Float,
+    typographyScale: Float,
+    singleQuestionLayout: Boolean = false
+): Pair<Float, Float> {
+    if (availableWidth <= 0f || availableHeight <= 0f) return 0f to 0f
+    val ratio = widthOverHeight.takeIf { it.isFinite() && it > 0f } ?: 1f
+    val visualScale = if (singleQuestionLayout) 1f else
+        typographyScale.coerceIn(0.28f, 1.16f)
+    val width = minOf(availableWidth * visualScale, availableWidth,
+        availableHeight * ratio).coerceAtLeast(0f)
+    return width to (width / ratio).coerceAtMost(availableHeight)
+}
+
+/** Real ink-height-based slot, never a forced count of two per column. */
+private fun bookColumnHeightScale(
+    questions: List<YksQuestion>,
+    columnWidthDp: Float,
+    paperHeightDp: Float,
+    imageRatios: Map<String, Float>,
+    typographyScales: Map<String, Float>,
+    gapDp: Float = 10f
+): Float {
+    if (questions.isEmpty()) return 1f
+    val desired = questions.sumOf { q ->
+        (estimatedBookQuestionUnits(q, columnWidthDp, imageRatios, typographyScales) *
+            columnWidthDp).toDouble()
+    }.toFloat()
+    val gaps = (questions.size - 1).coerceAtLeast(0) * gapDp
+    return ((paperHeightDp - gaps).coerceAtLeast(1f) / desired.coerceAtLeast(1f))
+        .coerceIn(0.15f, 1f)
 }
 
 /**
@@ -1811,6 +1849,15 @@ private fun RealTwoColumnBookPageSurface(
             .background(Color.White)
     ) {
         val actualColumnWidthDp = ((maxWidth.value - 38f) / 2f).coerceAtLeast(145f)
+        val contentHeightDp = (maxHeight.value - 16f).coerceAtLeast(80f)
+        val leftColumnScale = bookColumnHeightScale(
+            leftColumnQuestions, actualColumnWidthDp, contentHeightDp,
+            actualImageRatios, imageTypographyScales
+        )
+        val rightColumnScale = bookColumnHeightScale(
+            rightColumnQuestions, actualColumnWidthDp, contentHeightDp,
+            actualImageRatios, imageTypographyScales
+        )
         // Dışarı tıklandığında açık olan `⋮` Popover menüsünü kapatan şeffaf arka plan katmanı
         if (openThreeDotQuestionNumber != null) {
             Box(
@@ -1848,15 +1895,16 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isLeftPopoverOpen) 60f else 1f)
                         .padding(end = 8.dp, top = 4.dp, bottom = 4.dp),
-                    // Equal-height page slots keep short and tall question
-                    // crops centered within their portion of the paper.
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    // Real-content slots: do not stretch whitespace between
+                    // unrelated questions just to fill an entire page.
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     leftColumnQuestions.forEachIndexed { idx, q ->
                         BoxWithConstraints(
-                            modifier = Modifier.weight(
-                                estimatedBookQuestionUnits(q, actualColumnWidthDp, actualImageRatios, imageTypographyScales)
-                                    .coerceAtLeast(0.3f), fill = true
+                            modifier = Modifier.height(
+                                (estimatedBookQuestionUnits(q, actualColumnWidthDp,
+                                    actualImageRatios, imageTypographyScales) *
+                                    actualColumnWidthDp * leftColumnScale).dp
                             ).fillMaxWidth(),
                             contentAlignment = Alignment.TopStart
                         ) {
@@ -1896,16 +1944,17 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isRightPopoverOpen) 60f else 1f)
                         .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     if (rightColumnQuestions.isEmpty()) {
                         Spacer(modifier = Modifier.height(80.dp))
                     } else {
                         rightColumnQuestions.forEachIndexed { idx, q ->
                             BoxWithConstraints(
-                                modifier = Modifier.weight(
-                                    estimatedBookQuestionUnits(q, actualColumnWidthDp, actualImageRatios, imageTypographyScales).coerceAtLeast(0.3f),
-                                    fill = true
+                                modifier = Modifier.height(
+                                    (estimatedBookQuestionUnits(q, actualColumnWidthDp,
+                                        actualImageRatios, imageTypographyScales) *
+                                        actualColumnWidthDp * rightColumnScale).dp
                                 ).fillMaxWidth(),
                                 contentAlignment = Alignment.TopStart
                             ) {
@@ -2158,13 +2207,12 @@ private fun BookPageQuestionItem345(
                         // Exact bounded height avoids contradictory full-width /
                         // aspectRatio constraints cutting off tall PDF figures.
                         val ratio = bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1)
-                        // Optical typography normalization: Barış oversized
-                        // glyphs shrink to the same reading scale as other
-                        // sources. The ENTIRE bitmap always fits, never crops.
-                        val desiredWidth = maxWidth *
-                            (if (singleQuestionLayout) 1f else imageTypographyScale.coerceIn(0.62f, 1f))
-                        val fittedWidth = desiredWidth.coerceAtMost(maxImageHeight * ratio)
-                        val imageHeight = fittedWidth / ratio
+                        val (fitWidth, fitHeight) = fittedBookImageSizeDp(
+                            maxWidth.value, maxImageHeight.value, ratio,
+                            imageTypographyScale, singleQuestionLayout
+                        )
+                        val fittedWidth = fitWidth.dp
+                        val imageHeight = fitHeight.dp
                         Image(
                             bitmap = bitmap.asImageBitmap(),
                             contentDescription = "${question.number}. Soru",

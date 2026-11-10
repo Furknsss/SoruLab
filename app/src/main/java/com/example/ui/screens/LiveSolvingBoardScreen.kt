@@ -302,6 +302,37 @@ private fun estimateBookImageMeasurements(
         } else 1f
         return BookImageMeasurements(ratio, fontScale)
     }
+
+    // Some migrated questions store the bitmap inside imageBase64, whereas
+    // the old paper-layout analyser only searched local files. That mismatch
+    // produced fallback scale = 1.0 for exactly those oversized questions.
+    val base64 = question.imageBase64
+    if (!base64.isNullOrBlank() && base64.length <= 12_000_000) {
+        return runCatching {
+            val bytes = Base64.decode(base64, Base64.DEFAULT)
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+            var sampleSize = 1
+            while (bounds.outWidth / sampleSize > 512 ||
+                bounds.outHeight / sampleSize > 2048) sampleSize *= 2
+            val sample = BitmapFactory.decodeByteArray(bytes, 0, bytes.size,
+                BitmapFactory.Options().apply {
+                    inSampleSize = sampleSize
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                }) ?: return@runCatching null
+            try {
+                BookImageMeasurements(
+                    heightOverWidth = bounds.outHeight.toFloat() / bounds.outWidth,
+                    typographyScale = estimateBookTypographyScale(
+                        sample, columnContentWidthDp
+                    )
+                )
+            } finally {
+                sample.recycle()
+            }
+        }.getOrNull()
+    }
     return null
 }
 

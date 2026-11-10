@@ -156,7 +156,10 @@ internal fun estimateBookTypographyScale(bitmap: Bitmap, columnContentWidthDp: F
         if (occupied && runStart < 0) runStart = i
         if (!occupied && runStart >= 0) {
             val height = i - runStart
-            if (height >= 3 && height <= bitmap.width * 0.085f) bands += height
+            // Large-print publishers can have glyphs taller than 8.5% of
+            // a crop's width. Rejecting those rows was the main reason the
+            // previous visual scale silently fell back to 1.0 (giant text).
+            if (height >= 3 && height <= bitmap.width * 0.20f) bands += height
             runStart = -1
         }
     }

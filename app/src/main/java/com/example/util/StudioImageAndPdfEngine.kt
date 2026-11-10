@@ -1347,6 +1347,75 @@ object StudioImageAndPdfEngine {
         }
     }
 
+    /**
+     * User-picked publisher logos must NEVER be lost because optional flood-fill
+     * background removal fails. First attempt dekupe, then save the original art
+     * in a bounded, nontransparent 128px PNG to stable internal storage.
+     */
+    fun importPublisherLogoSafely(context: Context, logoUri: Uri): String {
+        val processed = processPublisherLogoFloodFillAndTrim(context, logoUri)
+        if (processed.isNotBlank()) {
+            val file = File(processed)
+            val preview = runCatching { BitmapFactory.decodeFile(processed) }.getOrNull()
+            if (file.isFile && file.length() in 100L..(256L * 1024L) && preview != null) {
+                val visible = IntArray(preview.width * preview.height)
+                preview.getPixels(visible, 0, preview.width, 0, 0, preview.width, preview.height)
+                val hasArt = visible.any { ((it ushr 24) and 0xff) > 32 }
+                preview.recycle()
+                if (hasArt) return processed
+            }
+            file.delete()
+        }
+
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(logoUri)?.use { input ->
+            BitmapFactory.decodeStream(input, null, bounds)
+        }
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Seçilen logo görseli açılamadı." }
+        var sample = 1
+        while (max(bounds.outWidth, bounds.outHeight) / sample > 1024) sample *= 2
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        val original = context.contentResolver.openInputStream(logoUri)?.use {
+            BitmapFactory.decodeStream(it, null, options)
+        } ?: throw IllegalArgumentException("Seçilen logo görseli okunamadı.")
+        try {
+            val edge = 128
+            val badge = Bitmap.createBitmap(edge, edge, Bitmap.Config.ARGB_8888)
+            try {
+                badge.eraseColor(Color.TRANSPARENT)
+                val fit = min(edge * 0.92f / original.width, edge * 0.92f / original.height)
+                val width = original.width * fit
+                val height = original.height * fit
+                val left = (edge - width) / 2f
+                val top = (edge - height) / 2f
+                Canvas(badge).drawBitmap(
+                    original, null, RectF(left, top, left + width, top + height),
+                    Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+                )
+                val dir = File(context.filesDir, "publisher_logos")
+                check(dir.isDirectory || dir.mkdirs()) { "Yayın logosu klasörü oluşturulamadı." }
+                val target = File(dir, "logo_original_${java.util.UUID.randomUUID()}.png")
+                FileOutputStream(target).use { stream ->
+                    check(badge.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
+                        "Logo dosyası oluşturulamadı."
+                    }
+                }
+                check(target.isFile && target.length() in 100L..(256L * 1024L)) {
+                    target.delete()
+                    "Yayın logosu kalıcı kaydedilemedi."
+                }
+                return target.absolutePath
+            } finally {
+                badge.recycle()
+            }
+        } finally {
+            original.recycle()
+        }
+    }
+
     // =========================================================================
     // KOTA DOSTU YEREL PDF METİN & CEVAP ANAHTARI ANALİZÖRÜ + MÜFREDAT SÖZLÜĞÜ
     // =========================================================================

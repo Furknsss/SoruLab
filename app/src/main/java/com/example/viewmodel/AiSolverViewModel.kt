@@ -776,7 +776,7 @@ class AiSolverViewModel : ViewModel() {
         return when {
             score <= 0 -> DifficultyLevel.KOLAY
             score == 1 -> DifficultyLevel.ORTA
-            score == 2 -> DifficultyLevel.OSYM
+            score == 2 -> DifficultyLevel.ORTA
             score == 3 -> DifficultyLevel.ZOR
             else -> DifficultyLevel.COK_ZOR
         }

@@ -143,6 +143,13 @@ object SoruLabQuestionZipImporter {
                             "ÖSYM tipi etiketi osymType: true/false olmalı."
                         }
                     }
+                    if (item.has("tags")) {
+                        val tags = item.optJSONArray("tags")
+                            ?: throw IllegalArgumentException("tags bir metin listesi olmalı.")
+                        require(tags.length() <= 20 && (0 until tags.length()).all {
+                            tags.opt(it) is String && tags.optString(it).length <= 80
+                        }) { "Soru etiketleri biçimi geçersiz." }
+                    }
                     val bounds = item.optJSONArray("bounds")
                     if (bounds != null) parseBounds(bounds)
                     val itemExam = item.optString("examType", exam).uppercase(Locale.ROOT)
@@ -227,6 +234,13 @@ object SoruLabQuestionZipImporter {
                         questionNumberInTest = q.getInt("questionNumberInTest"),
                         sourceTestId = q.getString("sourceTestId"),
                         isOsymType = q.optBoolean("osymType", false) ||
+                            (q.optJSONArray("tags")?.let { tags ->
+                                (0 until tags.length()).any { i ->
+                                    val label = tags.optString(i).trim()
+                                    label.equals("ÖSYM tipi", true) ||
+                                        label.equals("OSYM tipi", true)
+                                }
+                            } ?: false) ||
                             q.optString("targetLevel").equals("OSYM", true) ||
                             q.optString("difficulty").equals("ÖSYM", true) ||
                             q.optString("difficulty").equals("OSYM", true) ||

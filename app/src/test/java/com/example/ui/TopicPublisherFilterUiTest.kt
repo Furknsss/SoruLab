@@ -38,6 +38,10 @@ class TopicPublisherFilterUiTest {
         compose.onNodeWithTag("interactive_test_builder_dialog").assertDoesNotExist()
         compose.onNodeWithTag("topic_detail_olustur_button").performClick()
         compose.onNodeWithTag("automatic_test_preparation_sheet").assertIsDisplayed()
+        compose.waitUntil(8000) {
+            compose.onAllNodesWithTag("start_prepared_test_button")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithTag("start_prepared_test_button").performClick()
         compose.waitUntil(8000) { created.get() }
         assertEquals("drbiyoloji", choice.get())
@@ -49,6 +53,10 @@ class TopicPublisherFilterUiTest {
         showTopic(choice, created)
         compose.onNodeWithTag("topic_detail_olustur_button").assertIsDisplayed().performClick()
         compose.onNodeWithTag("automatic_test_preparation_sheet").assertIsDisplayed()
+        compose.waitUntil(8000) {
+            compose.onAllNodesWithTag("start_prepared_test_button")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithTag("start_prepared_test_button").performClick()
         compose.waitUntil(8000) { created.get() }
         assertNull(choice.get())

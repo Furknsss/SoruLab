@@ -16,7 +16,7 @@ import java.util.Locale
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
-import com.example.data.fourTier
+import com.example.data.parseExplicitFourTierDifficulty
 
 /**
  * Publisher-independent ZIP import for question images prepared outside Android.
@@ -131,6 +131,9 @@ object SoruLabQuestionZipImporter {
                     require(identities.add(page.toString() + "|" + test + "|" + number)) {
                         "Tekrarlanan kaynak soru kimliği bulundu."
                     }
+                    require(parseExplicitFourTierDifficulty(item.optString("difficulty")) != null) {
+                        "Soru ${i + 1}: Zorluk sadece Kolay, Orta, Zor veya Çok Zor olabilir. ÖSYM tipi için ayrıca osymType: true kullan."
+                    }
                     val answer = item.optString("answer").uppercase(Locale.ROOT)
                     require(answer.isBlank() || answer in setOf("A", "B", "C", "D", "E")) {
                         "Cevap harfi geçersiz."
@@ -214,9 +217,9 @@ object SoruLabQuestionZipImporter {
                         topicName = q.optString("topic").ifBlank { "Konu Belirlenemedi" },
                         learningOutcome = q.optString("learningOutcome").trim().take(220),
                         questionType = q.optString("questionType").trim().take(120),
-                        difficulty = com.example.data.DifficultyLevel.fromLabel(
-                            q.optString("difficulty", "Orta")
-                        ).fourTier().label,
+                        difficulty = requireNotNull(parseExplicitFourTierDifficulty(
+                            q.optString("difficulty")
+                        )).label,
                         targetLevel = q.optString("targetLevel", ""),
                         correctOption = correct,
                         answerKeyMatched = verified,
@@ -238,13 +241,11 @@ object SoruLabQuestionZipImporter {
                                 (0 until tags.length()).any { i ->
                                     val label = tags.optString(i).trim()
                                     label.equals("ÖSYM tipi", true) ||
-                                        label.equals("OSYM tipi", true)
+                                        label.equals("OSYM tipi", true) ||
+                                        label.equals("ÖSYM", true) ||
+                                        label.equals("OSYM", true)
                                 }
-                            } ?: false) ||
-                            q.optString("targetLevel").equals("OSYM", true) ||
-                            q.optString("difficulty").equals("ÖSYM", true) ||
-                            q.optString("difficulty").equals("OSYM", true) ||
-                            q.optString("sourceTestId").contains("~osym~", true)
+                            } ?: false)
                     ))
                 }
 

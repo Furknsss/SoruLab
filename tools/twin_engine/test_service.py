@@ -26,6 +26,7 @@ DRAFT = {
     "correctOption": "D",
     "solutionExplanation": "g(4)=3*4+5=17. Önce yerine koy, sonra çarpıp sabiti ekle; D doğrudur.",
     "answerExpression": "3*4+5",
+    "answerMode": "numeric",
     "transformationLog": "Fonksiyonun katsayısı 2 yerine 3, sabit 3 yerine 5 olarak değişti.",
     "diagramJson": "",
 }
@@ -63,7 +64,7 @@ def run_with_responses(responses, request=None):
         except HTTPException:
             assert fake.call_count <= 5
             raise
-        assert fake.call_count == 3
+        assert fake.call_count in (3, 4)
         return result
 
 
@@ -116,6 +117,85 @@ class ServiceTests(unittest.TestCase):
         with self.assertRaises(HTTPException):
             run_with_responses([SOURCE, injected, injected])
 
+
+
+
+class UniversalSubjectTests(unittest.TestCase):
+    """Contract tests for biology, language, social and chemistry concept questions.
+
+    The Ollama model is mocked; these only prove that the server does not
+    incorrectly route conceptual subjects through the numeric SymPy gate.
+    """
+    def semantic_fixture(self, subject: str, concept: str):
+        source = {
+            **SOURCE,
+            "transcript": "Bu metne göre " + concept +
+                " ile ilgili doğru açıklama hangisidir? A) Belirsiz B) Yanlış "
+                "C) Doğru bilgi D) Çelişkili E) İlgisiz",
+            "subSkill": concept + " hakkındaki çıkarımı gerekçelendirme",
+            "exactQuestionPattern": "Verilen bilgi ve koşullardan tek geçerli önermeyi seçme",
+            "orderedSolutionOperations": "kanıtı oku, beş önermeyi karşılaştır, doğruyu seç",
+        }
+        draft = {
+            **DRAFT,
+            "questionStem": "Verilen bilgi ve örneklerden hareketle " + concept +
+                " bakımından aşağıdaki yorumlardan hangisi doğrudur?",
+            "options": {
+                "A": "Tanımla örtüşmeyen bir genelleme",
+                "B": "Verilen öncüllerle çelişen yorum",
+                "C": "Gereksiz varsayım içeren açıklama",
+                "D": "Verilen koşullardan zorunlu çıkan doğru yorum",
+                "E": "Konudan bağımsız başka bir genelleme",
+            },
+            "correctOption": "D",
+            "answerMode": "conceptual",
+            "answerExpression": "",
+            "solutionExplanation": "Kaynak kanıtın anlamı yeni koşullara uyarlanır ve yalnızca D zorunludur. "
+                                   "Diğer dört önerme verilenlerden türetilemez.",
+        }
+        review = {
+            **REVIEW,
+            "independentAnswerExpression": "",
+            "independentSolution": "İlgili koşulları ve beş seçeneği ayrı ayrı değerlendirince "
+                                   "yalnızca D seçeneği zorunlu olarak doğru kalıyor.",
+        }
+        response = run_with_responses(
+            [source, draft, review, review],
+            question(subject=subject, topic=concept),
+        )
+        self.assertTrue(response["accepted"])
+        self.assertEqual(response["correctOption"], "D")
+        self.assertEqual(len(response["options"]), 5)
+        self.assertIn("iki kör kavramsal çözümle", response["sourceDescription"])
+
+    def test_biology_qualitative_mechanism(self):
+        self.semantic_fixture("AYT Biyoloji", "enzim ve substrat")
+
+    def test_turkish_inference_paragraph(self):
+        self.semantic_fixture("TYT Türkçe", "paragrafta ana düşünce")
+
+    def test_history_historical_source(self):
+        self.semantic_fixture("TYT Sosyal", "tarihî kanıt yorumlama")
+
+    def test_chemistry_conceptual_rule(self):
+        self.semantic_fixture("AYT Kimya", "kimyasal bağların özellikleri")
+
+    def test_physics_conceptual_law(self):
+        self.semantic_fixture("AYT Fizik", "Newton hareket yasaları")
+
+    def test_unsupported_conceptual_figure_rejected(self):
+        source = {**SOURCE, "diagramFamily": "unsupported"}
+        with self.assertRaises(HTTPException):
+            run_with_responses([source])
+
+    def test_disagreeing_second_review_is_rejected(self):
+        draft = {**DRAFT, "answerMode": "conceptual", "answerExpression": ""}
+        review = {**REVIEW, "independentAnswerExpression": ""}
+        bad_second = {**review, "solvedOptionWithoutAnswerKey": "B"}
+        with self.assertRaises(HTTPException):
+            run_with_responses(
+                [SOURCE, draft, review, bad_second, draft, review, bad_second]
+            )
 
 if __name__ == "__main__":
     unittest.main()

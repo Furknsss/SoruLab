@@ -65,13 +65,34 @@ data class YksPublisherInfo(
     val customLogoPath: String = ""
 )
 
+/**
+ * Publisher identity is punctuation-, spacing- and Turkish-diacritic-insensitive.
+ * Dr. Biyoloji, Dr Biyoloji and DRBIYOLOJI must select the SAME question bank.
+ * Never confuse it with plain Biyoloji (different canonical key).
+ */
+object PublisherNameKey {
+    fun from(raw: String): String {
+        var normalized = raw.trim().lowercase(java.util.Locale.forLanguageTag("tr-TR"))
+            .replace('ı', 'i').replace('ğ', 'g').replace('ü', 'u')
+            .replace('ş', 's').replace('ö', 'o').replace('ç', 'c')
+            .filter { it.isLetterOrDigit() }
+        for (suffix in listOf("yayinlari", "yayincilik", "yayinevi", "yayin")) {
+            if (normalized.length > suffix.length && normalized.endsWith(suffix)) {
+                normalized = normalized.removeSuffix(suffix)
+                break
+            }
+        }
+        return normalized.ifBlank { "kaynakbelirtilmedi" }
+    }
+}
+
 object SoruLabPublisherPresets {
     val defaultPublishers: List<YksPublisherInfo> = emptyList()
 
     fun mergedPublishers(customPublishers: List<YksPublisherInfo>): List<YksPublisherInfo> {
         return customPublishers
             .filter { it.name.isNotBlank() }
-            .distinctBy { it.name.trim().lowercase() }
+            .distinctBy { PublisherNameKey.from(it.name) }
     }
 
     fun resolvePublisher(
@@ -81,6 +102,7 @@ object SoruLabPublisherPresets {
         val trimmed = publisherTag.trim()
         val all = mergedPublishers(customPublishers)
         all.firstOrNull {
+            PublisherNameKey.from(it.name) == PublisherNameKey.from(trimmed) ||
             it.name.equals(trimmed, ignoreCase = true) ||
                 it.id.equals(trimmed, ignoreCase = true) ||
                 it.shortCode.equals(trimmed, ignoreCase = true) ||

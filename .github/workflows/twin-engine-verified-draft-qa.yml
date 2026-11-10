@@ -57,4 +57,33 @@ jobs:
           --tests 'com.example.viewmodel.TwinQuestionQualityGateTest'
           --no-daemon --no-configuration-cache --max-workers=2
 
+      - name: Compile debug app including shape-preview activity
+        run: bash ./gradlew :app:assembleDebug --no-daemon --no-configuration-cache --max-workers=2
+
+      - name: Capture real Android triangle twin preview
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none'
+          emulator-boot-timeout: 600
+          script: |
+            adb shell wm size 1200x2000
+            adb shell wm density 320
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -W -n com.aistudio.sorulab.ykslab/com.example.ui.screens.TwinDiagramPreviewActivity
+            sleep 5
+            mkdir -p out/twin-visual
+            adb exec-out screencap -p > out/twin-visual/native-triangle-twin.png
+            test "$(stat -c%s out/twin-visual/native-triangle-twin.png)" -gt 20000
+
+      - name: Preserve real rendered native figure screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoruLab-Twin-Diagram-Android-Visual-QA
+          path: out/twin-visual/native-triangle-twin.png
+          retention-days: 14
+
 # No APK release or auto-merge. Review tests, actual diagrams, and install upgrade separately.

@@ -64,9 +64,10 @@ DIFFICULTY AND EXAM STYLE — TWO INDEPENDENT LABELS:
 - Optionally add "osymType": true if the source clearly marks it as ÖSYM tipi.
 - Example: a question may be "difficulty": "Kolay" and "osymType": true.
   This question belongs to both Başlangıç and ÖSYM practice pools.
-- "targetLevel": "OSYM" and difficulty:"ÖSYM" are tolerated only for
-  backward compatibility; new ZIP producers MUST use osymType:true and
-  one of the four real difficulty labels.
+- "targetLevel": "OSYM" and a test name containing `~osym~` do NOT
+  count as ÖSYM tipi. Use `"osymType": true` or `"tags": ["ÖSYM tipi"]`.
+- "difficulty": "ÖSYM" is INVALID: ÖSYM is a style label, never a fifth difficulty.
+  A ZIP must explicitly specify one of the four real difficulty labels.
 - Never infer an ÖSYM-type label merely because a question is long.
   If the source has no such label, omit osymType or set it false.
 - Wheel mapping: Seviye Tespit = four-band mix; Başlangıç = only Kolay;
@@ -89,7 +90,7 @@ INTEGRITY AND ACCURACY:
   When not certain, use an empty string; NEVER invent an official MEB
   kazanım or infer one solely from the length/diagram of a question.
 - Do not claim a real difficulty evaluation based on a placeholder.
-  If unknown, omit difficulty (the UI can display "Orta" as a default).
+  If unknown, review the source first; a missing difficulty is rejected rather than arbitrarily assigned "Orta".
 - Reimports of the same source book should preserve bookId.
 - Use only ASCII letters, digits, underscore and hyphen for image filenames.
 - No original PDF is included: only manifest.json and referenced images.

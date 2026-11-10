@@ -29,7 +29,7 @@ jobs:
       - name: Validate Python service syntax and SymPy tests without a remote model
         run: |
           python -m py_compile tools/twin_engine/app.py tools/twin_engine/math_gate.py
-          (cd tools/twin_engine && python -m unittest -v test_math_gate)
+          (cd tools/twin_engine && python -m unittest -v test_math_gate test_service)
 
   android-unit:
     runs-on: ubuntu-latest

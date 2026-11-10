@@ -67,6 +67,79 @@ class LiveSolvingBoardScreenTest {
     }
 
     @Test
+    fun bookFontNormalizationMatchesSmallAndOversizedSourceGlyphs() {
+        fun printedQuestion(height: Float): android.graphics.Bitmap {
+            val bitmap = android.graphics.Bitmap.createBitmap(
+                430, 900, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            canvas.drawColor(android.graphics.Color.WHITE)
+            val paint = android.graphics.Paint().apply {
+                color = android.graphics.Color.BLACK
+            }
+            repeat(12) { line ->
+                repeat(4) { glyph ->
+                    val left = 30f + glyph * 65
+                    val top = 24f + line * 70
+                    canvas.drawRect(left, top, left + 16f, top + height, paint)
+                }
+            }
+            return bitmap
+        }
+        val normal = printedQuestion(11f)
+        val oversized = printedQuestion(39f)
+        try {
+            val smallScale = com.example.ui.screens.estimateBookTypographyScale(normal, 190f)
+            val hugeScale = com.example.ui.screens.estimateBookTypographyScale(oversized, 190f)
+            org.junit.Assert.assertTrue("Normal-size lettering must keep its native width",
+                smallScale >= 0.92f)
+            org.junit.Assert.assertTrue(
+                "Oversized lettering must be normalized toward smaller-print books: small=$smallScale large=$hugeScale",
+                hugeScale <= 0.58f && hugeScale < smallScale
+            )
+        } finally {
+            normal.recycle()
+            oversized.recycle()
+        }
+    }
+
+    @Test
+    fun base64StoredQuestionImageGetsTheSameTypographyAndRatioCheckAsFileImages() {
+        val bitmap = android.graphics.Bitmap.createBitmap(
+            430, 640, android.graphics.Bitmap.Config.ARGB_8888
+        )
+        val canvas = android.graphics.Canvas(bitmap)
+        canvas.drawColor(android.graphics.Color.WHITE)
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.BLACK
+        }
+        repeat(8) { line ->
+            repeat(4) { glyph ->
+                val x = 30f + glyph * 80
+                val y = 30f + line * 72
+                canvas.drawRect(x, y, x + 18f, y + 32f, paint)
+            }
+        }
+        val bytes = java.io.ByteArrayOutputStream().use { out ->
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+            out.toByteArray()
+        }
+        bitmap.recycle()
+        val q = fixtureSession().testItem.questions.first().copy(
+            id = "inline_source",
+            croppedImagePath = "",
+            imageBase64 = android.util.Base64.encodeToString(
+                bytes, android.util.Base64.NO_WRAP
+            )
+        )
+        val metrics = com.example.ui.screens.estimateBookImageMeasurements(
+            q, java.io.File("/unused_book_file_dir"), 190f
+        )
+        org.junit.Assert.assertNotNull(metrics)
+        org.junit.Assert.assertEquals(640f / 430f, metrics!!.heightOverWidth, 0.01f)
+        org.junit.Assert.assertTrue(metrics.typographyScale < 0.9f)
+    }
+
+    @Test
     fun fullQuestionImageAlwaysFitsItsPaperSlotWithoutHorizontalOrVerticalClipping() {
         listOf(0.24f, 0.55f, 1f, 2.4f, 6f).forEach { widthOverHeight ->
             listOf(0.28f, 0.5f, 1f, 1.16f).forEach { printScale ->

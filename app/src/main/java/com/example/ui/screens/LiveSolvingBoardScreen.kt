@@ -118,6 +118,89 @@ internal data class BookImageMeasurements(
 )
 
 /**
+ * Estimate the size of real printed glyphs without mistaking blank margins or
+ * page illustrations for letters. Dark connected components in a downsampled
+ * scan are a better clue than full-width ink rows, which merge formula lines.
+ * Returns null when the image has too little clear text evidence.
+ */
+private fun detectTypicalPrintedGlyphDp(bitmap: Bitmap, contentWidthDp: Float): Float? {
+    val width = bitmap.width
+    val height = bitmap.height
+    if (width < 32 || height < 32 || contentWidthDp <= 0f) return null
+    val step = maxOf(
+        1, (width + 383) / 384, (height + 1399) / 1400
+    )
+    val sw = (width + step - 1) / step
+    val sh = (height + step - 1) / step
+    val size = sw * sh
+    if (size > 650_000) return null
+
+    val black = BooleanArray(size)
+    val pixelRow = IntArray(width)
+    for (y in 0 until height step step) {
+        bitmap.getPixels(pixelRow, 0, width, 0, y, width, 1)
+        val row = (y / step) * sw
+        for (x in 0 until width step step) {
+            val color = pixelRow[x]
+            val opaque = android.graphics.Color.alpha(color) >= 128
+            val dark = android.graphics.Color.red(color) * 299 +
+                android.graphics.Color.green(color) * 587 +
+                android.graphics.Color.blue(color) * 114 < 155_000
+            black[row + x / step] = opaque && dark
+        }
+    }
+    val seen = BooleanArray(size)
+    val queue = IntArray(size)
+    val glyphHeights = ArrayList<Int>()
+    for (origin in 0 until size) {
+        if (!black[origin] || seen[origin]) continue
+        var head = 0
+        var tail = 1
+        queue[0] = origin
+        seen[origin] = true
+        var left = origin % sw
+        var right = left
+        var top = origin / sw
+        var bottom = top
+        while (head < tail) {
+            val index = queue[head++]
+            val x = index % sw
+            val y = index / sw
+            if (x < left) left = x
+            if (x > right) right = x
+            if (y < top) top = y
+            if (y > bottom) bottom = y
+            fun include(nx: Int, ny: Int) {
+                if (nx < 0 || nx >= sw || ny < 0 || ny >= sh) return
+                val neighbor = ny * sw + nx
+                if (black[neighbor] && !seen[neighbor]) {
+                    seen[neighbor] = true
+                    queue[tail++] = neighbor
+                }
+            }
+            include(x - 1, y)
+            include(x + 1, y)
+            include(x, y - 1)
+            include(x, y + 1)
+        }
+        val h = bottom - top + 1
+        val w = right - left + 1
+        // Individual letters / numeric glyphs, not long underlines,
+        // shaded diagrams or the continuous edge of a table.
+        if (tail >= 5 && h in 3..(sw / 7).coerceAtLeast(5) &&
+            w in 2..(sw / 5).coerceAtLeast(4) &&
+            w.toFloat() / h in 0.16f..4f &&
+            left > 1 && right < sw - 2
+        ) glyphHeights += h
+    }
+    if (glyphHeights.size < 18) return null
+    glyphHeights.sort()
+    // 60th percentile resists punctuation, dots, accents and tiny subscripts.
+    val typicalPx = glyphHeights[(glyphHeights.size * 0.60f).toInt()] * step
+    return typicalPx * contentWidthDp / width
+}
+
+/**
  * Match the optical size of printed text from very different publishers.
  * The PDF crop's pixel dimensions alone are insufficient: two equally-wide
  * book images can have 11dp and 26dp glyphs on the same SoruLab sheet.
@@ -126,6 +209,13 @@ internal data class BookImageMeasurements(
  */
 internal fun estimateBookTypographyScale(bitmap: Bitmap, columnContentWidthDp: Float): Float {
     if (bitmap.width < 16 || bitmap.height < 16 || columnContentWidthDp <= 0f) return 1f
+    val measuredGlyphDp = detectTypicalPrintedGlyphDp(bitmap, columnContentWidthDp)
+    if (measuredGlyphDp != null && measuredGlyphDp.isFinite() && measuredGlyphDp > 0f) {
+        // Fit the visual glyphs of Barış / Ergi / ÜçDörtBeş around a
+        // consistent printed font size, never cropping the source image.
+        val targetDp = (columnContentWidthDp * 0.052f).coerceIn(7.5f, 11f)
+        return (targetDp / measuredGlyphDp).coerceIn(0.34f, 1.10f)
+    }
     val sampleStep = 3
     val left = (bitmap.width * 0.06f).toInt()
     val right = (bitmap.width * 0.94f).toInt().coerceAtLeast(left + 1)
@@ -174,10 +264,10 @@ internal fun estimateBookTypographyScale(bitmap: Bitmap, columnContentWidthDp: F
     val typicalGlyphPx = bands[bands.size / 2].toFloat()
     val renderedGlyphDp = typicalGlyphPx * columnContentWidthDp / bitmap.width
     if (!renderedGlyphDp.isFinite() || renderedGlyphDp <= 0f) return 1f
-    return (11.5f / renderedGlyphDp).coerceIn(0.28f, 1.16f)
+    return (11.5f / renderedGlyphDp).coerceIn(0.34f, 1.10f)
 }
 
-private fun estimateBookImageMeasurements(
+internal fun estimateBookImageMeasurements(
     question: YksQuestion, filesDir: File, columnContentWidthDp: Float
 ): BookImageMeasurements? {
     val fileCandidates = listOfNotNull(
@@ -212,6 +302,37 @@ private fun estimateBookImageMeasurements(
         } else 1f
         return BookImageMeasurements(ratio, fontScale)
     }
+
+    // Some migrated questions store the bitmap inside imageBase64, whereas
+    // the old paper-layout analyser only searched local files. That mismatch
+    // produced fallback scale = 1.0 for exactly those oversized questions.
+    val base64 = question.imageBase64
+    if (!base64.isNullOrBlank() && base64.length <= 12_000_000) {
+        return runCatching {
+            val bytes = Base64.decode(base64, Base64.DEFAULT)
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+            var sampleSize = 1
+            while (bounds.outWidth / sampleSize > 512 ||
+                bounds.outHeight / sampleSize > 2048) sampleSize *= 2
+            val sample = BitmapFactory.decodeByteArray(bytes, 0, bytes.size,
+                BitmapFactory.Options().apply {
+                    inSampleSize = sampleSize
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                }) ?: return@runCatching null
+            try {
+                BookImageMeasurements(
+                    heightOverWidth = bounds.outHeight.toFloat() / bounds.outWidth,
+                    typographyScale = estimateBookTypographyScale(
+                        sample, columnContentWidthDp
+                    )
+                )
+            } finally {
+                sample.recycle()
+            }
+        }.getOrNull()
+    }
     return null
 }
 
@@ -226,7 +347,7 @@ private fun estimatedBookQuestionUnits(
     // Match the ACTUAL drawing width: 42dp publisher/number gutter + 4dp gap.
     // The old 108dp deduction underestimated tall book crops by up to 50%.
     val imageWidthDp = (columnWidthDp - 46f).coerceAtLeast(90f) *
-        (imageTypographyScales[question.id] ?: 1f).coerceIn(0.28f, 1.16f)
+        (imageTypographyScales[question.id] ?: 1f).coerceIn(0.34f, 1.10f)
     val isImage = question.imagePath.isNotBlank() ||
         question.imageBase64.isNotBlank() || question.pdfFilePath.isNotBlank()
     val contentHeightDp = if (isImage) {
@@ -240,9 +361,9 @@ private fun estimatedBookQuestionUnits(
         ((textLength / charWidth + 2).coerceAtLeast(2) * 19f + 46f +
             if (question.visualType != QuestionVisualType.NONE) 155f else 0f)
     }
-    // The logo/number gutter is 72dp tall; tall figures need only a small
-    // 12dp breathing margin, not 54dp of artificial whitespace per question.
-    return (contentHeightDp + 12f).coerceAtLeast(78f) / columnWidthDp.coerceAtLeast(120f)
+    // Include the 72dp logo/number gutter only when it is taller than the
+    // printed question. The gutter runs BESIDE the image, not above it.
+    return (contentHeightDp + 8f).coerceAtLeast(74f) / columnWidthDp.coerceAtLeast(120f)
 }
 
 /** Fit the *entire* cropped image inside its allotted paper slot. */
@@ -256,7 +377,7 @@ internal fun fittedBookImageSizeDp(
     if (availableWidth <= 0f || availableHeight <= 0f) return 0f to 0f
     val ratio = widthOverHeight.takeIf { it.isFinite() && it > 0f } ?: 1f
     val visualScale = if (singleQuestionLayout) 1f else
-        typographyScale.coerceIn(0.28f, 1.16f)
+        typographyScale.coerceIn(0.34f, 1.10f)
     val width = minOf(availableWidth * visualScale, availableWidth,
         availableHeight * ratio).coerceAtLeast(0f)
     return width to (width / ratio).coerceAtMost(availableHeight)
@@ -269,7 +390,7 @@ private fun bookColumnHeightScale(
     paperHeightDp: Float,
     imageRatios: Map<String, Float>,
     typographyScales: Map<String, Float>,
-    gapDp: Float = 10f
+    gapDp: Float = 12f
 ): Float {
     if (questions.isEmpty()) return 1f
     val desired = questions.sumOf { q ->
@@ -1903,7 +2024,11 @@ private fun RealTwoColumnBookPageSurface(
                         .padding(end = 8.dp, top = 4.dp, bottom = 4.dp),
                     // Real-content slots: do not stretch whitespace between
                     // unrelated questions just to fill an entire page.
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    // Justified book-page flow: leave whitespace BETWEEN
+                    // questions rather than an enormous unused bottom strip.
+                    // One question stays anchored at the top.
+                    verticalArrangement = if (leftColumnQuestions.size > 1)
+                        Arrangement.SpaceBetween else Arrangement.Top
                 ) {
                     leftColumnQuestions.forEachIndexed { idx, q ->
                         BoxWithConstraints(
@@ -1950,7 +2075,8 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isRightPopoverOpen) 60f else 1f)
                         .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = if (rightColumnQuestions.size > 1)
+                        Arrangement.SpaceBetween else Arrangement.Top
                 ) {
                     if (rightColumnQuestions.isEmpty()) {
                         Spacer(modifier = Modifier.height(80.dp))

@@ -28,7 +28,8 @@ object TestSnapshotCodec {
                     .put("stemBottom", question.stemBottom)
                     .put("options", options)
                     .put("correctOption", question.correctOption)
-                    .put("difficulty", question.difficulty.name)
+                    .put("difficulty", question.difficulty.fourTier().name)
+                    .put("osymType", question.isOsymType || question.difficulty == DifficultyLevel.OSYM)
                     .put("visualType", question.visualType.name)
                     .put("stepByStepSolution", question.stepByStepSolution)
                     .put("bookId", question.bookId)
@@ -96,9 +97,11 @@ object TestSnapshotCodec {
                 stemBottom = item.optString("stemBottom"),
                 options = options,
                 correctOption = item.optString("correctOption"),
-                difficulty = DifficultyLevel.entries.firstOrNull {
+                difficulty = (DifficultyLevel.entries.firstOrNull {
                     it.name == item.optString("difficulty")
-                } ?: DifficultyLevel.ORTA,
+                } ?: DifficultyLevel.ORTA).fourTier(),
+                isOsymType = item.optBoolean("osymType", false) ||
+                    item.optString("difficulty").equals("OSYM", true),
                 visualType = QuestionVisualType.entries.firstOrNull {
                     it.name == item.optString("visualType")
                 } ?: QuestionVisualType.NONE,

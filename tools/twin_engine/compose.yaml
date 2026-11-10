@@ -1,0 +1,28 @@
+# Optional owner-hosted Qwen + SymPy. Never publicly expose port 11434.
+# Bind 8765 to host loopback only; require a private VPN/TLS proxy for Android.
+services:
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    expose:
+      - "11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+  twin-engine:
+    build: .
+    restart: unless-stopped
+    environment:
+      OLLAMA_TWIN_MODEL: ${OLLAMA_TWIN_MODEL:-qwen3.8:27b}
+      OLLAMA_TWIN_URL: http://ollama:11434/api/chat
+    ports:
+      - "127.0.0.1:8765:8765"
+    depends_on:
+      ollama:
+        condition: service_healthy
+volumes:
+  ollama-models:

@@ -236,7 +236,8 @@ fun LiveSolvingBoardScreen(
         else configuration.screenWidthDp.toFloat()
     val sheetHeightDp = if (bookAreaSize.height > 0) bookAreaSize.height / density
         else (configuration.screenHeightDp - 130f).coerceAtLeast(300f)
-    val columnWidth = ((sheetWidthDp - 100f) / 2f).coerceAtLeast(145f)
+    // Reserve only real paper gutters; the old 100dp deduction made columns narrow.
+    val columnWidth = ((sheetWidthDp - 56f) / 2f).coerceAtLeast(145f)
     val columnCapacity = ((sheetHeightDp - 32f) / columnWidth).coerceAtLeast(0.5f)
     val actualImageRatios by produceState<Map<String, Float>>(
         initialValue = emptyMap(),
@@ -250,7 +251,7 @@ fun LiveSolvingBoardScreen(
     }
     val packedBookPages = remember(questions, columnCapacity, columnWidth, actualImageRatios) {
         packQuestionsIntoTwoColumnPages(
-            questions, columnCapacity, 8, columnWidth, actualImageRatios
+            questions, columnCapacity, 3, columnWidth, actualImageRatios
         )
     }
     val totalBookPages = packedBookPages.size.coerceAtLeast(1)
@@ -1703,7 +1704,7 @@ private fun RealTwoColumnBookPageSurface(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
-                .padding(horizontal = 22.dp, vertical = 8.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             // ÇİFT SÜTUNLU (SOL SÜTUN & SAĞ SÜTUN) VE ORTADAN İNCE DİKEY ÇİZGİLİ TAM SAYFA DÜZENİ
@@ -1721,13 +1722,13 @@ private fun RealTwoColumnBookPageSurface(
                         .weight(1f)
                         .fillMaxHeight()
                         .zIndex(if (isLeftPopoverOpen) 60f else 1f)
-                        .padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
+                        .padding(end = 8.dp, top = 4.dp, bottom = 4.dp),
                     // Equal-height page slots keep short and tall question
                     // crops centered within their portion of the paper.
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     leftColumnQuestions.forEachIndexed { idx, q ->
-                        Box(
+                        BoxWithConstraints(
                             modifier = Modifier.weight(
                                 estimatedBookQuestionUnits(q, 340f, emptyMap())
                                     .coerceAtLeast(0.3f), fill = true
@@ -1736,7 +1737,8 @@ private fun RealTwoColumnBookPageSurface(
                         ) {
                         BookPageQuestionItem345(
                             question = q,
-                            maxImageHeight = maxQuestionImageHeight,
+                            // A tall image receives more height than a short one.
+                            maxImageHeight = (maxHeight - 58.dp).coerceAtLeast(110.dp),
                             isReviewMode = session.isReviewMode,
                             selectedOption = session.selectedAnswers[q.number],
                             isThreeDotMenuOpen = openThreeDotQuestionNumber == q.number,
@@ -1767,14 +1769,14 @@ private fun RealTwoColumnBookPageSurface(
                         .weight(1f)
                         .fillMaxHeight()
                         .zIndex(if (isRightPopoverOpen) 60f else 1f)
-                        .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+                        .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     if (rightColumnQuestions.isEmpty()) {
                         Spacer(modifier = Modifier.height(80.dp))
                     } else {
                         rightColumnQuestions.forEachIndexed { idx, q ->
-                            Box(
+                            BoxWithConstraints(
                                 modifier = Modifier.weight(
                                     estimatedBookQuestionUnits(q, 340f, emptyMap()).coerceAtLeast(0.3f),
                                     fill = true
@@ -1783,7 +1785,7 @@ private fun RealTwoColumnBookPageSurface(
                             ) {
                             BookPageQuestionItem345(
                                 question = q,
-                                maxImageHeight = maxQuestionImageHeight,
+                                maxImageHeight = (maxHeight - 58.dp).coerceAtLeast(110.dp),
                                 isReviewMode = session.isReviewMode,
                                 selectedOption = session.selectedAnswers[q.number],
                                 isThreeDotMenuOpen = openThreeDotQuestionNumber == q.number,
@@ -1851,10 +1853,10 @@ private fun BookPageQuestionItem345(
 
             val bitmap = file
                 ?.takeIf(File::exists)
-                ?.let { BitmapFactory.decodeFile(it.absolutePath) }
+                ?.let { StudioImageAndPdfEngine.getCachedBitmap(it.absolutePath) }
                 ?: fallbackFile
                     .takeIf(File::exists)
-                    ?.let { BitmapFactory.decodeFile(it.absolutePath) }
+                    ?.let { StudioImageAndPdfEngine.getCachedBitmap(it.absolutePath) }
                 ?: question.imageBase64
                     ?.takeIf(String::isNotBlank)
                     ?.let { base64 ->

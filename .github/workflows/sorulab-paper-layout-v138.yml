@@ -96,6 +96,21 @@ jobs:
           print("Firebase project, Google OAuth clients, and release certificate are consistent.")
           PY
 
+      - name: Create ephemeral Android debug signing key for screenshot preview
+        shell: bash
+        run: |
+          # The repo's debug.keystore is intentionally not tracked.
+          # The debug preview is NOT the downloadable signed release.
+          if [ ! -s debug.keystore ]; then
+            keytool -genkeypair -noprompt -v \
+              -keystore debug.keystore \
+              -storepass android -keypass android \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          keytool -list -keystore debug.keystore -storepass android -alias androiddebugkey
+
       - name: Build a debug-only visual preview APK
         run: bash ./gradlew :app:assembleDebug --no-daemon --no-configuration-cache --max-workers=2
 

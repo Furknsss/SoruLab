@@ -33,7 +33,7 @@ The manifest.json file uses UTF-8 JSON with this structure:
           "learningOutcome": "Nöronun yapısı ve görevleri",
           "questionType": "Öncüllü bilgi",
           "difficulty": "Orta",
-          "targetLevel": "OSYM",
+          "osymType": true,
           "answer": "B",
           "answerVerified": true,
           "text": "Optional OCR text",
@@ -58,6 +58,20 @@ coverSha256:<lowercase 64-hex SHA256 of cover bytes> to the manifest.
 pageIndex is zero-based (the PDF page with index 8 is its ninth page).
 bounds = [top,left,bottom,right] normalized to the page, each in [0,1].
 bounds may be omitted if unavailable.
+
+DIFFICULTY AND EXAM STYLE — TWO INDEPENDENT LABELS:
+- Each question has exactly one difficulty: "Kolay", "Orta", "Zor", "Çok Zor".
+- Optionally add "osymType": true if the source clearly marks it as ÖSYM tipi.
+- Example: a question may be "difficulty": "Kolay" and "osymType": true.
+  This question belongs to both Başlangıç and ÖSYM practice pools.
+- "targetLevel": "OSYM" and difficulty:"ÖSYM" are tolerated only for
+  backward compatibility; new ZIP producers MUST use osymType:true and
+  one of the four real difficulty labels.
+- Never infer an ÖSYM-type label merely because a question is long.
+  If the source has no such label, omit osymType or set it false.
+- Wheel mapping: Seviye Tespit = four-band mix; Başlangıç = only Kolay;
+  Pekiştirme = Orta-majority; ÖSYM = only osymType:true; Derece =
+  only Zor + Çok Zor; İkiz = previous wrong answers.
 
 INTEGRITY AND ACCURACY:
 - Every question has exactly one cropped image with complete stem, graphics

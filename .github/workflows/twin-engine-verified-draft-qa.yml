@@ -1,16 +1,24 @@
 name: SoruLab Twin Engine Verified Draft QA
 
 on:
-  push:
-    branches:
-      - feature/twin-diagram-verified-engine-20261111
   pull_request:
     paths:
       - 'app/src/main/java/com/example/viewmodel/Twin*'
+      - 'app/src/main/java/com/example/viewmodel/AiSolverViewModel.kt'
       - 'app/src/main/java/com/example/ui/screens/TwinDiagramCanvas.kt'
+      - 'app/src/main/java/com/example/ui/screens/LiveSolvingBoardScreen.kt'
+      - 'app/src/debug/**'
+      - 'app/src/test/java/com/example/viewmodel/Twin*'
       - 'tools/twin_engine/**'
       - 'app/build.gradle.kts'
+      - '.github/workflows/twin-engine-verified-draft-qa.yml'
   workflow_dispatch:
+
+# Cancel stale PR runs while code changes, so only the newest exact commit
+# receives the expensive Android emulator visual review.
+concurrency:
+  group: sorulab-twin-qa
+  cancel-in-progress: true
 
 permissions:
   contents: read

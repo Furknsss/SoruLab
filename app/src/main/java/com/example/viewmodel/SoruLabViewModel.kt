@@ -677,11 +677,6 @@ class SoruLabViewModel(
         return (levelSpecific + legacy)
             .filter { it.id !in deleted }
             .distinctBy { it.id }
-            // Persisted test snapshots may contain the ZIP's old publisher
-            // identity. Refresh question logos from current library records
-            // whenever the test list is reopened, without changing questions,
-            // answers, difficulty or question order.
-            .map(::hydrateSnapshotQuestionImages)
     }
 
     fun deleteTopicTest(topic: YksTopic, test: YksTestItem) {

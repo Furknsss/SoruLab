@@ -26,8 +26,8 @@ internal object TopicIntegrityPolicy {
         "odun borusu", "soymuk borusu", "bitkisel"
     )
 
-    private fun independentlyPlantSpecific(record: CustomQuestionRecord): Boolean {
-        val text = normalize(record.questionText + " " + record.learningOutcome)
+    fun containsIndependentPlantEvidence(questionText: String, learningOutcome: String = ""): Boolean {
+        val text = normalize(questionText + " " + learningOutcome)
         return plantAnchors.any { anchor ->
             // Phrase boundary prevents "tohum" being found in unrelated words.
             Regex("(?<![a-z])" + Regex.escape(anchor) + "[a-z]*").containsMatchIn(text)
@@ -40,7 +40,7 @@ internal object TopicIntegrityPolicy {
             !(record.topicId.isBlank() && record.topicName.equals(topic.name, true))) return false
 
         val targetIsEndocrine = topic.id == "endokrin_sistem"
-        if (targetIsEndocrine && independentlyPlantSpecific(record)) return false
+        if (targetIsEndocrine && containsIndependentPlantEvidence(record.questionText, record.learningOutcome)) return false
 
         // A chapter label embedded in a source test is independent from the
         // potentially guessed topic in ZIP metadata. Compare exact catalog

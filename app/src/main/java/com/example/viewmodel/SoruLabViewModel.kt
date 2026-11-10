@@ -890,7 +890,10 @@ class SoruLabViewModel(
                 ?: knownTests.firstOrNull { it.id == record.testId }?.questions
                 ?: continue
             val answers = parseAnswersJson(record.answersMapJson).orEmpty()
+            val originalById = _userCustomQuestions.value.associateBy { it.id }
             MistakeReviewPolicy.wrongAnswersOnly(questions, answers).forEach { q ->
+                val source = originalById[q.sourceQuestionId]
+                if (source == null || !TopicIntegrityPolicy.isSuitable(source, topic)) return@forEach
                 val key = LevelQuestionPolicy.stableId(q)
                 if (seen.add(key)) errors.add(q)
             }
@@ -914,7 +917,7 @@ class SoruLabViewModel(
         levelFilter: TopicTestLevel?
     ): List<YksQuestion> {
         val topicPool = _userCustomQuestions.value.filter { question ->
-            matchesTopic(question.subjectId, question.topicId, question.topicName, topic) &&
+            TopicIntegrityPolicy.isSuitable(question, topic) &&
                 repository.hasRecoverableQuestionImage(question)
         }
 
@@ -1007,7 +1010,7 @@ class SoruLabViewModel(
         sourceFilter: QuestionSourceFilter
     ): List<YksQuestion> {
         val strictTopicPool = _userCustomQuestions.value.filter { cq ->
-            matchesTopic(cq.subjectId, cq.topicId, cq.topicName, topic) &&
+            TopicIntegrityPolicy.isSuitable(cq, topic) &&
                 repository.hasRecoverableQuestionImage(cq)
         }
         if (strictTopicPool.isEmpty()) return emptyList()
@@ -1135,7 +1138,7 @@ class SoruLabViewModel(
      */
     fun checkPoolAvailability(topic: YksTopic, level: TopicTestLevel): PoolAvailabilityCheck {
         val strictTopicPool = _userCustomQuestions.value.filter { cq ->
-            matchesTopic(cq.subjectId, cq.topicId, cq.topicName, topic) &&
+            TopicIntegrityPolicy.isSuitable(cq, topic) &&
                 repository.hasRecoverableQuestionImage(cq)
         }
         val countsByDiff = QUESTION_DIFFICULTY_BANDS.associateWith { diff ->
@@ -1362,7 +1365,11 @@ class SoruLabViewModel(
             sourceCandidates, selectedPublisherKey
         )
         if (publisherFiltered.isEmpty()) return null
-        val strictCandidates = publisherFiltered.distinctBy { LevelQuestionPolicy.stableId(it) }
+        val bySourceId = _userCustomQuestions.value.associateBy { it.id }
+        val strictCandidates = publisherFiltered.filter { q ->
+            bySourceId[q.sourceQuestionId]?.let { TopicIntegrityPolicy.isSuitable(it, topic) }
+                ?: false
+        }.distinctBy { LevelQuestionPolicy.stableId(it) }
 
         val key = "${topic.id}_${level.name}"
         val existingList = _generatedTopicTests.value[key].orEmpty()
@@ -1386,7 +1393,20 @@ class SoruLabViewModel(
             previouslyUsed = usedSignatures,
             mixSeed = (topic.id + level.name + nextTestNumber + selectedPublisherKey.orEmpty()).hashCode()
         )
-        if (questionsToUse.isEmpty()) return null
+        // Last, independent pre-persistence audit: never save a test if a
+        // stale ZIP label, another subject, duplicated ID or answer-key
+        // problem survived an earlier filter.
+        if (questionsToUse.isEmpty() ||
+            questionsToUse.any { q ->
+                !q.answerKeyVerified ||
+                    q.correctOption !in setOf("A", "B", "C", "D", "E") ||
+                    !q.isEligibleForLevel(level) ||
+                    bySourceId[q.sourceQuestionId]?.let {
+                        !TopicIntegrityPolicy.isSuitable(it, topic)
+                    } != false
+            } ||
+            questionsToUse.map(LevelQuestionPolicy::stableId).distinct().size != questionsToUse.size
+        ) return null
 
         // Otomatik İsimlendirme: "[Konu Adı] - Test [X]" (Kesinlikle kitap adı kullanılmaz)
         val label = customTestTitle.trim().take(72)
@@ -2668,14 +2688,22 @@ class SoruLabViewModel(
 
                 val resolvedExamType = matchedSubject?.examType?.name ?: item.examType
                 val subjectId = matchedSubject?.id.orEmpty()
+                // An inherited chapter hint is not proof of the current crop.
+                // Quarantine contradictory content rather than silently
+                // placing a plant physiology question in Endocrine System.
+                val contradictoryPlantTopic = matchedTopic?.id == "endokrin_sistem" &&
+                    TopicIntegrityPolicy.containsIndependentPlantEvidence(
+                        item.questionText, item.learningOutcome
+                    )
                 // ZIP imports can carry authentic subject/topic labels for a
                 // publisher's chapter even when that chapter is not an exact
                 // match for the built-in catalog. Never silently erase them.
                 val resolvedSubjectName = matchedSubject?.name
                     ?.takeIf { it.isNotBlank() } ?: item.subjectName
-                val topicId = matchedTopic?.id.orEmpty()
-                val resolvedTopicName = matchedTopic?.name
-                    ?.takeIf { it.isNotBlank() } ?: item.topicName
+                val topicId = if (contradictoryPlantTopic) "" else matchedTopic?.id.orEmpty()
+                val resolvedTopicName = if (contradictoryPlantTopic)
+                    "Konu doğrulama gerekli"
+                else matchedTopic?.name?.takeIf { it.isNotBlank() } ?: item.topicName
 
                 val effectiveCover = bookCoverPath.ifBlank { item.bookCoverPath }
                 val packedSolution = CustomQuestionRecord.packSolutionWithMeta(

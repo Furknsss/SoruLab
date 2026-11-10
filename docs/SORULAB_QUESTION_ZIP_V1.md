@@ -86,7 +86,13 @@ To create this ZIP after preparing manifest.json and image files:
 
 On Android: Kitaplığım -> ZIP'ten Soruları Ekle -> choose ZIP.
 
-Limits: 6000 questions; 300 MiB compressed ZIP; 12 MiB per image;
-420 MiB total uncompressed image files; 7 MiB manifest.
+Limits per individual ZIP (v1.3.4): 12,000 questions; 768 MiB compressed ZIP;
+16 MiB per image; 1,200 MiB total uncompressed image files; 32 MiB manifest.
+Multiple books/packs can be imported one at a time. These are per-pack
+safety limits, NOT a claim that the phone can keep hundreds of thousands of
+high-resolution images in RAM. Ensure enough free device storage before import.
+Metadata is SQLite-backed; question images remain private local files.
+Deleting the application removes those local images unless a verified external
+backup has been created. Firebase Storage question-pack backups are not yet active.
 Any unreferenced or unsafe file path is rejected. This ZIP importer is
 a separate fast path and does not require the device PDF OCR engine.

@@ -469,7 +469,7 @@ private fun bookColumnHeightScale(
     paperHeightDp: Float,
     imageRatios: Map<String, Float>,
     typographyScales: Map<String, Float>,
-    gapDp: Float = 12f
+    gapDp: Float = 20f
 ): Float {
     if (questions.isEmpty()) return 1f
     val desired = questions.sumOf { q ->
@@ -477,8 +477,12 @@ private fun bookColumnHeightScale(
             columnWidthDp).toDouble()
     }.toFloat()
     val gaps = (questions.size - 1).coerceAtLeast(0) * gapDp
-    return ((paperHeightDp - gaps).coerceAtLeast(1f) / desired.coerceAtLeast(1f))
-        .coerceIn(0.15f, 1f)
+    val spaceFit = ((paperHeightDp - gaps).coerceAtLeast(1f) /
+        desired.coerceAtLeast(1f)).coerceAtMost(1f)
+    // Normal paper columns should not squeeze readable questions to tiny
+    // postage stamps. One tall diagram may occupy a page by itself and fit.
+    return if (questions.size == 1) spaceFit.coerceAtLeast(0.15f)
+        else spaceFit.coerceAtLeast(0.82f)
 }
 
 /**
@@ -489,7 +493,7 @@ private fun bookColumnHeightScale(
 internal fun packQuestionsIntoTwoColumnPages(
     questions: List<YksQuestion>,
     columnCapacity: Float = 2.1f,
-    maxQuestionsPerColumn: Int = 8,
+    maxQuestionsPerColumn: Int = 3,
     columnWidthDp: Float = 360f,
     actualImageRatios: Map<String, Float> = emptyMap(),
     imageTypographyScales: Map<String, Float> = emptyMap()
@@ -500,12 +504,14 @@ internal fun packQuestionsIntoTwoColumnPages(
     // questions per column" rule: long Dr. Biyoloji diagrams must keep their
     // labels, while short Barış equations may share a column.
     val width = columnWidthDp.coerceAtLeast(120f)
-    val capacity = columnCapacity.coerceAtLeast(0.5f)
-    val columnLimit = maxQuestionsPerColumn.coerceIn(1, 8)
+    // Reserve breathing room and never pack for the absolute theoretical
+    // limit. Height is more important than squeezing another question in.
+    val capacity = (columnCapacity * 0.88f).coerceAtLeast(0.5f)
+    val columnLimit = maxQuestionsPerColumn.coerceIn(1, 3)
     val questionUnits = FloatArray(questions.size) { index ->
         estimatedBookQuestionUnits(questions[index], width, actualImageRatios, imageTypographyScales)
     }
-    val gap = 8f / width
+    val gap = 20f / width
     val pages = mutableListOf<TwoColumnQuestionPage>()
     var start = 0
 
@@ -628,7 +634,7 @@ fun LiveSolvingBoardScreen(
     }
     val packedBookPages = remember(questions, columnCapacity, columnWidth, imageMeasurements) {
         packQuestionsIntoTwoColumnPages(
-            questions, columnCapacity, 8, columnWidth, actualImageRatios, imageTypographyScales
+            questions, columnCapacity, 3, columnWidth, actualImageRatios, imageTypographyScales
         )
     }
     val totalBookPages = packedBookPages.size.coerceAtLeast(1)
@@ -2101,11 +2107,9 @@ private fun RealTwoColumnBookPageSurface(
                         .fillMaxHeight()
                         .zIndex(if (isLeftPopoverOpen) 60f else 1f)
                         .padding(end = 8.dp, top = 4.dp, bottom = 4.dp),
-                    // Real-content slots: do not stretch whitespace between
-                    // unrelated questions just to fill an entire page.
-                    // Justified book-page flow: leave whitespace BETWEEN
-                    // questions rather than an enormous unused bottom strip.
-                    // One question stays anchored at the top.
+                    // Comfortable paper flow: 1-3 whole questions according
+                    // to their measured height. Do not squeeze 5-8 tiny
+                    // questions into a column merely to fill whitespace.
                     verticalArrangement = if (leftColumnQuestions.size > 1)
                         Arrangement.SpaceBetween else Arrangement.Top
                 ) {

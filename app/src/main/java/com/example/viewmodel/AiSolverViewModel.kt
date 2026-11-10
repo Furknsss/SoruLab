@@ -240,7 +240,10 @@ class AiSolverViewModel : ViewModel() {
         // Network calls are triggered only by the explicit Twin button. Neither
         // PDF imports nor ordinary solution controls call the cloud model.
         viewModelScope.launch {
-            val result = twinGenerationEngine.generate(question, context.applicationContext)
+            // Local, independently calculated templates never consume an API quota.
+            // Unrecognised sources keep the image-aware generation + blind review path.
+            val result = TwinLocalTemplateEngine.generate(question)
+                ?: twinGenerationEngine.generate(question, context.applicationContext)
             onResult(result)
         }
     }

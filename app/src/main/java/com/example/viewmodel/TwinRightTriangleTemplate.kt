@@ -20,7 +20,7 @@ internal object TwinRightTriangleTemplate {
         Triple(9, 40, 41), Triple(6, 8, 10)
     )
 
-    fun generate(question: YksQuestion): TwinQuestionModalData? {
+    fun generate(question: YksQuestion, variantIndex: Int = 0): TwinQuestionModalData? {
         // A crop/PDF may contain essential constraints that OCR text omitted.
         // Never apply a text-only numeric template to an uninspected source image.
         // Multimodal analysis must handle original drawings and scanned figures.
@@ -43,12 +43,12 @@ internal object TwinRightTriangleTemplate {
             question.options.values.count { it.trim().toIntOrNull() == originalC } != 1
         ) return null
 
-        val random = Random(question.id.hashCode().toLong() xor originalC.toLong())
+        val random = Random(question.id.hashCode().toLong() xor originalC.toLong() xor (variantIndex.toLong() * 0x9E3779B9L))
         val choices = triples.filterNot {
             it.first == originalA && it.second == originalB ||
                 it.first == originalB && it.second == originalA
         }
-        val triple = choices[random.nextInt(choices.size)]
+        val triple = choices[Math.floorMod(question.id.hashCode() + variantIndex, choices.size)]
         val legA = triple.first
         val legB = triple.second
         val hyp = triple.third

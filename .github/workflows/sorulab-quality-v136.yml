@@ -3,7 +3,7 @@ name: SoruLab v1.3.6 Publisher Logos + Topic Integrity + Balanced Tests
 on:
   push:
     branches:
-      - fix/v136-balanced-test-page-layout-20261110
+      - fix/v136-visual-typography-and-test-preparation-20261110
   workflow_dispatch:
 
 permissions:

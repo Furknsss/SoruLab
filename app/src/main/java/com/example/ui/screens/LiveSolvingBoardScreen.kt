@@ -114,8 +114,71 @@ internal data class TwoColumnQuestionPage(
 
 internal data class BookImageMeasurements(
     val heightOverWidth: Float,
-    val typographyScale: Float
+    val typographyScale: Float,
+    val printedGlyphDp: Float? = null
 )
+
+/** Conservatively remove peripheral white only. Original ZIP image stays unchanged. */
+internal fun trimQuestionWhiteMargins(source: Bitmap): Bitmap {
+    if (source.width < 80 || source.height < 80) return source
+    val w = source.width
+    val h = source.height
+    val step = maxOf(1, (w + 599) / 600, (h + 1599) / 1600)
+    var minX = w
+    var maxX = -1
+    var minY = h
+    var maxY = -1
+    val row = IntArray(w)
+    for (y in 0 until h step step) {
+        source.getPixels(row, 0, w, 0, y, w, 1)
+        for (x in 0 until w step step) {
+            val c = row[x]
+            if (android.graphics.Color.alpha(c) < 100) continue
+            val r = android.graphics.Color.red(c)
+            val g = android.graphics.Color.green(c)
+            val b = android.graphics.Color.blue(c)
+            if (minOf(r, g, b) >= 238) continue
+            if (x < minX) minX = x
+            if (x > maxX) maxX = x
+            if (y < minY) minY = y
+            if (y > maxY) maxY = y
+        }
+    }
+    if (maxX <= minX || maxY <= minY) return source
+    val padX = maxOf((w * 0.035f).toInt(), 12)
+    val padY = maxOf((h * 0.025f).toInt(), 8)
+    // This keeps ALL detected ink and a broad safety buffer; 30% is the
+    // maximum permissible trim on either side.
+    val left = (minX - padX).coerceIn(0, (w * 0.30f).toInt())
+    val top = (minY - padY).coerceIn(0, (h * 0.24f).toInt())
+    val right = (maxX + step + padX).coerceIn((w * 0.70f).toInt(), w)
+    val bottom = (maxY + step + padY).coerceIn((h * 0.76f).toInt(), h)
+    if (right - left <= 0 || bottom - top <= 0) return source
+    if (right - left > w * 0.93f && bottom - top > h * 0.93f) return source
+    return runCatching {
+        Bitmap.createBitmap(source, left, top, right - left, bottom - top)
+    }.getOrDefault(source)
+}
+
+/** Normalize fonts relative to the actual question set, not a publisher name. */
+internal fun calibratedBookTypographyScales(
+    measurements: Map<String, BookImageMeasurements>
+): Map<String, Float> {
+    val observed = measurements.values.mapNotNull {
+        it.printedGlyphDp?.takeIf { px -> px.isFinite() && px in 2.5f..28f }
+    }.sorted()
+    if (observed.isEmpty()) return measurements.mapValues {
+        it.value.typographyScale.coerceIn(0.28f, 1.25f)
+    }
+    val index = ((observed.size - 1) * 0.30f).toInt()
+    val commonFontDp = observed[index].coerceIn(7.2f, 10.2f)
+    return measurements.mapValues { (_, metric) ->
+        metric.printedGlyphDp?.takeIf { it.isFinite() && it > 0f }
+            ?.let { (commonFontDp / it).coerceIn(0.28f, 1.25f) }
+            ?: metric.typographyScale.coerceIn(0.28f, 1.25f)
+    }
+}
+
 
 /**
  * Estimate the size of real printed glyphs without mistaking blank margins or
@@ -214,7 +277,7 @@ internal fun estimateBookTypographyScale(bitmap: Bitmap, columnContentWidthDp: F
         // Fit the visual glyphs of Barış / Ergi / ÜçDörtBeş around a
         // consistent printed font size, never cropping the source image.
         val targetDp = (columnContentWidthDp * 0.052f).coerceIn(7.5f, 11f)
-        return (targetDp / measuredGlyphDp).coerceIn(0.34f, 1.10f)
+        return (targetDp / measuredGlyphDp).coerceIn(0.28f, 1.25f)
     }
     val sampleStep = 3
     val left = (bitmap.width * 0.06f).toInt()
@@ -264,7 +327,7 @@ internal fun estimateBookTypographyScale(bitmap: Bitmap, columnContentWidthDp: F
     val typicalGlyphPx = bands[bands.size / 2].toFloat()
     val renderedGlyphDp = typicalGlyphPx * columnContentWidthDp / bitmap.width
     if (!renderedGlyphDp.isFinite() || renderedGlyphDp <= 0f) return 1f
-    return (11.5f / renderedGlyphDp).coerceIn(0.34f, 1.10f)
+    return (11.5f / renderedGlyphDp).coerceIn(0.28f, 1.25f)
 }
 
 internal fun estimateBookImageMeasurements(
@@ -293,14 +356,18 @@ internal fun estimateBookImageMeasurements(
                 }
             )
         }.getOrNull()
-        val fontScale = if (sample != null) {
-            try {
-                estimateBookTypographyScale(sample, columnContentWidthDp)
-            } finally {
-                sample.recycle()
-            }
-        } else 1f
-        return BookImageMeasurements(ratio, fontScale)
+        if (sample == null) return BookImageMeasurements(ratio, 1f)
+        val adjusted = trimQuestionWhiteMargins(sample)
+        try {
+            return BookImageMeasurements(
+                heightOverWidth = adjusted.height.toFloat() / adjusted.width,
+                typographyScale = estimateBookTypographyScale(adjusted, columnContentWidthDp),
+                printedGlyphDp = detectTypicalPrintedGlyphDp(adjusted, columnContentWidthDp)
+            )
+        } finally {
+            if (adjusted !== sample) adjusted.recycle()
+            sample.recycle()
+        }
     }
 
     // Some migrated questions store the bitmap inside imageBase64, whereas
@@ -322,12 +389,20 @@ internal fun estimateBookImageMeasurements(
                     inPreferredConfig = Bitmap.Config.ARGB_8888
                 }) ?: return@runCatching null
             try {
-                BookImageMeasurements(
-                    heightOverWidth = bounds.outHeight.toFloat() / bounds.outWidth,
-                    typographyScale = estimateBookTypographyScale(
-                        sample, columnContentWidthDp
+                val adjusted = trimQuestionWhiteMargins(sample)
+                try {
+                    BookImageMeasurements(
+                        heightOverWidth = adjusted.height.toFloat() / adjusted.width,
+                        typographyScale = estimateBookTypographyScale(
+                            adjusted, columnContentWidthDp
+                        ),
+                        printedGlyphDp = detectTypicalPrintedGlyphDp(
+                            adjusted, columnContentWidthDp
+                        )
                     )
-                )
+                } finally {
+                    if (adjusted !== sample) adjusted.recycle()
+                }
             } finally {
                 sample.recycle()
             }
@@ -347,7 +422,7 @@ private fun estimatedBookQuestionUnits(
     // Match the ACTUAL drawing width: 42dp publisher/number gutter + 4dp gap.
     // The old 108dp deduction underestimated tall book crops by up to 50%.
     val imageWidthDp = (columnWidthDp - 46f).coerceAtLeast(90f) *
-        (imageTypographyScales[question.id] ?: 1f).coerceIn(0.34f, 1.10f)
+        (imageTypographyScales[question.id] ?: 1f).coerceIn(0.28f, 1.25f)
     val isImage = question.imagePath.isNotBlank() ||
         question.imageBase64.isNotBlank() || question.pdfFilePath.isNotBlank()
     val contentHeightDp = if (isImage) {
@@ -377,7 +452,7 @@ internal fun fittedBookImageSizeDp(
     if (availableWidth <= 0f || availableHeight <= 0f) return 0f to 0f
     val ratio = widthOverHeight.takeIf { it.isFinite() && it > 0f } ?: 1f
     val visualScale = if (singleQuestionLayout) 1f else
-        typographyScale.coerceIn(0.34f, 1.10f)
+        typographyScale.coerceIn(0.28f, 1.25f)
     val width = minOf(availableWidth * visualScale, availableWidth,
         availableHeight * ratio).coerceAtLeast(0f)
     return width to (width / ratio).coerceAtMost(availableHeight)
@@ -545,11 +620,11 @@ fun LiveSolvingBoardScreen(
         imageMeasurements.mapValues { it.value.heightOverWidth }
     }
     val imageTypographyScales = remember(imageMeasurements) {
-        imageMeasurements.mapValues { it.value.typographyScale }
+        calibratedBookTypographyScales(imageMeasurements)
     }
     val packedBookPages = remember(questions, columnCapacity, columnWidth, imageMeasurements) {
         packQuestionsIntoTwoColumnPages(
-            questions, columnCapacity, 4, columnWidth, actualImageRatios, imageTypographyScales
+            questions, columnCapacity, 8, columnWidth, actualImageRatios, imageTypographyScales
         )
     }
     val totalBookPages = packedBookPages.size.coerceAtLeast(1)
@@ -2192,7 +2267,7 @@ private fun BookPageQuestionItem345(
                 )
             }
 
-            bitmap
+            bitmap?.let(::trimQuestionWhiteMargins)
         }
     }
     if (sourceDetailsVisible) {

@@ -19,6 +19,10 @@ services:
     environment:
       OLLAMA_TWIN_MODEL: ${OLLAMA_TWIN_MODEL:-qwen3.8:27b}
       OLLAMA_TWIN_URL: http://ollama:11434/api/chat
+      # Off by default. Gemini API is billed separately from Google AI Pro.
+      SORULAB_NANO_BANANA_ENABLE: ${SORULAB_NANO_BANANA_ENABLE:-0}
+      SORULAB_IMAGE_MODEL: ${SORULAB_IMAGE_MODEL:-gemini-nano-banana-2.1}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     ports:
       - "127.0.0.1:8765:8765"
     depends_on:

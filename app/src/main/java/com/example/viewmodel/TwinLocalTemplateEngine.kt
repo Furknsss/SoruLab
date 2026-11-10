@@ -16,7 +16,7 @@ internal object TwinLocalTemplateEngine {
     private val labels = listOf("A", "B", "C", "D", "E")
     private val deviations = listOf(-7, -4, -2, -1, 1, 2, 4, 7)
 
-    fun generate(question: YksQuestion): TwinQuestionModalData? {
+    fun generate(question: YksQuestion, variantIndex: Int = 0): TwinQuestionModalData? {
         // A crop/PDF may contain essential constraints that OCR text omitted.
         // Never apply a text-only numeric template to an uninspected source image.
         // Multimodal analysis must handle original drawings and scanned figures.
@@ -39,12 +39,13 @@ internal object TwinLocalTemplateEngine {
             question.options.values.count { it.trim().toIntOrNull() == oldAnswer } != 1
         ) return null
 
-        val random = Random(question.id.hashCode().toLong() xor (oldAnswer.toLong() shl 16))
+        val random = Random(question.id.hashCode().toLong() xor (oldAnswer.toLong() shl 16) xor (variantIndex.toLong() * 0x9E3779B9L))
         val newA = ((2 + random.nextInt(7)) * if (oldA < 0) -1 else 1)
             .let { if (it == oldA) it + (if (it < 0) -1 else 1) else it }
         val newB = ((2 + random.nextInt(11)) * if (oldB < 0) -1 else 1)
             .let { if (it == oldB) it + (if (it < 0) -1 else 1) else it }
-        val newX = (2 + random.nextInt(8)).let { if (it == oldX) it + 1 else it }
+        val possibleX = (2..10).filter { it != oldX }
+        val newX = possibleX[Math.floorMod(question.id.hashCode() + variantIndex, possibleX.size)]
         val answer = newA * newX + newB
         val answerIndex = random.nextInt(5)
         val distractors = deviations.shuffled(kotlin.random.Random(random.nextLong()))

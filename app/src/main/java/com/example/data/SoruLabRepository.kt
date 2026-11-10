@@ -114,9 +114,11 @@ class SoruLabRepository(
         }
         val found = imagePaths.any { path ->
                 val file = File(path)
-                file.isFile && file.length() > 0L && hasBitmapBounds(file.absolutePath, isFile = true)
+                // The PDF/ZIP importer validates image encoding before persisting.
+                // Reading every bitmap header on the UI thread freezes large libraries.
+                file.isFile && file.length() >= 128L
             } ||
-            (question.imageBase64.isNotBlank() && hasBitmapBounds(question.imageBase64))
+            (question.imageBase64.length >= 160)
         val pdfFile = question.pdfFilePath.takeIf(String::isNotBlank)?.let(::File)
         val recoverable = found || (pdfFile?.isFile == true &&
             pdfFile.length() > 0L &&
@@ -272,6 +274,8 @@ class SoruLabRepository(
                 LocalQuestionCacheIO.recoveryFile(ownFile).delete()
                 // No other signed-in account's question bank is ever erased.
             }
+            val databaseId = userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+            ctx.deleteDatabase("sorulab_library_$databaseId.db")
             val snapshotDir = java.io.File(
                 java.io.File(ctx.filesDir, "sorulab_test_snapshots"),
                 userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
@@ -813,6 +817,12 @@ class SoruLabRepository(
 
     fun loadCachedCustomQuestions(userId: String): List<CustomQuestionRecord> {
         val ctx = appContext ?: return emptyList()
+        // Transactionally committed, per-question index; existing JSON libraries
+        // remain readable until their first successful SQLite migration.
+        val indexed = runCatching {
+            QuestionLibrarySqliteStore(ctx, userId).use { it.read() }
+        }.getOrNull()
+        if (indexed != null) return indexed.map(::normalizeLegacyBiologyQuestion)
         return try {
             val cacheDir = java.io.File(ctx.filesDir, "sorulab_question_cache")
             val userCacheFile = java.io.File(cacheDir, "custom_questions_${userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")}.json")
@@ -963,6 +973,31 @@ class SoruLabRepository(
             val incomingIds = incoming.mapTo(HashSet(incoming.size)) { it.id }
             val durableRecords = if (allowRemovals) incoming else
                 incoming + previous.filterNot { it.id in incomingIds }
+            // With hundreds of thousands of questions, DO NOT re-encode and
+            // rewrite every unchanged question when a new ZIP adds 1,000 rows.
+            // Existing libraries first migrate transactionally from old JSON.
+            QuestionLibrarySqliteStore(ctx, userId).use { indexed ->
+                val initialized = indexed.isInitialized()
+                val changed = if (!initialized || allowRemovals) {
+                    durableRecords
+                } else {
+                    val previousById = previous.associateBy { it.id }
+                    durableRecords.filter { record ->
+                        previousById[record.id] != record
+                    }
+                }
+                if (changed.isNotEmpty() || allowRemovals || !initialized) {
+                    indexed.save(changed, replace = allowRemovals)
+                }
+                check(indexed.count() >= durableRecords.map { it.id }.distinct().size) {
+                    "SQLite kitaplık doğrulaması başarısız."
+                }
+            }
+            if (durableRecords.size > 400) {
+                // Avoid repeatedly rewriting a growing multi-book JSON snapshot.
+                // Keep the last legacy snapshot as emergency migration evidence.
+                return@synchronized durableRecords
+            }
             val arr = JSONArray()
             val seenIds = HashSet<String>(durableRecords.size)
             for (rec in durableRecords) {
@@ -1069,23 +1104,27 @@ class SoruLabRepository(
     }
 
     fun saveCustomPublishers(publishers: List<YksPublisherInfo>, userId: String? = null) {
-        val ctx = appContext ?: return
-        try {
-            val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
-            val arr = JSONArray()
-            publishers.distinctBy { it.id }.forEach { pub ->
-                val obj = JSONObject()
-                obj.put("id", pub.id)
-                obj.put("name", pub.name)
-                obj.put("shortCode", pub.shortCode)
-                obj.put("primaryColorHex", pub.primaryColorHex)
-                obj.put("secondaryColorHex", pub.secondaryColorHex)
-                obj.put("customLogoPath", pub.customLogoPath)
-                arr.put(obj)
-            }
-            prefs.edit().putString(customPublishersCacheKey(userId), arr.toString()).apply()
-        } catch (_: Exception) {
+        val ctx = appContext
+            ?: throw IllegalStateException("Yayın logosunun yerel depolaması kullanılamıyor.")
+        val arr = JSONArray()
+        publishers.distinctBy { PublisherNameKey.from(it.name) }.forEach { pub ->
+            val obj = JSONObject()
+            obj.put("id", pub.id)
+            obj.put("name", pub.name)
+            obj.put("shortCode", pub.shortCode)
+            obj.put("primaryColorHex", pub.primaryColorHex)
+            obj.put("secondaryColorHex", pub.secondaryColorHex)
+            obj.put("customLogoPath", pub.customLogoPath)
+            arr.put(obj)
         }
+        // apply() can report success before disk write and errors were silently
+        // ignored; never tell the user the logo was saved unless it is durable.
+        val prefs = ctx.getSharedPreferences(
+            "sorulab_generated_tests_prefs", Context.MODE_PRIVATE
+        )
+        check(prefs.edit().putString(
+            customPublishersCacheKey(userId), arr.toString()
+        ).commit()) { "Yayın logosu cihazda kalıcı kaydedilemedi." }
     }
 
     private fun customPublishersCacheKey(userId: String?): String =
@@ -1158,13 +1197,16 @@ class SoruLabRepository(
             val publisherCollection = customPublishersCollection
                 .document(userId)
                 .collection("publishers")
-            publisherCollection.whereEqualTo("name", publisher.name.take(120))
-                .get()
-                .await()
-                .documents
-                .filter { it.id != publisherId }
-                .forEach { it.reference.delete().await() }
+            // Commit the selected new artwork FIRST. An offline/failed upload
+            // must never delete the previously working logo document.
             publisherCollection.document(publisherId).set(payload).await()
+            publisherCollection.get().await().documents
+                .filter { document ->
+                    document.id != publisherId &&
+                        PublisherNameKey.from(document.getString("name").orEmpty()) ==
+                        PublisherNameKey.from(publisher.name)
+                }
+                .forEach { it.reference.delete().await() }
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.CREATE, "users/$userId/publishers/$publisherId")
             throw e

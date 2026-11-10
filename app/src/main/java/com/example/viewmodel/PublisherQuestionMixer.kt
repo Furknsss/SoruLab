@@ -1,6 +1,7 @@
 package com.example.viewmodel
 
 import com.example.data.YksQuestion
+import com.example.data.PublisherNameKey
 import java.util.Locale
 import kotlin.random.Random
 
@@ -31,11 +32,7 @@ internal object PublisherQuestionMixer {
             question.publisherId.isNotBlank() -> question.publisherId
             else -> "Kaynak Belirtilmedi"
         }
-        return raw.lowercase(tr)
-            .replace(Regex("""\s+"""), " ")
-            .removeSuffix(" yayınları")
-            .removeSuffix(" yayıncılık")
-            .trim()
+        return PublisherNameKey.from(raw)
     }
 
     fun options(questions: List<YksQuestion>): List<PublisherChoice> = questions

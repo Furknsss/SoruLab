@@ -1149,8 +1149,23 @@ object StudioImageAndPdfEngine {
         badgePixelSize: Int = 128 // 64dp @ 2x retina density (or 64x64 logical)
     ): String {
         return try {
+            // Gallery files may be 8K/50MP; never decode the entire photo
+            // just to generate a tiny publisher badge.
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(logoUri)?.use { input ->
+                BitmapFactory.decodeStream(input, null, bounds)
+            }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return ""
+            var sampleSize = 1
+            while (max(bounds.outWidth, bounds.outHeight) / sampleSize > 1024) {
+                sampleSize *= 2
+            }
+            val decode = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
             val rawBitmap = context.contentResolver.openInputStream(logoUri)?.use { input ->
-                BitmapFactory.decodeStream(input)
+                BitmapFactory.decodeStream(input, null, decode)
             } ?: return ""
 
             // Normalize working size to max 512x512 for fast & accurate flood-fill
@@ -1162,8 +1177,10 @@ object StudioImageAndPdfEngine {
             }
             val workW = (rawBitmap.width * scale).roundToInt().coerceAtLeast(16)
             val workH = (rawBitmap.height * scale).roundToInt().coerceAtLeast(16)
-            val workBmp = Bitmap.createScaledBitmap(rawBitmap, workW, workH, true)
-                .copy(Bitmap.Config.ARGB_8888, true)
+            val scaled = Bitmap.createScaledBitmap(rawBitmap, workW, workH, true)
+            val workBmp = scaled.copy(Bitmap.Config.ARGB_8888, true)
+            if (scaled !== rawBitmap) scaled.recycle()
+            rawBitmap.recycle()
 
             val pixels = IntArray(workW * workH)
             workBmp.getPixels(pixels, 0, workW, 0, 0, workW, workH)
@@ -1344,6 +1361,76 @@ object StudioImageAndPdfEngine {
             outFile.absolutePath
         } catch (_: Exception) {
             ""
+        }
+    }
+
+    /**
+     * User-picked publisher logos must NEVER be lost because optional flood-fill
+     * background removal fails. First attempt dekupe, then save the original art
+     * in a bounded, nontransparent 128px PNG to stable internal storage.
+     */
+    fun importPublisherLogoSafely(context: Context, logoUri: Uri): String {
+        val processed = processPublisherLogoFloodFillAndTrim(context, logoUri)
+        if (processed.isNotBlank()) {
+            val file = File(processed)
+            val preview = runCatching { BitmapFactory.decodeFile(processed) }.getOrNull()
+            if (file.isFile && file.length() in 100L..(256L * 1024L) && preview != null) {
+                val visible = IntArray(preview.width * preview.height)
+                preview.getPixels(visible, 0, preview.width, 0, 0, preview.width, preview.height)
+                // A few leftover edge pixels do not make a usable logo.
+                // If the central artwork vanished, retain the picked original.
+                val centerAlpha = (preview.getPixel(
+                    preview.width / 2, preview.height / 2
+                ) ushr 24) and 0xff
+                val substantialArt = visible.count { ((it ushr 24) and 0xff) > 90 } >
+                    visible.size / 50
+                preview.recycle()
+                if (substantialArt && centerAlpha > 32) return processed
+            }
+            file.delete()
+        }
+
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(logoUri)?.use { input ->
+            BitmapFactory.decodeStream(input, null, bounds)
+        }
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Seçilen logo görseli açılamadı." }
+        var sample = 1
+        while (max(bounds.outWidth, bounds.outHeight) / sample > 1024) sample *= 2
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        val original = context.contentResolver.openInputStream(logoUri)?.use {
+            BitmapFactory.decodeStream(it, null, options)
+        } ?: throw IllegalArgumentException("Seçilen logo görseli okunamadı.")
+        try {
+            // Avoid platform-specific Canvas behavior and preserve the original
+            // pixels/alpha. The emblem view itself handles centering and padding.
+            val edge = 128
+            val fit = min(edge.toFloat() / original.width, edge.toFloat() / original.height)
+            val width = (original.width * fit).roundToInt().coerceAtLeast(1)
+            val height = (original.height * fit).roundToInt().coerceAtLeast(1)
+            val scaled = Bitmap.createScaledBitmap(original, width, height, true)
+            try {
+                val dir = File(context.filesDir, "publisher_logos")
+                check(dir.isDirectory || dir.mkdirs()) { "Yayın logosu klasörü oluşturulamadı." }
+                val target = File(dir, "logo_original_${java.util.UUID.randomUUID()}.png")
+                FileOutputStream(target).use { stream ->
+                    check(scaled.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
+                        "Logo dosyası oluşturulamadı."
+                    }
+                }
+                check(target.isFile && target.length() in 100L..(256L * 1024L)) {
+                    target.delete()
+                    "Yayın logosu kalıcı kaydedilemedi."
+                }
+                return target.absolutePath
+            } finally {
+                if (scaled !== original) scaled.recycle()
+            }
+        } finally {
+            original.recycle()
         }
     }
 

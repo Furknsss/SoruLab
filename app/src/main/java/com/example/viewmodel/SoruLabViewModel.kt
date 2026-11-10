@@ -25,6 +25,9 @@ import com.example.data.YksQuestion
 import com.example.data.YksTestItem
 import com.example.data.YksTopic
 import com.example.data.recommendedDifficultyLevels
+import com.example.data.isEligibleForLevel
+import com.example.data.QUESTION_DIFFICULTY_BANDS
+import com.example.data.fourTier
 import com.example.util.PdfScopedAnswerKeys
 import com.example.util.StudioImageAndPdfEngine
 import com.google.firebase.Firebase
@@ -88,7 +91,8 @@ internal fun mergeCloudQuestionsWithLocalMedia(
                 bookOrTestName = remote.bookOrTestName,
                 bookCoverPath = cached.bookCoverPath.ifBlank { remote.bookCoverPath },
                 isInKumbara = remote.isInKumbara,
-                fiveTierDifficulty = remote.effectiveDifficultyLabel
+                fiveTierDifficulty = remote.effectiveDifficultyLabel,
+                osymType = remote.isOsymType
             )
         )
     }
@@ -112,9 +116,9 @@ internal fun <T> interleaveByGroup(items: List<T>, groupKey: (T) -> String): Lis
 internal fun difficultyFallbackOrder(
     preferredDifficulties: Set<DifficultyLevel>
 ): List<DifficultyLevel> {
-    val preferredOrder = DifficultyLevel.entries.filter { it in preferredDifficulties }
-        .ifEmpty { DifficultyLevel.entries }
-    val fallbackOrder = DifficultyLevel.entries
+    val preferredOrder = QUESTION_DIFFICULTY_BANDS.filter { it in preferredDifficulties.mapTo(mutableSetOf()) { d -> d.fourTier() } }
+        .ifEmpty { QUESTION_DIFFICULTY_BANDS }
+    val fallbackOrder = QUESTION_DIFFICULTY_BANDS
         .filterNot { it in preferredOrder }
         .sortedWith(
             compareBy<DifficultyLevel> { difficulty ->
@@ -447,13 +451,37 @@ class SoruLabViewModel(
                                 java.io.File(it.customLogoPath).isFile
                         }
                     }
-                    val cloudIds = cloudPublishers.mapTo(mutableSetOf()) { it.id }
-                    val cloudNames = cloudPublishers.mapTo(mutableSetOf()) { it.name.trim().lowercase() }
-                    val localOnly = localPublishers.filter {
-                        it.id !in cloudIds && it.name.trim().lowercase() !in cloudNames
+                    // A cloud snapshot may temporarily omit its logo while
+                    // uploads are pending. Never replace a working local logo
+                    // with a blank cloud entry for the same publisher.
+                    val localByName = localPublishers.associateBy {
+                        com.example.data.PublisherNameKey.from(it.name)
                     }
-                    val merged = (cloudPublishers + localOnly)
-                        .distinctBy { it.name.trim().lowercase() }
+                    val cloudPreservingArt = cloudPublishers.map { remote ->
+                        val local = localPublishers.firstOrNull { it.id == remote.id }
+                            ?: localByName[com.example.data.PublisherNameKey.from(remote.name)]
+                        when {
+                            // A freshly selected logo may not yet be uploaded.
+                            // Prefer that local publisher over an older remote
+                            // record with an alias (Dr.Biyoloji vs Dr Biyoloji).
+                            local != null && local.id != remote.id &&
+                                java.io.File(local.customLogoPath).isFile -> local
+                            remote.customLogoPath.isBlank() && local != null &&
+                                java.io.File(local.customLogoPath).isFile ->
+                                    remote.copy(customLogoPath = local.customLogoPath)
+                            else -> remote
+                        }
+                    }
+                    val cloudIds = cloudPreservingArt.mapTo(mutableSetOf()) { it.id }
+                    val cloudNames = cloudPreservingArt.mapTo(mutableSetOf()) {
+                        com.example.data.PublisherNameKey.from(it.name)
+                    }
+                    val localOnly = localPublishers.filter {
+                        it.id !in cloudIds &&
+                            com.example.data.PublisherNameKey.from(it.name) !in cloudNames
+                    }
+                    val merged = (cloudPreservingArt + localOnly)
+                        .distinctBy { com.example.data.PublisherNameKey.from(it.name) }
                     _customPublishers.value = merged
                     withContext(Dispatchers.IO) {
                         repository.saveCustomPublishers(merged, uid)
@@ -893,7 +921,7 @@ class SoruLabViewModel(
         val filteredCustom = if (levelFilter == null) topicPool else {
             // Never let a legacy wheel-level tag override the verified question
             // difficulty. E.g. an Orta question tagged OSYM is still Orta.
-            topicPool.filter { it.difficultyLevel5 in levelFilter.recommendedDifficultyLevels() }
+            topicPool.filter { it.isEligibleForLevel(levelFilter) }
         }
 
         val mixedCustom = interleaveByGroup(filteredCustom) { it.publisherTag }
@@ -934,6 +962,7 @@ class SoruLabViewModel(
                 ),
                 correctOption = verifiedCorrectOption,
                 difficulty = diff,
+                isOsymType = custom.isOsymType,
                 visualType = QuestionVisualType.NONE,
                 stepByStepSolution = custom.cleanSolutionSummary.ifBlank {
                     if (answerKeyVerified) {
@@ -1024,7 +1053,8 @@ class SoruLabViewModel(
             }
         }
 
-        val activeDiffs = selectedDifficulties.ifEmpty { DifficultyLevel.entries.toSet() }
+        val activeDiffs = selectedDifficulties.ifEmpty { QUESTION_DIFFICULTY_BANDS.toSet() }
+            .mapTo(mutableSetOf()) { it.fourTier() }
         val difficultyFilteredPool = sourceFilteredPool.filter { cq ->
             cq.difficultyLevel5 in activeDiffs
         }
@@ -1069,6 +1099,7 @@ class SoruLabViewModel(
                 ),
                 correctOption = verifiedCorrectOption,
                 difficulty = diff,
+                isOsymType = custom.isOsymType,
                 visualType = QuestionVisualType.NONE,
                 stepByStepSolution = custom.cleanSolutionSummary.ifBlank {
                     if (answerKeyVerified) {
@@ -1107,15 +1138,15 @@ class SoruLabViewModel(
             matchesTopic(cq.subjectId, cq.topicId, cq.topicName, topic) &&
                 repository.hasRecoverableQuestionImage(cq)
         }
-        val countsByDiff = DifficultyLevel.entries.associateWith { diff ->
+        val countsByDiff = QUESTION_DIFFICULTY_BANDS.associateWith { diff ->
             strictTopicPool.count { it.difficultyLevel5 == diff }
         }
         val countsBySource = QuestionSourceFilter.entries.associateWith { src ->
-            collectQuestionsByTopicSourceAndDifficulty(topic, DifficultyLevel.entries.toSet(), src).size
+            collectQuestionsByTopicSourceAndDifficulty(topic, QUESTION_DIFFICULTY_BANDS.toSet(), src).size
         }
         val allTopicQuestions = collectQuestionsByTopicSourceAndDifficulty(
             topic = topic,
-            selectedDifficulties = DifficultyLevel.entries.toSet(),
+            selectedDifficulties = QUESTION_DIFFICULTY_BANDS.toSet(),
             sourceFilter = QuestionSourceFilter.TUM_SORULAR
         )
 
@@ -1134,18 +1165,39 @@ class SoruLabViewModel(
             collectWrongQuestionsFromResultsForTopic(topic)
         } else {
             allTopicQuestions.filter {
-                it.answerKeyVerified && it.difficulty in level.recommendedDifficultyLevels()
+                it.answerKeyVerified && it.isEligibleForLevel(level)
             }
         }
-        val countsForLevel = DifficultyLevel.entries.associateWith { diff ->
+        val countsForLevel = QUESTION_DIFFICULTY_BANDS.associateWith { diff ->
             eligibleForLevel.count { it.difficulty == diff }
         }
-        val publisherChoices = PublisherQuestionMixer.options(eligibleForLevel)
+        // Make ALL registered/imported publishers selectable from the topic screen.
+        // The number shown is the actual number of matching question images in
+        // this topic; a publisher with zero questions is displayed as zero.
+        val availableForTopic = PublisherQuestionMixer.options(
+            if (level == TopicTestLevel.IKIZ) eligibleForLevel
+            else allTopicQuestions.filter { it.answerKeyVerified && it.isEligibleForLevel(level) }
+        )
+        val availableByPublisher = availableForTopic.associateBy { it.key }
+        val publisherNames = (
+            availableForTopic.map { it.title } +
+            _customPublishers.value.map { it.name } +
+            _userCustomQuestions.value.map { it.publisherTag }
+        ).asSequence().filter(String::isNotBlank)
+            .distinctBy(com.example.data.PublisherNameKey::from).toList()
+        val publisherChoices = publisherNames.map { publisherName ->
+            val canonical = com.example.data.PublisherNameKey.from(publisherName)
+            PublisherChoice(
+                key = canonical,
+                title = publisherName,
+                availableQuestions = availableByPublisher[canonical]?.availableQuestions ?: 0
+            )
+        }.sortedBy { it.title.lowercase(java.util.Locale.forLanguageTag("tr-TR")) }
         val sourceCountsForLevel = QuestionSourceFilter.entries.associateWith { filter ->
             if (level == TopicTestLevel.IKIZ) eligibleForLevel.size
             else collectQuestionsByTopicSourceAndDifficulty(
                 topic, level.recommendedDifficultyLevels(), filter
-            ).count { it.answerKeyVerified }
+            ).count { it.answerKeyVerified && it.isEligibleForLevel(level) }
         }
         val questionCountForSelection: (Set<DifficultyLevel>, QuestionSourceFilter, String?) -> Int =
             { _, source, selectedPublisherKey ->
@@ -1153,7 +1205,9 @@ class SoruLabViewModel(
                     collectQuestionsByTopicSourceAndDifficulty(
                         topic, level.recommendedDifficultyLevels(), source
                     )
-                val fromPublisher = PublisherQuestionMixer.filter(fromSource, selectedPublisherKey)
+                val fromPublisher = PublisherQuestionMixer.filter(
+                    fromSource.filter { it.isEligibleForLevel(level) }, selectedPublisherKey
+                )
                 LevelQuestionPolicy.maximumConstructibleCount(
                     level = level,
                     sourceQuestions = fromPublisher,
@@ -1163,7 +1217,7 @@ class SoruLabViewModel(
         val questionCountForDifficulty: (DifficultyLevel, QuestionSourceFilter) -> Int = { diff, source ->
             if (level == TopicTestLevel.IKIZ) countsForLevel[diff] ?: 0
             else collectQuestionsByTopicSourceAndDifficulty(topic, setOf(diff), source)
-                .count { it.answerKeyVerified && it.difficulty in level.recommendedDifficultyLevels() }
+                .count { it.answerKeyVerified && it.isEligibleForLevel(level) }
         }
         if (level == TopicTestLevel.IKIZ) {
             val message = if (eligibleForLevel.isEmpty()) {
@@ -1185,32 +1239,26 @@ class SoruLabViewModel(
                 availablePublishers = publisherChoices
             )
         }
-        if (level == TopicTestLevel.SEVIYE_TESPIT &&
-            DifficultyLevel.entries.any { countsForLevel[it] == 0 }
-        ) {
-            return PoolAvailabilityCheck(
-                canGenerate = false,
-                availableQuestionCount = eligibleForLevel.size,
-                reasonTitle = "Seviye Tespit İçin Eksik Seviye",
-                reasonMessage = "Dengeli seviye tespit testi için Kolay, Orta, ÖSYM, Zor ve Çok Zor etiketlerinin her birinden en az bir doğrulanmış soru gerekir.",
-                countsByDifficulty = countsForLevel,
-                countsBySource = sourceCountsForLevel,
-                matchingQuestions = eligibleForLevel,
-                onGenerateCustomTest = customBuilder,
-                questionCountForSelection = questionCountForSelection,
-                questionCountForDifficulty = questionCountForDifficulty,
-                availablePublishers = publisherChoices
-            )
-        }
         val maximumPossible = LevelQuestionPolicy.maximumConstructibleCount(
             level, eligibleForLevel, AUTOMATIC_TEST_QUESTION_COUNT
         )
         if (maximumPossible == 0) {
+            val topicRecordCount = _userCustomQuestions.value.count { cq ->
+                matchesTopic(cq.subjectId, cq.topicId, cq.topicName, topic)
+            }
+            val failureDetails = when {
+                topicRecordCount == 0 -> "Bu konuya eşleşmiş soru kaydı bulunamadı. Kitabın konu etiketlerini kontrol et."
+                strictTopicPool.isEmpty() -> "$topicRecordCount kayıt var ancak soru görselleri cihazda bulunamadı. Kitabı silmeden görselleri geri yüklemek gerekiyor."
+                allTopicQuestions.none { it.answerKeyVerified } -> "${strictTopicPool.size} soru görseli var ancak cevap anahtarları doğrulanmamış. Yanlış cevapla sınav oluşturulamaz."
+                else -> "Bu seviyeye uygun doğrulanmış soru bulunmuyor. Mevcut etiketler: " +
+                    countsByDiff.filterValues { it > 0 }
+                        .entries.joinToString { "${it.key.label}: ${it.value}" }
+            }
             return PoolAvailabilityCheck(
                 canGenerate = false,
                 availableQuestionCount = 0,
                 reasonTitle = "Bu Seviyede Soru Bulunamadı",
-                reasonMessage = "Seçilen seviyeye uygun, cevap anahtarı doğrulanmış soru havuzda yok. Bu seviyede soru ekleyebilirsin.",
+                reasonMessage = failureDetails,
                 countsByDifficulty = countsForLevel,
                 countsBySource = sourceCountsForLevel,
                 matchingQuestions = emptyList(),
@@ -1224,7 +1272,10 @@ class SoruLabViewModel(
             canGenerate = true,
             availableQuestionCount = maximumPossible,
             reasonTitle = "Seviyeye Uygun Sorular",
-            reasonMessage = level.poolDistributionLabel,
+            reasonMessage = if (level == TopicTestLevel.SEVIYE_TESPIT &&
+                QUESTION_DIFFICULTY_BANDS.any { countsForLevel[it] == 0 }
+            ) "Eksik zorluk etiketleriyle pratik yapılabilir; dört zorluk tamamlanmadan kesin seviye karnesi hesaplanmaz."
+            else level.poolDistributionLabel,
             countsByDifficulty = countsForLevel,
             countsBySource = sourceCountsForLevel,
             matchingQuestions = eligibleForLevel,
@@ -1298,13 +1349,12 @@ class SoruLabViewModel(
         val enforcedDifficulties = level.recommendedDifficultyLevels()
         val sourceCandidates = when {
             verifiedTwinCandidates != null -> verifiedTwinCandidates.filter {
-                it.answerKeyVerified && (level == TopicTestLevel.IKIZ ||
-                    it.difficulty in enforcedDifficulties)
+                it.answerKeyVerified && it.isEligibleForLevel(level)
             }
             level == TopicTestLevel.IKIZ -> collectWrongQuestionsFromResultsForTopic(topic)
             else -> collectQuestionsByTopicSourceAndDifficulty(
                 topic, enforcedDifficulties, sourceFilter
-            ).filter { it.answerKeyVerified }
+            ).filter { it.answerKeyVerified && it.isEligibleForLevel(level) }
         }
         // Server-side selection is strict even if a UI callback sends a
         // stale key. A chosen publisher can never leak another publication.
@@ -1350,7 +1400,7 @@ class SoruLabViewModel(
         val dominantDiff = when {
             avgWeight < 0.25f -> DifficultyLevel.KOLAY
             avgWeight < 0.45f -> DifficultyLevel.ORTA
-            avgWeight < 0.65f -> DifficultyLevel.OSYM
+            avgWeight < 0.65f -> DifficultyLevel.ORTA
             avgWeight < 0.84f -> DifficultyLevel.ZOR
             else -> DifficultyLevel.COK_ZOR
         }
@@ -1542,7 +1592,7 @@ class SoruLabViewModel(
             selected == null || actual.trim().equals(selected.trim(), ignoreCase = true)
 
         val available = collectQuestionsByTopicSourceAndDifficulty(
-            topic, DifficultyLevel.entries.toSet(), QuestionSourceFilter.TUM_SORULAR
+            topic, QUESTION_DIFFICULTY_BANDS.toSet(), QuestionSourceFilter.TUM_SORULAR
         ).filter { question ->
             question.answerKeyVerified &&
                 matchesTag(question.learningOutcome, target.learningOutcome) &&
@@ -1583,7 +1633,7 @@ class SoruLabViewModel(
         val test = generateCustomFilteredTopicTest(
             topic = topic,
             level = TopicTestLevel.IKIZ,
-            selectedDifficulties = DifficultyLevel.entries.toSet(),
+            selectedDifficulties = QUESTION_DIFFICULTY_BANDS.toSet(),
             sourceFilter = QuestionSourceFilter.TUM_SORULAR,
             requestedQuestionCount = fresh.size,
             verifiedTwinCandidates = fresh,
@@ -1623,7 +1673,7 @@ class SoruLabViewModel(
         val twinTest = generateCustomFilteredTopicTest(
             topic = topic,
             level = TopicTestLevel.IKIZ,
-            selectedDifficulties = DifficultyLevel.entries.toSet(),
+            selectedDifficulties = QUESTION_DIFFICULTY_BANDS.toSet(),
             sourceFilter = QuestionSourceFilter.YANLIS_YAPTIKLARIM,
             requestedQuestionCount = wrongQuestions.size,
             verifiedTwinCandidates = wrongQuestions,
@@ -1773,6 +1823,7 @@ class SoruLabViewModel(
                 ),
                 correctOption = verifiedCorrectOption,
                 difficulty = diffLevel,
+                isOsymType = record.isOsymType,
                 visualType = QuestionVisualType.NONE,
                 stepByStepSolution = record.cleanSolutionSummary.ifBlank {
                     if (answerKeyVerified) {
@@ -1835,7 +1886,7 @@ class SoruLabViewModel(
         if (records.isEmpty()) return
         val level = _selectedTestLevel.value
         val eligibleRecords = records
-            .filter { it.difficultyLevel5 in level.recommendedDifficultyLevels() }
+            .filter { it.isEligibleForLevel(level) }
             .sortedBy {
                 if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE
             }
@@ -1892,6 +1943,7 @@ class SoruLabViewModel(
                 ),
                 correctOption = verifiedCorrectOption,
                 difficulty = diffLevel,
+                isOsymType = record.isOsymType,
                 visualType = QuestionVisualType.NONE,
                 stepByStepSolution = record.cleanSolutionSummary.ifBlank {
                     if (answerKeyVerified) {
@@ -2307,6 +2359,10 @@ class SoruLabViewModel(
         val cleanCode = shortCode.trim().uppercase().take(4).ifBlank {
             cleanName.take(3).uppercase()
         }
+        val logoFile = java.io.File(customLogoPath.removePrefix("file://"))
+        require(logoFile.isFile && logoFile.length() in 100L..(256L * 1024L)) {
+            "Yayın logosu kaydedilemedi. Logoyu yeniden seç."
+        }
         val newPub = YksPublisherInfo(
             id = "custom_${System.currentTimeMillis()}",
             name = cleanName,
@@ -2316,10 +2372,11 @@ class SoruLabViewModel(
             customLogoPath = customLogoPath
         )
         val updated = listOf(newPub) + _customPublishers.value.filterNot {
-            it.name.equals(cleanName, ignoreCase = true)
+            com.example.data.PublisherNameKey.from(it.name) ==
+                com.example.data.PublisherNameKey.from(cleanName)
         }
-        _customPublishers.value = updated
         repository.saveCustomPublishers(updated, effectiveUserId())
+        _customPublishers.value = updated
         val signedInUid = _currentUser.value?.uid
         if (signedInUid == null) {
             showBanner("‘$cleanName’ yayını cihaza eklendi. Bulut yedeklemesi için Google hesabınla oturum aç.")
@@ -2426,7 +2483,9 @@ class SoruLabViewModel(
             questionNumberInBook = questionNumberInBook,
             bookOrTestName = bookOrTestName,
             bookCoverPath = bookCoverPath,
-            fiveTierDifficulty = resolvedDifficulty
+            fiveTierDifficulty = resolvedDifficulty,
+            osymType = resolvedDifficulty.equals("ÖSYM", true) ||
+                resolvedDifficulty.equals("OSYM", true)
         )
 
         val firestoreCompatDiff = when {
@@ -2456,10 +2515,18 @@ class SoruLabViewModel(
 
         val updatedList = listOf(record) + _userCustomQuestions.value
         _userCustomQuestions.value = updatedList
-        try {
-            repository.saveCachedCustomQuestions(uid, updatedList)
-        } catch (_: Exception) {
-            showBanner("Soru oturumda eklendi ancak cihazdaki yerel depoya yazılamadı.")
+        // Committing a very large offline book library cannot block a Compose frame.
+        // The SQLite transaction runs on IO and the in-memory list updates instantly.
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                repository.saveCachedCustomQuestions(uid, updatedList)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    showBanner("Soru oturumda eklendi ancak cihazdaki yerel depoya yazılamadı.")
+                }
+            }
         }
         syncPdfPoolToPracticeTests(updatedList)
 
@@ -2621,7 +2688,8 @@ class SoruLabViewModel(
                     bookOrTestName = bookOrTestName,
                     bookCoverPath = effectiveCover,
                     fiveTierDifficulty = item.difficulty,
-                    sourceTestId = item.sourceTestId
+                    sourceTestId = item.sourceTestId,
+                    osymType = item.isOsymType
                 )
 
                 val firestoreCompatDiff = when {
@@ -2881,6 +2949,7 @@ class SoruLabViewModel(
                 bookCoverPath = target.bookCoverPath,
                 isInKumbara = true,
                 fiveTierDifficulty = target.effectiveDifficultyLabel,
+                osymType = target.isOsymType,
                 sourceTestId = target.sourceTestId
             )
             val updatedRecord = target.copy(aiSolutionSummary = updatedPacked)

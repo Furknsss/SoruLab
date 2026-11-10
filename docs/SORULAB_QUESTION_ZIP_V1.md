@@ -33,7 +33,7 @@ The manifest.json file uses UTF-8 JSON with this structure:
           "learningOutcome": "Nöronun yapısı ve görevleri",
           "questionType": "Öncüllü bilgi",
           "difficulty": "Orta",
-          "targetLevel": "OSYM",
+          "osymType": true,
           "answer": "B",
           "answerVerified": true,
           "text": "Optional OCR text",
@@ -59,6 +59,21 @@ pageIndex is zero-based (the PDF page with index 8 is its ninth page).
 bounds = [top,left,bottom,right] normalized to the page, each in [0,1].
 bounds may be omitted if unavailable.
 
+DIFFICULTY AND EXAM STYLE — TWO INDEPENDENT LABELS:
+- Each question has exactly one difficulty: "Kolay", "Orta", "Zor", "Çok Zor".
+- Optionally add "osymType": true if the source clearly marks it as ÖSYM tipi.
+- Example: a question may be "difficulty": "Kolay" and "osymType": true.
+  This question belongs to both Başlangıç and ÖSYM practice pools.
+- "targetLevel": "OSYM" and a test name containing `~osym~` do NOT
+  count as ÖSYM tipi. Use `"osymType": true` or `"tags": ["ÖSYM tipi"]`.
+- "difficulty": "ÖSYM" is INVALID: ÖSYM is a style label, never a fifth difficulty.
+  A ZIP must explicitly specify one of the four real difficulty labels.
+- Never infer an ÖSYM-type label merely because a question is long.
+  If the source has no such label, omit osymType or set it false.
+- Wheel mapping: Seviye Tespit = four-band mix; Başlangıç = only Kolay;
+  Pekiştirme = Orta-majority; ÖSYM = only osymType:true; Derece =
+  only Zor + Çok Zor; İkiz = previous wrong answers.
+
 INTEGRITY AND ACCURACY:
 - Every question has exactly one cropped image with complete stem, graphics
   and every answer choice, checked at source-image level.
@@ -75,7 +90,7 @@ INTEGRITY AND ACCURACY:
   When not certain, use an empty string; NEVER invent an official MEB
   kazanım or infer one solely from the length/diagram of a question.
 - Do not claim a real difficulty evaluation based on a placeholder.
-  If unknown, omit difficulty (the UI can display "Orta" as a default).
+  If unknown, review the source first; a missing difficulty is rejected rather than arbitrarily assigned "Orta".
 - Reimports of the same source book should preserve bookId.
 - Use only ASCII letters, digits, underscore and hyphen for image filenames.
 - No original PDF is included: only manifest.json and referenced images.
@@ -86,7 +101,13 @@ To create this ZIP after preparing manifest.json and image files:
 
 On Android: Kitaplığım -> ZIP'ten Soruları Ekle -> choose ZIP.
 
-Limits: 6000 questions; 300 MiB compressed ZIP; 12 MiB per image;
-420 MiB total uncompressed image files; 7 MiB manifest.
+Limits per individual ZIP (v1.3.4): 12,000 questions; 768 MiB compressed ZIP;
+16 MiB per image; 1,200 MiB total uncompressed image files; 32 MiB manifest.
+Multiple books/packs can be imported one at a time. These are per-pack
+safety limits, NOT a claim that the phone can keep hundreds of thousands of
+high-resolution images in RAM. Ensure enough free device storage before import.
+Metadata is SQLite-backed; question images remain private local files.
+Deleting the application removes those local images unless a verified external
+backup has been created. Firebase Storage question-pack backups are not yet active.
 Any unreferenced or unsafe file path is rejected. This ZIP importer is
 a separate fast path and does not require the device PDF OCR engine.

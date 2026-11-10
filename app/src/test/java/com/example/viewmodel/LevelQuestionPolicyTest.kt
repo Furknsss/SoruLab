@@ -1,125 +1,193 @@
 package com.example.viewmodel
 
 import com.example.data.DifficultyLevel
+import com.example.data.QUESTION_DIFFICULTY_BANDS
 import com.example.data.TopicTestLevel
 import com.example.data.YksQuestion
+import com.example.data.fourTier
 import org.junit.Assert.*
 import org.junit.Test
 
 class LevelQuestionPolicyTest {
-    private fun question(diff: DifficultyLevel, n: Int): YksQuestion = YksQuestion(
-        id = diff.name + "_" + n,
+    private fun question(
+        difficulty: DifficultyLevel, n: Int, osymType: Boolean = false,
+        publisher: String = "Dr. Biyoloji"
+    ): YksQuestion = YksQuestion(
+        id = publisher + "_" + difficulty.name + "_" + n,
         number = n,
-        sourceQuestionId = diff.name + "_" + n,
-        topicHeader = "Fonksiyonlar",
-        stemTop = "Fonksiyonların tanım kümesini bulun",
+        sourceQuestionId = publisher + "_" + difficulty.name + "_" + n,
+        publisherName = publisher,
+        topicHeader = "Sinir Sistemi",
+        stemTop = "Gerçek soru",
         stemBottom = "Kaçtır?",
         options = mapOf("A" to "1", "B" to "2", "C" to "3", "D" to "4", "E" to "5"),
         correctOption = "B",
-        difficulty = diff,
-        stepByStepSolution = "Kaynak cevap anahtarı."
+        difficulty = difficulty,
+        isOsymType = osymType,
+        stepByStepSolution = "Kitabın doğrulanmış cevabı."
     )
 
-    private fun pool() = DifficultyLevel.entries.flatMap { d ->
-        (1..20).map { question(d, it) }
+    private fun pool(): List<YksQuestion> = QUESTION_DIFFICULTY_BANDS.flatMap { diff ->
+        (1..20).map { question(diff, it, osymType = it % 3 == 0) }
     }
+    private fun distribution(level: TopicTestLevel): Map<DifficultyLevel, Int> =
+        LevelQuestionPolicy.select(level, pool(), 12)
+            .groupingBy { it.difficulty.fourTier() }.eachCount()
 
-    private fun distribution(level: TopicTestLevel, count: Int = 12): Map<DifficultyLevel, Int> =
-        LevelQuestionPolicy.select(level, pool(), count).groupingBy { it.difficulty }.eachCount()
-
-    @Test fun wheelHasOnlySixLevelsInRequiredOrder() {
+    @Test fun wheelHasSixUserFacingStages() {
         assertEquals(
             listOf("SEVIYE_TESPIT", "BASLANGIC", "IKIZ", "PEKISTIRME", "OSYM", "DERECE"),
             TopicTestLevel.entries.map { it.name }
         )
+        assertEquals(4, QUESTION_DIFFICULTY_BANDS.size)
+        assertFalse(QUESTION_DIFFICULTY_BANDS.contains(DifficultyLevel.OSYM))
     }
 
-    @Test fun diagnosticBalancesAllFiveDifficultyBands() {
-        val distribution = distribution(TopicTestLevel.SEVIYE_TESPIT)
-        assertEquals(12, distribution.values.sum())
-        assertEquals(5, distribution.size)
-        assertTrue(distribution.values.max() - distribution.values.min() <= 1)
+    @Test fun diagnosticMixesFourAndOnlyFourDifficultyBands() {
+        val selected = LevelQuestionPolicy.select(TopicTestLevel.SEVIYE_TESPIT, pool(), 12)
+        val counts = selected.groupingBy { it.difficulty.fourTier() }.eachCount()
+        assertEquals(12, selected.size)
+        assertEquals(4, counts.size)
+        assertEquals(3, counts.values.min())
+        assertEquals(3, counts.values.max())
+        // Style is intentionally independent; the diagnostic is balanced by
+        // difficulty and may legitimately include any number of ÖSYM-type tags.
     }
 
-    @Test fun diagnosticWillNotInventMissingBand() {
-        val missingVeryHard = pool().filter { it.difficulty != DifficultyLevel.COK_ZOR }
-        assertTrue(LevelQuestionPolicy.select(TopicTestLevel.SEVIYE_TESPIT, missingVeryHard, 12).isEmpty())
-        assertTrue(LevelQuestionPolicy.select(TopicTestLevel.SEVIYE_TESPIT, pool(), 4).isEmpty())
+    @Test fun incompleteDiagnosticNeverCreatesFabricatedPlacement() {
+        val noVeryHard = pool().filter { it.difficulty != DifficultyLevel.COK_ZOR }
+        val selected = LevelQuestionPolicy.select(TopicTestLevel.SEVIYE_TESPIT, noVeryHard, 12)
+        assertTrue(selected.isNotEmpty())
+        assertNull(LevelPlacementAdvisor.evaluate(selected, selected.associate { it.number to "B" }))
     }
 
-    @Test fun beginningContainsTenEasyAndAtMostTwoMedium() {
-        assertEquals(
-            mapOf(DifficultyLevel.KOLAY to 10, DifficultyLevel.ORTA to 2),
-            distribution(TopicTestLevel.BASLANGIC)
-        )
+    @Test fun scarceEasyBandNeverBlocksOtherRealDiagnosticQuestions() {
+        val scarce = listOf(question(DifficultyLevel.KOLAY, 1)) +
+            (1..20).flatMap { n ->
+                listOf(
+                    question(DifficultyLevel.ORTA, n),
+                    question(DifficultyLevel.ZOR, n),
+                    question(DifficultyLevel.COK_ZOR, n)
+                )
+            }
+        val selected = LevelQuestionPolicy.select(TopicTestLevel.SEVIYE_TESPIT, scarce, 12)
+        assertEquals(12, selected.size)
+        assertEquals(1, selected.count { it.difficulty == DifficultyLevel.KOLAY })
+        assertEquals(12, LevelQuestionPolicy.maximumConstructibleCount(
+            TopicTestLevel.SEVIYE_TESPIT, scarce
+        ))
     }
 
-    @Test fun reinforcementIsPredominantlyMedium() {
-        assertEquals(
-            mapOf(DifficultyLevel.ORTA to 10, DifficultyLevel.KOLAY to 1, DifficultyLevel.ZOR to 1),
-            distribution(TopicTestLevel.PEKISTIRME)
-        )
-    }
-
-    @Test fun osymContainsOnlyOsymTaggedQuestions() {
-        assertEquals(mapOf(DifficultyLevel.OSYM to 12), distribution(TopicTestLevel.OSYM))
-    }
-
-    @Test fun dereceIsPredominantlyHardNotOsym() {
-        assertEquals(
-            mapOf(DifficultyLevel.ZOR to 10, DifficultyLevel.COK_ZOR to 2),
-            distribution(TopicTestLevel.DERECE)
-        )
-    }
-
-    @Test fun doesNotFillUnavailableEasyLevelWithUnrelatedDifficulty() {
-        val mostlyMedium = (1..2).map { question(DifficultyLevel.KOLAY, it) } +
-            (1..30).map { question(DifficultyLevel.ORTA, it) }
-        val selected = LevelQuestionPolicy.select(TopicTestLevel.BASLANGIC, mostlyMedium, 12)
-        assertEquals(2, selected.count { it.difficulty == DifficultyLevel.KOLAY })
-        assertTrue(selected.count { it.difficulty == DifficultyLevel.ORTA } <= 2)
-    }
-
-    @Test fun twinOnlyReturnsProvidedIncorrectSourceQuestions() {
-        val wrong = listOf(question(DifficultyLevel.OSYM, 1), question(DifficultyLevel.ZOR, 1))
-        assertEquals(wrong.map { it.id },
-            LevelQuestionPolicy.select(TopicTestLevel.IKIZ, wrong, 12).map { it.id })
-    }
-
-
-    @Test fun scarceCategoryKeepsDiagnosticBalancedInsteadOfPaddingWithOtherBands() {
-        val pool = DifficultyLevel.entries.flatMap { level ->
-            (1..if (level == DifficultyLevel.COK_ZOR) 1 else 20).map { question(level, it) }
+    @Test fun osymStyleDoesNotCreateArtificialFifthDifficulty() {
+        val tagged = QUESTION_DIFFICULTY_BANDS.mapIndexed { index, difficulty ->
+            question(difficulty, index + 1, osymType = true)
         }
-        val chosen = LevelQuestionPolicy.select(TopicTestLevel.SEVIYE_TESPIT, pool, 12)
-        val counts = chosen.groupingBy { it.difficulty }.eachCount()
-        assertEquals(9, chosen.size)
-        assertEquals(5, counts.size)
-        assertTrue(counts.values.max() - counts.values.min() <= 1)
-        assertEquals(9, LevelQuestionPolicy.maximumConstructibleCount(TopicTestLevel.SEVIYE_TESPIT, pool))
+        assertEquals(4, tagged.map { it.difficulty.fourTier() }.distinct().size)
+        assertTrue(LevelQuestionPolicy.select(TopicTestLevel.OSYM, tagged, 12).all {
+            it.isOsymType
+        })
+        assertTrue(LevelQuestionPolicy.select(TopicTestLevel.DERECE, tagged, 12).all {
+            it.difficulty in setOf(DifficultyLevel.ZOR, DifficultyLevel.COK_ZOR)
+        })
     }
 
-    @Test fun dominantBandMustHaveStrictMajority() {
-        val shortage = listOf(question(DifficultyLevel.KOLAY, 1)) +
-            (1..20).map { question(DifficultyLevel.ORTA, it) }
-        val chosen = LevelQuestionPolicy.select(TopicTestLevel.BASLANGIC, shortage, 12)
-        assertTrue(chosen.count { it.difficulty == DifficultyLevel.KOLAY } > chosen.size / 2)
-        assertEquals(1, LevelQuestionPolicy.maximumConstructibleCount(TopicTestLevel.BASLANGIC, shortage))
+    @Test fun beginningUsesOnlyEasyEvenIfOtherDifficultiesArePlentiful() {
+        val result = LevelQuestionPolicy.select(TopicTestLevel.BASLANGIC, pool(), 12)
+        assertEquals(12, result.size)
+        assertTrue(result.all { it.difficulty == DifficultyLevel.KOLAY })
+        assertEquals(
+            0, LevelQuestionPolicy.maximumConstructibleCount(
+                TopicTestLevel.BASLANGIC,
+                (1..50).map { question(DifficultyLevel.ORTA, it) }
+            )
+        )
     }
 
-    @Test fun placementRecommendsNextReasonableBand() {
-        val questions = DifficultyLevel.entries.mapIndexed { index, d -> question(d, index + 1) }
-        val correctAll = questions.associate { it.number to "B" }
+    @Test fun reinforcementIsMediumMajorityWithSmallOptionalEasyAndHardMix() {
+        val result = distribution(TopicTestLevel.PEKISTIRME)
+        assertEquals(10, result[DifficultyLevel.ORTA])
+        assertEquals(1, result[DifficultyLevel.KOLAY])
+        assertEquals(1, result[DifficultyLevel.ZOR])
+        val mediumOnly = (1..20).map { question(DifficultyLevel.ORTA, it) }
+        assertEquals(12, LevelQuestionPolicy.maximumConstructibleCount(
+            TopicTestLevel.PEKISTIRME, mediumOnly
+        ))
+        val insufficientMedium = listOf(question(DifficultyLevel.ORTA, 1)) +
+            (1..20).map { question(DifficultyLevel.KOLAY, it) }
+        assertEquals(1, LevelQuestionPolicy.maximumConstructibleCount(
+            TopicTestLevel.PEKISTIRME, insufficientMedium
+        ))
+    }
+
+    @Test fun osymStageIgnoresDifficultyButRequiresExplicitStyleMarker() {
+        val source = listOf(
+            question(DifficultyLevel.KOLAY, 1, true),
+            question(DifficultyLevel.ORTA, 1, true),
+            question(DifficultyLevel.ZOR, 1, true),
+            question(DifficultyLevel.COK_ZOR, 1, true),
+            question(DifficultyLevel.ZOR, 2, false),
+            question(DifficultyLevel.ORTA, 2, false)
+        )
+        val picked = LevelQuestionPolicy.select(TopicTestLevel.OSYM, source, 12)
+        assertEquals(4, picked.size)
+        assertTrue(picked.all { it.isOsymType })
+        assertEquals(4, picked.map { it.difficulty }.distinct().size)
+        assertEquals(0, LevelQuestionPolicy.maximumConstructibleCount(
+            TopicTestLevel.OSYM, source.filter { !it.isOsymType }
+        ))
+    }
+
+    @Test fun degreeUsesOnlyHardAndVeryHardIncludingWhenOneIsMissing() {
+        val selected = LevelQuestionPolicy.select(TopicTestLevel.DERECE, pool(), 12)
+        assertEquals(12, selected.size)
+        assertEquals(10, selected.count { it.difficulty == DifficultyLevel.ZOR })
+        assertEquals(2, selected.count { it.difficulty == DifficultyLevel.COK_ZOR })
+        val onlyVeryHard = (1..20).map { question(DifficultyLevel.COK_ZOR, it) }
+        assertEquals(12, LevelQuestionPolicy.maximumConstructibleCount(
+            TopicTestLevel.DERECE, onlyVeryHard
+        ))
+        assertTrue(LevelQuestionPolicy.select(
+            TopicTestLevel.DERECE, onlyVeryHard, 12
+        ).all { it.difficulty == DifficultyLevel.COK_ZOR })
+    }
+
+    @Test fun twoDifferentPublishersStaySeparateWhenOneIsFiltered() {
+        val source = pool() + (1..30).map {
+            question(DifficultyLevel.ORTA, it, true, publisher = "Biyotik")
+        }
+        val dr = PublisherQuestionMixer.filter(source, "drbiyoloji")
+        val selected = LevelQuestionPolicy.select(TopicTestLevel.OSYM, dr, 12)
+        assertEquals(12, selected.size)
+        assertTrue(selected.all { it.isOsymType && it.publisherName == "Dr. Biyoloji" })
+    }
+
+    @Test fun legacyOsymDifficultyIsAcceptedAsStyleButNormalizedToMedium() {
+        val legacy = question(DifficultyLevel.OSYM, 1)
+        val chosen = LevelQuestionPolicy.select(TopicTestLevel.OSYM, listOf(legacy), 12)
+        assertEquals(listOf(legacy), chosen)
+        assertEquals(DifficultyLevel.ORTA, legacy.difficulty.fourTier())
+    }
+
+    @Test fun twinsNeverInventExtraQuestionsOrFilterOutWrongDifficulties() {
+        val wrong = listOf(question(DifficultyLevel.KOLAY, 1),
+            question(DifficultyLevel.COK_ZOR, 1))
+        assertEquals(wrong.map { it.id }, LevelQuestionPolicy.select(
+            TopicTestLevel.IKIZ, wrong, 12
+        ).map { it.id })
+    }
+
+    @Test fun placementUsesFourDifficultyBandsAndOptionalOsymStylePerformance() {
+        val questions = QUESTION_DIFFICULTY_BANDS.mapIndexed { index, diff ->
+            question(diff, index + 1, osymType = diff == DifficultyLevel.ZOR)
+        }
+        val allCorrect = questions.associate { it.number to "B" }
         assertEquals(TopicTestLevel.DERECE,
-            LevelPlacementAdvisor.evaluate(questions, correctAll)?.recommended)
-        val weakEasy = correctAll + (questions.first().number to "A")
+            LevelPlacementAdvisor.evaluate(questions, allCorrect)?.recommended)
         assertEquals(TopicTestLevel.BASLANGIC,
-            LevelPlacementAdvisor.evaluate(questions, weakEasy)?.recommended)
-        val weakMedium = correctAll + (questions[1].number to "A")
+            LevelPlacementAdvisor.evaluate(questions, allCorrect + (1 to "A"))?.recommended)
         assertEquals(TopicTestLevel.PEKISTIRME,
-            LevelPlacementAdvisor.evaluate(questions, weakMedium)?.recommended)
-        val weakOsym = correctAll + (questions[2].number to "A")
+            LevelPlacementAdvisor.evaluate(questions, allCorrect + (2 to "A"))?.recommended)
         assertEquals(TopicTestLevel.OSYM,
-            LevelPlacementAdvisor.evaluate(questions, weakOsym)?.recommended)
+            LevelPlacementAdvisor.evaluate(questions, allCorrect + (3 to "A"))?.recommended)
     }
 }

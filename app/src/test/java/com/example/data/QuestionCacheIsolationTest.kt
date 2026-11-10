@@ -24,6 +24,9 @@ class QuestionCacheIsolationTest {
         context = ApplicationProvider.getApplicationContext()
         context.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE).edit().clear().commit()
         File(context.filesDir, "sorulab_question_cache").deleteRecursively()
+        // Each test must start without another test's committed SQLite state.
+        context.databaseList().filter { it.startsWith("sorulab_library_") }
+            .forEach { context.deleteDatabase(it) }
         FirebaseApp.clearInstancesForTest()
         repository = SoruLabRepository(context)
     }
@@ -125,15 +128,17 @@ class QuestionCacheIsolationTest {
     }
 
     @Test
-    fun corruptPrimaryCanRecoverPreviousLargeSnapshot() {
+    fun corruptLegacySnapshotCannotDamageCommittedLargeSqliteLibrary() {
         val records = (1..1400).map { CustomQuestionRecord(id = "q-$it", userId = "student") }
         repository.saveCachedCustomQuestions("student", records)
         repository.saveCachedCustomQuestions("student", records + CustomQuestionRecord(id = "q-1401", userId = "student"))
+        assertEquals(1401, repository.loadCachedCustomQuestions("student").size)
+        // SQLite is the durable authoritative index for large libraries.
+        // Corrupting an old JSON fallback must never roll back the 1401st question.
         val ownerFile = File(context.filesDir, "sorulab_question_cache/custom_questions_student.json")
-        val archive = LocalQuestionCacheIO.recoveryFile(ownerFile)
-        assertTrue("Largest previous snapshot should be retained", archive.isFile)
+        ownerFile.parentFile?.mkdirs()
         ownerFile.writeText("[corrupt")
-        assertEquals(1400, repository.loadCachedCustomQuestions("student").size)
+        assertEquals(1401, SoruLabRepository(context).loadCachedCustomQuestions("student").size)
     }
 
     @Test

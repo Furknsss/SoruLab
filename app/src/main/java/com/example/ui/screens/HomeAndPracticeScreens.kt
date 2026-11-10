@@ -77,6 +77,11 @@ import com.example.ui.theme.*
 import com.example.util.StudioImageAndPdfEngine
 import com.example.viewmodel.MainNavTab
 import com.example.viewmodel.PoolAvailabilityCheck
+import com.example.viewmodel.PublisherChoice
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
@@ -2492,7 +2497,7 @@ private fun TopicLandscapeCard(
 }
 
 @Composable
-private fun TopicTestsDetailView(
+internal fun TopicTestsDetailView(
     topic: YksTopic,
     selectedTestLevel: TopicTestLevel,
     currentLevelTests: List<YksTestItem>,
@@ -2508,7 +2513,74 @@ private fun TopicTestsDetailView(
 ) {
     // Keep the test list unobstructed; the left handle opens the level wheel.
     var isWheelExpanded by remember(topic.id) { mutableStateOf(false) }
-    var showAiGeneratorModal by remember { mutableStateOf(false) }
+    var publisherFilterOpen by remember(topic.id) { mutableStateOf(false) }
+    var publisherOptions by remember(topic.id, selectedTestLevel) {
+        mutableStateOf<List<PublisherChoice>>(emptyList())
+    }
+    var publisherOptionsLoading by remember(topic.id, selectedTestLevel) { mutableStateOf(false) }
+    var selectedPublisherKey by remember(topic.id) { mutableStateOf<String?>(null) }
+    var isCreatingTest by remember(topic.id) { mutableStateOf(false) }
+    var creationError by remember(topic.id) { mutableStateOf<String?>(null) }
+    val createScope = rememberCoroutineScope()
+
+    val openPublisherFilter: () -> Unit = {
+        publisherFilterOpen = true
+        if (publisherOptions.isEmpty() && !publisherOptionsLoading) {
+            publisherOptionsLoading = true
+            createScope.launch {
+                try {
+                    publisherOptions = withContext(Dispatchers.Default) {
+                        onCheckPoolAvailability().availablePublishers
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    creationError = e.message ?: "Yayınlar yüklenemedi."
+                } finally {
+                    publisherOptionsLoading = false
+                }
+            }
+        }
+    }
+    val createAutomaticTest: () -> Unit = {
+        if (!isCreatingTest) {
+            isCreatingTest = true
+            creationError = null
+            createScope.launch {
+                try {
+                    val (test, reason) = withContext(Dispatchers.Default) {
+                        val pool = onCheckPoolAvailability()
+                        val difficulty = selectedTestLevel.recommendedDifficultyLevels()
+                        val source = if (selectedTestLevel == TopicTestLevel.IKIZ)
+                            QuestionSourceFilter.YANLIS_YAPTIKLARIM
+                            else QuestionSourceFilter.TUM_SORULAR
+                        val count = (pool.questionCountForSelection?.invoke(
+                            difficulty, source, selectedPublisherKey
+                        ) ?: pool.availableQuestionCount)
+                            .coerceIn(0, AUTOMATIC_TEST_QUESTION_COUNT)
+                        val generated = if (count > 0) pool.onGenerateCustomTest?.invoke(
+                            difficulty, source, count, selectedPublisherKey
+                        ) else null
+                        generated to pool.reasonMessage
+                    }
+                    if (test != null) {
+                        onStartTestImmediately(test)
+                    } else {
+                        val publisherTitle = publisherOptions.firstOrNull { it.key == selectedPublisherKey }?.title
+                        creationError = if (selectedPublisherKey != null)
+                            "${publisherTitle ?: "Seçili yayın"} için bu konuda doğrulanmış, kullanılabilir soru bulunamadı. Başka seviye veya Akıllı karışım seçebilirsin."
+                        else reason
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    creationError = e.message ?: "Test oluşturulamadı; kitaplık ve soru etiketlerini kontrol et."
+                } finally {
+                    isCreatingTest = false
+                }
+            }
+        }
+    }
 
     val wheelProgress by animateFloatAsState(
         targetValue = if (isWheelExpanded) 1f else 0f,
@@ -2567,30 +2639,110 @@ private fun TopicTestsDetailView(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Top-Right "Test / Soru Üret" Button
-                Button(
-                    onClick = { showAiGeneratorModal = true },
-                    shape = RoundedCornerShape(50),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF3674F4),
-                        contentColor = Color.White
-                    ),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                    modifier = Modifier.testTag("topic_detail_olustur_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.AutoAwesome,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Test oluştur",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    )
+                // Compact standalone filter immediately LEFT of automatic Test oluştur.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box {
+                        IconButton(
+                            onClick = openPublisherFilter,
+                            modifier = Modifier
+                                .size(42.dp)
+                                .testTag("topic_top_publisher_filter")
+                                .background(
+                                    if (selectedPublisherKey == null) Color.White
+                                    else Color(0xFFDBEAFE),
+                                    CircleShape
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.FilterList,
+                                contentDescription = if (selectedPublisherKey == null)
+                                    "Yayın filtresi: Akıllı karışım"
+                                else "Yayın filtresi: seçili yayın",
+                                tint = Color(0xFF2563EB),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = publisherFilterOpen,
+                            onDismissRequest = { publisherFilterOpen = false },
+                            modifier = Modifier
+                                .widthIn(min = 250.dp, max = 330.dp)
+                                .testTag("topic_publisher_filter_menu")
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Akıllı karışım • Tüm yayınlar",
+                                    fontWeight = if (selectedPublisherKey == null)
+                                        FontWeight.Bold else FontWeight.Medium) },
+                                leadingIcon = {
+                                    Icon(if (selectedPublisherKey == null)
+                                        Icons.Filled.RadioButtonChecked
+                                        else Icons.Filled.RadioButtonUnchecked,
+                                        contentDescription = null, tint = Color(0xFF2563EB))
+                                },
+                                onClick = {
+                                    selectedPublisherKey = null
+                                    publisherFilterOpen = false
+                                },
+                                modifier = Modifier.testTag("topic_publisher_all")
+                            )
+                            HorizontalDivider()
+                            if (publisherOptionsLoading) {
+                                DropdownMenuItem(
+                                    text = { Text("Yayınlar yükleniyor…") },
+                                    enabled = false, onClick = {}
+                                )
+                            }
+                            if (!publisherOptionsLoading && publisherOptions.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("Henüz kayıtlı yayın bulunamadı") },
+                                    enabled = false, onClick = {}
+                                )
+                            }
+                            publisherOptions.forEach { publisher ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(publisher.title,
+                                                fontWeight = if (selectedPublisherKey == publisher.key)
+                                                    FontWeight.Bold else FontWeight.Medium)
+                                            Text("${publisher.availableQuestions} konu sorusu",
+                                                fontSize = 11.sp, color = Color(0xFF64748B))
+                                        }
+                                    },
+                                    leadingIcon = {
+                                        Icon(if (selectedPublisherKey == publisher.key)
+                                            Icons.Filled.RadioButtonChecked
+                                            else Icons.Filled.RadioButtonUnchecked,
+                                            contentDescription = null, tint = Color(0xFF2563EB))
+                                    },
+                                    onClick = {
+                                        selectedPublisherKey = publisher.key
+                                        publisherFilterOpen = false
+                                    },
+                                    modifier = Modifier.testTag("topic_publisher_option_${publisher.key}")
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    Button(
+                        onClick = createAutomaticTest,
+                        enabled = !isCreatingTest,
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF3674F4), contentColor = Color.White
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                        modifier = Modifier.testTag("topic_detail_olustur_button")
+                    ) {
+                        Icon(Icons.Filled.AutoAwesome, contentDescription = null,
+                            modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Test oluştur",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontSize = 13.sp, fontWeight = FontWeight.Bold
+                            ))
+                    }
                 }
             }
 
@@ -2730,7 +2882,7 @@ private fun TopicTestsDetailView(
                                 Spacer(modifier = Modifier.height(20.dp))
 
                                 Button(
-                                    onClick = { showAiGeneratorModal = true },
+                                    onClick = createAutomaticTest,
                                     shape = RoundedCornerShape(14.dp),
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = Color(0xFF3674F4),
@@ -2812,30 +2964,39 @@ private fun TopicTestsDetailView(
             )
         }
 
-        // Strict 0-Hallucination Test Generator Dialog (Never recomposes poolCheck mid-generation!)
-        if (showAiGeneratorModal) {
-            val poolCheck = remember(topic.id, selectedTestLevel, showAiGeneratorModal) {
-                onCheckPoolAvailability()
-            }
-            val nextTestNo = remember(topic.id, selectedTestLevel, showAiGeneratorModal) {
-                currentLevelTests.size + 1
-            }
-            SoruLabAiTestGeneratorDialog(
-                topic = topic,
-                level = selectedTestLevel,
-                nextTestNumber = nextTestNo,
-                poolCheck = poolCheck,
-                onDismiss = {
-                    showAiGeneratorModal = false
-                },
-                onStartGeneratedTest = { createdTest ->
-                    showAiGeneratorModal = false
-                    onStartTestImmediately(createdTest)
-                },
-                onGoToPdfStudio = {
-                    showAiGeneratorModal = false
-                    onOpenPdfCropper()
+        if (isCreatingTest) {
+            Dialog(onDismissRequest = {}) {
+                Surface(shape = RoundedCornerShape(24.dp), color = Color.White,
+                    modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+                    Row(
+                        modifier = Modifier.padding(24.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(28.dp), strokeWidth = 3.dp,
+                            color = Color(0xFF3674F4)
+                        )
+                        Text("Sistem testi oluşturuyor…",
+                            color = Color(0xFF1E293B), fontWeight = FontWeight.SemiBold)
+                    }
                 }
+            }
+        }
+        creationError?.let { message ->
+            AlertDialog(
+                onDismissRequest = { creationError = null },
+                title = { Text("Test oluşturulamadı") },
+                text = { Text(message) },
+                confirmButton = {
+                    TextButton(onClick = { creationError = null }) { Text("Kapat") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { creationError = null; onOpenPdfCropper() }) {
+                        Text("Kitaplığa git")
+                    }
+                },
+                containerColor = Color.White
             )
         }
     }
@@ -3183,7 +3344,7 @@ private fun SoruLabAiTestGeneratorDialog(
         ) ?: poolCheck.availableQuestionCount
     }
     val maxAvailableCount = matchingDiffCount.coerceAtLeast(0)
-    val minimumQuestionCount = if (level == TopicTestLevel.SEVIYE_TESPIT) 5 else 1
+    val minimumQuestionCount = 1 // Incomplete diagnostics are practice only, never graded placement.
     var selectedQuestionCount by remember(maxAvailableCount, level, selectedPublisherKey) {
         mutableIntStateOf(
             if (maxAvailableCount >= minimumQuestionCount)
@@ -3197,124 +3358,8 @@ private fun SoruLabAiTestGeneratorDialog(
     var createdTest by remember { mutableStateOf<YksTestItem?>(null) }
     var generationFailed by remember { mutableStateOf(false) }
 
-    // Never show "Soru Bulunamadı" if a test was already created or if poolCheck.canGenerate is true!
-    if (!poolCheck.canGenerate && createdTest == null && currentStep <= 1) {
-        Dialog(onDismissRequest = onDismiss) {
-            Card(
-                shape = RoundedCornerShape(26.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
-                modifier = Modifier
-                    .widthIn(max = 430.dp)
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .testTag("no_questions_found_dialog")
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(62.dp)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(SoruLabCoralLight),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.SearchOff,
-                            contentDescription = null,
-                            tint = SoruLabCoralRed,
-                            modifier = Modifier.size(34.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text(
-                        text = poolCheck.reasonTitle,
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 20.sp
-                        ),
-                        color = Color(0xFF0F172A),
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Surface(
-                        color = Color(level.wedgeColorHex).copy(alpha = 0.25f),
-                        shape = RoundedCornerShape(50)
-                    ) {
-                        Text(
-                            text = "${topic.name} - Test $nextTestNumber",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = Color(0xFF0F172A),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text(
-                        text = if (poolCheck.canGenerate && !hasStandardTestPool) {
-                            "Bu filtrelerle 12 soruluk standart test oluşturmak için en az 12 görseli doğrulanmış soru gerekir. Şu an $maxAvailableCount soru bulundu."
-                        } else {
-                            poolCheck.reasonMessage
-                        },
-                        style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
-                        color = Color(0xFF475569),
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(modifier = Modifier.height(22.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = onDismiss,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(46.dp)
-                                .testTag("no_question_close_button")
-                        ) {
-                            Text(
-                                text = "Kapat",
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
-
-                        if (level != TopicTestLevel.IKIZ) {
-                            Button(
-                                onClick = onGoToPdfStudio,
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF1D63DC),
-                                    contentColor = Color.White
-                                ),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(46.dp)
-                                    .testTag("no_question_pdf_studio_button")
-                            ) {
-                                Text(
-                                    text = "PDF'ten Soru Ekle",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return
-    }
+    // Keep the test builder visible even when a difficulty/publisher is empty.
+    // Otherwise the Filter action is inaccessible exactly when it is needed.
 
     // İNTERAKTİF TEST OLUŞTURMA PANELİ (5'li Zorluk Seçici + Akıllı Kaynak Filtresi + Esnek Soru Sayısı Slider/Seçici + Otomatik "[Konu Adı] - Test [X]" İsimlendirme)
     if (isSetupPhase) {
@@ -3364,16 +3409,19 @@ private fun SoruLabAiTestGeneratorDialog(
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box {
-                                IconButton(
+                                TextButton(
                                     onClick = { showPublisherFilter = true },
                                     modifier = Modifier.testTag("test_publisher_filter_button")
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.FilterList,
                                         contentDescription = "Yayına göre filtrele",
-                                        tint = if (selectedPublisherKey != null) Color(0xFF1D63DC)
-                                            else Color(0xFF475569)
+                                        tint = Color(0xFF1D63DC),
+                                        modifier = Modifier.size(19.dp)
                                     )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Yayın filtresi", color = Color(0xFF1D63DC),
+                                        fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                                 DropdownMenu(
                                     expanded = showPublisherFilter,
@@ -3540,7 +3588,7 @@ private fun SoruLabAiTestGeneratorDialog(
                             Text(
                                 text = if (selectedPublisherKey != null)
                                     "Bu yayından bu seviyenin soru dağılımına uygun yeterli soru bulunamadı. Başka bir yayın seç veya Karışık'a dön."
-                                else "Bu seviyenin kurallarına uygun yeterli soru yok. Kaynak ekleyebilirsin.",
+                                else poolCheck.reasonMessage,
                                 color = Color(0xFFB91C1C),
                                 style = MaterialTheme.typography.bodySmall
                             )

@@ -1,6 +1,7 @@
 package com.example.viewmodel
 
 import com.example.data.DifficultyLevel
+import com.example.data.QUESTION_DIFFICULTY_BANDS
 import com.example.data.TopicTestLevel
 import com.example.data.YksQuestion
 import org.junit.Assert.*
@@ -30,6 +31,24 @@ class PublisherQuestionMixerTest {
         listOf("3D Yayınları", "Biyotik", "Orijinal").flatMap { publisher ->
             (1..count).map { question(publisher, number = it) }
         }
+
+    @Test fun drBiyolojiVariantsAreTheSamePublisherAndNeverIncludeBiyotik() {
+        val source = listOf(
+            question("Dr. Biyoloji", number = 1),
+            question("Dr Biyoloji Yayınları", number = 2),
+            question("DRBIYOLOJI", number = 3),
+            question("Biyotik", number = 4),
+            question("Biyoloji", number = 5)
+        )
+        val canonicalKey = PublisherQuestionMixer.key(source.first())
+        assertEquals("drbiyoloji", canonicalKey)
+        val chosen = PublisherQuestionMixer.filter(source, canonicalKey)
+        assertEquals(3, chosen.size)
+        assertEquals(listOf(1, 2, 3), chosen.map { it.number })
+        val options = PublisherQuestionMixer.options(source)
+        assertEquals(3, options.size)
+        assertEquals(3, options.single { it.key == "drbiyoloji" }.availableQuestions)
+    }
 
     @Test fun onePublisherFilterIsStrict() {
         val pool = pool(12)
@@ -115,7 +134,7 @@ class PublisherQuestionMixerTest {
     }
 
     @Test fun publisherMixKeepsDiagnosticDifficultyBalance() {
-        val source = DifficultyLevel.entries.flatMap { difficulty ->
+        val source = QUESTION_DIFFICULTY_BANDS.flatMap { difficulty ->
             listOf("3D", "Biyotik", "Orijinal").flatMap { publisher ->
                 (1..10).map { question(publisher, difficulty, it) }
             }
@@ -125,7 +144,7 @@ class PublisherQuestionMixerTest {
         )
         assertEquals(12, selected.size)
         val counts = selected.groupingBy { it.difficulty }.eachCount()
-        assertEquals(5, counts.size)
+        assertEquals(4, counts.size)
         assertTrue(counts.values.max() - counts.values.min() <= 1)
     }
 

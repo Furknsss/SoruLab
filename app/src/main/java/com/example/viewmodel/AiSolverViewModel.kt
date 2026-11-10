@@ -118,7 +118,9 @@ data class ExtractedPdfQuestionItem(
     val questionNumberInTest: Int = 0,
     val sourceTestId: String = "",
     val learningOutcome: String = "",
-    val questionType: String = ""
+    val questionType: String = "",
+    /** Printed ÖSYM-style marker; independent of the four difficulty labels. */
+    val isOsymType: Boolean = false
 ) {
     val imagePath: String get() = croppedImagePath
     val subject: String get() = subjectName
@@ -735,13 +737,13 @@ class AiSolverViewModel : ViewModel() {
         } else {
             textDifficulty.weight
         }
-        val difficulty = DifficultyLevel.entries.minByOrNull {
+        val difficulty = com.example.data.QUESTION_DIFFICULTY_BANDS.minByOrNull {
             kotlin.math.abs(it.weight - combinedDifficultyWeight)
         } ?: textDifficulty
         val targetLevel = when (difficulty) {
             com.example.data.DifficultyLevel.KOLAY -> "BASLANGIC"
             com.example.data.DifficultyLevel.ORTA -> "PEKISTIRME"
-            com.example.data.DifficultyLevel.OSYM -> "OSYM"
+            com.example.data.DifficultyLevel.OSYM -> "PEKISTIRME" // legacy compatibility only
             com.example.data.DifficultyLevel.ZOR -> "GELISIYORUM"
             com.example.data.DifficultyLevel.COK_ZOR -> "DERECE"
         }
@@ -774,7 +776,7 @@ class AiSolverViewModel : ViewModel() {
         return when {
             score <= 0 -> DifficultyLevel.KOLAY
             score == 1 -> DifficultyLevel.ORTA
-            score == 2 -> DifficultyLevel.OSYM
+            score == 2 -> DifficultyLevel.ORTA
             score == 3 -> DifficultyLevel.ZOR
             else -> DifficultyLevel.COK_ZOR
         }
@@ -1883,7 +1885,8 @@ class AiSolverViewModel : ViewModel() {
                                                 verifiedPrintedQuestionNumber(candidate.answerKeyQuestionNumber),
                                             sourceTestId = pageAnswerScope?.let { scope ->
                                                 "${scope.section}~${if (scope.isOsymTest) "osym" else scope.testKind}~${scope.testNumber}"
-                                            }.orEmpty()
+                                            }.orEmpty(),
+                                            isOsymType = pageAnswerScope?.isOsymTest == true
                                         )
                                     )
                                 }

@@ -54,6 +54,26 @@ internal fun PdfCropCorrectionDialog(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Kırpmayı düzelt · Sayfa ${question.pageIndex + 1}", style = MaterialTheme.typography.titleLarge)
                 Text("Sorunun tamamını, şekilleri ve tüm şıkları kapsayan alanı sürükleyerek seç. Kitap kenarını dışarıda bırak.")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Surface(
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                        color = Color(0xFFEFF6FF)
+                    ) {
+                        Text("Zorluk: ${question.difficulty}",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            color = Color(0xFF1D4ED8))
+                    }
+                    if (question.isOsymType) {
+                        Surface(
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                            color = Color(0xFFEEF2FF)
+                        ) {
+                            Text("ÖSYM tipi",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                color = Color(0xFF4338CA))
+                        }
+                    }
+                }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     val bitmap = page
                     if (bitmap != null) {

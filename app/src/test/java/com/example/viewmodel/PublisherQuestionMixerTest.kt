@@ -1,6 +1,7 @@
 package com.example.viewmodel
 
 import com.example.data.DifficultyLevel
+import com.example.data.QUESTION_DIFFICULTY_BANDS
 import com.example.data.TopicTestLevel
 import com.example.data.YksQuestion
 import org.junit.Assert.*
@@ -133,7 +134,7 @@ class PublisherQuestionMixerTest {
     }
 
     @Test fun publisherMixKeepsDiagnosticDifficultyBalance() {
-        val source = DifficultyLevel.entries.flatMap { difficulty ->
+        val source = QUESTION_DIFFICULTY_BANDS.flatMap { difficulty ->
             listOf("3D", "Biyotik", "Orijinal").flatMap { publisher ->
                 (1..10).map { question(publisher, difficulty, it) }
             }
@@ -143,7 +144,7 @@ class PublisherQuestionMixerTest {
         )
         assertEquals(12, selected.size)
         val counts = selected.groupingBy { it.difficulty }.eachCount()
-        assertEquals(5, counts.size)
+        assertEquals(4, counts.size)
         assertTrue(counts.values.max() - counts.values.min() <= 1)
     }
 

@@ -117,7 +117,7 @@ internal object TwinRemoteService {
         }
     }
 
-    private fun encodeSourceImage(question: YksQuestion, context: Context): String {
+    private suspend fun encodeSourceImage(question: YksQuestion, context: Context): String {
         val bitmap = StudioImageAndPdfEngine.loadGuaranteedQuestionBitmap(
             context = context,
             questionId = question.id,

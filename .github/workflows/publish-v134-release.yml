@@ -1,0 +1,47 @@
+name: Publish verified SoruLab v1.3.4 APK to GitHub Releases
+
+on:
+  push:
+    branches:
+      - fix/library-performance-filter-spacious-tests-20261110
+    paths:
+      - .github/workflows/publish-v134-release.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Download successful signed v1.3.4 APK build
+        uses: actions/download-artifact@v4
+        with:
+          name: SoruLab-Smart-Publisher-v1.3.4-Upgrade-APK
+          path: release-assets
+          run-id: 42804455844
+          github-token: ${{ github.token }}
+
+      - name: Verify downloaded APK archive
+        shell: bash
+        run: |
+          test -s release-assets/SoruLab-v1.3.4.apk
+          unzip -tqq release-assets/SoruLab-v1.3.4.apk
+          sha256sum release-assets/SoruLab-v1.3.4.apk
+
+      - name: Publish direct APK download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          if gh release view v1.3.4 >/dev/null 2>&1; then
+            gh release upload v1.3.4 release-assets/SoruLab-v1.3.4.apk --clobber
+          else
+            gh release create v1.3.4 release-assets/SoruLab-v1.3.4.apk \
+              --target 80531fcc893f96ef1a42e99c3b6349b3f7d806fe \
+              --title "SoruLab v1.3.4" \
+              --notes "Signed Android APK. Automated Firebase emulator unit tests, release build, signing compatibility, and in-place Android v1.3.3 to v1.3.4 upgrade smoke test passed. Contains publisher logo fixes, smart publisher filter, strict 4-tier difficulty plus independent OSYM style labels, and ZIP/library improvements. Please preserve installed app data."
+          fi

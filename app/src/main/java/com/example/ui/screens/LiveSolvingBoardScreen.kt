@@ -1667,25 +1667,12 @@ private fun RealTwoColumnBookPageSurface(
 ) {
     val leftColumnQuestions = pageQuestions.left
     val rightColumnQuestions = pageQuestions.right
-    val scrollState = rememberScrollState()
-
     // Tam Ekran Kitap Sayfası Deneyimi (Üstte gereksiz başlıklar kaldırıldı, alttaki boşluk sıfırlandı)
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.White)
     ) {
-        val pageMinHeight = maxHeight
-        val perColumnCount = maxOf(
-            leftColumnQuestions.size, rightColumnQuestions.size, 1
-        )
-        // Reserve nearly the entire usable sheet for question crops.
-        // Previous 104dp+42dp deductions compressed both rows at the top.
-        val maxQuestionImageHeight = (
-            (pageMinHeight - 24.dp).coerceAtLeast(220.dp) /
-                perColumnCount.toFloat() - 24.dp
-        ).coerceAtLeast(130.dp)
-
         // Dışarı tıklandığında açık olan `⋮` Popover menüsünü kapatan şeffaf arka plan katmanı
         if (openThreeDotQuestionNumber != null) {
             Box(

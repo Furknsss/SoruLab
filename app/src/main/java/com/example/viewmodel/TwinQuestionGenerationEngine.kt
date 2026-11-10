@@ -52,7 +52,7 @@ internal class TwinQuestionGenerationEngine {
         "transformationLog" to Schema.string("Exactly which variables, quantities and contextual terms were changed"),
         "originalPatternKept" to Schema.string("How the original question architecture was retained"),
         "orderedOperationsKept" to Schema.string("Same ordered reasoning, operations or inferential steps"),
-        "diagramJson" to Schema.string("JSON-encoded newly generated figure or empty string. Fields: kind, lines, circles, labels; coordinates 0..1")
+        "diagramJson" to Schema.string("JSON-encoded generated figure or empty string. Fields: kind, lines, circles, labels and optional paths [{points:[{x,y},...]}]; coordinates 0..1")
     ))
     private val reviewerSchema = Schema.obj(mapOf(
         "solvedOptionWithoutAnswerKey" to Schema.enumeration(answers + "UNKNOWN", "Blind independent solution of new question"),
@@ -192,6 +192,9 @@ internal class TwinQuestionGenerationEngine {
                     {"kind":"triangle","lines":[{"x1":0.2,"y1":0.8,
                     "x2":0.8,"y2":0.8,"arrow":false}],"circles":[],
                     "labels":[{"x":0.2,"y":0.9,"text":"A"}]}
+                    Eğri/grafik gerekiyorsa "paths":[{"points":[
+                    {"x":0.1,"y":0.9},{"x":0.5,"y":0.5},{"x":0.9,"y":0.1}]}]
+                    alanını gerçek fonksiyon değerlerine göre hesapla.
                     kind: triangle/circle/graph/vectors/schematic/table/
                     flowchart/timeline olabilir. Tablolardaki satır/sütun
                     ilişkilerini koru. Fotoğraf veya güvenilir yeniden

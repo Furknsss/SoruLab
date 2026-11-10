@@ -2362,8 +2362,8 @@ class SoruLabViewModel(
             com.example.data.PublisherNameKey.from(it.name) ==
                 com.example.data.PublisherNameKey.from(cleanName)
         }
-        _customPublishers.value = updated
         repository.saveCustomPublishers(updated, effectiveUserId())
+        _customPublishers.value = updated
         val signedInUid = _currentUser.value?.uid
         if (signedInUid == null) {
             showBanner("‘$cleanName’ yayını cihaza eklendi. Bulut yedeklemesi için Google hesabınla oturum aç.")

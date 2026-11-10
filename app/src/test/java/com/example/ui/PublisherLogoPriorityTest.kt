@@ -29,8 +29,10 @@ class PublisherLogoPriorityTest {
     @Test fun oldLogoIsOnlyFallbackIfStudentHasNoStoredArtwork() {
         val stale = File.createTempFile("stale-zip", ".png")
         try {
-            assertEquals(stale.absolutePath,
+            assertEquals("",
                 preferredPublisherLogoPath("/no/such/selected.png", stale.absolutePath))
+            assertEquals(stale.absolutePath,
+                preferredPublisherLogoPath("", stale.absolutePath))
             assertEquals("", preferredPublisherLogoPath("", "/no/such/image.png"))
         } finally {
             stale.delete()

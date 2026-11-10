@@ -42,6 +42,13 @@ class TwinDoubleAngleTemplateTest {
         assertTrue(twin.solutionExplanation.contains("İki kat açı"))
     }
 
+    @Test fun repeatedTrigonometryTwinsAreDifferent() {
+        val stems = (0..4).map { variant ->
+            requireNotNull(TwinDoubleAngleTemplate.generate(original, variant)).questionStem
+        }
+        assertEquals(5, stems.distinct().size)
+    }
+
     @Test fun refusesContradictoryOrUncertainOriginal() {
         assertNull(TwinDoubleAngleTemplate.generate(original.copy(correctOption = "A")))
         assertNull(TwinDoubleAngleTemplate.generate(original.copy(answerKeyVerified = false)))

@@ -116,6 +116,7 @@ class TopicPublisherFilterUiTest {
                                         options = mapOf("A" to "1", "B" to "2", "C" to "3",
                                             "D" to "4", "E" to "5"),
                                         correctOption = "B",
+                                        stepByStepSolution = "Doğrulanmış cevap: B",
                                         difficulty = DifficultyLevel.OSYM, isOsymType = true,
                                         answerKeyVerified = true
                                     ))

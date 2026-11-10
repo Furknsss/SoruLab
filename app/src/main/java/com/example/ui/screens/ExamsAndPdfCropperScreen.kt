@@ -66,10 +66,12 @@ import java.io.File
 
 /** The student's current publisher logo always outranks obsolete ZIP artwork. */
 internal fun preferredPublisherLogoPath(selectedLogoPath: String, zipLogoPath: String): String {
-    return sequenceOf(selectedLogoPath, zipLogoPath)
-        .map { it.removePrefix("file://").trim() }
-        .firstOrNull { it.isNotBlank() && File(it).isFile }
-        .orEmpty()
+    val chosen = selectedLogoPath.removePrefix("file://").trim()
+    // If a publisher is explicitly assigned, never substitute a different
+    // ZIP publisher's artwork when the chosen file is unavailable.
+    if (chosen.isNotBlank()) return chosen.takeIf { File(it).isFile }.orEmpty()
+    val legacy = zipLogoPath.removePrefix("file://").trim()
+    return legacy.takeIf { it.isNotBlank() && File(it).isFile }.orEmpty()
 }
 
 internal fun publisherForZipImport(

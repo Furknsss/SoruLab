@@ -1,0 +1,48 @@
+name: SoruLab Optional Ollama Live Vision Smoke
+
+on:
+  push:
+    branches:
+      - feature/twin-diagram-verified-engine-20261111
+    paths:
+      - 'tools/twin_engine/smoke_ollama_live.py'
+      - '.github/workflows/twin-ollama-live-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qwen-small-vision-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      OLLAMA_TWIN_MODEL: qwen3.5:0.8b
+      OLLAMA_TWIN_URL: http://127.0.0.1:11434/api/chat
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_MAX_LOADED_MODELS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install application verification dependencies
+        run: pip install -r tools/twin_engine/requirements.txt
+      - name: Install actual Ollama server
+        run: curl -fsSL https://ollama.com/install.sh | sh
+      - name: Launch isolated local Ollama
+        run: |
+          nohup ollama serve >/tmp/sorulab-ollama.log 2>&1 </dev/null &
+          for i in $(seq 1 45); do
+            curl -fsS http://127.0.0.1:11434/api/tags && exit 0
+            sleep 2
+          done
+          cat /tmp/sorulab-ollama.log
+          exit 1
+      - name: Pull small multimodal Qwen model (smoke only, not production 27B)
+        run: ollama pull qwen3.5:0.8b
+      - name: Make a genuine multimodal request through the service's Ollama bridge
+        run: cd tools/twin_engine && python smoke_ollama_live.py
+
+# This workflow only verifies live Ollama protocol and multimodal JSON.
+# It cannot prove Qwen3.8-27B fidelity or a permanently deployed private server.

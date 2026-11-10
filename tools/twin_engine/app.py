@@ -18,7 +18,7 @@ import urllib.request
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from math_gate import VerificationError, validate_diagram, verify_numeric_choices
+from math_gate import VerificationError, validate_diagram, verify_numeric_choices, printed_number
 from nano_banana_provider import configured as image_provider_available
 from nano_banana_provider import generate_science_illustration
 
@@ -200,6 +200,19 @@ def generate_twin(request: TwinRequest) -> dict:
                 mode = require_text(draft, "answerMode", 7, 12).lower()
                 if mode not in {"numeric", "conceptual"}:
                     raise VerificationError("Unknown answer verification mode")
+                # Prevent the model from bypassing SymPy by labelling an
+                # otherwise wholly numeric question as "conceptual".
+                try:
+                    all_numeric = all(
+                        printed_number(option) is not None
+                        for option in options.values()
+                    )
+                except VerificationError:
+                    all_numeric = False
+                if all_numeric and mode != "numeric":
+                    raise VerificationError(
+                        "Numeric choices require an exact numeric certificate"
+                    )
                 explanation = require_text(draft, "solutionExplanation", 40)
                 require_text(draft, "transformationLog", 16)
                 if stem.casefold() == source["transcript"].casefold():

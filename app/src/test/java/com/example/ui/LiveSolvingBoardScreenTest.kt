@@ -158,6 +158,26 @@ class LiveSolvingBoardScreenTest {
     }
 
     @Test
+    fun twoColumnPrintedFontDoesNotLeaveBarisTwiceErgiSize() {
+        // Regression from an actual Android v1.3.8 screenshot: Ergi 10px,
+        // Barış 21px. Since the smaller question already fills its column,
+        // normalize the large print DOWN to the smaller reference.
+        val measured = mapOf(
+            "ergi" to com.example.ui.screens.BookImageMeasurements(1f, 1f, 5f),
+            "baris" to com.example.ui.screens.BookImageMeasurements(1f, 1f, 10.5f),
+            "ucdortbes" to com.example.ui.screens.BookImageMeasurements(1f, 1f, 5.5f)
+        )
+        val scales = com.example.ui.screens.calibratedBookTypographyScales(measured)
+        val fontSizes = measured.map { (id, m) ->
+            (m.printedGlyphDp ?: 0f) * scales.getValue(id).coerceAtMost(1f)
+        }
+        org.junit.Assert.assertTrue(
+            "Book fonts remain optically unbalanced: $fontSizes",
+            fontSizes.maxOrNull()!! / fontSizes.minOrNull()!! < 1.20f
+        )
+    }
+
+    @Test
     fun removingBlankMarginsNeverCropsBlackQuestionTextOrAnswers() {
         val image = android.graphics.Bitmap.createBitmap(
             800, 550, android.graphics.Bitmap.Config.ARGB_8888

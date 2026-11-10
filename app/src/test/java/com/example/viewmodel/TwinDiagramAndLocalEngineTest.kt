@@ -32,6 +32,7 @@ class TwinLocalTemplateEngineTest {
 
     @Test fun requiresIndependentlyVerifiedSourceOption() {
         assertNull(TwinLocalTemplateEngine.generate(source.copy(answerKeyVerified = false)))
+        assertNull(TwinLocalTemplateEngine.generate(source.copy(imageBase64 = "uninspected-figure")))
         assertNull(TwinLocalTemplateEngine.generate(source.copy(correctOption = "B")))
         assertNull(TwinLocalTemplateEngine.generate(source.copy(options = source.options + ("C" to "12"))))
     }
@@ -141,6 +142,7 @@ class TwinRightTriangleTemplateTest {
     @Test fun rejectsFalseSourceAnswerOrUnknownWording() {
         assertNull(TwinRightTriangleTemplate.generate(source.copy(correctOption = "B")))
         assertNull(TwinRightTriangleTemplate.generate(source.copy(answerKeyVerified = false)))
+        assertNull(TwinRightTriangleTemplate.generate(source.copy(croppedImagePath = "uninspected-source.png")))
         assertNull(TwinRightTriangleTemplate.generate(
             source.copy(stemTop = "Şekildeki üçgende bir açı bilinmiyor.")
         ))

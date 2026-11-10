@@ -135,8 +135,19 @@ class LiveSolvingBoardScreenTest {
             q, java.io.File("/unused_book_file_dir"), 190f
         )
         org.junit.Assert.assertNotNull(metrics)
-        org.junit.Assert.assertEquals(640f / 430f, metrics!!.heightOverWidth, 0.01f)
-        org.junit.Assert.assertTrue(metrics.typographyScale < 0.9f)
+        // The new visual engine safely trims unused white pixels; its effective
+        // aspect ratio must exactly match the same decoded image after trimming,
+        // rather than the uncropped PNG's nominal width/height.
+        val source = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        val displayed = com.example.ui.screens.trimQuestionWhiteMargins(source)
+        try {
+            val expected = displayed.height.toFloat() / displayed.width
+            org.junit.Assert.assertEquals(expected, metrics!!.heightOverWidth, 0.015f)
+            org.junit.Assert.assertTrue(metrics.typographyScale < 0.9f)
+        } finally {
+            if (displayed !== source) displayed.recycle()
+            source.recycle()
+        }
     }
 
     @Test

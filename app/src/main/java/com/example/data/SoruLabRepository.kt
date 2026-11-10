@@ -1104,23 +1104,27 @@ class SoruLabRepository(
     }
 
     fun saveCustomPublishers(publishers: List<YksPublisherInfo>, userId: String? = null) {
-        val ctx = appContext ?: return
-        try {
-            val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
-            val arr = JSONArray()
-            publishers.distinctBy { it.id }.forEach { pub ->
-                val obj = JSONObject()
-                obj.put("id", pub.id)
-                obj.put("name", pub.name)
-                obj.put("shortCode", pub.shortCode)
-                obj.put("primaryColorHex", pub.primaryColorHex)
-                obj.put("secondaryColorHex", pub.secondaryColorHex)
-                obj.put("customLogoPath", pub.customLogoPath)
-                arr.put(obj)
-            }
-            prefs.edit().putString(customPublishersCacheKey(userId), arr.toString()).apply()
-        } catch (_: Exception) {
+        val ctx = appContext
+            ?: throw IllegalStateException("Yayın logosunun yerel depolaması kullanılamıyor.")
+        val arr = JSONArray()
+        publishers.distinctBy { PublisherNameKey.from(it.name) }.forEach { pub ->
+            val obj = JSONObject()
+            obj.put("id", pub.id)
+            obj.put("name", pub.name)
+            obj.put("shortCode", pub.shortCode)
+            obj.put("primaryColorHex", pub.primaryColorHex)
+            obj.put("secondaryColorHex", pub.secondaryColorHex)
+            obj.put("customLogoPath", pub.customLogoPath)
+            arr.put(obj)
         }
+        // apply() can report success before disk write and errors were silently
+        // ignored; never tell the user the logo was saved unless it is durable.
+        val prefs = ctx.getSharedPreferences(
+            "sorulab_generated_tests_prefs", Context.MODE_PRIVATE
+        )
+        check(prefs.edit().putString(
+            customPublishersCacheKey(userId), arr.toString()
+        ).commit()) { "Yayın logosu cihazda kalıcı kaydedilemedi." }
     }
 
     private fun customPublishersCacheKey(userId: String?): String =

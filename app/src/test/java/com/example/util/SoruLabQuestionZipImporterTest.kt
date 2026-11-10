@@ -71,6 +71,91 @@ class SoruLabQuestionZipImporterTest {
         }
     }
 
+    @Test fun fourDifficultiesAndSeparateOsymTypeSurviveRealZipImport() {
+        val context = RuntimeEnvironment.getApplication()
+        val book = "fourtags_" + UUID.randomUUID().toString().replace("-", "").take(12)
+        val labels = listOf("Kolay", "Orta", "Zor", "Çok Zor")
+        val pictures = labels.mapIndexed { index, _ ->
+            "images/q${index + 1}.png" to png(Color.rgb(30 + index * 40, 60, 100))
+        }
+        val questionRows = JSONArray()
+        pictures.forEachIndexed { i, (path, bytes) ->
+            questionRows.put(
+                question(path, bytes, i + 1, "B", true, osym = i == 2)
+                    .put("difficulty", labels[i])
+                    // The old targetLevel was frequently OSYM for *all* questions:
+                    // it MUST NOT turn an untagged question into ÖSYM tipi.
+                    .put("targetLevel", "OSYM")
+                    .put("sourceTestId", "sinir~osym~test")
+            )
+        }
+        val manifest = JSONObject().apply {
+            put("format", "sorulab.question-pack")
+            put("version", 1)
+            put("bookId", book)
+            put("bookTitle", "Dört zorluk etiketi")
+            put("publisher", "Dr. Biyoloji")
+            put("examType", "AYT")
+            put("subject", "Biyoloji")
+            put("questionCount", pictures.size)
+            put("questions", questionRows)
+        }
+        val source = File(context.cacheDir, "$book.zip")
+        ZipOutputStream(source.outputStream()).use { zip ->
+            (listOf("manifest.json" to manifest.toString().toByteArray()) + pictures)
+                .forEach { (name, content) ->
+                    zip.putNextEntry(ZipEntry(name))
+                    zip.write(content)
+                    zip.closeEntry()
+                }
+        }
+        try {
+            val imported = SoruLabQuestionZipImporter.import(context, Uri.fromFile(source))
+            try {
+                assertEquals(labels, imported.questions.map { it.difficulty })
+                assertEquals(listOf(false, false, true, false),
+                    imported.questions.map { it.isOsymType })
+                assertTrue(imported.questions.all { it.answerKeyMatched })
+            } finally {
+                if (imported.createdDirectory) imported.directory.deleteRecursively()
+            }
+        } finally { source.delete() }
+    }
+
+    @Test fun osymAsFifthDifficultyIsRejectedBeforeWritingBook() {
+        val context = RuntimeEnvironment.getApplication()
+        val book = "invalidtags_" + UUID.randomUUID().toString().replace("-", "").take(12)
+        val img = png(Color.rgb(40, 70, 100))
+        val manifest = JSONObject().apply {
+            put("format", "sorulab.question-pack")
+            put("version", 1)
+            put("bookId", book)
+            put("bookTitle", "Geçersiz zorluk")
+            put("publisher", "Dr. Biyoloji")
+            put("examType", "AYT")
+            put("subject", "Biyoloji")
+            put("questionCount", 1)
+            put("questions", JSONArray().put(
+                question("images/q1.png", img, 1, "A", true)
+                    .put("difficulty", "ÖSYM")
+                    .put("osymType", true)
+            ))
+        }
+        val source = File(context.cacheDir, "$book.zip")
+        ZipOutputStream(source.outputStream()).use { zip ->
+            for ((name, bytes) in listOf("manifest.json" to manifest.toString().toByteArray(),
+                "images/q1.png" to img)) {
+                zip.putNextEntry(ZipEntry(name)); zip.write(bytes); zip.closeEntry()
+            }
+        }
+        try {
+            val error = assertThrows(IllegalArgumentException::class.java) {
+                SoruLabQuestionZipImporter.import(context, Uri.fromFile(source))
+            }
+            assertTrue(error.message.orEmpty().contains("Zorluk sadece Kolay"))
+        } finally { source.delete() }
+    }
+
     private fun question(path: String, image: ByteArray, number: Int, answer: String, verified: Boolean, osym: Boolean = false) =
         JSONObject().apply {
             put("image", path)

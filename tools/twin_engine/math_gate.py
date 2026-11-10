@@ -119,9 +119,10 @@ def validate_diagram(raw: str, required_kind: str) -> dict | None:
     if not isinstance(diagram, dict) or diagram.get("kind") != required_kind:
         raise VerificationError("Wrong diagram class")
     lines, circles, labels = (diagram.get(k, []) for k in ("lines", "circles", "labels"))
-    if not all(isinstance(v, list) for v in (lines, circles, labels)):
+    paths = diagram.get("paths", [])
+    if not all(isinstance(v, list) for v in (lines, circles, labels, paths)):
         raise VerificationError("Invalid diagram arrays")
-    if len(lines) > 28 or len(circles) > 12 or len(labels) > 24:
+    if len(lines) > 28 or len(circles) > 12 or len(labels) > 24 or len(paths) > 8:
         raise VerificationError("Oversize diagram")
     def coord(item: dict, field: str) -> float:
         value = item.get(field)
@@ -148,7 +149,17 @@ def validate_diagram(raw: str, required_kind: str) -> dict | None:
         txt = label.get("text")
         if not isinstance(txt, str) or not txt.strip() or len(txt) > 24:
             raise VerificationError("Invalid label text")
-    if not labels or len(lines) + len(circles) == 0:
+    for path in paths:
+        if not isinstance(path, dict) or not isinstance(path.get("points"), list):
+            raise VerificationError("Invalid curve")
+        points = path["points"]
+        if not 3 <= len(points) <= 64:
+            raise VerificationError("Curve point count")
+        positions = [(coord(p, "x"), coord(p, "y")) for p in points]
+        if sum(math.hypot(x2-x1, y2-y1) > .004
+               for ((x1, y1), (x2, y2)) in zip(positions, positions[1:])) < 2:
+            raise VerificationError("Invisible or repeating curve")
+    if not labels or len(lines) + len(circles) + len(paths) == 0:
         raise VerificationError("Figure is empty")
     if required_kind == "triangle" and len(lines) < 3:
         raise VerificationError("Incomplete triangle")
@@ -158,7 +169,7 @@ def validate_diagram(raw: str, required_kind: str) -> dict | None:
         raise VerificationError("Missing graph axes")
     if required_kind == "vectors" and not any(line.get("arrow") is True for line in lines):
         raise VerificationError("Missing arrow")
-    if required_kind == "schematic" and len(lines) + len(circles) < 2:
+    if required_kind == "schematic" and len(lines) + len(circles) + len(paths) < 2:
         raise VerificationError("Incomplete schematic")
     if required_kind == "table" and (len(lines) < 4 or len(labels) < 4):
         raise VerificationError("Incomplete table cells")

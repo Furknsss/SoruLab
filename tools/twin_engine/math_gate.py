@@ -125,6 +125,8 @@ def validate_diagram(raw: str, required_kind: str) -> dict | None:
     if len(lines) > 28 or len(circles) > 12 or len(labels) > 24 or len(paths) > 8:
         raise VerificationError("Oversize diagram")
     def coord(item: dict, field: str) -> float:
+        if not isinstance(item, dict):
+            raise VerificationError("Expected coordinate object")
         value = item.get(field)
         if type(value) not in (float, int) or not math.isfinite(value) or not 0 <= value <= 1:
             raise VerificationError("Invalid figure coordinate")

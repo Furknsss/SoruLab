@@ -150,7 +150,7 @@ jobs:
           emulator-options: '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none'
           disable-animations: true
           emulator-boot-timeout: 600
-          script: bash scripts/check_inplace_upgrade.sh "$(find baseline-v133 -name '*.apk' -type f -print -quit)" "$(find out -name '*.apk' -type f -print -quit)" --install
+          script: bash scripts/check_inplace_upgrade.sh "$(find baseline-v134 -name '*.apk' -type f -print -quit)" "$(find out -name '*.apk' -type f -print -quit)" --install
 
       - name: Upload Release APK Artifact
         uses: actions/upload-artifact@v4

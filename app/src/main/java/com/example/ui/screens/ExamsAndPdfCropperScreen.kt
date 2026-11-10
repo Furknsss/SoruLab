@@ -64,6 +64,22 @@ import kotlin.coroutines.resume
 import kotlinx.coroutines.withContext
 import java.io.File
 
+/** The student's current publisher logo always outranks obsolete ZIP artwork. */
+internal fun preferredPublisherLogoPath(selectedLogoPath: String, zipLogoPath: String): String {
+    return sequenceOf(selectedLogoPath, zipLogoPath)
+        .map { it.removePrefix("file://").trim() }
+        .firstOrNull { it.isNotBlank() && File(it).isFile }
+        .orEmpty()
+}
+
+internal fun publisherForZipImport(
+    zipPublisher: String,
+    explicitPublisherId: String?,
+    publisherChoices: List<YksPublisherInfo>
+): YksPublisherInfo =
+    publisherChoices.firstOrNull { it.id == explicitPublisherId && explicitPublisherId != null }
+        ?: SoruLabPublisherPresets.resolvePublisher(zipPublisher, publisherChoices)
+
 @Composable
 fun PublisherLogoEmblem(
     publisher: YksPublisherInfo,
@@ -75,10 +91,9 @@ fun PublisherLogoEmblem(
     // Never show a random publisher's artwork if this question's image is missing.
     val overrideFilePath = overrideLogoPath.removePrefix("file://")
     val publisherFilePath = publisher.customLogoPath.removePrefix("file://")
-    val effectivePath = overrideFilePath
-        .takeIf { it.isNotBlank() && File(it).isFile }
-        ?: publisherFilePath.takeIf { it.isNotBlank() && File(it).isFile }
-        .orEmpty()
+    // A publisher selected by the student is authoritative. ZIP metadata
+    // is only a fallback, never an override for the saved publisher artwork.
+    val effectivePath = preferredPublisherLogoPath(publisherFilePath, overrideFilePath)
     val customBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(effectivePath)
 
     if (customBitmap != null) {
@@ -656,15 +671,16 @@ fun SoruHavuzuAndPdfStudioView(
                                 SoruLabQuestionZipImporter.import(context, uri)
                             }
                             val bookId = pack.questions.firstOrNull()?.bookId.orEmpty()
+                            val authoritativePublisher = publisherForZipImport(
+                                pack.publisher, selectedPublisherId, customPublishers
+                            )
                             val identity = pack.bookTitle.trim().lowercase() to
-                                PublisherNameKey.from(pack.publisher)
+                                PublisherNameKey.from(authoritativePublisher.name)
                             require(bookId.isNotBlank()) { "ZIP kitap kimliği eksik." }
                             val existing = customQuestions.firstOrNull { it.bookId == bookId }
-                            require(existing == null || (
-                                existing.sourceBookTitle.trim().equals(pack.bookTitle.trim(), true) &&
-                                PublisherNameKey.from(existing.publisherTag) ==
-                                    PublisherNameKey.from(pack.publisher)
-                            )) {
+                            require(existing == null ||
+                                existing.sourceBookTitle.trim().equals(pack.bookTitle.trim(), true)
+                            ) {
                                 "Kitap kimliği başka kitaba ait: ${pack.bookTitle}."
                             }
                             val batchIdentity = selectedBookIds.putIfAbsent(bookId, identity)
@@ -676,12 +692,10 @@ fun SoruHavuzuAndPdfStudioView(
                                 continue
                             }
                             zipBatchProgress = "${index + 1}/${chosen.size} · ${pack.bookTitle} kaydediliyor…"
-                            val pub = SoruLabPublisherPresets.resolvePublisher(
-                                pack.publisher, customPublishers
-                            )
                             val (saved, message) = suspendCancellableCoroutine<Pair<Boolean, String>> { waiter ->
                                 onSaveExtractedPdfBatch(
-                                    pack.questions, pack.publisher, pub.customLogoPath,
+                                    pack.questions, authoritativePublisher.name,
+                                    authoritativePublisher.customLogoPath,
                                     pack.bookTitle, pack.bookCoverPath
                                 ) { success, report ->
                                     if (waiter.isActive) waiter.resume(success to report)
@@ -793,7 +807,9 @@ fun SoruHavuzuAndPdfStudioView(
                             bookTitle = bookTitle,
                             publisherName = resolvedPub.name,
                             publisherInfo = resolvedPub.copy(
-                                customLogoPath = first.publisherLogoUri.ifBlank { resolvedPub.customLogoPath }
+                                customLogoPath = preferredPublisherLogoPath(
+                                    resolvedPub.customLogoPath, first.publisherLogoUri
+                                )
                             ),
                             coverImagePath = coverPath,
                             activeQuestionCount = questionsInBook.size,

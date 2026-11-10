@@ -1140,8 +1140,25 @@ class SoruLabViewModel(
         val countsForLevel = DifficultyLevel.entries.associateWith { diff ->
             eligibleForLevel.count { it.difficulty == diff }
         }
-        // Filter choices must not disappear just because a difficulty is empty.
-        val publisherChoices = PublisherQuestionMixer.options(allTopicQuestions)
+        // Make ALL registered/imported publishers selectable from the topic screen.
+        // The number shown is the actual number of matching question images in
+        // this topic; a publisher with zero questions is displayed as zero.
+        val availableForTopic = PublisherQuestionMixer.options(allTopicQuestions)
+        val availableByPublisher = availableForTopic.associateBy { it.key }
+        val publisherNames = (
+            availableForTopic.map { it.title } +
+            _customPublishers.value.map { it.name } +
+            _userCustomQuestions.value.map { it.publisherTag }
+        ).asSequence().filter(String::isNotBlank)
+            .distinctBy(com.example.data.PublisherNameKey::from).toList()
+        val publisherChoices = publisherNames.map { publisherName ->
+            val canonical = com.example.data.PublisherNameKey.from(publisherName)
+            PublisherChoice(
+                key = canonical,
+                title = publisherName,
+                availableQuestions = availableByPublisher[canonical]?.availableQuestions ?: 0
+            )
+        }.sortedBy { it.title.lowercase(java.util.Locale.forLanguageTag("tr-TR")) }
         val sourceCountsForLevel = QuestionSourceFilter.entries.associateWith { filter ->
             if (level == TopicTestLevel.IKIZ) eligibleForLevel.size
             else collectQuestionsByTopicSourceAndDifficulty(

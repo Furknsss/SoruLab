@@ -26,7 +26,7 @@ class QuestionCacheIsolationTest {
         File(context.filesDir, "sorulab_question_cache").deleteRecursively()
         // Each test must start without another test's committed SQLite state.
         context.databaseList().filter { it.startsWith("sorulab_library_") }
-            .forEach(context::deleteDatabase)
+            .forEach { context.deleteDatabase(it) }
         FirebaseApp.clearInstancesForTest()
         repository = SoruLabRepository(context)
     }

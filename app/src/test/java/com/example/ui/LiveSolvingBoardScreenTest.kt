@@ -231,6 +231,44 @@ class LiveSolvingBoardScreenTest {
     }
 
     @Test
+    fun naturalPaperFlowNeverPacksCrowdedColumnsEvenForCompactQuestions() {
+        val original = fixtureSession().testItem.questions.first()
+        val questions = (1..18).map { number ->
+            original.copy(id = "airy_$number", number = number,
+                croppedImagePath = "airy_$number.png")
+        }
+        val ratios = questions.associate { it.id to 0.38f }
+        val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
+            questions, columnCapacity = 3.8f, maxQuestionsPerColumn = 8,
+            columnWidthDp = 240f, actualImageRatios = ratios
+        )
+        org.junit.Assert.assertTrue("Expected multiple pages for comfortable reading",
+            pages.size >= 3)
+        org.junit.Assert.assertTrue("Too many questions were squeezed into a paper column",
+            pages.all { it.left.size <= 3 && it.right.size <= 3 })
+        assertEquals(questions.map { it.id }, pages.flatMap { it.questions }.map { it.id })
+    }
+
+    @Test
+    fun airyPaperLayoutsStillBalanceShortAndLongQuestionsInSourceOrder() {
+        val original = fixtureSession().testItem.questions.first()
+        val questions = (1..9).map { n ->
+            original.copy(id = "mixed_height_$n", number = n,
+                croppedImagePath = "mixed_$n.png")
+        }
+        val ratios = questions.associate { q ->
+            q.id to if (q.number == 3 || q.number == 7) 2.2f else 0.48f
+        }
+        val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
+            questions, columnCapacity = 2.3f, maxQuestionsPerColumn = 3,
+            columnWidthDp = 240f, actualImageRatios = ratios
+        )
+        assertEquals(questions.map { it.id }, pages.flatMap { it.questions }.map { it.id })
+        org.junit.Assert.assertTrue(pages.all { it.left.size <= 3 && it.right.size <= 3 })
+        org.junit.Assert.assertTrue(pages.none { it.right.isEmpty() && it.questions.size > 1 })
+    }
+
+    @Test
     fun fullQuestionImageAlwaysFitsItsPaperSlotWithoutHorizontalOrVerticalClipping() {
         listOf(0.24f, 0.55f, 1f, 2.4f, 6f).forEach { widthOverHeight ->
             listOf(0.28f, 0.5f, 1f, 1.16f).forEach { printScale ->

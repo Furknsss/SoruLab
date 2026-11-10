@@ -70,6 +70,35 @@ class TwinDiagramSpecTest {
         assertNull(TwinDiagramSpec.parse("""{"kind":"unsupported","lines":[],"labels":[]}"""))
     }
 
+    @Test fun parsesTablesFlowchartsAndTimelinesAcrossSubjects() {
+        val table = """{"kind":"table",
+            "lines":[
+                {"x1":0.1,"y1":0.1,"x2":0.9,"y2":0.1},
+                {"x1":0.1,"y1":0.5,"x2":0.9,"y2":0.5},
+                {"x1":0.1,"y1":0.9,"x2":0.9,"y2":0.9},
+                {"x1":0.1,"y1":0.1,"x2":0.1,"y2":0.9}],
+            "labels":[
+                {"x":0.3,"y":0.3,"text":"Deney"},
+                {"x":0.7,"y":0.3,"text":"Sonuç"},
+                {"x":0.3,"y":0.7,"text":"I"},
+                {"x":0.7,"y":0.7,"text":"II"}]}"""
+        val flow = """{"kind":"flowchart",
+            "lines":[
+                {"x1":0.2,"y1":0.2,"x2":0.5,"y2":0.5,"arrow":true},
+                {"x1":0.5,"y1":0.5,"x2":0.8,"y2":0.8}],
+            "labels":[
+                {"x":0.1,"y":0.1,"text":"Başlangıç"},
+                {"x":0.8,"y":0.9,"text":"Bitiş"}]}"""
+        assertEquals("table", TwinDiagramSpec.parse(table)?.kind)
+        assertEquals("flowchart", TwinDiagramSpec.parse(flow)?.kind)
+        assertEquals("timeline", TwinDiagramSpec.parse(
+            flow.replace("flowchart", "timeline")
+        )?.kind)
+        assertNull(TwinDiagramSpec.parse(
+            flow.replace("\"arrow\":true", "\"arrow\":false")
+        ))
+    }
+
     @Test fun qualityGateRejectsMissingDiagramAndWrongFamily() {
         val source = TwinSourceAnalysis(
             transcript = "ABC üçgeninde AB=5, AC=12 ve A açısı 90 derece. BC uzunluğu nedir?",

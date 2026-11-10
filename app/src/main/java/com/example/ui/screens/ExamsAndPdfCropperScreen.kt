@@ -657,12 +657,13 @@ fun SoruHavuzuAndPdfStudioView(
                             }
                             val bookId = pack.questions.firstOrNull()?.bookId.orEmpty()
                             val identity = pack.bookTitle.trim().lowercase() to
-                                pack.publisher.trim().lowercase()
+                                PublisherNameKey.from(pack.publisher)
                             require(bookId.isNotBlank()) { "ZIP kitap kimliği eksik." }
                             val existing = customQuestions.firstOrNull { it.bookId == bookId }
                             require(existing == null || (
                                 existing.sourceBookTitle.trim().equals(pack.bookTitle.trim(), true) &&
-                                existing.publisherTag.trim().equals(pack.publisher.trim(), true)
+                                PublisherNameKey.from(existing.publisherTag) ==
+                                    PublisherNameKey.from(pack.publisher)
                             )) {
                                 "Kitap kimliği başka kitaba ait: ${pack.bookTitle}."
                             }

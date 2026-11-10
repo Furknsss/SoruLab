@@ -19,6 +19,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from math_gate import VerificationError, validate_diagram, verify_numeric_choices
+from nano_banana_provider import configured as image_provider_available
+from nano_banana_provider import generate_science_illustration
 
 api = FastAPI(title="SoruLab Twin Engine", docs_url=None, redoc_url=None)
 MODEL = os.getenv("OLLAMA_TWIN_MODEL", "qwen3.8:27b")
@@ -26,7 +28,7 @@ OLLAMA_URL = os.getenv("OLLAMA_TWIN_URL", "http://127.0.0.1:11434/api/chat")
 MAX_IMAGESIZE = 2_800_000
 SUPPORTED_FIGURES = {
     "none", "triangle", "circle", "graph", "vectors", "schematic",
-    "table", "flowchart", "timeline",
+    "table", "flowchart", "timeline", "illustration",
 }
 
 # The engine has one source-analysis and independent-review protocol for
@@ -135,7 +137,9 @@ def generate_twin(request: TwinRequest) -> dict:
             "transcript, subSkill, exactQuestionPattern, orderedSolutionOperations, "
             "independentlySolvedOriginalOption (A-E/UNKNOWN), legible (YES/NO), "
             "diagramFamily (none/triangle/circle/graph/vectors/schematic/"
-            "table/flowchart/timeline/unsupported). "
+            "table/flowchart/timeline/illustration/unsupported). "
+            "Use illustration ONLY when an accurate visual is essential and "
+            "cannot be drawn as basic geometry/flowchart/table. "
             "orderedSolutionOperations means sequence of reasoning steps "
             "(even for textual, interpretive, conceptual and science questions). "
             "Do not exclude biology, social studies, Turkish or conceptual questions. "
@@ -148,6 +152,10 @@ def generate_twin(request: TwinRequest) -> dict:
         family = require_text(source, "diagramFamily", 4, 30)
         if family not in SUPPORTED_FIGURES:
             raise VerificationError("Source image needs unsupported diagram")
+        if family == "illustration" and not image_provider_available():
+            raise VerificationError(
+                "Detailed illustration requires explicitly enabled image provider"
+            )
         for field in ("transcript", "subSkill", "exactQuestionPattern", "orderedSolutionOperations"):
             require_text(source, field, 12)
         reason = "none"
@@ -159,7 +167,9 @@ def generate_twin(request: TwinRequest) -> dict:
                 "answerMode (numeric or conceptual), "
                 "solutionExplanation, answerExpression (for numeric only, e.g. 3*4+5; "
                 "empty string for conceptual choices), "
-                "transformationLog, diagramJson (şekil yoksa boş string). "
+                "transformationLog, diagramJson (empty for illustration/text), "
+                "illustrationPrompt (required if diagramFamily=illustration, else empty), "
+                "requiredVisualLabels (required if illustration, else empty). "
                 "Cevap seçenekleri problem tipine uygun sayısal YA DA kavramsal "
                 "olabilir; 5 farklı cevap olmalı. Sadece matematik için üretme. "
                 "Türkçe/paragraf, fizik, kimya, biyoloji, tarih, coğrafya, felsefe "
@@ -197,7 +207,24 @@ def generate_twin(request: TwinRequest) -> dict:
                     raw_diagram = json.dumps(raw_diagram, ensure_ascii=False)
                 if not isinstance(raw_diagram, str):
                     raise VerificationError("Invalid diagram payload")
-                validate_diagram(raw_diagram, family)
+                if family == "illustration":
+                    if raw_diagram:
+                        raise VerificationError("No unverified schematic with generated image")
+                    # All visual specs come from NEW question facts and the
+                    # new independent solution, never by copying a published
+                    # book diagram's pixels.
+                    image_spec = require_text(
+                        draft, "illustrationPrompt", 20, 2200
+                    )
+                    visual_labels = require_text(
+                        draft, "requiredVisualLabels", 4, 1000
+                    )
+                    generated_image = generate_science_illustration(
+                        request.subject, stem, image_spec, visual_labels
+                    )
+                else:
+                    validate_diagram(raw_diagram, family)
+                    generated_image = ""
                 # Domain-specific proof: exact rational arithmetic when possible.
                 # Conceptual answers are independently solved TWICE without seeing
                 # the proposed answer, rather than forced into a numeric verifier.
@@ -218,6 +245,9 @@ def generate_twin(request: TwinRequest) -> dict:
                     "transformedMeaningfulParameters, diagramMatchesQuestion, "
                     "singleUnambiguousAnswer, sufficientAndConsistentInformation, "
                     "notSourceCopy, independentOfUnavailableDiagram (all YES/NO). "
+                    "When a NEW image is included, examine the actual pixels, "
+                    "every required label, arrow and scientific relationship; "
+                    "return diagramMatchesQuestion NO for mismatches or ambiguity. "
                     "Soru türüne göre dil, fizik yasası, kimyasal denge, biyolojik "
                     "mekanizma veya metinsel çıkarım tutarlılığını denetle. "
                     + SUBJECT_REVIEW_RUBRIC + " "
@@ -227,7 +257,8 @@ def generate_twin(request: TwinRequest) -> dict:
                     "\nKaynak kazanım: " + source["subSkill"] +
                     "\nKaynak kalıp: " + source["exactQuestionPattern"] +
                     "\nYENİ SORU: " + stem + "\nYENİ ŞEKİL: " + raw_diagram +
-                    "\nYENİ ŞIKLAR: " + json.dumps(options, ensure_ascii=False)
+                    "\nYENİ ŞIKLAR: " + json.dumps(options, ensure_ascii=False),
+                    generated_image,
                 )
                 required_fields = [
                     "sameSpecificSubSkill", "sameProblemArchitecture",
@@ -270,7 +301,8 @@ def generate_twin(request: TwinRequest) -> dict:
                         "\\nKAYNAK MANTIK: " + source["orderedSolutionOperations"] +
                         "\\nYENİ SORU: " + stem +
                         "\\nYENİ ŞEKİL: " + raw_diagram +
-                        "\\nŞIKLAR: " + json.dumps(options, ensure_ascii=False)
+                        "\nŞIKLAR: " + json.dumps(options, ensure_ascii=False),
+                        generated_image,
                     )
                     check_review(
                         second, options, correct, required_fields,
@@ -283,6 +315,7 @@ def generate_twin(request: TwinRequest) -> dict:
                     "correctOption": correct,
                     "solutionExplanation": independent_solution,
                     "diagramJson": raw_diagram,
+                    "imageBase64": generated_image,
                     "sourceDescription": (
                         ("Yerel Qwen + SymPy: aritmetik ve kör çözüm kontrolü • "
                          + str(verified_value))

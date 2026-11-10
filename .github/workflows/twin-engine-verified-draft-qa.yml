@@ -6,6 +6,7 @@ on:
       - 'app/src/main/java/com/example/viewmodel/Twin*'
       - 'app/src/main/java/com/example/viewmodel/AiSolverViewModel.kt'
       - 'app/src/main/java/com/example/ui/screens/TwinDiagramCanvas.kt'
+      - 'app/src/main/java/com/example/ui/screens/TwinGeneratedIllustration.kt'
       - 'app/src/main/java/com/example/ui/screens/LiveSolvingBoardScreen.kt'
       - 'app/src/debug/**'
       - 'app/src/test/java/com/example/viewmodel/Twin*'
@@ -124,12 +125,32 @@ jobs:
                 print("Bright canvas fraction", coverage)
                 assert coverage > 0.40, "Black screen / system ANR is NOT visual QA"
             PY
+            # Verify generated scientific illustration uses its own image surface
+            # and leaves the native question/options visible.
+            adb shell am start -W -n com.aistudio.sorulab.ykslab/com.example.ui.screens.TwinIllustrationPreviewActivity
+            sleep 14
+            adb shell uiautomator dump /sdcard/twin-science.xml >/dev/null 2>&1
+            adb shell cat /sdcard/twin-science.xml > out/twin-visual/science-view.xml
+            grep -q "Biyoloji İkiz Görsel Testi" out/twin-visual/science-view.xml
+            grep -q "Stoma" out/twin-visual/science-view.xml
+            adb exec-out screencap -p > out/twin-visual/native-science-twin.png
+            python - <<'PY'
+            from PIL import Image
+            with Image.open("out/twin-visual/native-science-twin.png") as p:
+                image = p.convert("RGB")
+                image.thumbnail((160, 240))
+                bright = sum(min(rgb) > 185 for rgb in image.getdata())
+                coverage = bright / (image.width * image.height)
+                assert coverage > 0.40, "Science preview missing or system ANR"
+            PY
 
       - name: Preserve real rendered native figure screenshot
         uses: actions/upload-artifact@v4
         with:
           name: SoruLab-Twin-Diagram-Android-Visual-QA
-          path: out/twin-visual/native-triangle-twin.png
+          path: |
+            out/twin-visual/native-triangle-twin.png
+            out/twin-visual/native-science-twin.png
           retention-days: 14
 
 # No APK release or auto-merge. Review tests, actual diagrams, and install upgrade separately.

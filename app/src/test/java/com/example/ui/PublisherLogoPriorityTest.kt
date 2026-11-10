@@ -7,7 +7,9 @@ import java.io.File
 
 class PublisherLogoPriorityTest {
     private fun publisher(id: String, path: String) = YksPublisherInfo(
-        id = id, name = "345 Yayınları", shortCode = "345",
+        id = id,
+        name = if (id == "oks") "OKS" else "345 Yayınları",
+        shortCode = if (id == "oks") "OKS" else "345",
         primaryColorHex = 0xFF102B5FL, secondaryColorHex = 0xFF172554L,
         customLogoPath = path
     )

@@ -49,6 +49,21 @@ class MathGateTests(unittest.TestCase):
         with self.assertRaises(VerificationError):
             validate_diagram(flow.replace('"arrow":true', '"arrow":false'), "flowchart")
 
+    def test_graph_curves_are_bounded_and_not_zero_length(self):
+        graph = """{"kind":"graph","lines":[
+          {"x1":0.1,"y1":0.8,"x2":0.9,"y2":0.8},
+          {"x1":0.1,"y1":0.8,"x2":0.1,"y2":0.1}],
+          "paths":[{"points":[
+            {"x":0.2,"y":0.7},{"x":0.4,"y":0.55},{"x":0.6,"y":0.7}]}],
+          "labels":[{"x":0.9,"y":0.9,"text":"x"}]}"""
+        self.assertEqual(len(validate_diagram(graph, "graph")["paths"]), 1)
+        with self.assertRaises(VerificationError):
+            validate_diagram(graph.replace('"x":0.4', '"x":1.4'), "graph")
+        bad = graph.replace('{"x":0.4,"y":0.55},{"x":0.6,"y":0.7}',
+                            '{"x":0.2,"y":0.7},{"x":0.2,"y":0.7}')
+        with self.assertRaises(VerificationError):
+            validate_diagram(bad, "graph")
+
     def test_valid_and_invalid_generated_figure(self):
         raw = """{"kind":"triangle","lines":[
             {"x1":0.1,"y1":0.8,"x2":0.8,"y2":0.8},

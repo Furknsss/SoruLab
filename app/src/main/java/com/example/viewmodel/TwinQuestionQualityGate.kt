@@ -122,7 +122,7 @@ internal object TwinQuestionQualityGate {
             "şekilde gösterilen", "yandaki grafik", "yukarıdaki tablo",
             "aşağıdaki görsel", "şekle göre"
         )
-        if (danglingVisualReferences.any { cleanStem.contains(it) }) {
+        if (danglingVisualReferences.any { cleanStem.contains(it) } && draft.diagramJson.isBlank()) {
             return "Yeni soruda gösterilmeyen bir görsele gönderme var."
         }
         return null

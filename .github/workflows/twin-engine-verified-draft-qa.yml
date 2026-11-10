@@ -1,0 +1,59 @@
+name: SoruLab Twin Engine Verified Draft QA
+
+on:
+  push:
+    branches:
+      - feature/twin-diagram-verified-engine-20261111
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/example/viewmodel/Twin*'
+      - 'app/src/main/java/com/example/ui/screens/TwinDiagramCanvas.kt'
+      - 'tools/twin_engine/**'
+      - 'app/build.gradle.kts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  math-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Qwen service verification dependencies
+        run: pip install -r tools/twin_engine/requirements.txt
+      - name: Validate Python service syntax and SymPy tests without a remote model
+        run: |
+          python -m py_compile tools/twin_engine/app.py tools/twin_engine/math_gate.py
+          (cd tools/twin_engine && python -m unittest -v test_math_gate)
+
+  android-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install Android 36.1 SDK
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager "platforms;android-36.1" "build-tools;36.0.0"
+      - name: Compile Android application and exercise the twin regression tests
+        run: >-
+          bash ./gradlew :app:testDebugUnitTest
+          --tests 'com.example.viewmodel.TwinLocalTemplateEngineTest'
+          --tests 'com.example.viewmodel.TwinDiagramSpecTest'
+          --tests 'com.example.viewmodel.TwinRightTriangleTemplateTest'
+          --tests 'com.example.viewmodel.TwinQuestionQualityGateTest'
+          --no-daemon --no-configuration-cache --max-workers=2
+
+# No APK release or auto-merge. Review tests, actual diagrams, and install upgrade separately.

@@ -3,6 +3,8 @@ package com.example.viewmodel
 import com.example.data.YksQuestion
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
 class TwinLocalTemplateEngineTest {
     private val source = YksQuestion(
@@ -44,6 +46,7 @@ class TwinLocalTemplateEngineTest {
     }
 }
 
+@RunWith(RobolectricTestRunner::class)
 class TwinDiagramSpecTest {
     private val triangle = """{"kind":"triangle",
         "lines":[
@@ -101,5 +104,45 @@ class TwinDiagramSpecTest {
             diagramMatchesQuestion = false
         )
         assertNotNull(TwinQuestionQualityGate.checkIndependentAudit(draft, audit))
+    }
+}
+
+
+@RunWith(RobolectricTestRunner::class)
+class TwinRightTriangleTemplateTest {
+    private val source = YksQuestion(
+        id = "verified-345-triangle",
+        number = 1,
+        stemTop = "ABC dik üçgeninde A açısı 90° ve AB=3 cm, AC=4 cm olduğuna göre BC kaç cm'dir?",
+        stemBottom = "",
+        options = mapOf("A" to "3", "B" to "4", "C" to "5", "D" to "6", "E" to "7"),
+        correctOption = "C",
+        stepByStepSolution = "Pisagor bağıntısı: BC=5",
+        topicHeader = "Dik Üçgenler",
+        answerKeyVerified = true,
+        visualType = com.example.data.QuestionVisualType.GEOMETRY_TRIANGLE
+    )
+
+    @Test fun createsNewNativeFigureAndRecomputedUniqueAnswer() {
+        val twin = requireNotNull(TwinRightTriangleTemplate.generate(source))
+        assertNotEquals(source.stemTop, twin.questionStem)
+        assertNull(twin.errorMessage)
+        assertEquals(5, twin.options.values.distinct().size)
+        assertNotNull(TwinDiagramSpec.parse(twin.diagramJson))
+        assertEquals("triangle", TwinDiagramSpec.parse(twin.diagramJson)?.kind)
+        val values = Regex("""AB=(\d+)\s*cm,\s*AC=(\d+)\s*cm""")
+            .find(twin.questionStem) ?: error("Missing twin leg lengths")
+        val a = values.groupValues[1].toInt()
+        val b = values.groupValues[2].toInt()
+        val c = twin.options.getValue(twin.correctOption).toInt()
+        assertEquals(a * a + b * b, c * c)
+    }
+
+    @Test fun rejectsFalseSourceAnswerOrUnknownWording() {
+        assertNull(TwinRightTriangleTemplate.generate(source.copy(correctOption = "B")))
+        assertNull(TwinRightTriangleTemplate.generate(source.copy(answerKeyVerified = false)))
+        assertNull(TwinRightTriangleTemplate.generate(
+            source.copy(stemTop = "Şekildeki üçgende bir açı bilinmiyor.")
+        ))
     }
 }

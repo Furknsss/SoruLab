@@ -97,3 +97,29 @@ No APK should be shipped until Android compilation, rendered figure
 comparisons, actual YKS problem tests and same-signature update tests
 have passed. The test-page changes in another branch must be merged
 separately after conflict review.
+
+## Optional Nano Banana image adapter (OFF by default)
+
+The full integration exists in `nano_banana_provider.py` and the Android
+generated-illustration renderer. It uses Nano Banana 2.1
+(`gemini-nano-banana-2.1`, Google Interactions API), or selected
+Nano Banana Pro/2 models as explicit alternatives. Models must be
+confirmed available in the server account. The `google-genai` SDK is
+packaged in the optional container setup; no image generation is
+called when the toggle is 0.
+
+If the owner chooses to incur independent Gemini API charges, create a
+private `.env` from `.env.example`, set
+`SORULAB_NANO_BANANA_ENABLE=1`, `GEMINI_API_KEY=...` and
+`SORULAB_IMAGE_MODEL=gemini-nano-banana-2.1`, then rebuild.
+**Never publish `.env` or ship the key inside the APK.**
+
+The server generates a NEW illustration from the new question facts, checks
+JPEG dimensions and limits, then sends the pixels to the two blind
+multimodal reviewers. The image cannot be accepted if reviewers disagree.
+The Android app renders the verified illustration separately from
+the original question crop so the five generated options remain selectable.
+This is still not a formal proof of biological/chemical correctness.
+
+Official image API documentation:
+https://ai.google.dev/gemini-api/docs/image-generation

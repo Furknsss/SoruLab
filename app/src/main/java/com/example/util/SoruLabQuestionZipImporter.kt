@@ -34,11 +34,11 @@ data class ImportedSoruLabQuestionPack(
 )
 
 object SoruLabQuestionZipImporter {
-    private const val MAX_ZIP_BYTES = 300L * 1024 * 1024
-    private const val MAX_IMAGE_BYTES = 12L * 1024 * 1024
-    private const val MAX_MANIFEST_BYTES = 7L * 1024 * 1024
-    private const val MAX_TOTAL_IMAGE_BYTES = 420L * 1024 * 1024
-    private const val MAX_QUESTIONS = 6000
+    private const val MAX_ZIP_BYTES = 768L * 1024 * 1024
+    private const val MAX_IMAGE_BYTES = 16L * 1024 * 1024
+    private const val MAX_MANIFEST_BYTES = 32L * 1024 * 1024
+    private const val MAX_TOTAL_IMAGE_BYTES = 1200L * 1024 * 1024
+    private const val MAX_QUESTIONS = 12000
     private val shaSyntax = Regex("^[a-f0-9]{64}$")
     private val bookIdSyntax = Regex("^[A-Za-z0-9_-]{4,100}$")
     private val imagePathSyntax = Regex("^images/[a-zA-Z0-9_-]{1,100}\\.(?:jpg|jpeg|png|webp)$")
@@ -63,7 +63,7 @@ object SoruLabQuestionZipImporter {
                 while (iterator.hasMoreElements()) {
                     val entry = iterator.nextElement()
                     if (entry.isDirectory) continue
-                    require(entries.size <= MAX_QUESTIONS + 1) { "ZIP çok fazla dosya içeriyor." }
+                    require(entries.size <= MAX_QUESTIONS + 2) { "ZIP dosya sınırı aşıldı (en fazla $MAX_QUESTIONS soru ve bir kapak)." }
                     require(entry.name == "manifest.json" ||
                         imagePathSyntax.matches(entry.name) || coverPathSyntax.matches(entry.name)) {
                         "ZIP içinde güvenli olmayan veya tanınmayan dosya adı var."
@@ -97,7 +97,7 @@ object SoruLabQuestionZipImporter {
                     ?: throw IllegalArgumentException("ZIP içinde soru listesi yok.")
                 val count = manifest.optInt("questionCount", -1)
                 require(count in 1..MAX_QUESTIONS && questions.length() == count) {
-                    "ZIP soru sayısı ile manifest uyuşmuyor."
+                    "ZIP soru sayısı ile manifest uyuşmuyor veya tek ZIP için $MAX_QUESTIONS sınırı aşıldı. Büyük kitapları birden fazla ZIP olarak aktar."
                 }
 
                 val paths = linkedMapOf<String, String>()

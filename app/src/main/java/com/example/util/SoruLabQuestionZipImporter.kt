@@ -16,6 +16,7 @@ import java.util.Locale
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import com.example.data.parseExplicitFourTierDifficulty
 
 /**
  * Publisher-independent ZIP import for question images prepared outside Android.
@@ -34,11 +35,11 @@ data class ImportedSoruLabQuestionPack(
 )
 
 object SoruLabQuestionZipImporter {
-    private const val MAX_ZIP_BYTES = 300L * 1024 * 1024
-    private const val MAX_IMAGE_BYTES = 12L * 1024 * 1024
-    private const val MAX_MANIFEST_BYTES = 7L * 1024 * 1024
-    private const val MAX_TOTAL_IMAGE_BYTES = 420L * 1024 * 1024
-    private const val MAX_QUESTIONS = 6000
+    private const val MAX_ZIP_BYTES = 768L * 1024 * 1024
+    private const val MAX_IMAGE_BYTES = 16L * 1024 * 1024
+    private const val MAX_MANIFEST_BYTES = 32L * 1024 * 1024
+    private const val MAX_TOTAL_IMAGE_BYTES = 1200L * 1024 * 1024
+    private const val MAX_QUESTIONS = 12000
     private val shaSyntax = Regex("^[a-f0-9]{64}$")
     private val bookIdSyntax = Regex("^[A-Za-z0-9_-]{4,100}$")
     private val imagePathSyntax = Regex("^images/[a-zA-Z0-9_-]{1,100}\\.(?:jpg|jpeg|png|webp)$")
@@ -63,7 +64,7 @@ object SoruLabQuestionZipImporter {
                 while (iterator.hasMoreElements()) {
                     val entry = iterator.nextElement()
                     if (entry.isDirectory) continue
-                    require(entries.size <= MAX_QUESTIONS + 1) { "ZIP çok fazla dosya içeriyor." }
+                    require(entries.size <= MAX_QUESTIONS + 2) { "ZIP dosya sınırı aşıldı (en fazla $MAX_QUESTIONS soru ve bir kapak)." }
                     require(entry.name == "manifest.json" ||
                         imagePathSyntax.matches(entry.name) || coverPathSyntax.matches(entry.name)) {
                         "ZIP içinde güvenli olmayan veya tanınmayan dosya adı var."
@@ -97,7 +98,7 @@ object SoruLabQuestionZipImporter {
                     ?: throw IllegalArgumentException("ZIP içinde soru listesi yok.")
                 val count = manifest.optInt("questionCount", -1)
                 require(count in 1..MAX_QUESTIONS && questions.length() == count) {
-                    "ZIP soru sayısı ile manifest uyuşmuyor."
+                    "ZIP soru sayısı ile manifest uyuşmuyor veya tek ZIP için $MAX_QUESTIONS sınırı aşıldı. Büyük kitapları birden fazla ZIP olarak aktar."
                 }
 
                 val paths = linkedMapOf<String, String>()
@@ -130,12 +131,27 @@ object SoruLabQuestionZipImporter {
                     require(identities.add(page.toString() + "|" + test + "|" + number)) {
                         "Tekrarlanan kaynak soru kimliği bulundu."
                     }
+                    require(parseExplicitFourTierDifficulty(item.optString("difficulty")) != null) {
+                        "Soru ${i + 1}: Zorluk sadece Kolay, Orta, Zor veya Çok Zor olabilir. ÖSYM tipi için ayrıca osymType: true kullan."
+                    }
                     val answer = item.optString("answer").uppercase(Locale.ROOT)
                     require(answer.isBlank() || answer in setOf("A", "B", "C", "D", "E")) {
                         "Cevap harfi geçersiz."
                     }
                     require(!item.optBoolean("answerVerified", false) || answer.isNotBlank()) {
                         "Doğrulanmış cevabın harfi eksik."
+                    }
+                    if (item.has("osymType")) {
+                        require(item.opt("osymType") is Boolean) {
+                            "ÖSYM tipi etiketi osymType: true/false olmalı."
+                        }
+                    }
+                    if (item.has("tags")) {
+                        val tags = item.optJSONArray("tags")
+                            ?: throw IllegalArgumentException("tags bir metin listesi olmalı.")
+                        require(tags.length() <= 20 && (0 until tags.length()).all {
+                            tags.opt(it) is String && tags.optString(it).length <= 80
+                        }) { "Soru etiketleri biçimi geçersiz." }
                     }
                     val bounds = item.optJSONArray("bounds")
                     if (bounds != null) parseBounds(bounds)
@@ -201,8 +217,10 @@ object SoruLabQuestionZipImporter {
                         topicName = q.optString("topic").ifBlank { "Konu Belirlenemedi" },
                         learningOutcome = q.optString("learningOutcome").trim().take(220),
                         questionType = q.optString("questionType").trim().take(120),
-                        difficulty = q.optString("difficulty", "Orta"),
-                        targetLevel = q.optString("targetLevel", "OSYM"),
+                        difficulty = requireNotNull(parseExplicitFourTierDifficulty(
+                            q.optString("difficulty")
+                        )).label,
+                        targetLevel = q.optString("targetLevel", ""),
                         correctOption = correct,
                         answerKeyMatched = verified,
                         publisherName = publisher,
@@ -217,7 +235,17 @@ object SoruLabQuestionZipImporter {
                         bookId = bookId,
                         pageIndex = q.getInt("pageIndex"),
                         questionNumberInTest = q.getInt("questionNumberInTest"),
-                        sourceTestId = q.getString("sourceTestId")
+                        sourceTestId = q.getString("sourceTestId"),
+                        isOsymType = q.optBoolean("osymType", false) ||
+                            (q.optJSONArray("tags")?.let { tags ->
+                                (0 until tags.length()).any { i ->
+                                    val label = tags.optString(i).trim()
+                                    label.equals("ÖSYM tipi", true) ||
+                                        label.equals("OSYM tipi", true) ||
+                                        label.equals("ÖSYM", true) ||
+                                        label.equals("OSYM", true)
+                                }
+                            } ?: false)
                     ))
                 }
 

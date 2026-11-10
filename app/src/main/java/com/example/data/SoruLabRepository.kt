@@ -973,9 +973,22 @@ class SoruLabRepository(
             val incomingIds = incoming.mapTo(HashSet(incoming.size)) { it.id }
             val durableRecords = if (allowRemovals) incoming else
                 incoming + previous.filterNot { it.id in incomingIds }
-            // A transaction must succeed before the newly imported book is visible.
+            // With hundreds of thousands of questions, DO NOT re-encode and
+            // rewrite every unchanged question when a new ZIP adds 1,000 rows.
+            // Existing libraries first migrate transactionally from old JSON.
             QuestionLibrarySqliteStore(ctx, userId).use { indexed ->
-                indexed.save(durableRecords, replace = allowRemovals)
+                val initialized = indexed.isInitialized()
+                val changed = if (!initialized || allowRemovals) {
+                    durableRecords
+                } else {
+                    val previousById = previous.associateBy { it.id }
+                    durableRecords.filter { record ->
+                        previousById[record.id] != record
+                    }
+                }
+                if (changed.isNotEmpty() || allowRemovals || !initialized) {
+                    indexed.save(changed, replace = allowRemovals)
+                }
                 check(indexed.count() >= durableRecords.map { it.id }.distinct().size) {
                     "SQLite kitaplık doğrulaması başarısız."
                 }
@@ -1091,23 +1104,27 @@ class SoruLabRepository(
     }
 
     fun saveCustomPublishers(publishers: List<YksPublisherInfo>, userId: String? = null) {
-        val ctx = appContext ?: return
-        try {
-            val prefs = ctx.getSharedPreferences("sorulab_generated_tests_prefs", Context.MODE_PRIVATE)
-            val arr = JSONArray()
-            publishers.distinctBy { it.id }.forEach { pub ->
-                val obj = JSONObject()
-                obj.put("id", pub.id)
-                obj.put("name", pub.name)
-                obj.put("shortCode", pub.shortCode)
-                obj.put("primaryColorHex", pub.primaryColorHex)
-                obj.put("secondaryColorHex", pub.secondaryColorHex)
-                obj.put("customLogoPath", pub.customLogoPath)
-                arr.put(obj)
-            }
-            prefs.edit().putString(customPublishersCacheKey(userId), arr.toString()).apply()
-        } catch (_: Exception) {
+        val ctx = appContext
+            ?: throw IllegalStateException("Yayın logosunun yerel depolaması kullanılamıyor.")
+        val arr = JSONArray()
+        publishers.distinctBy { PublisherNameKey.from(it.name) }.forEach { pub ->
+            val obj = JSONObject()
+            obj.put("id", pub.id)
+            obj.put("name", pub.name)
+            obj.put("shortCode", pub.shortCode)
+            obj.put("primaryColorHex", pub.primaryColorHex)
+            obj.put("secondaryColorHex", pub.secondaryColorHex)
+            obj.put("customLogoPath", pub.customLogoPath)
+            arr.put(obj)
         }
+        // apply() can report success before disk write and errors were silently
+        // ignored; never tell the user the logo was saved unless it is durable.
+        val prefs = ctx.getSharedPreferences(
+            "sorulab_generated_tests_prefs", Context.MODE_PRIVATE
+        )
+        check(prefs.edit().putString(
+            customPublishersCacheKey(userId), arr.toString()
+        ).commit()) { "Yayın logosu cihazda kalıcı kaydedilemedi." }
     }
 
     private fun customPublishersCacheKey(userId: String?): String =
@@ -1180,13 +1197,16 @@ class SoruLabRepository(
             val publisherCollection = customPublishersCollection
                 .document(userId)
                 .collection("publishers")
-            publisherCollection.whereEqualTo("name", publisher.name.take(120))
-                .get()
-                .await()
-                .documents
-                .filter { it.id != publisherId }
-                .forEach { it.reference.delete().await() }
+            // Commit the selected new artwork FIRST. An offline/failed upload
+            // must never delete the previously working logo document.
             publisherCollection.document(publisherId).set(payload).await()
+            publisherCollection.get().await().documents
+                .filter { document ->
+                    document.id != publisherId &&
+                        PublisherNameKey.from(document.getString("name").orEmpty()) ==
+                        PublisherNameKey.from(publisher.name)
+                }
+                .forEach { it.reference.delete().await() }
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.CREATE, "users/$userId/publishers/$publisherId")
             throw e

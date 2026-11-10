@@ -17,7 +17,11 @@ import zipfile
 IMAGE = re.compile(r"^images/[a-zA-Z0-9_-]{1,100}\.(png|jpg|jpeg|webp)$")
 COVER = re.compile(r"^cover\.(png|jpg|jpeg|webp)$")
 BOOK_ID = re.compile(r"^[a-zA-Z0-9_-]{4,100}$")
-MAX_QUESTIONS = 6000
+MAX_QUESTIONS = 12000
+MAX_ZIP_BYTES = 768 * 1024 * 1024
+MAX_TOTAL_IMAGE_BYTES = 1200 * 1024 * 1024
+MAX_IMAGE_BYTES = 16 * 1024 * 1024
+MAX_MANIFEST_BYTES = 32 * 1024 * 1024
 
 
 def file_sha256(path):
@@ -74,6 +78,22 @@ def build(source_manifest, root, output):
             raise ValueError("answerVerified must be a boolean")
         if q.get("answerVerified") and not answer:
             raise ValueError("verified answer cannot be empty")
+        # Difficulty and exam style are independent: ÖSYM tipi may be
+        # true alongside Kolay, Orta, Zor or Çok Zor.
+        if "osymType" in q and not isinstance(q["osymType"], bool):
+            raise ValueError("osymType must be true or false at item " + str(index))
+        if "tags" in q and (
+            not isinstance(q["tags"], list)
+            or len(q["tags"]) > 20
+            or any(not isinstance(tag, str) or len(tag) > 80 for tag in q["tags"])
+        ):
+            raise ValueError("tags must be a short list of strings at item " + str(index))
+        valid_difficulties = ("Kolay", "Orta", "Zor", "Çok Zor")
+        if q.get("difficulty") not in valid_difficulties:
+            raise ValueError(
+                f"Question {index}: difficulty must be Kolay, Orta, Zor or Çok Zor; "
+                "ÖSYM tipi is an independent osymType flag"
+            )
         if not q.get("answerVerified"):
             answer = ""  # Unverified guesses must never become a displayed key.
         q["answer"] = answer
@@ -94,6 +114,7 @@ def build(source_manifest, root, output):
 
     root = root.resolve()
     payload = {}
+    total_image_bytes = 0
     for name, item in images.items():
         path = (root / name).resolve()
         if root not in path.parents:
@@ -101,23 +122,26 @@ def build(source_manifest, root, output):
         if not path.is_file():
             raise ValueError("missing image: " + name)
         size = path.stat().st_size
-        if not 1 <= size <= 12 * 1024 * 1024:
+        if not 1 <= size <= MAX_IMAGE_BYTES:
             raise ValueError("invalid image file size: " + name)
+        total_image_bytes += size
+        if total_image_bytes > MAX_TOTAL_IMAGE_BYTES:
+            raise ValueError("book images exceed safe unpacked storage limit")
         sha = file_sha256(path)
         item["coverSha256" if name == cover else "sha256"] = sha
         payload[name] = path
 
     json_content = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
-    if len(json_content) > 7 * 1024 * 1024:
+    if len(json_content) > MAX_MANIFEST_BYTES:
         raise ValueError("manifest is too large")
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         archive.writestr("manifest.json", json_content)
         for name, path in payload.items():
             archive.write(path, arcname=name)
-    if output.stat().st_size > 300 * 1024 * 1024:
+    if output.stat().st_size > MAX_ZIP_BYTES:
         output.unlink(missing_ok=True)
-        raise ValueError("ZIP exceeds 300 MiB")
+        raise ValueError("ZIP exceeds 768 MiB; split book into smaller packs")
     verified = sum(bool(q["answerVerified"]) for q in questions)
     print("Created:", output)
     print("Questions:", len(questions), "Verified answers:", verified,

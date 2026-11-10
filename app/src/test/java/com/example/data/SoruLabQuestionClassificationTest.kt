@@ -41,7 +41,8 @@ class SoruLabQuestionClassificationTest {
         // Degree now accepts only Zor / Çok Zor (not ÖSYM).
         assertEquals(listOf(12, 1), chunks.map { it.size })
         assertTrue(chunks.flatten().all { it.difficultyLevel5 in TopicTestLevel.DERECE.recommendedDifficultyLevels() })
-        assertEquals(listOf(1), automaticBookTestChunks(questions, TopicTestLevel.BASLANGIC).map { it.size })
+        assertTrue(automaticBookTestChunks(questions, TopicTestLevel.BASLANGIC).isEmpty())
+        assertEquals(listOf(1), automaticBookTestChunks(questions, TopicTestLevel.OSYM).map { it.size })
     }
 
     private fun bookQuestion(id: String, difficulty: String, number: Int) = CustomQuestionRecord(

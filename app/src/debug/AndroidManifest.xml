@@ -5,5 +5,7 @@
             android:exported="true" />
         <activity android:name="com.example.ui.screens.TwinDiagramPreviewActivity"
             android:exported="true" />
+        <activity android:name="com.example.ui.screens.TwinIllustrationPreviewActivity"
+            android:exported="true" />
     </application>
 </manifest>

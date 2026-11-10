@@ -58,6 +58,11 @@ class MathGateTests(unittest.TestCase):
           "labels":[{"x":0.9,"y":0.9,"text":"x"}]}"""
         self.assertEqual(len(validate_diagram(graph, "graph")["paths"]), 1)
         with self.assertRaises(VerificationError):
+            validate_diagram(
+                graph.replace('{"x":0.4,"y":0.55}', '"invalid-point"'),
+                "graph"
+            )
+        with self.assertRaises(VerificationError):
             validate_diagram(graph.replace('"x":0.4', '"x":1.4'), "graph")
         bad = graph.replace('{"x":0.4,"y":0.55},{"x":0.6,"y":0.7}',
                             '{"x":0.2,"y":0.7},{"x":0.2,"y":0.7}')

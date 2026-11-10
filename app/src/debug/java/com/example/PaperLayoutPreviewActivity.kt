@@ -29,24 +29,22 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.WHITE
         window.navigationBarColor = Color.BLACK
-        val questions = (1..6).map { index ->
-            val publisher = when (index) {
-                2, 5 -> "Barış"
-                4 -> "ÜçDörtBeş"
+        val questions = (1..12).map { index ->
+            val publisher = when (index % 3) {
+                0 -> "ÜçDörtBeş"
+                2 -> "Barış"
                 else -> "Ergi"
             }
-            val printSize = when (index) {
-                2, 5 -> 52f
-                4 -> 29f
+            val printSize = when (index % 3) {
+                0 -> 29f
+                2 -> 52f
                 else -> 24f
             }
-            val imageHeight = when(index) {
-                1 -> 300
-                2 -> 380
-                3 -> 250
-                4 -> 520
-                5 -> 315
-                else -> 270
+            val imageHeight = when {
+                index % 5 == 4 -> 520
+                index % 4 == 2 -> 380
+                index % 3 == 0 -> 315
+                else -> 260
             }
             YksQuestion(
                 id = "paper_preview_$index",
@@ -125,7 +123,7 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
         baseline += fontSize * 1.5f
         canvas.drawText("P(x) polinomu için", 18f, baseline, medium)
         baseline += fontSize * 1.45f
-        if (index == 4) {
+        if (index % 5 == 4) {
             val shape = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.rgb(48, 76, 116)
                 style = Paint.Style.STROKE

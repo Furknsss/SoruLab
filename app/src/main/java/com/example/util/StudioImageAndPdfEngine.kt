@@ -1377,9 +1377,15 @@ object StudioImageAndPdfEngine {
             if (file.isFile && file.length() in 100L..(256L * 1024L) && preview != null) {
                 val visible = IntArray(preview.width * preview.height)
                 preview.getPixels(visible, 0, preview.width, 0, 0, preview.width, preview.height)
-                val hasArt = visible.any { ((it ushr 24) and 0xff) > 32 }
+                // A few leftover edge pixels do not make a usable logo.
+                // If the central artwork vanished, retain the picked original.
+                val centerAlpha = (preview.getPixel(
+                    preview.width / 2, preview.height / 2
+                ) ushr 24) and 0xff
+                val substantialArt = visible.count { ((it ushr 24) and 0xff) > 90 } >
+                    visible.size / 50
                 preview.recycle()
-                if (hasArt) return processed
+                if (substantialArt && centerAlpha > 32) return processed
             }
             file.delete()
         }
@@ -1399,24 +1405,19 @@ object StudioImageAndPdfEngine {
             BitmapFactory.decodeStream(it, null, options)
         } ?: throw IllegalArgumentException("Seçilen logo görseli okunamadı.")
         try {
+            // Avoid platform-specific Canvas behavior and preserve the original
+            // pixels/alpha. The emblem view itself handles centering and padding.
             val edge = 128
-            val badge = Bitmap.createBitmap(edge, edge, Bitmap.Config.ARGB_8888)
+            val fit = min(edge.toFloat() / original.width, edge.toFloat() / original.height)
+            val width = (original.width * fit).roundToInt().coerceAtLeast(1)
+            val height = (original.height * fit).roundToInt().coerceAtLeast(1)
+            val scaled = Bitmap.createScaledBitmap(original, width, height, true)
             try {
-                badge.eraseColor(Color.TRANSPARENT)
-                val fit = min(edge * 0.92f / original.width, edge * 0.92f / original.height)
-                val width = original.width * fit
-                val height = original.height * fit
-                val left = (edge - width) / 2f
-                val top = (edge - height) / 2f
-                Canvas(badge).drawBitmap(
-                    original, null, RectF(left, top, left + width, top + height),
-                    Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-                )
                 val dir = File(context.filesDir, "publisher_logos")
                 check(dir.isDirectory || dir.mkdirs()) { "Yayın logosu klasörü oluşturulamadı." }
                 val target = File(dir, "logo_original_${java.util.UUID.randomUUID()}.png")
                 FileOutputStream(target).use { stream ->
-                    check(badge.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
+                    check(scaled.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
                         "Logo dosyası oluşturulamadı."
                     }
                 }
@@ -1426,7 +1427,7 @@ object StudioImageAndPdfEngine {
                 }
                 return target.absolutePath
             } finally {
-                badge.recycle()
+                if (scaled !== original) scaled.recycle()
             }
         } finally {
             original.recycle()

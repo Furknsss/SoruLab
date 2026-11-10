@@ -31,6 +31,58 @@ class LiveSolvingBoardScreenTest {
     val compose = createComposeRule()
 
     @Test
+    fun oversizedBookPrintIsDownscaledButSmallPrintIsNotShrunkFurther() {
+        fun sample(fontPx: Float): android.graphics.Bitmap {
+            val bitmap = android.graphics.Bitmap.createBitmap(
+                420, 660, android.graphics.Bitmap.Config.ARGB_8888
+            )
+            val canvas = android.graphics.Canvas(bitmap)
+            canvas.drawColor(android.graphics.Color.WHITE)
+            val paint = android.graphics.Paint().apply {
+                color = android.graphics.Color.BLACK
+            }
+            // Explicit ink bands avoid Robolectric host-specific font
+            // rendering while testing the exact glyph-row algorithm.
+            repeat(8) { index ->
+                val y = 35f + index * 73f
+                canvas.drawRect(35f, y, 120f, y + fontPx, paint)
+                canvas.drawRect(145f, y, 178f, y + fontPx, paint)
+            }
+            return bitmap
+        }
+        val normal = sample(14f)
+        val huge = sample(54f)
+        try {
+            val standardScale = com.example.ui.screens.estimateBookTypographyScale(normal, 340f)
+            val hugeScale = com.example.ui.screens.estimateBookTypographyScale(huge, 340f)
+            org.junit.Assert.assertTrue("Oversized type must shrink more: normal=$standardScale huge=$hugeScale", hugeScale < standardScale)
+            org.junit.Assert.assertTrue("Large Barış-style print needs real reduction",
+                hugeScale < 0.70f)
+            org.junit.Assert.assertTrue("Normal print should remain legible",
+                standardScale >= 0.9f)
+        } finally {
+            normal.recycle()
+            huge.recycle()
+        }
+    }
+
+    @Test
+    fun fullQuestionImageAlwaysFitsItsPaperSlotWithoutHorizontalOrVerticalClipping() {
+        listOf(0.24f, 0.55f, 1f, 2.4f, 6f).forEach { widthOverHeight ->
+            listOf(0.28f, 0.5f, 1f, 1.16f).forEach { printScale ->
+                val availableWidth = 230f
+                val availableHeight = 210f
+                val (width, height) = com.example.ui.screens.fittedBookImageSizeDp(
+                    availableWidth, availableHeight, widthOverHeight, printScale
+                )
+                org.junit.Assert.assertTrue("Image spills horizontally", width <= availableWidth + .001f)
+                org.junit.Assert.assertTrue("Image spills vertically", height <= availableHeight + .001f)
+                org.junit.Assert.assertEquals(widthOverHeight, width / height, .002f)
+            }
+        }
+    }
+
+    @Test
     fun ungradedTestNeverClaimsStudentFailedOrSucceeded() {
         assertEquals("Cevap anahtarı doğrulanmadı", scoreReportHeadline(0, 0))
         assertEquals("Pes etmek yok!", scoreReportHeadline(0, 5))

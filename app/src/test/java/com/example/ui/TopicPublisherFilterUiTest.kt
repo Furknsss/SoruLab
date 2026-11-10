@@ -37,13 +37,8 @@ class TopicPublisherFilterUiTest {
         compose.onNodeWithTag("topic_publisher_option_drbiyoloji").performClick()
         compose.onNodeWithTag("interactive_test_builder_dialog").assertDoesNotExist()
         compose.onNodeWithTag("topic_detail_olustur_button").performClick()
-        compose.onNodeWithTag("automatic_test_preparation_sheet").assertIsDisplayed()
-        compose.waitUntil(8000) {
-            compose.onAllNodesWithTag("start_prepared_test_button")
-                .fetchSemanticsNodes().isNotEmpty()
-        }
-        compose.onNodeWithTag("start_prepared_test_button").performClick()
         compose.waitUntil(8000) { created.get() }
+        compose.onNodeWithTag("start_prepared_test_button").assertDoesNotExist()
         assertEquals("drbiyoloji", choice.get())
     }
 
@@ -52,13 +47,8 @@ class TopicPublisherFilterUiTest {
         val created = AtomicBoolean(false)
         showTopic(choice, created)
         compose.onNodeWithTag("topic_detail_olustur_button").assertIsDisplayed().performClick()
-        compose.onNodeWithTag("automatic_test_preparation_sheet").assertIsDisplayed()
-        compose.waitUntil(8000) {
-            compose.onAllNodesWithTag("start_prepared_test_button")
-                .fetchSemanticsNodes().isNotEmpty()
-        }
-        compose.onNodeWithTag("start_prepared_test_button").performClick()
         compose.waitUntil(8000) { created.get() }
+        compose.onNodeWithTag("start_prepared_test_button").assertDoesNotExist()
         assertNull(choice.get())
         assertFalse(
             compose.onAllNodesWithTag("interactive_test_builder_dialog")

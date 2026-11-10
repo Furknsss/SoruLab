@@ -2522,9 +2522,6 @@ internal fun TopicTestsDetailView(
     var selectedPublisherKey by remember(topic.id) { mutableStateOf<String?>(null) }
     var isCreatingTest by remember(topic.id) { mutableStateOf(false) }
     var creationStage by remember(topic.id) { mutableIntStateOf(0) }
-    var preparedTest by remember(topic.id) { mutableStateOf<YksTestItem?>(null) }
-    var preparationPublisherBreakdown by remember(topic.id) { mutableStateOf("") }
-    var preparationCountsNote by remember(topic.id) { mutableStateOf("") }
     var creationError by remember(topic.id) { mutableStateOf<String?>(null) }
     val createScope = rememberCoroutineScope()
 
@@ -2548,11 +2545,9 @@ internal fun TopicTestsDetailView(
         }
     }
     val createAutomaticTest: () -> Unit = {
-        if (!isCreatingTest && preparedTest == null) {
+        if (!isCreatingTest) {
             isCreatingTest = true
             creationStage = 0
-            preparationPublisherBreakdown = ""
-            preparationCountsNote = ""
             creationError = null
             val requestedLevel = selectedTestLevel
             val requestedPublisherKey = selectedPublisherKey
@@ -2560,6 +2555,7 @@ internal fun TopicTestsDetailView(
                 try {
                     val pool = withContext(Dispatchers.Default) { onCheckPoolAvailability() }
                     creationStage = 1
+                    kotlinx.coroutines.yield()
                     val difficulty = requestedLevel.recommendedDifficultyLevels()
                     val source = if (requestedLevel == TopicTestLevel.IKIZ)
                         QuestionSourceFilter.YANLIS_YAPTIKLARIM
@@ -2570,12 +2566,14 @@ internal fun TopicTestsDetailView(
                         ) ?: pool.availableQuestionCount).coerceIn(0, AUTOMATIC_TEST_QUESTION_COUNT)
                     }
                     creationStage = 2
+                    kotlinx.coroutines.yield()
                     val generated = withContext(Dispatchers.Default) {
                         if (count > 0) pool.onGenerateCustomTest?.invoke(
                             difficulty, source, count, requestedPublisherKey
                         ) else null
                     }
                     creationStage = 3
+                    kotlinx.coroutines.yield()
                     if (generated == null) {
                         val title = pool.availablePublishers
                             .firstOrNull { it.key == requestedPublisherKey }?.title
@@ -2596,22 +2594,13 @@ internal fun TopicTestsDetailView(
                             invalid || selectedQuestions.size > count) {
                             creationError = "Test denetimden geçmedi: konu/seviye, tekrarlı soru veya cevap anahtarı hatası."
                         } else {
-                            val groups = selectedQuestions.groupBy {
-                                com.example.viewmodel.PublisherQuestionMixer.key(it)
-                            }
-                            preparationPublisherBreakdown = groups.entries
-                                .sortedWith(compareByDescending<Map.Entry<String, List<YksQuestion>>> {
-                                    it.value.size
-                                }.thenBy { it.key })
-                                .joinToString(" • ") { (_, items) ->
-                                    "${items.first().publisherName}: ${items.size}"
-                                }
-                            preparationCountsNote =
-                                if (selectedQuestions.size < AUTOMATIC_TEST_QUESTION_COUNT)
-                                    "Bu konu/seviye/yayın filtresinde yalnızca ${selectedQuestions.size} güvenilir soru bulundu. Uydurma soru ya da kolay soru eklenmedi."
-                                else "12 soru seçildi. Tekrarlı sorular ve filtre uyumu denetlendi."
+                            // Real selection and integrity checks are finished.
+                            // Let Compose display the completed checklist, then
+                            // enter the test WITHOUT any extra confirmation.
                             creationStage = 4
-                            preparedTest = generated
+                            kotlinx.coroutines.yield()
+                            delay(320)
+                            onStartTestImmediately(generated)
                         }
                     }
                 } catch (e: CancellationException) {
@@ -3007,19 +2996,14 @@ internal fun TopicTestsDetailView(
             )
         }
 
-        // Real bottom-sheet checklist rather than immediately opening the test.
-        // The final report remains visible, so the student can inspect which
-        // publishers contributed the actual selected questions.
-        if (isCreatingTest || preparedTest != null) {
+        // The preparation sheet reports actual completed validation stages.
+        // When finished, the test opens automatically without "Teste başla".
+        if (isCreatingTest) {
             Box(
                 modifier = Modifier.fillMaxSize().zIndex(100f)
                     .testTag("automatic_test_preparation_sheet")
             ) {
-                Box(
-                    modifier = Modifier.fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.28f))
-                        .clickable(enabled = !isCreatingTest) { preparedTest = null }
-                )
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f)))
                 Surface(
                     modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
                     shape = RoundedCornerShape(topStart = 25.dp, topEnd = 25.dp),
@@ -3035,7 +3019,7 @@ internal fun TopicTestsDetailView(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            if (isCreatingTest) {
+                            if (creationStage < 4) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(24.dp),
                                     strokeWidth = 2.5.dp, color = Color(0xFF2563EB)
@@ -3043,14 +3027,16 @@ internal fun TopicTestsDetailView(
                             } else {
                                 Icon(
                                     Icons.Filled.CheckCircle, contentDescription = null,
-                                    tint = Color(0xFF16A34A), modifier = Modifier.size(24.dp)
+                                    tint = Color(0xFF16A34A),
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
                             Text(
-                                if (isCreatingTest) "Test özenle hazırlanıyor"
-                                else "Test hazır • ${preparedTest?.questions?.size ?: 0} soru",
+                                if (creationStage < 4) "Test özenle hazırlanıyor"
+                                else "Kontroller tamamlandı, test açılıyor",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp, color = Color(0xFF172554)
+                                fontSize = 18.sp,
+                                color = Color(0xFF172554)
                             )
                         }
                         Text(
@@ -3059,28 +3045,29 @@ internal fun TopicTestsDetailView(
                         )
                         val stages = listOf(
                             "Konu ve seviye havuzu kontrol ediliyor",
-                            "Soru sayısı ve cevap anahtarı doğrulanıyor",
-                            "Yayınevleri seçiliyor, tekrarlar ayıklanıyor",
-                            "Son konu ve zorluk denetimi yapılıyor"
+                            "Doğrulanmış cevaplar ve uygun sorular seçiliyor",
+                            "Yayınevleri dengeleniyor, tekrarlar ayıklanıyor",
+                            "Son soru bütünlüğü ve zorluk denetimi yapılıyor"
                         )
                         stages.forEachIndexed { index, stage ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                when {
-                                    creationStage > index -> Icon(
+                                if (creationStage > index) {
+                                    Icon(
                                         Icons.Filled.CheckCircle, contentDescription = null,
                                         tint = Color(0xFF16A34A),
                                         modifier = Modifier.size(18.dp)
                                     )
-                                    isCreatingTest && creationStage == index ->
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(16.dp),
-                                            strokeWidth = 2.dp,
-                                            color = Color(0xFF2563EB)
-                                        )
-                                    else -> Icon(
+                                } else if (creationStage == index) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = Color(0xFF2563EB)
+                                    )
+                                } else {
+                                    Icon(
                                         Icons.Filled.RadioButtonUnchecked,
                                         contentDescription = null,
                                         tint = Color(0xFF94A3B8),
@@ -3089,36 +3076,6 @@ internal fun TopicTestsDetailView(
                                 }
                                 Text(stage, color = Color(0xFF334155), fontSize = 12.5.sp)
                             }
-                        }
-                        if (preparedTest != null) {
-                            HorizontalDivider(color = Color(0xFFE2E8F0))
-                            Text(
-                                preparationCountsNote, color = Color(0xFF334155),
-                                fontSize = 13.sp
-                            )
-                            Text(
-                                preparationPublisherBreakdown,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF2563EB), fontSize = 13.sp,
-                                modifier = Modifier.testTag("prepared_publisher_distribution")
-                            )
-                            Button(
-                                onClick = {
-                                    val test = preparedTest
-                                    preparedTest = null
-                                    if (test != null) onStartTestImmediately(test)
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                                    .testTag("start_prepared_test_button"),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF2563EB)
-                                ),
-                                shape = RoundedCornerShape(14.dp)
-                            ) { Text("Teste başla", fontWeight = FontWeight.Bold) }
-                            TextButton(
-                                onClick = { preparedTest = null },
-                                modifier = Modifier.align(Alignment.CenterHorizontally)
-                            ) { Text("Test listesinde kal") }
                         }
                     }
                 }

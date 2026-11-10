@@ -76,6 +76,13 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(response["options"]["D"], "17")
         self.assertEqual(response["diagramJson"], "")
 
+    def test_reinforcement_variant_reaches_generator_prompt(self):
+        with patch.object(app, "ask", side_effect=[SOURCE, DRAFT, REVIEW]) as llm:
+            result = app.generate_twin(question(variantIndex=2))
+        self.assertEqual(result["correctOption"], "D")
+        self.assertIn("PEKİŞTİRME VARYANTI: 2", llm.call_args_list[1].args[0])
+        self.assertIn("yeni bağlam", llm.call_args_list[1].args[0])
+
     def test_wrong_source_key_rejected_before_any_draft(self):
         with patch.object(app, "ask", side_effect=[SOURCE]) as fake:
             with self.assertRaises(HTTPException) as ctx:

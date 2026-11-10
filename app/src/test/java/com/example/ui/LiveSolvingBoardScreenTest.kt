@@ -201,9 +201,15 @@ class LiveSolvingBoardScreenTest {
                     if (trimmed.getPixel(x, y) == dark) count++
                 }
             }
-            val originalInk = ((520 - 170) * (110 - 70) +
-                (610 - 170) * (345 - 310) +
-                (665 - 170) * (492 - 480))
+            // Robolectric can rasterize Canvas rectangles differently from
+            // hardware. Compare ACTUAL dark source pixels, not nominal areas.
+            var originalInk = 0
+            for (y in 0 until image.height) {
+                for (x in 0 until image.width) {
+                    if (image.getPixel(x, y) == dark) originalInk++
+                }
+            }
+            org.junit.Assert.assertTrue("The test image must contain actual ink", originalInk > 0)
             org.junit.Assert.assertEquals(
                 "Every part of the answer choices must survive", originalInk, count
             )

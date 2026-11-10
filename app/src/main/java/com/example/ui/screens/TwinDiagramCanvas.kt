@@ -42,7 +42,11 @@ internal fun TwinDiagramCanvas(
         val ink = Color(0xFF17223B)
         val widthPx = size.width
         val heightPx = size.height
-        fun point(x: Float, y: Float) = Offset(x * widthPx, y * heightPx)
+        // Preserve lengths/angles regardless of tablet column aspect ratio.
+        val unit = minOf(widthPx, heightPx)
+        val offsetX = (widthPx - unit) / 2f
+        val offsetY = (heightPx - unit) / 2f
+        fun point(x: Float, y: Float) = Offset(offsetX + x * unit, offsetY + y * unit)
         val stroke = 2.dp.toPx()
         diagram.lines.forEach { line ->
             val from = point(line.x1, line.y1)

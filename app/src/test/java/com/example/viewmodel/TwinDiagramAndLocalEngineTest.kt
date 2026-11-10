@@ -30,6 +30,13 @@ class TwinLocalTemplateEngineTest {
         assertTrue(twin.sourceDescription.contains("Cihazda"))
     }
 
+    @Test fun successiveFunctionTwinsChangeTheQuestion() {
+        val stems = (0..3).map { variant ->
+            requireNotNull(TwinLocalTemplateEngine.generate(source, variant)).questionStem
+        }
+        assertEquals(4, stems.distinct().size)
+    }
+
     @Test fun requiresIndependentlyVerifiedSourceOption() {
         assertNull(TwinLocalTemplateEngine.generate(source.copy(answerKeyVerified = false)))
         assertNull(TwinLocalTemplateEngine.generate(source.copy(imageBase64 = "uninspected-figure")))
@@ -183,6 +190,13 @@ class TwinRightTriangleTemplateTest {
         val b = values.groupValues[2].toInt()
         val c = twin.options.getValue(twin.correctOption).toInt()
         assertEquals(a * a + b * b, c * c)
+    }
+
+    @Test fun triangleTwinsRotateThroughDistinctComputedSides() {
+        val stems = (0..3).map { variant ->
+            requireNotNull(TwinRightTriangleTemplate.generate(source, variant)).questionStem
+        }
+        assertEquals(4, stems.distinct().size)
     }
 
     @Test fun rejectsFalseSourceAnswerOrUnknownWording() {

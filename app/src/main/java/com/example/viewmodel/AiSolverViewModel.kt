@@ -86,6 +86,8 @@ data class TwinQuestionModalData(
     val croppedImagePath: String = "",
     val imageBase64: String = "",
     val sourceQuestionId: String = "",
+    /** Validated generated diagram specification, never raw HTML/SVG. */
+    val diagramJson: String = "",
     val sourceDescription: String = "",
     val errorMessage: String? = null
 )

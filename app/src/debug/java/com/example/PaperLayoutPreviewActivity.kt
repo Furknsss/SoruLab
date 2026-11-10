@@ -77,7 +77,10 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
                     subjectId = "ayt_mat",
                     subjectName = "Matematik",
                     topicId = "polinomlar",
-                    topicName = "Polinomlar"
+                    topicName = "Polinomlar",
+                    // Launch the final page separately in the visual-QA run.
+                    currentQuestionIndex = intent.getIntExtra("start_question_index", 0)
+                        .coerceIn(0, questions.lastIndex)
                 )
             }
             MyApplicationTheme {

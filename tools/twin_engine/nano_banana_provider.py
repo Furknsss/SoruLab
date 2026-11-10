@@ -61,7 +61,7 @@ def normalize_illustration(raw_base64: str) -> str:
         if len(encoded) > MAX_OUTPUT_BYTES:
             raise VerificationError("Generated image remains too large")
         return base64.b64encode(encoded).decode("ascii")
-    except (UnidentifiedImageError, OSError, ValueError, OverflowError) as exc:
+    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError, OverflowError) as exc:
         raise VerificationError("Invalid generated science image") from exc
 
 

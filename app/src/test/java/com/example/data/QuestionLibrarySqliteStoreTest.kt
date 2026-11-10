@@ -39,8 +39,10 @@ class QuestionLibrarySqliteStoreTest {
             assertEquals(1500, reopened.count())
             assertEquals(1500, reopened.read()?.size)
             assertNotNull(reopened.read()?.firstOrNull { it.id == "q_1300" })
-            assertEquals(DifficultyLevel.OSYM,
+            assertEquals(DifficultyLevel.ORTA,
                 reopened.read()?.firstOrNull { it.id == "q_1300" }?.difficultyLevel5)
+            assertEquals(true,
+                reopened.read()?.firstOrNull { it.id == "q_1300" }?.isOsymType)
 
             reopened.save(listOf(questions.first()), replace = true)
             assertEquals(1, reopened.count())

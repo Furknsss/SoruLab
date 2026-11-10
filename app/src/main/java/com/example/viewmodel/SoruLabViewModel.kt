@@ -1910,22 +1910,49 @@ class SoruLabViewModel(
     ) {
         if (records.isEmpty()) return
         val level = _selectedTestLevel.value
+        if (level == TopicTestLevel.IKIZ) {
+            showBanner("İkiz testinde yalnızca gerçekten yanlış cevaplanan sorular kullanılır. Konu ekranındaki İkiz seviyesini seç.")
+            return
+        }
         val eligibleRecords = records
-            .filter { it.isEligibleForLevel(level) }
+            .filter { record ->
+                val actualTopic = SoruLabCatalog.resolveTopicFast(record.topicId, record.topicName)
+                actualTopic != null &&
+                    TopicIntegrityPolicy.isSuitable(record, actualTopic) &&
+                    record.answerKeyVerified &&
+                    record.correctOption in setOf("A", "B", "C", "D", "E") &&
+                    record.isEligibleForLevel(level)
+            }
+            .distinctBy { it.id }
             .sortedBy {
                 if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE
             }
         if (eligibleRecords.isEmpty()) {
-            showBanner("Seçili ${level.displayTitle} seviyesine uygun kitap sorusu bulunamadı.")
+            showBanner("Seçili ${level.displayTitle} seviyesinde konu ve cevap anahtarı doğrulanmış soru bulunamadı.")
+            return
+        }
+        // Book imports may contain multiple chapters. Never label a multi-topic
+        // question set with the topic of its first record (old Endocrine vs
+        // Plant Biology contamination). The UI forms chapter-isolated chunks.
+        val distinctChapters = eligibleRecords
+            .map { it.subjectId.lowercase() to it.topicId.lowercase() }.distinct()
+        if (distinctChapters.size != 1) {
+            showBanner("Bu kitapta birden fazla konu var. Test oluşturmak için önce kitap panelinden tek bir konu seç.")
             return
         }
         val firstRecord = eligibleRecords.first()
-        val matchedSubject = SoruLabCatalog.allSubjects.find { it.id == firstRecord.subjectId }
-            ?: SoruLabCatalog.allSubjects.find { it.name.equals(firstRecord.subjectName, ignoreCase = true) }
-            ?: SoruLabCatalog.allSubjects.first()
-        val matchedTopic = matchedSubject.topics.find { it.id == firstRecord.topicId }
-            ?: matchedSubject.topics.find { it.name.equals(firstRecord.topicName, ignoreCase = true) }
-            ?: matchedSubject.topics.first()
+        val matchedSubject = SoruLabCatalog.allSubjects
+            .firstOrNull { it.id.equals(firstRecord.subjectId, true) }
+            ?: run {
+                showBanner("Bu kitabın dersi müfredatla eşleştirilemedi.")
+                return
+            }
+        val matchedTopic = matchedSubject.topics
+            .firstOrNull { it.id.equals(firstRecord.topicId, true) }
+            ?: run {
+                showBanner("Bu kitabın konusu müfredatla eşleştirilemedi.")
+                return
+            }
 
         val effectiveRecords = if (questionsPerTest > 0) {
             val chunks = eligibleRecords.chunked(questionsPerTest)

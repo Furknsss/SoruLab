@@ -45,6 +45,7 @@ class TwinDoubleAngleTemplateTest {
     @Test fun refusesContradictoryOrUncertainOriginal() {
         assertNull(TwinDoubleAngleTemplate.generate(original.copy(correctOption = "A")))
         assertNull(TwinDoubleAngleTemplate.generate(original.copy(answerKeyVerified = false)))
+        assertNull(TwinDoubleAngleTemplate.generate(original.copy(pdfFilePath = "uninspected-book.pdf")))
         assertNull(TwinDoubleAngleTemplate.generate(
             original.copy(stemTop = original.stemTop + " Ayrıca tanα değeri de soruluyor.")
         ))

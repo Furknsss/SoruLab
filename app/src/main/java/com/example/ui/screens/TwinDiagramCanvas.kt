@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.dp
@@ -66,6 +67,17 @@ internal fun TwinDiagramCanvas(
                 drawLine(ink, left, to, strokeWidth = stroke, cap = StrokeCap.Round)
                 drawLine(ink, right, to, strokeWidth = stroke, cap = StrokeCap.Round)
             }
+        }
+        // Bounded connected points support nonlinear graphs (parabola, motion
+        // curves, smooth biological trends) without accepting executable SVG.
+        diagram.curves.forEach { curve ->
+            val path = Path()
+            curve.points.forEachIndexed { index, coord ->
+                val pt = point(coord.first, coord.second)
+                if (index == 0) path.moveTo(pt.x, pt.y)
+                else path.lineTo(pt.x, pt.y)
+            }
+            drawPath(path, color = ink, style = Stroke(width = stroke, cap = StrokeCap.Round))
         }
         diagram.circles.forEach { circle ->
             // Keep a circle circular on a rectangular canvas.

@@ -91,7 +91,8 @@ internal fun mergeCloudQuestionsWithLocalMedia(
                 bookOrTestName = remote.bookOrTestName,
                 bookCoverPath = cached.bookCoverPath.ifBlank { remote.bookCoverPath },
                 isInKumbara = remote.isInKumbara,
-                fiveTierDifficulty = remote.effectiveDifficultyLabel
+                fiveTierDifficulty = remote.effectiveDifficultyLabel,
+                osymType = remote.isOsymType
             )
         )
     }
@@ -961,6 +962,7 @@ class SoruLabViewModel(
                 ),
                 correctOption = verifiedCorrectOption,
                 difficulty = diff,
+                isOsymType = custom.isOsymType,
                 visualType = QuestionVisualType.NONE,
                 stepByStepSolution = custom.cleanSolutionSummary.ifBlank {
                     if (answerKeyVerified) {
@@ -1096,6 +1098,7 @@ class SoruLabViewModel(
                 ),
                 correctOption = verifiedCorrectOption,
                 difficulty = diff,
+                isOsymType = custom.isOsymType,
                 visualType = QuestionVisualType.NONE,
                 stepByStepSolution = custom.cleanSolutionSummary.ifBlank {
                     if (answerKeyVerified) {
@@ -1816,6 +1819,7 @@ class SoruLabViewModel(
                 ),
                 correctOption = verifiedCorrectOption,
                 difficulty = diffLevel,
+                isOsymType = record.isOsymType,
                 visualType = QuestionVisualType.NONE,
                 stepByStepSolution = record.cleanSolutionSummary.ifBlank {
                     if (answerKeyVerified) {
@@ -1935,6 +1939,7 @@ class SoruLabViewModel(
                 ),
                 correctOption = verifiedCorrectOption,
                 difficulty = diffLevel,
+                isOsymType = record.isOsymType,
                 visualType = QuestionVisualType.NONE,
                 stepByStepSolution = record.cleanSolutionSummary.ifBlank {
                     if (answerKeyVerified) {
@@ -2474,7 +2479,9 @@ class SoruLabViewModel(
             questionNumberInBook = questionNumberInBook,
             bookOrTestName = bookOrTestName,
             bookCoverPath = bookCoverPath,
-            fiveTierDifficulty = resolvedDifficulty
+            fiveTierDifficulty = resolvedDifficulty,
+            osymType = resolvedDifficulty.equals("ÖSYM", true) ||
+                resolvedDifficulty.equals("OSYM", true)
         )
 
         val firestoreCompatDiff = when {
@@ -2677,7 +2684,8 @@ class SoruLabViewModel(
                     bookOrTestName = bookOrTestName,
                     bookCoverPath = effectiveCover,
                     fiveTierDifficulty = item.difficulty,
-                    sourceTestId = item.sourceTestId
+                    sourceTestId = item.sourceTestId,
+                    osymType = item.isOsymType
                 )
 
                 val firestoreCompatDiff = when {
@@ -2937,6 +2945,7 @@ class SoruLabViewModel(
                 bookCoverPath = target.bookCoverPath,
                 isInKumbara = true,
                 fiveTierDifficulty = target.effectiveDifficultyLabel,
+                osymType = target.isOsymType,
                 sourceTestId = target.sourceTestId
             )
             val updatedRecord = target.copy(aiSolutionSummary = updatedPacked)

@@ -243,7 +243,11 @@ class AiSolverViewModel : ViewModel() {
             // Local, independently calculated templates never consume an API quota.
             // Unrecognised sources keep the image-aware generation + blind review path.
             val result = TwinLocalTemplateEngine.generate(question)
-                ?: twinGenerationEngine.generate(question, context.applicationContext)
+                ?: if (TwinRemoteService.configured) {
+                    TwinRemoteService.generate(question, context.applicationContext)
+                } else {
+                    twinGenerationEngine.generate(question, context.applicationContext)
+                }
             onResult(result)
         }
     }

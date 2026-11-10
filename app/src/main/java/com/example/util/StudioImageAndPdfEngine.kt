@@ -1149,8 +1149,23 @@ object StudioImageAndPdfEngine {
         badgePixelSize: Int = 128 // 64dp @ 2x retina density (or 64x64 logical)
     ): String {
         return try {
+            // Gallery files may be 8K/50MP; never decode the entire photo
+            // just to generate a tiny publisher badge.
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(logoUri)?.use { input ->
+                BitmapFactory.decodeStream(input, null, bounds)
+            }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return ""
+            var sampleSize = 1
+            while (max(bounds.outWidth, bounds.outHeight) / sampleSize > 1024) {
+                sampleSize *= 2
+            }
+            val decode = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
             val rawBitmap = context.contentResolver.openInputStream(logoUri)?.use { input ->
-                BitmapFactory.decodeStream(input)
+                BitmapFactory.decodeStream(input, null, decode)
             } ?: return ""
 
             // Normalize working size to max 512x512 for fast & accurate flood-fill
@@ -1162,8 +1177,10 @@ object StudioImageAndPdfEngine {
             }
             val workW = (rawBitmap.width * scale).roundToInt().coerceAtLeast(16)
             val workH = (rawBitmap.height * scale).roundToInt().coerceAtLeast(16)
-            val workBmp = Bitmap.createScaledBitmap(rawBitmap, workW, workH, true)
-                .copy(Bitmap.Config.ARGB_8888, true)
+            val scaled = Bitmap.createScaledBitmap(rawBitmap, workW, workH, true)
+            val workBmp = scaled.copy(Bitmap.Config.ARGB_8888, true)
+            if (scaled !== rawBitmap) scaled.recycle()
+            rawBitmap.recycle()
 
             val pixels = IntArray(workW * workH)
             workBmp.getPixels(pixels, 0, workW, 0, 0, workW, workH)

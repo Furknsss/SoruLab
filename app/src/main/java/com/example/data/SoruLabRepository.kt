@@ -973,9 +973,22 @@ class SoruLabRepository(
             val incomingIds = incoming.mapTo(HashSet(incoming.size)) { it.id }
             val durableRecords = if (allowRemovals) incoming else
                 incoming + previous.filterNot { it.id in incomingIds }
-            // A transaction must succeed before the newly imported book is visible.
+            // With hundreds of thousands of questions, DO NOT re-encode and
+            // rewrite every unchanged question when a new ZIP adds 1,000 rows.
+            // Existing libraries first migrate transactionally from old JSON.
             QuestionLibrarySqliteStore(ctx, userId).use { indexed ->
-                indexed.save(durableRecords, replace = allowRemovals)
+                val initialized = indexed.isInitialized()
+                val changed = if (!initialized || allowRemovals) {
+                    durableRecords
+                } else {
+                    val previousById = previous.associateBy { it.id }
+                    durableRecords.filter { record ->
+                        previousById[record.id] != record
+                    }
+                }
+                if (changed.isNotEmpty() || allowRemovals || !initialized) {
+                    indexed.save(changed, replace = allowRemovals)
+                }
                 check(indexed.count() >= durableRecords.map { it.id }.distinct().size) {
                     "SQLite kitaplık doğrulaması başarısız."
                 }

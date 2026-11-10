@@ -26,6 +26,29 @@ class MathGateTests(unittest.TestCase):
                 exact_arithmetic(raw)
         self.assertEqual(exact_arithmetic("3*(4+5)"), Fraction(27, 1))
 
+    def test_table_flowchart_and_timeline_supported(self):
+        table = """{"kind":"table","lines":[
+            {"x1":0.1,"y1":0.1,"x2":0.9,"y2":0.1},
+            {"x1":0.1,"y1":0.5,"x2":0.9,"y2":0.5},
+            {"x1":0.1,"y1":0.9,"x2":0.9,"y2":0.9},
+            {"x1":0.1,"y1":0.1,"x2":0.1,"y2":0.9}],
+            "labels":[
+            {"x":0.3,"y":0.3,"text":"Sıcaklık"},
+            {"x":0.7,"y":0.3,"text":"Hız"},
+            {"x":0.3,"y":0.7,"text":"20"},
+            {"x":0.7,"y":0.7,"text":"5"}]}"""
+        self.assertEqual(validate_diagram(table, "table")["kind"], "table")
+        flow = """{"kind":"flowchart","lines":[
+            {"x1":0.2,"y1":0.2,"x2":0.5,"y2":0.5,"arrow":true},
+            {"x1":0.5,"y1":0.5,"x2":0.8,"y2":0.8}],
+            "labels":[
+            {"x":0.2,"y":0.1,"text":"Başlangıç"},
+            {"x":0.8,"y":0.9,"text":"Sonuç"}]}"""
+        self.assertEqual(validate_diagram(flow, "flowchart")["kind"], "flowchart")
+        self.assertEqual(validate_diagram(flow.replace("flowchart", "timeline"), "timeline")["kind"], "timeline")
+        with self.assertRaises(VerificationError):
+            validate_diagram(flow.replace('"arrow":true', '"arrow":false'), "flowchart")
+
     def test_valid_and_invalid_generated_figure(self):
         raw = """{"kind":"triangle","lines":[
             {"x1":0.1,"y1":0.8,"x2":0.8,"y2":0.8},

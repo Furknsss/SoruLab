@@ -38,12 +38,15 @@ class LiveSolvingBoardScreenTest {
             )
             val canvas = android.graphics.Canvas(bitmap)
             canvas.drawColor(android.graphics.Color.WHITE)
-            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            val paint = android.graphics.Paint().apply {
                 color = android.graphics.Color.BLACK
-                textSize = fontPx
             }
+            // Explicit ink bands avoid Robolectric host-specific font
+            // rendering while testing the exact glyph-row algorithm.
             repeat(8) { index ->
-                canvas.drawText("P(x) = x + 1", 22f, 60f + index * 73f, paint)
+                val y = 35f + index * 73f
+                canvas.drawRect(35f, y, 120f, y + fontPx, paint)
+                canvas.drawRect(145f, y, 178f, y + fontPx, paint)
             }
             return bitmap
         }
@@ -52,7 +55,7 @@ class LiveSolvingBoardScreenTest {
         try {
             val standardScale = com.example.ui.screens.estimateBookTypographyScale(normal, 340f)
             val hugeScale = com.example.ui.screens.estimateBookTypographyScale(huge, 340f)
-            org.junit.Assert.assertTrue("Oversized type must shrink more", hugeScale < standardScale)
+            org.junit.Assert.assertTrue("Oversized type must shrink more: normal=$standardScale huge=$hugeScale", hugeScale < standardScale)
             org.junit.Assert.assertTrue("Large Barış-style print needs real reduction",
                 hugeScale < 0.70f)
             org.junit.Assert.assertTrue("Normal print should remain legible",

@@ -26,7 +26,7 @@ import javax.net.ssl.HttpsURLConnection
 internal object TwinRemoteService {
     val configured: Boolean get() = BuildConfig.TWIN_ENGINE_URL.isNotBlank()
 
-    suspend fun generate(question: YksQuestion, context: Context): TwinQuestionModalData {
+    suspend fun generate(question: YksQuestion, context: Context, variantIndex: Int = 0): TwinQuestionModalData {
         return withContext(Dispatchers.IO) {
             try {
                 val endpoint = BuildConfig.TWIN_ENGINE_URL
@@ -50,6 +50,7 @@ internal object TwinRemoteService {
                 }
                 val payload = JSONObject()
                     .put("questionId", question.id.take(160))
+                    .put("variantIndex", variantIndex.coerceIn(0, 100_000))
                     .put("subject", question.subject.take(120))
                     .put("topic", question.topicHeader.take(200))
                     .put("difficulty", question.difficulty.label.take(100))

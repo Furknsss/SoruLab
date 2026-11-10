@@ -483,6 +483,9 @@ private fun DenemelerTabHost(
             onDismissError = {
                 aiViewModel.clearBatchError()
             },
+            onUpdateLibraryBookPublisher = { questionIds, publisher, onSaved ->
+                mainViewModel.updateLibraryBookPublisher(questionIds, publisher, onSaved)
+            },
             onDeleteLibraryBook = { questionIds -> mainViewModel.deleteLibraryBookQuestions(questionIds) },
             onRestorePreviousQuestions = { mainViewModel.recoverPreviousDeviceQuestions() },
             onClearAllData = { mainViewModel.clearAllUserData() },

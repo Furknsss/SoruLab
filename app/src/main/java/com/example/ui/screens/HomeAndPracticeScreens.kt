@@ -2520,6 +2520,10 @@ internal fun TopicTestsDetailView(
     var publisherOptionsLoading by remember(topic.id, selectedTestLevel) { mutableStateOf(false) }
     var selectedPublisherKey by remember(topic.id) { mutableStateOf<String?>(null) }
     var isCreatingTest by remember(topic.id) { mutableStateOf(false) }
+    var creationStage by remember(topic.id) { mutableIntStateOf(0) }
+    var preparedTest by remember(topic.id) { mutableStateOf<YksTestItem?>(null) }
+    var preparationPublisherBreakdown by remember(topic.id) { mutableStateOf("") }
+    var preparationCountsNote by remember(topic.id) { mutableStateOf("") }
     var creationError by remember(topic.id) { mutableStateOf<String?>(null) }
     val createScope = rememberCoroutineScope()
 
@@ -2543,38 +2547,76 @@ internal fun TopicTestsDetailView(
         }
     }
     val createAutomaticTest: () -> Unit = {
-        if (!isCreatingTest) {
+        if (!isCreatingTest && preparedTest == null) {
             isCreatingTest = true
+            creationStage = 0
+            preparationPublisherBreakdown = ""
+            preparationCountsNote = ""
             creationError = null
+            val requestedLevel = selectedTestLevel
+            val requestedPublisherKey = selectedPublisherKey
             createScope.launch {
                 try {
-                    val (test, reason) = withContext(Dispatchers.Default) {
-                        val pool = onCheckPoolAvailability()
-                        val difficulty = selectedTestLevel.recommendedDifficultyLevels()
-                        val source = if (selectedTestLevel == TopicTestLevel.IKIZ)
-                            QuestionSourceFilter.YANLIS_YAPTIKLARIM
-                            else QuestionSourceFilter.TUM_SORULAR
-                        val count = (pool.questionCountForSelection?.invoke(
-                            difficulty, source, selectedPublisherKey
-                        ) ?: pool.availableQuestionCount)
-                            .coerceIn(0, AUTOMATIC_TEST_QUESTION_COUNT)
-                        val generated = if (count > 0) pool.onGenerateCustomTest?.invoke(
-                            difficulty, source, count, selectedPublisherKey
-                        ) else null
-                        generated to pool.reasonMessage
+                    val pool = withContext(Dispatchers.Default) { onCheckPoolAvailability() }
+                    creationStage = 1
+                    val difficulty = requestedLevel.recommendedDifficultyLevels()
+                    val source = if (requestedLevel == TopicTestLevel.IKIZ)
+                        QuestionSourceFilter.YANLIS_YAPTIKLARIM
+                    else QuestionSourceFilter.TUM_SORULAR
+                    val count = withContext(Dispatchers.Default) {
+                        (pool.questionCountForSelection?.invoke(
+                            difficulty, source, requestedPublisherKey
+                        ) ?: pool.availableQuestionCount).coerceIn(0, AUTOMATIC_TEST_QUESTION_COUNT)
                     }
-                    if (test != null) {
-                        onStartTestImmediately(test)
+                    creationStage = 2
+                    val generated = withContext(Dispatchers.Default) {
+                        if (count > 0) pool.onGenerateCustomTest?.invoke(
+                            difficulty, source, count, requestedPublisherKey
+                        ) else null
+                    }
+                    creationStage = 3
+                    if (generated == null) {
+                        val title = pool.availablePublishers
+                            .firstOrNull { it.key == requestedPublisherKey }?.title
+                        creationError = if (requestedPublisherKey != null)
+                            "${title ?: "Seçili yayın"} için uygun doğrulanmış soru bulunamadı; filtreyi ya da seviyeyi değiştirebilirsin."
+                        else pool.reasonMessage
                     } else {
-                        val publisherTitle = publisherOptions.firstOrNull { it.key == selectedPublisherKey }?.title
-                        creationError = if (selectedPublisherKey != null)
-                            "${publisherTitle ?: "Seçili yayın"} için bu konuda doğrulanmış, kullanılabilir soru bulunamadı. Başka seviye veya Akıllı karışım seçebilirsin."
-                        else reason
+                        val selectedQuestions = generated.questions
+                        val ids = selectedQuestions.map(com.example.viewmodel.LevelQuestionPolicy::stableId)
+                        val invalid = selectedQuestions.any { q ->
+                            !q.answerKeyVerified ||
+                                q.correctOption !in setOf("A", "B", "C", "D", "E") ||
+                                !q.isEligibleForLevel(requestedLevel) ||
+                                (requestedPublisherKey != null &&
+                                    com.example.viewmodel.PublisherQuestionMixer.key(q) != requestedPublisherKey)
+                        }
+                        if (selectedQuestions.isEmpty() || ids.size != ids.distinct().size ||
+                            invalid || selectedQuestions.size > count) {
+                            creationError = "Test denetimden geçmedi: konu/seviye, tekrarlı soru veya cevap anahtarı hatası."
+                        } else {
+                            val groups = selectedQuestions.groupBy {
+                                com.example.viewmodel.PublisherQuestionMixer.key(it)
+                            }
+                            preparationPublisherBreakdown = groups.entries
+                                .sortedWith(compareByDescending<Map.Entry<String, List<YksQuestion>>> {
+                                    it.value.size
+                                }.thenBy { it.key })
+                                .joinToString(" • ") { (_, items) ->
+                                    "${items.first().publisherName}: ${items.size}"
+                                }
+                            preparationCountsNote =
+                                if (selectedQuestions.size < AUTOMATIC_TEST_QUESTION_COUNT)
+                                    "Bu konu/seviye/yayın filtresinde yalnızca ${selectedQuestions.size} güvenilir soru bulundu. Uydurma soru ya da kolay soru eklenmedi."
+                                else "12 soru seçildi. Tekrarlı sorular ve filtre uyumu denetlendi."
+                            creationStage = 4
+                            preparedTest = generated
+                        }
                     }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    creationError = e.message ?: "Test oluşturulamadı; kitaplık ve soru etiketlerini kontrol et."
+                    creationError = e.message ?: "Test oluşturulamadı; soru kayıtlarını kontrol et."
                 } finally {
                     isCreatingTest = false
                 }

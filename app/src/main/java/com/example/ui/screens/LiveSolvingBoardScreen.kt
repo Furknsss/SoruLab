@@ -137,7 +137,9 @@ private fun estimatedBookQuestionUnits(
 ): Float {
     val normalizedWidth = (question.normRight - question.normLeft).coerceAtLeast(0.08f)
     val normalizedHeight = (question.normBottom - question.normTop).coerceAtLeast(0.04f)
-    val imageWidthDp = (columnWidthDp - 108f).coerceAtLeast(100f)
+    // Match the ACTUAL drawing width: 42dp publisher/number gutter + 4dp gap.
+    // The old 108dp deduction underestimated tall book crops by up to 50%.
+    val imageWidthDp = (columnWidthDp - 46f).coerceAtLeast(90f)
     val isImage = question.imagePath.isNotBlank() ||
         question.imageBase64.isNotBlank() || question.pdfFilePath.isNotBlank()
     val contentHeightDp = if (isImage) {
@@ -152,7 +154,7 @@ private fun estimatedBookQuestionUnits(
             if (question.visualType != QuestionVisualType.NONE) 155f else 0f)
     }
     // Logo/number gutter, optional controls and whitespace need room too.
-    return (contentHeightDp + 54f).coerceAtLeast(132f) / columnWidthDp.coerceAtLeast(120f)
+    return (contentHeightDp + 54f).coerceAtLeast(116f) / columnWidthDp.coerceAtLeast(120f)
 }
 
 /**
@@ -168,25 +170,68 @@ internal fun packQuestionsIntoTwoColumnPages(
     actualImageRatios: Map<String, Float> = emptyMap()
 ): List<TwoColumnQuestionPage> {
     if (questions.isEmpty()) return listOf(TwoColumnQuestionPage(emptyList(), emptyList()))
+
+    // One physical height model for packing AND rendering. No forced "two
+    // questions per column" rule: long Dr. Biyoloji diagrams must keep their
+    // labels, while short Barış equations may share a column.
+    val width = columnWidthDp.coerceAtLeast(120f)
+    val capacity = columnCapacity.coerceAtLeast(0.5f)
+    val columnLimit = maxQuestionsPerColumn.coerceIn(1, 8)
+    val questionUnits = FloatArray(questions.size) { index ->
+        estimatedBookQuestionUnits(questions[index], width, actualImageRatios)
+    }
+    val gap = 8f / width
     val pages = mutableListOf<TwoColumnQuestionPage>()
-    var index = 0
-    while (index < questions.size) {
-        val columns = listOf(mutableListOf<YksQuestion>(), mutableListOf<YksQuestion>())
-        for (column in columns) {
-            var occupiedUnits = 0f
-            while (index < questions.size && column.size < maxQuestionsPerColumn.coerceIn(1, 8)) {
-                val question = questions[index]
-                val heightUnits = estimatedBookQuestionUnits(question, columnWidthDp, actualImageRatios)
-                val gapUnits = if (column.isEmpty()) 0f else 20f / columnWidthDp
-                if (column.isNotEmpty() &&
-                    occupiedUnits + gapUnits + heightUnits > columnCapacity
-                ) break
-                column.add(question)
-                occupiedUnits += gapUnits + heightUnits
-                index++
+    var start = 0
+
+    while (start < questions.size) {
+        var bestLeftCount = 1
+        var bestRightCount = 0
+        var bestTotal = 0
+        var bestImbalance = Float.POSITIVE_INFINITY
+        var leftUnits = 0f
+
+        // Fill the maximum number of complete questions on each paper page.
+        // Among equally full choices, move the column divider to make both
+        // sides similar in height without changing the original question order.
+        for (leftCount in 1..minOf(columnLimit, questions.size - start)) {
+            leftUnits += questionUnits[start + leftCount - 1] +
+                if (leftCount == 1) 0f else gap
+            if (leftCount > 1 && leftUnits > capacity) break
+
+            var rightUnits = 0f
+            for (rightCount in 0..minOf(columnLimit, questions.size - start - leftCount)) {
+                if (rightCount > 0) {
+                    rightUnits += questionUnits[start + leftCount + rightCount - 1] +
+                        if (rightCount == 1) 0f else gap
+                    if (rightCount > 1 && rightUnits > capacity) break
+                    if (rightCount == 1 && rightUnits > capacity) {
+                        // A single oversized graphic still owns a complete
+                        // column. The image will be fitted, never cropped.
+                    }
+                }
+                val total = leftCount + rightCount
+                val imbalance = if (rightCount == 0 && total > 1) capacity
+                    else if (rightCount == 0) 0f
+                    else kotlin.math.abs(
+                        leftUnits.coerceAtMost(capacity) - rightUnits.coerceAtMost(capacity)
+                    )
+                if (total > bestTotal ||
+                    (total == bestTotal && imbalance < bestImbalance - 0.0001f)
+                ) {
+                    bestLeftCount = leftCount
+                    bestRightCount = rightCount
+                    bestTotal = total
+                    bestImbalance = imbalance
+                }
             }
         }
-        pages.add(TwoColumnQuestionPage(columns[0], columns[1]))
+        val next = start + bestLeftCount
+        pages += TwoColumnQuestionPage(
+            left = questions.subList(start, next),
+            right = questions.subList(next, next + bestRightCount)
+        )
+        start = next + bestRightCount
     }
     return pages
 }
@@ -237,7 +282,7 @@ fun LiveSolvingBoardScreen(
     val sheetHeightDp = if (bookAreaSize.height > 0) bookAreaSize.height / density
         else (configuration.screenHeightDp - 130f).coerceAtLeast(300f)
     // Reserve only real paper gutters; the old 100dp deduction made columns narrow.
-    val columnWidth = ((sheetWidthDp - 56f) / 2f).coerceAtLeast(145f)
+    val columnWidth = ((sheetWidthDp - 38f) / 2f).coerceAtLeast(145f)
     val columnCapacity = ((sheetHeightDp - 32f) / columnWidth).coerceAtLeast(0.5f)
     val actualImageRatios by produceState<Map<String, Float>>(
         initialValue = emptyMap(),
@@ -251,7 +296,7 @@ fun LiveSolvingBoardScreen(
     }
     val packedBookPages = remember(questions, columnCapacity, columnWidth, actualImageRatios) {
         packQuestionsIntoTwoColumnPages(
-            questions, columnCapacity, 3, columnWidth, actualImageRatios
+            questions, columnCapacity, 4, columnWidth, actualImageRatios
         )
     }
     val totalBookPages = packedBookPages.size.coerceAtLeast(1)
@@ -866,6 +911,7 @@ fun LiveSolvingBoardScreen(
                             RealTwoColumnBookPageSurface(
                                 session = session,
                                 pageQuestions = pageQuestions,
+                                actualImageRatios = actualImageRatios,
                                 currentBookPageIndex = pageIdx,
                                 totalBookPages = totalBookPages,
                                 customPublishers = customPublishers,
@@ -1651,6 +1697,7 @@ private fun BookPageTopBar345(
 private fun RealTwoColumnBookPageSurface(
     session: ActiveSolvingSession,
     pageQuestions: TwoColumnQuestionPage,
+    actualImageRatios: Map<String, Float>,
     currentBookPageIndex: Int,
     totalBookPages: Int,
     customPublishers: List<YksPublisherInfo>,
@@ -1673,6 +1720,7 @@ private fun RealTwoColumnBookPageSurface(
             .fillMaxSize()
             .background(Color.White)
     ) {
+        val actualColumnWidthDp = ((maxWidth.value - 38f) / 2f).coerceAtLeast(145f)
         // Dışarı tıklandığında açık olan `⋮` Popover menüsünü kapatan şeffaf arka plan katmanı
         if (openThreeDotQuestionNumber != null) {
             Box(
@@ -1717,7 +1765,7 @@ private fun RealTwoColumnBookPageSurface(
                     leftColumnQuestions.forEachIndexed { idx, q ->
                         BoxWithConstraints(
                             modifier = Modifier.weight(
-                                estimatedBookQuestionUnits(q, 340f, emptyMap())
+                                estimatedBookQuestionUnits(q, actualColumnWidthDp, actualImageRatios)
                                     .coerceAtLeast(0.3f), fill = true
                             ).fillMaxWidth(),
                             contentAlignment = Alignment.TopStart
@@ -1725,7 +1773,7 @@ private fun RealTwoColumnBookPageSurface(
                         BookPageQuestionItem345(
                             question = q,
                             // A tall image receives more height than a short one.
-                            maxImageHeight = (maxHeight - 58.dp).coerceAtLeast(110.dp),
+                            maxImageHeight = (maxHeight - 58.dp).coerceAtLeast(8.dp),
                             isReviewMode = session.isReviewMode,
                             selectedOption = session.selectedAnswers[q.number],
                             isThreeDotMenuOpen = openThreeDotQuestionNumber == q.number,
@@ -1765,14 +1813,14 @@ private fun RealTwoColumnBookPageSurface(
                         rightColumnQuestions.forEachIndexed { idx, q ->
                             BoxWithConstraints(
                                 modifier = Modifier.weight(
-                                    estimatedBookQuestionUnits(q, 340f, emptyMap()).coerceAtLeast(0.3f),
+                                    estimatedBookQuestionUnits(q, actualColumnWidthDp, actualImageRatios).coerceAtLeast(0.3f),
                                     fill = true
                                 ).fillMaxWidth(),
                                 contentAlignment = Alignment.TopStart
                             ) {
                             BookPageQuestionItem345(
                                 question = q,
-                                maxImageHeight = (maxHeight - 58.dp).coerceAtLeast(110.dp),
+                                maxImageHeight = (maxHeight - 58.dp).coerceAtLeast(8.dp),
                                 isReviewMode = session.isReviewMode,
                                 selectedOption = session.selectedAnswers[q.number],
                                 isThreeDotMenuOpen = openThreeDotQuestionNumber == q.number,

@@ -16,6 +16,7 @@ import java.util.Locale
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import com.example.data.fourTier
 
 /**
  * Publisher-independent ZIP import for question images prepared outside Android.
@@ -137,6 +138,11 @@ object SoruLabQuestionZipImporter {
                     require(!item.optBoolean("answerVerified", false) || answer.isNotBlank()) {
                         "Doğrulanmış cevabın harfi eksik."
                     }
+                    if (item.has("osymType")) {
+                        require(item.opt("osymType") is Boolean) {
+                            "ÖSYM tipi etiketi osymType: true/false olmalı."
+                        }
+                    }
                     val bounds = item.optJSONArray("bounds")
                     if (bounds != null) parseBounds(bounds)
                     val itemExam = item.optString("examType", exam).uppercase(Locale.ROOT)
@@ -201,8 +207,10 @@ object SoruLabQuestionZipImporter {
                         topicName = q.optString("topic").ifBlank { "Konu Belirlenemedi" },
                         learningOutcome = q.optString("learningOutcome").trim().take(220),
                         questionType = q.optString("questionType").trim().take(120),
-                        difficulty = q.optString("difficulty", "Orta"),
-                        targetLevel = q.optString("targetLevel", "OSYM"),
+                        difficulty = com.example.data.DifficultyLevel.fromLabel(
+                            q.optString("difficulty", "Orta")
+                        ).fourTier().label,
+                        targetLevel = q.optString("targetLevel", ""),
                         correctOption = correct,
                         answerKeyMatched = verified,
                         publisherName = publisher,
@@ -217,7 +225,12 @@ object SoruLabQuestionZipImporter {
                         bookId = bookId,
                         pageIndex = q.getInt("pageIndex"),
                         questionNumberInTest = q.getInt("questionNumberInTest"),
-                        sourceTestId = q.getString("sourceTestId")
+                        sourceTestId = q.getString("sourceTestId"),
+                        isOsymType = q.optBoolean("osymType", false) ||
+                            q.optString("targetLevel").equals("OSYM", true) ||
+                            q.optString("difficulty").equals("ÖSYM", true) ||
+                            q.optString("difficulty").equals("OSYM", true) ||
+                            q.optString("sourceTestId").contains("~osym~", true)
                     ))
                 }
 

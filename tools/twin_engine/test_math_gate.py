@@ -1,0 +1,46 @@
+import unittest
+from fractions import Fraction
+
+from math_gate import (
+    VerificationError, exact_arithmetic, verify_numeric_choices, validate_diagram
+)
+
+
+class MathGateTests(unittest.TestCase):
+    def test_exact_fraction_and_sympy_check(self):
+        values = dict(A="2/3", B="7/25", C="119/169", D="8/25", E="1/2")
+        self.assertEqual(
+            verify_numeric_choices(values, "B", "1-2*(3/5)**2"), Fraction(7, 25)
+        )
+
+    def test_wrong_answer_or_duplicate_choices_fail(self):
+        values = dict(A="2", B="3", C="4", D="5", E="6")
+        with self.assertRaises(VerificationError):
+            verify_numeric_choices(values, "B", "2+2")
+        with self.assertRaises(VerificationError):
+            verify_numeric_choices(dict(A="2", B="3", C="4", D="5", E="4"), "C", "2+2")
+
+    def test_injection_and_expensive_exponents_fail(self):
+        for raw in ("__import__('os').system('echo pwned')", "1**10000000", "open('/etc/passwd')", "x+2"):
+            with self.assertRaises(VerificationError):
+                exact_arithmetic(raw)
+        self.assertEqual(exact_arithmetic("3*(4+5)"), Fraction(27, 1))
+
+    def test_valid_and_invalid_generated_figure(self):
+        raw = """{"kind":"triangle","lines":[
+            {"x1":0.1,"y1":0.8,"x2":0.8,"y2":0.8},
+            {"x1":0.8,"y1":0.8,"x2":0.1,"y2":0.1},
+            {"x1":0.1,"y1":0.1,"x2":0.1,"y2":0.8}
+        ],"labels":[{"x":0.1,"y":0.9,"text":"A"}]}"""
+        self.assertEqual(validate_diagram(raw, "triangle")["kind"], "triangle")
+        with self.assertRaises(VerificationError):
+            validate_diagram(raw, "vectors")
+        with self.assertRaises(VerificationError):
+            validate_diagram(raw.replace('"x2":0.8', '"x2":2.8'), "triangle")
+        with self.assertRaises(VerificationError):
+            validate_diagram("", "triangle")
+        self.assertIsNone(validate_diagram("", "none"))
+
+
+if __name__ == "__main__":
+    unittest.main()

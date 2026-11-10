@@ -292,7 +292,21 @@ data class CustomQuestionRecord(
     @delegate:Transient
     @get:Exclude
     val difficultyLevel5: DifficultyLevel by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        DifficultyLevel.fromLabel(effectiveDifficultyLabel)
+        // Existing 'ÖSYM' pseudo-difficulties are migrated logically to Orta;
+        // style is recorded independently and no original record is rewritten.
+        DifficultyLevel.fromLabel(effectiveDifficultyLabel).fourTier()
+    }
+
+    @delegate:Transient
+    @get:Exclude
+    val isOsymType: Boolean by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        parsedMetaMap["osym"] == "1" ||
+            effectiveDifficultyLabel.trim().lowercase(java.util.Locale.ROOT).let {
+                it == "ösym" || it == "osym" || it == "ösym tipi" || it == "osym tipi"
+            } ||
+            sourceTestId.contains("~osym~", ignoreCase = true)
+        // A historical 'level=OSYM' alone is intentionally NOT accepted:
+        // older ZIP importers stamped it by default on every question.
     }
 
     @delegate:Transient
@@ -323,7 +337,8 @@ data class CustomQuestionRecord(
             bookCoverPath: String = "",
             isInKumbara: Boolean = false,
             fiveTierDifficulty: String = "",
-            sourceTestId: String = ""
+            sourceTestId: String = "",
+            osymType: Boolean = false
         ): String {
             val cleanSol = if (solutionText.startsWith("[META:")) {
                 solutionText.substringAfter("]").trimStart()
@@ -333,6 +348,7 @@ data class CustomQuestionRecord(
             val metaParts = buildList {
                 if (targetLevel.isNotBlank()) add("level=${targetLevel.replace("|", "").replace("]", "")}")
                 if (fiveTierDifficulty.isNotBlank()) add("diff5=${fiveTierDifficulty.replace("|", "").replace("]", "")}")
+                if (osymType) add("osym=1")
                 if (croppedImagePath.isNotBlank()) add("img=${croppedImagePath.replace("|", "").replace("]", "")}")
                 if (publisherLogoUri.isNotBlank()) add("logo=${publisherLogoUri.replace("|", "").replace("]", "")}")
                 if (bookOrTestName.isNotBlank()) add("book=${bookOrTestName.replace("|", "").replace("]", "")}")
@@ -396,17 +412,14 @@ data class TopicProgressSummary(
 }
 
 /**
- * 5-Tier Difficulty System:
- * 1) Kolay (Temel işlem ve tanım soruları)
- * 2) Orta (Standart kazanım soruları)
- * 3) ÖSYM (Hikayeli, yorum ve grafik ağırlıklı sınav tarzı sorular)
- * 4) Zor (İleri seviye, birden fazla kazanımı birleştiren sorular)
- * 5) Çok Zor ("Tümevarım / Barışça / Orijinal / Derece" tarzı en üst seviye sorular)
+ * Four independent difficulty levels: Kolay, Orta, Zor, Çok Zor.
+ * ÖSYM tipi is a separate question-style tag, never a fifth difficulty.
+ * The OSYM enum entry is retained only to READ old stored snapshots.
  */
 enum class DifficultyLevel(val label: String, val weight: Float, val colorHex: Long, val starsCount: Int) {
     KOLAY("Kolay", 0.12f, 0xFF16A34A, 1),
     ORTA("Orta", 0.34f, 0xFF2563EB, 2),
-    OSYM("ÖSYM", 0.54f, 0xFFD97706, 3),
+    OSYM("ÖSYM (eski kayıt)", 0.54f, 0xFFD97706, 3),
     ZOR("Zor", 0.76f, 0xFFEA580C, 4),
     COK_ZOR("Çok Zor", 0.92f, 0xFFDC2626, 5);
 
@@ -431,7 +444,7 @@ enum class DifficultyLevel(val label: String, val weight: Float, val colorHex: L
                 normalized.contains("ösym") ||
                     normalized.contains("osym") ||
                     normalized.contains("birebir") ||
-                    normalized.contains("sınav tarzı") -> OSYM
+                    normalized.contains("sınav tarzı") -> ORTA
                 normalized.contains("zor") -> ZOR
                 normalized.contains("kolay") ||
                     normalized.contains("başlangıç") ||
@@ -442,6 +455,15 @@ enum class DifficultyLevel(val label: String, val weight: Float, val colorHex: L
         }
     }
 }
+
+/** The only difficulty bands used to classify and balance new tests. */
+val QUESTION_DIFFICULTY_BANDS: List<DifficultyLevel> = listOf(
+    DifficultyLevel.KOLAY, DifficultyLevel.ORTA,
+    DifficultyLevel.ZOR, DifficultyLevel.COK_ZOR
+)
+
+fun DifficultyLevel.fourTier(): DifficultyLevel =
+    if (this == DifficultyLevel.OSYM) DifficultyLevel.ORTA else this
 
 enum class TopicTestLevel(
     val wheelLabel: String,
@@ -455,13 +477,13 @@ enum class TopicTestLevel(
 ) {
     SEVIYE_TESPIT(
         "SEVİYE TESPİT", "Seviye Tespit", "Seviye Tespit",
-        0xFF2563EB, 0xFFFFFFFF, 0.5f, DifficultyLevel.OSYM,
-        "Bu konuda Kolay, Orta, ÖSYM, Zor ve Çok Zor etiketlerinden dengeli karma test"
+        0xFF2563EB, 0xFFFFFFFF, 0.5f, DifficultyLevel.ORTA,
+        "Kolay, Orta, Zor ve Çok Zor sorulardan dengeli karışım; ÖSYM tipi ayrı etikettir"
     ),
     BASLANGIC(
         "BAŞLANGIÇ", "Başlangıç", "Başlangıç",
         0xFF16A34A, 0xFFFFFFFF, 0.15f, DifficultyLevel.KOLAY,
-        "Ağırlık Kolay; uygun olduğunda yalnızca 1-2 Orta soru"
+        "Yalnızca Kolay zorluk etiketli sorular"
     ),
     IKIZ(
         "İKİZ", "İkiz • Yanlışlarım", "İkiz",
@@ -475,13 +497,13 @@ enum class TopicTestLevel(
     ),
     OSYM(
         "ÖSYM", "ÖSYM", "ÖSYM",
-        0xFF6366F1, 0xFFFFFFFF, 0.56f, DifficultyLevel.OSYM,
-        "Sadece ÖSYM etiketli sorular"
+        0xFF6366F1, 0xFFFFFFFF, 0.56f, DifficultyLevel.ORTA,
+        "Zorluğu ne olursa olsun yalnızca ÖSYM tipi işaretli sorular"
     ),
     DERECE(
         "DERECE", "Derece", "Derece",
         0xFFDB2777, 0xFFFFFFFF, 0.88f, DifficultyLevel.ZOR,
-        "Ağırlık Zor; uygun olduğunda 1-2 Çok Zor soru"
+        "Yalnızca Zor ve Çok Zor etiketli sorular"
     );
 
     companion object {
@@ -492,12 +514,30 @@ enum class TopicTestLevel(
 }
 
 fun TopicTestLevel.recommendedDifficultyLevels(): Set<DifficultyLevel> = when (this) {
-    TopicTestLevel.SEVIYE_TESPIT, TopicTestLevel.IKIZ -> DifficultyLevel.entries.toSet()
-    TopicTestLevel.BASLANGIC -> setOf(DifficultyLevel.KOLAY, DifficultyLevel.ORTA)
+    TopicTestLevel.SEVIYE_TESPIT, TopicTestLevel.IKIZ, TopicTestLevel.OSYM ->
+        QUESTION_DIFFICULTY_BANDS.toSet()
+    TopicTestLevel.BASLANGIC -> setOf(DifficultyLevel.KOLAY)
     TopicTestLevel.PEKISTIRME -> setOf(DifficultyLevel.KOLAY, DifficultyLevel.ORTA, DifficultyLevel.ZOR)
-    TopicTestLevel.OSYM -> setOf(DifficultyLevel.OSYM)
     TopicTestLevel.DERECE -> setOf(DifficultyLevel.ZOR, DifficultyLevel.COK_ZOR)
 }
+
+/**
+ * One canonical level gate shared by automatic tests, book reader and counters.
+ * A printed ÖSYM type is orthogonal to its 4-tier difficulty.
+ */
+fun CustomQuestionRecord.isEligibleForLevel(level: TopicTestLevel): Boolean =
+    when (level) {
+        TopicTestLevel.IKIZ -> true // The caller additionally limits to previously wrong answers.
+        TopicTestLevel.OSYM -> isOsymType
+        else -> difficultyLevel5 in level.recommendedDifficultyLevels()
+    }
+
+fun YksQuestion.isEligibleForLevel(level: TopicTestLevel): Boolean =
+    when (level) {
+        TopicTestLevel.IKIZ -> true
+        TopicTestLevel.OSYM -> isOsymType || difficulty == DifficultyLevel.OSYM
+        else -> difficulty.fourTier() in level.recommendedDifficultyLevels()
+    }
 
 const val AUTOMATIC_TEST_QUESTION_COUNT = 12
 
@@ -506,7 +546,7 @@ fun automaticBookTestChunks(
     level: TopicTestLevel
 ): List<List<CustomQuestionRecord>> {
     val eligible = questions.filter {
-        it.difficultyLevel5 in level.recommendedDifficultyLevels()
+        it.isEligibleForLevel(level)
     }
     if (eligible.isEmpty()) return emptyList()
     // Books imported before source test detection still use the old 12-question
@@ -605,7 +645,8 @@ data class YksQuestion(
     // analytics may label keyword-based suggestions separately.
     val learningOutcome: String = "",
     val questionType: String = "",
-    val analyticsText: String = ""
+    val analyticsText: String = "",
+    val isOsymType: Boolean = false
 ) {
     @get:Exclude
     val imagePath: String

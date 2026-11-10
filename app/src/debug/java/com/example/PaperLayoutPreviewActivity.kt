@@ -125,7 +125,15 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
         val questionY = if (hasDiagram) diagramTop + 228f else
             contextY + fontSize * 1.45f
         val optionsY = questionY + fontSize * 1.85f
-        val requiredHeight = kotlin.math.ceil(optionsY + mediumSize * 1.25f + 18f).toInt()
+        val optionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(22, 27, 37)
+            textSize = mediumSize
+        }
+        val fullOptions = "A) 1     B) 2     C) 3     D) 4     E) 5"
+        val optionsNeedTwoLines = optionPaint.measureText(fullOptions) > 780f - 36f
+        val requiredHeight = kotlin.math.ceil(
+            optionsY + mediumSize * (if (optionsNeedTwoLines) 2.75f else 1.35f) + 18f
+        ).toInt()
         // Never drop a question or answer to fit an artificially short crop.
         val actualHeight = maxOf(suggestedHeight, requiredHeight)
         val bitmap = Bitmap.createBitmap(780, actualHeight, Bitmap.Config.ARGB_8888)
@@ -151,7 +159,12 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
             canvas.drawLine(left + 30, diagramTop + 30, left + 235, diagramTop + 125, shape)
         }
         canvas.drawText("ifadelerin toplamı kaçtır?", 18f, questionY, medium)
-        canvas.drawText("A) 1     B) 2     C) 3     D) 4     E) 5", 18f, optionsY, medium)
+        if (optionsNeedTwoLines) {
+            canvas.drawText("A) 1     B) 2     C) 3", 18f, optionsY, medium)
+            canvas.drawText("D) 4     E) 5", 18f, optionsY + mediumSize * 1.4f, medium)
+        } else {
+            canvas.drawText(fullOptions, 18f, optionsY, medium)
+        }
         val stream = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
         bitmap.recycle()

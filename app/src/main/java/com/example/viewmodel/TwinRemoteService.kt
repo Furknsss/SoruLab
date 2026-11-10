@@ -90,6 +90,15 @@ internal object TwinRemoteService {
                     val correct = data.getString("correctOption").trim()
                     val solution = data.getString("solutionExplanation").trim()
                     val diagram = data.optString("diagramJson").trim()
+                    val generatedIllustration = data.optString("imageBase64").trim()
+                    require(generatedIllustration.length <= 2_100_000)
+                    require(diagram.isBlank() || generatedIllustration.isBlank())
+                    if (generatedIllustration.isNotBlank()) {
+                        require(generatedIllustration.length > 3000)
+                        require(generatedIllustration.all {
+                            it.isLetterOrDigit() || it == '+' || it == '/' || it == '='
+                        })
+                    }
                     require(stem.length in 35..3000 && solution.length >= 40)
                     require(correct in labels && options.values.all { it.isNotBlank() })
                     require(options.values.map { it.trim().lowercase() }.distinct().size == 5)
@@ -102,6 +111,7 @@ internal object TwinRemoteService {
                         correctOption = correct,
                         solutionExplanation = solution,
                         diagramJson = diagram,
+                        generatedIllustrationBase64 = generatedIllustration,
                         sourceDescription = data.optString("sourceDescription")
                             .take(160).ifBlank { "Qwen + matematiksel denetim" }
                     )

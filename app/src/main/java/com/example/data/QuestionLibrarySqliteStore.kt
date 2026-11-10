@@ -53,6 +53,12 @@ internal class QuestionLibrarySqliteStore(context: Context, userId: String) : ja
         return output
     }
 
+    fun isInitialized(): Boolean {
+        helper.readableDatabase.rawQuery(
+            "SELECT 1 FROM metadata WHERE key = 'initialized' LIMIT 1", null
+        ).use { return it.moveToFirst() }
+    }
+
     fun count(): Int {
         helper.readableDatabase.rawQuery("SELECT COUNT(*) FROM questions", null).use {
             return if (it.moveToFirst()) it.getInt(0) else 0

@@ -303,10 +303,9 @@ data class CustomQuestionRecord(
         parsedMetaMap["osym"] == "1" ||
             effectiveDifficultyLabel.trim().lowercase(java.util.Locale.ROOT).let {
                 it == "ösym" || it == "osym" || it == "ösym tipi" || it == "osym tipi"
-            } ||
-            sourceTestId.contains("~osym~", ignoreCase = true)
-        // A historical 'level=OSYM' alone is intentionally NOT accepted:
-        // older ZIP importers stamped it by default on every question.
+            }
+        // Never infer the tag from a test name, filename or level.
+        // ZIP metadata must explicitly contain osymType=true or the ÖSYM tipi tag.
     }
 
     @delegate:Transient
@@ -455,6 +454,23 @@ enum class DifficultyLevel(val label: String, val weight: Float, val colorHex: L
         }
     }
 }
+
+/**
+ * ZIP imports must use ONE of the four official difficulty tags.
+ * In particular, "ÖSYM" is a separate style marker and must not replace
+ * the difficulty label (which would otherwise silently become Orta).
+ */
+fun parseExplicitFourTierDifficulty(raw: String): DifficultyLevel? =
+    when (raw.trim().lowercase(java.util.Locale.forLanguageTag("tr-TR"))
+        .replace('ı', 'i').replace('ğ', 'g').replace('ü', 'u')
+        .replace('ş', 's').replace('ö', 'o').replace('ç', 'c')
+        .replace(Regex("""\s+"""), " ")) {
+        "kolay" -> DifficultyLevel.KOLAY
+        "orta" -> DifficultyLevel.ORTA
+        "zor" -> DifficultyLevel.ZOR
+        "cok zor" -> DifficultyLevel.COK_ZOR
+        else -> null
+    }
 
 /** The only difficulty bands used to classify and balance new tests. */
 val QUESTION_DIFFICULTY_BANDS: List<DifficultyLevel> = listOf(

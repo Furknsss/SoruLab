@@ -2370,6 +2370,86 @@ class SoruLabViewModel(
         _showPdfCropperStudio.value = false
     }
 
+    /**
+     * Reassign an already-imported book's publisher from the selected local
+     * publisher catalog. This edits existing records, not just a UI preview,
+     * so regenerated tests and restored snapshots receive the same artwork.
+     * Retain the original cropped image, answer key, question source and
+     * difficulty information without re-importing the ZIP.
+     */
+    fun updateLibraryBookPublisher(
+        questionIds: List<String>,
+        publisher: YksPublisherInfo,
+        onSaved: (Boolean, String) -> Unit
+    ) {
+        val selectedIds = questionIds.toSet()
+        if (selectedIds.isEmpty()) {
+            onSaved(false, "Bu kitapta değiştirilecek soru bulunamadı.")
+            return
+        }
+        val savedPublisher = _customPublishers.value.firstOrNull { it.id == publisher.id }
+        val logoPath = savedPublisher?.customLogoPath.orEmpty().removePrefix("file://")
+        if (savedPublisher == null || !java.io.File(logoPath).isFile) {
+            onSaved(false, "Seçilen yayınevinin logosu cihazda bulunamadı. Önce logoyu yeniden seç.")
+            return
+        }
+        val oldRecords = _userCustomQuestions.value
+        val targetRecords = oldRecords.filter { it.id in selectedIds }
+        if (targetRecords.isEmpty()) {
+            onSaved(false, "Kitap kayıtları bulunamadı; mevcut kitaplığa dokunulmadı.")
+            return
+        }
+        val updatedRecords = oldRecords.map { record ->
+            if (record.id !in selectedIds) record else record.copy(
+                publisherTag = savedPublisher.name,
+                publisherId = savedPublisher.id,
+                aiSolutionSummary = CustomQuestionRecord.packSolutionWithMeta(
+                    solutionText = record.cleanSolutionSummary,
+                    targetLevel = record.targetLevelName,
+                    croppedImagePath = record.croppedImagePath,
+                    publisherLogoUri = logoPath,
+                    answerKeyVerified = record.answerKeyVerified,
+                    questionNumberInBook = record.questionNumberInBook,
+                    bookOrTestName = record.bookOrTestName,
+                    bookCoverPath = record.bookCoverPath,
+                    isInKumbara = record.isInKumbara,
+                    fiveTierDifficulty = record.effectiveDifficultyLabel,
+                    sourceTestId = record.sourceTestId,
+                    osymType = record.isOsymType
+                )
+            )
+        }
+        val uid = effectiveUserId() ?: "device_yks_student_tr"
+        viewModelScope.launch {
+            try {
+                val durable = withContext(Dispatchers.IO) {
+                    repository.saveCachedCustomQuestions(uid, updatedRecords)
+                }
+                _userCustomQuestions.value = durable
+                syncPdfPoolToPracticeTests(durable)
+                onSaved(true, "${targetRecords.size} sorunun yayınevi ve logosu güncellendi.")
+                val cloudUid = _currentUser.value?.uid
+                if (cloudUid != null) {
+                    val changed = durable.filter { it.id in selectedIds }
+                        .map { it.copy(userId = cloudUid) }
+                    try {
+                        withContext(Dispatchers.IO) {
+                            repository.saveCustomQuestionsBatch(changed)
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        showBanner("Logo cihazda düzeltildi ancak bulut eşitlemesi tamamlanamadı.")
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onSaved(false, "Yayınevi logosu güncellenemedi: ${e.message.orEmpty().take(140)}")
+            }
+        }
+    }
+
     fun addCustomPublisher(
         name: String,
         shortCode: String,

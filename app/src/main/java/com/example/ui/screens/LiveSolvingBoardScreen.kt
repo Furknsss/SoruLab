@@ -429,7 +429,7 @@ internal fun estimateBookImageMeasurements(
     return null
 }
 
-private fun estimatedBookQuestionUnits(
+internal fun estimatedBookQuestionUnits(
     question: YksQuestion,
     columnWidthDp: Float,
     actualImageRatios: Map<String, Float>,

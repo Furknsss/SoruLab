@@ -234,7 +234,7 @@ jobs:
             adb shell am start -W -n com.aistudio.sorulab.ykslab/com.example.PaperLayoutPreviewActivity --ez polynomial_reference true
             sleep 8
             adb exec-out screencap -p > out/visual-qa/polynomials-reference-example.png
-            test "$(stat -c%s out/visual-qa/polynomials-golden-2x2.png)" -gt 20000
+            test "$(stat -c%s out/visual-qa/polynomials-reference-example.png)" -gt 20000
             # Reset only this disposable test emulator before upgrading.
             adb shell am force-stop com.aistudio.sorulab.ykslab
             adb uninstall com.aistudio.sorulab.ykslab

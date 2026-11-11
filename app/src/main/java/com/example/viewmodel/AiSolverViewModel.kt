@@ -254,17 +254,28 @@ class AiSolverViewModel : ViewModel() {
         // Network calls are triggered only by the explicit Twin button. Neither
         // PDF imports nor ordinary solution controls call the cloud model.
         viewModelScope.launch {
-            // Local, independently calculated templates never consume an API quota.
-            // Unrecognised sources keep the image-aware generation + blind review path.
-            val variantIndex = nextTwinVariant(question)
-            val result = TwinLocalTemplateEngine.generate(question, variantIndex)
-                ?: TwinRightTriangleTemplate.generate(question, variantIndex)
-                ?: TwinDoubleAngleTemplate.generate(question, variantIndex)
-                ?: if (TwinRemoteService.configured) {
-                    TwinRemoteService.generate(question, context.applicationContext, variantIndex)
-                } else {
-                    twinGenerationEngine.generate(question, context.applicationContext, variantIndex)
-                }
+            // A previous exception here left the orange side empty with a
+            // permanent spinner. Always deliver one explicit outcome.
+            val result = try {
+                val variantIndex = nextTwinVariant(question)
+                TwinLocalTemplateEngine.generate(question, variantIndex)
+                    ?: TwinRightTriangleTemplate.generate(question, variantIndex)
+                    ?: TwinDoubleAngleTemplate.generate(question, variantIndex)
+                    ?: if (TwinRemoteService.configured) {
+                        TwinRemoteService.generate(question, context.applicationContext, variantIndex)
+                    } else {
+                        twinGenerationEngine.generate(question, context.applicationContext, variantIndex)
+                    }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                android.util.Log.e("SoruLabTwin", "Twin generation failed", failure)
+                TwinQuestionModalData(
+                    topicTitle = question.topicHeader,
+                    errorMessage = "İkiz soru üretimi sırasında teknik hata oluştu. " +
+                        "Soruyu tekrar deneyebilirsin; doğrulanmamış soru gösterilmez."
+                )
+            }
             onResult(result)
         }
     }

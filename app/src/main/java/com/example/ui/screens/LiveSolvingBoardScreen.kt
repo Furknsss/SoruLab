@@ -145,15 +145,31 @@ internal fun trimQuestionWhiteMargins(source: Bitmap): Bitmap {
         }
     }
     if (maxX <= minX || maxY <= minY) return source
-    val padX = maxOf((w * 0.035f).toInt(), 12)
-    val padY = maxOf((h * 0.025f).toInt(), 8)
-    // This keeps ALL detected ink and a broad safety buffer; 30% is the
-    // maximum permissible trim on either side.
-    val left = (minX - padX).coerceIn(0, (w * 0.30f).toInt())
-    val top = (minY - padY).coerceIn(0, (h * 0.24f).toInt())
-    val right = (maxX + step + padX).coerceIn((w * 0.70f).toInt(), w)
-    val bottom = (maxY + step + padY).coerceIn((h * 0.76f).toInt(), h)
-    if (right - left <= 0 || bottom - top <= 0) return source
+    // Inspect the actual coloured/dark ink bounds, NOT the scan's page box.
+    // The old 30%/70% hard clamps left enormous empty borders around narrow
+    // crops and made entire physics / paragraph questions look miniature.
+    // A small proportional white breathing margin is intentional and even.
+    val padX = maxOf((w * 0.018f).toInt(), 8)
+    val padY = maxOf((h * 0.015f).toInt(), 6)
+    var left = (minX - padX).coerceAtLeast(0)
+    var top = (minY - padY).coerceAtLeast(0)
+    var right = (maxX + step + padX).coerceAtMost(w)
+    var bottom = (maxY + step + padY).coerceAtMost(h)
+    // Preserve enough surrounding paper for short equations and lone figures,
+    // without requiring 70% of the original image to remain blank.
+    val minWidth = maxOf(80, (w * 0.26f).toInt()).coerceAtMost(w)
+    if (right - left < minWidth) {
+        val center = (left + right) / 2
+        left = (center - minWidth / 2).coerceIn(0, w - minWidth)
+        right = left + minWidth
+    }
+    val minHeight = maxOf(60, (h * 0.15f).toInt()).coerceAtMost(h)
+    if (bottom - top < minHeight) {
+        val center = (top + bottom) / 2
+        top = (center - minHeight / 2).coerceIn(0, h - minHeight)
+        bottom = top + minHeight
+    }
+    if (right <= left || bottom <= top) return source
     if (right - left > w * 0.93f && bottom - top > h * 0.93f) return source
     return runCatching {
         Bitmap.createBitmap(source, left, top, right - left, bottom - top)
@@ -168,18 +184,16 @@ internal fun calibratedBookTypographyScales(
         it.printedGlyphDp?.takeIf { px -> px.isFinite() && px in 2.5f..28f }
     }.sorted()
     if (observed.isEmpty()) return measurements.mapValues {
-        it.value.typographyScale.coerceIn(0.28f, 1.25f)
+        it.value.typographyScale.coerceIn(0.60f, 1.90f)
     }
-    val index = ((observed.size - 1) * 0.30f).toInt()
-    // A hard 7.2dp minimum kept oversized Barış print nearly twice as
-    // large as its narrow-print Ergi neighbors. On a two-column phone
-    // paper the smaller legible source is the real optical baseline;
-    // adjust larger sources downward instead of forcing false parity.
-    val commonFontDp = observed[index].coerceIn(4.0f, 10.2f)
+    // Target a readable common printed glyph, not the smallest 30th-percentile
+    // tiny font. Both narrow publisher crops and big publisher crops converge.
+    val commonFontDp = observed[(observed.size * 0.55f).toInt()
+        .coerceIn(0, observed.lastIndex)].coerceIn(10.5f, 13.0f)
     return measurements.mapValues { (_, metric) ->
         metric.printedGlyphDp?.takeIf { it.isFinite() && it > 0f }
-            ?.let { (commonFontDp / it).coerceIn(0.28f, 1.25f) }
-            ?: metric.typographyScale.coerceIn(0.28f, 1.25f)
+            ?.let { (commonFontDp / it).coerceIn(0.60f, 1.90f) }
+            ?: metric.typographyScale.coerceIn(0.60f, 1.90f)
     }
 }
 
@@ -281,7 +295,7 @@ internal fun estimateBookTypographyScale(bitmap: Bitmap, columnContentWidthDp: F
         // Fit the visual glyphs of Barış / Ergi / ÜçDörtBeş around a
         // consistent printed font size, never cropping the source image.
         val targetDp = (columnContentWidthDp * 0.052f).coerceIn(7.5f, 11f)
-        return (targetDp / measuredGlyphDp).coerceIn(0.28f, 1.25f)
+        return (targetDp / measuredGlyphDp).coerceIn(0.60f, 1.90f)
     }
     val sampleStep = 3
     val left = (bitmap.width * 0.06f).toInt()
@@ -331,7 +345,7 @@ internal fun estimateBookTypographyScale(bitmap: Bitmap, columnContentWidthDp: F
     val typicalGlyphPx = bands[bands.size / 2].toFloat()
     val renderedGlyphDp = typicalGlyphPx * columnContentWidthDp / bitmap.width
     if (!renderedGlyphDp.isFinite() || renderedGlyphDp <= 0f) return 1f
-    return (11.5f / renderedGlyphDp).coerceIn(0.28f, 1.25f)
+    return (12.0f / renderedGlyphDp).coerceIn(0.60f, 1.90f)
 }
 
 internal fun estimateBookImageMeasurements(
@@ -415,7 +429,7 @@ internal fun estimateBookImageMeasurements(
     return null
 }
 
-private fun estimatedBookQuestionUnits(
+internal fun estimatedBookQuestionUnits(
     question: YksQuestion,
     columnWidthDp: Float,
     actualImageRatios: Map<String, Float>,
@@ -425,8 +439,14 @@ private fun estimatedBookQuestionUnits(
     val normalizedHeight = (question.normBottom - question.normTop).coerceAtLeast(0.04f)
     // Match the ACTUAL drawing width: 42dp publisher/number gutter + 4dp gap.
     // The old 108dp deduction underestimated tall book crops by up to 50%.
-    val imageWidthDp = (columnWidthDp - 46f).coerceAtLeast(90f) *
-        (imageTypographyScales[question.id] ?: 1f).coerceIn(0.28f, 1.25f)
+    val usableImageWidthDp = (columnWidthDp - 46f).coerceAtLeast(90f)
+    val desiredScale = (imageTypographyScales[question.id] ?: 1f)
+        .coerceIn(0.60f, 1.90f)
+    // Mirror fittedBookImageSizeDp: increasing the scale cannot make an
+    // image wider than its actual content column. The previous estimator
+    // multiplied by 1.9 while the Image remained capped at 1.0, leaving a
+    // giant invisible vertical slot between otherwise adjacent questions.
+    val imageWidthDp = minOf(usableImageWidthDp * desiredScale, usableImageWidthDp)
     val isImage = question.imagePath.isNotBlank() ||
         question.imageBase64.isNotBlank() || question.pdfFilePath.isNotBlank()
     val contentHeightDp = if (isImage) {
@@ -456,7 +476,7 @@ internal fun fittedBookImageSizeDp(
     if (availableWidth <= 0f || availableHeight <= 0f) return 0f to 0f
     val ratio = widthOverHeight.takeIf { it.isFinite() && it > 0f } ?: 1f
     val visualScale = if (singleQuestionLayout) 1f else
-        typographyScale.coerceIn(0.28f, 1.25f)
+        typographyScale.coerceIn(0.60f, 1.90f)
     val width = minOf(availableWidth * visualScale, availableWidth,
         availableHeight * ratio).coerceAtLeast(0f)
     return width to (width / ratio).coerceAtMost(availableHeight)
@@ -469,7 +489,7 @@ private fun bookColumnHeightScale(
     paperHeightDp: Float,
     imageRatios: Map<String, Float>,
     typographyScales: Map<String, Float>,
-    gapDp: Float = 20f
+    gapDp: Float = 18f
 ): Float {
     if (questions.isEmpty()) return 1f
     val desired = questions.sumOf { q ->
@@ -481,8 +501,9 @@ private fun bookColumnHeightScale(
         desired.coerceAtLeast(1f)).coerceAtMost(1f)
     // Normal paper columns should not squeeze readable questions to tiny
     // postage stamps. One tall diagram may occupy a page by itself and fit.
-    return if (questions.size == 1) spaceFit.coerceAtLeast(0.15f)
-        else spaceFit.coerceAtLeast(0.82f)
+    // The old 0.82 floor could overflow its slot and clip the last answer.
+    // Use the actual fit fraction; smaller columns are handled by repacking.
+    return spaceFit.coerceIn(0.35f, 1f)
 }
 
 /**
@@ -506,12 +527,12 @@ internal fun packQuestionsIntoTwoColumnPages(
     val width = columnWidthDp.coerceAtLeast(120f)
     // Reserve breathing room and never pack for the absolute theoretical
     // limit. Height is more important than squeezing another question in.
-    val capacity = (columnCapacity * 0.88f).coerceAtLeast(0.5f)
-    val columnLimit = maxQuestionsPerColumn.coerceIn(1, 3)
+    val capacity = (columnCapacity * 0.94f).coerceAtLeast(0.5f)
+    val columnLimit = maxQuestionsPerColumn.coerceIn(1, 4)
     val questionUnits = FloatArray(questions.size) { index ->
         estimatedBookQuestionUnits(questions[index], width, actualImageRatios, imageTypographyScales)
     }
-    val gap = 20f / width
+    val gap = 18f / width
     val pages = mutableListOf<TwoColumnQuestionPage>()
     var start = 0
 
@@ -613,8 +634,8 @@ fun LiveSolvingBoardScreen(
     val sheetHeightDp = if (bookAreaSize.height > 0) bookAreaSize.height / density
         else (configuration.screenHeightDp - 130f).coerceAtLeast(300f)
     // Reserve only real paper gutters; the old 100dp deduction made columns narrow.
-    val columnWidth = ((sheetWidthDp - 38f) / 2f).coerceAtLeast(145f)
-    val columnCapacity = ((sheetHeightDp - 32f) / columnWidth).coerceAtLeast(0.5f)
+    val columnWidth = ((sheetWidthDp - 44f) / 2f).coerceAtLeast(145f)
+    val columnCapacity = ((sheetHeightDp - 36f) / columnWidth).coerceAtLeast(0.5f)
     val imageMeasurements by produceState<Map<String, BookImageMeasurements>>(
         initialValue = emptyMap(),
         key1 = questions, key2 = context.filesDir.absolutePath, key3 = columnWidth
@@ -634,7 +655,7 @@ fun LiveSolvingBoardScreen(
     }
     val packedBookPages = remember(questions, columnCapacity, columnWidth, imageMeasurements) {
         packQuestionsIntoTwoColumnPages(
-            questions, columnCapacity, 3, columnWidth, actualImageRatios, imageTypographyScales
+            questions, columnCapacity, 4, columnWidth, actualImageRatios, imageTypographyScales
         )
     }
     val totalBookPages = packedBookPages.size.coerceAtLeast(1)
@@ -2070,8 +2091,8 @@ private fun RealTwoColumnBookPageSurface(
             .fillMaxSize()
             .background(Color.White)
     ) {
-        val actualColumnWidthDp = ((maxWidth.value - 38f) / 2f).coerceAtLeast(145f)
-        val contentHeightDp = (maxHeight.value - 16f).coerceAtLeast(80f)
+        val actualColumnWidthDp = ((maxWidth.value - 44f) / 2f).coerceAtLeast(145f)
+        val contentHeightDp = (maxHeight.value - 28f).coerceAtLeast(80f)
         val leftColumnScale = bookColumnHeightScale(
             leftColumnQuestions, actualColumnWidthDp, contentHeightDp,
             actualImageRatios, imageTypographyScales
@@ -2098,7 +2119,7 @@ private fun RealTwoColumnBookPageSurface(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             // ÇİFT SÜTUNLU (SOL SÜTUN & SAĞ SÜTUN) VE ORTADAN İNCE DİKEY ÇİZGİLİ TAM SAYFA DÜZENİ
@@ -2116,12 +2137,14 @@ private fun RealTwoColumnBookPageSurface(
                         .weight(1f)
                         .fillMaxHeight()
                         .zIndex(if (isLeftPopoverOpen) 60f else 1f)
-                        .padding(end = 8.dp, top = 4.dp, bottom = 4.dp),
+                        .padding(end = 7.dp, top = 2.dp, bottom = 2.dp),
                     // Comfortable paper flow: 1-3 whole questions according
                     // to their measured height. Do not squeeze 5-8 tiny
                     // questions into a column merely to fill whitespace.
-                    verticalArrangement = if (leftColumnQuestions.size > 1)
-                        Arrangement.SpaceBetween else Arrangement.Top
+                    // Never pin the first question to the top and the last to
+                    // the bottom: it creates the huge empty middle in the user's
+                    // actual page screenshot. Real tests have a stable rhythm.
+                    verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
                     leftColumnQuestions.forEachIndexed { idx, q ->
                         BoxWithConstraints(
@@ -2167,9 +2190,8 @@ private fun RealTwoColumnBookPageSurface(
                         .weight(1f)
                         .fillMaxHeight()
                         .zIndex(if (isRightPopoverOpen) 60f else 1f)
-                        .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
-                    verticalArrangement = if (rightColumnQuestions.size > 1)
-                        Arrangement.SpaceBetween else Arrangement.Top
+                        .padding(start = 7.dp, top = 2.dp, bottom = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
                     if (rightColumnQuestions.isEmpty()) {
                         Spacer(modifier = Modifier.height(80.dp))
@@ -3958,19 +3980,35 @@ private fun FullScreenTwinQuestionComparisonView(
                                 )
                             }
                         } else if (twinData.errorMessage != null) {
-                            Box(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(24.dp),
-                                contentAlignment = Alignment.Center
+                                    .padding(22.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
                                 Text(
                                     text = twinData.errorMessage,
                                     color = Color(0xFFB91C1C),
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 14.sp,
-                                    textAlign = TextAlign.Center
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.testTag("twin_generation_error")
                                 )
+                                Spacer(Modifier.height(18.dp))
+                                Surface(
+                                    onClick = onRegenerateTwin,
+                                    modifier = Modifier.testTag("retry_twin_generation_btn"),
+                                    shape = RoundedCornerShape(50),
+                                    color = Color(0xFF1D4ED8)
+                                ) {
+                                    Text(
+                                        text = "Yeniden İkiz Oluştur",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
+                                    )
+                                }
                             }
                         } else {
                             Column(
@@ -4230,15 +4268,18 @@ private fun FullScreenTwinQuestionComparisonView(
                                     val aspect = originalBitmap.width.toFloat() /
                                         originalBitmap.height.toFloat().coerceAtLeast(1f)
                                     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                                        val nativeWidth = with(LocalDensity.current) { originalBitmap.width.toDp() }
-                                        val imageWidth = minOf(maxWidth, 300.dp, nativeWidth)
+                                        // In the comparison screen the source
+                                        // crop previously stopped at 300dp even
+                                        // on wide tablets: it looked miniature.
+                                        // Fit the complete source to the card,
+                                        // then allow vertical scrolling naturally.
                                         Image(
                                             bitmap = originalBitmap.asImageBitmap(),
                                             contentDescription = "Orijinal Test Sorusu",
                                             contentScale = ContentScale.Fit,
                                             alignment = Alignment.TopStart,
                                             modifier = Modifier
-                                                .width(imageWidth)
+                                                .fillMaxWidth()
                                                 .aspectRatio(aspect)
                                         )
                                     }

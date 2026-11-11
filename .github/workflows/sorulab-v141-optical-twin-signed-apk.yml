@@ -6,6 +6,10 @@ on:
       - fix/v141-optical-twin-generation-20261111
   workflow_dispatch:
 
+concurrency:
+  group: sorulab-v141-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
   actions: read

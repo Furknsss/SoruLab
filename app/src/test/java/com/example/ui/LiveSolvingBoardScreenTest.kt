@@ -4,6 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertExists
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -427,6 +429,38 @@ class LiveSolvingBoardScreenTest {
     }
 
     @Test
+    fun twinScreenUsesProductionCallbackAndAllowsRetryAfterFailure() {
+        var calls = 0
+        showBoard(review = true, onTwinRequested = { _, callback ->
+            calls++
+            if (calls == 1) callback(
+                com.example.viewmodel.TwinQuestionModalData(
+                    topicTitle = "Fonksiyonlar",
+                    errorMessage = "Bağımsız doğrulama henüz tamamlanmadı."
+                )
+            ) else callback(
+                com.example.viewmodel.TwinQuestionModalData(
+                    topicTitle = "Fonksiyonlar",
+                    questionStem = "f(x)=3x+2 için f(4) kaçtır?",
+                    options = mapOf(
+                        "A" to "11", "B" to "12", "C" to "13",
+                        "D" to "14", "E" to "15"
+                    ),
+                    correctOption = "D",
+                    solutionExplanation = "Önce dört yerine yazılır: 3×4+2=14."
+                )
+            )
+        })
+        compose.onNodeWithTag("three_dot_btn_1").performClick()
+        compose.onNodeWithText("İkiz Soru").performClick()
+        compose.onNodeWithTag("full_screen_twin_comparison").assertExists()
+        compose.onNodeWithTag("twin_generation_error").assertExists()
+        compose.onNodeWithTag("retry_twin_generation_btn").performClick()
+        compose.onNodeWithTag("twin_answer_D").assertExists()
+        compose.runOnIdle { assertEquals(2, calls) }
+    }
+
+    @Test
     fun cancelFinishKeepsTheSessionActive() {
         var finishCount = 0
         showBoard(onFinish = { finishCount++ })
@@ -484,10 +518,17 @@ class LiveSolvingBoardScreenTest {
 
     private fun showBoard(
         onFinish: () -> Unit = {},
-        onAnswersChanged: (Map<Int, String>) -> Unit = {}
+        onAnswersChanged: (Map<Int, String>) -> Unit = {},
+        review: Boolean = false,
+        onTwinRequested: (
+            YksQuestion,
+            (com.example.viewmodel.TwinQuestionModalData) -> Unit
+        ) -> Unit = { _, _ -> }
     ) {
         compose.setContent {
-            var session by androidx.compose.runtime.remember { mutableStateOf(fixtureSession()) }
+            var session by androidx.compose.runtime.remember {
+                mutableStateOf(fixtureSession().copy(isReviewMode = review))
+            }
             MyApplicationTheme {
                 LiveSolvingBoardScreen(
                     session = session,
@@ -517,7 +558,8 @@ class LiveSolvingBoardScreenTest {
                     onToggleQuestionMap = {},
                     onFinishTest = onFinish,
                     onGoToStatsTab = {},
-                    onAskAiForQuestion = {}
+                    onAskAiForQuestion = {},
+                    onGenerateTwinQuestion = onTwinRequested
                 )
             }
         }

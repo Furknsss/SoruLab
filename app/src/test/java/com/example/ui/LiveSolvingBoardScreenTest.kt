@@ -305,7 +305,7 @@ class LiveSolvingBoardScreenTest {
 
     @Test
     fun polynomialGoldenReferenceTwoTallQuestionsHaveBreathingRoom() {
-        val layout = com.example.ui.screens.polynomialReferenceColumnRhythm(
+        val layout = com.example.ui.screens.adaptiveBookColumnRhythm(
             listOf(272f, 288f), 686f
         )
         org.junit.Assert.assertTrue("Two real textbook questions need visible separation",
@@ -322,10 +322,10 @@ class LiveSolvingBoardScreenTest {
     @Test
     fun threeAndFourQuestionColumnsUseProgressivelySmallerGaps() {
         val paperHeight = 680f
-        val three = com.example.ui.screens.polynomialReferenceColumnRhythm(
+        val three = com.example.ui.screens.adaptiveBookColumnRhythm(
             listOf(172f, 184f, 176f), paperHeight
         )
-        val four = com.example.ui.screens.polynomialReferenceColumnRhythm(
+        val four = com.example.ui.screens.adaptiveBookColumnRhythm(
             listOf(148f, 152f, 148f, 150f), paperHeight
         )
         org.junit.Assert.assertTrue("Three-question rhythm must remain airy",
@@ -349,7 +349,7 @@ class LiveSolvingBoardScreenTest {
 
     @Test
     fun oversizedFigureShrinksOnlyEnoughToFitWithoutClipping() {
-        val rhythm = com.example.ui.screens.polynomialReferenceColumnRhythm(
+        val rhythm = com.example.ui.screens.adaptiveBookColumnRhythm(
             listOf(780f), 605f
         )
         org.junit.Assert.assertTrue(rhythm.slotScale < 1f)
@@ -370,11 +370,57 @@ class LiveSolvingBoardScreenTest {
             questions, columnCapacity = 3.8f, maxQuestionsPerColumn = 8,
             columnWidthDp = 240f, actualImageRatios = ratios
         )
-        org.junit.Assert.assertTrue("Expected multiple pages for comfortable reading",
-            pages.size >= 3)
-        org.junit.Assert.assertTrue("Too many questions were squeezed into a paper column",
-            pages.all { it.left.size <= 4 && it.right.size <= 4 })
+        org.junit.Assert.assertTrue("Compact questions should use paper space efficiently",
+            pages.size in 2..3)
+        org.junit.Assert.assertTrue("Never pack more than six readable questions per column",
+            pages.all { it.left.size <= 6 && it.right.size <= 6 })
         assertEquals(questions.map { it.id }, pages.flatMap { it.questions }.map { it.id })
+    }
+
+    @Test
+    fun shortEquationsFillPageWithoutAnArtificialFourQuestionLimit() {
+        val template = fixtureSession().testItem.questions.first()
+        val short = (1..12).map { n ->
+            template.copy(id = "compact_equation_$n", number = n,
+                croppedImagePath = "compact_$n.png")
+        }
+        val ratios = short.associate { it.id to .35f }
+        val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
+            short, columnCapacity = 2.7f, maxQuestionsPerColumn = 4,
+            columnWidthDp = 240f, actualImageRatios = ratios
+        )
+        assertEquals("A short math test must not strand questions on a blank final page",
+            1, pages.size)
+        assertEquals(6, pages.single().left.size)
+        assertEquals(6, pages.single().right.size)
+        assertEquals(short.map { it.id }, pages.flatMap { it.questions }.map { it.id })
+    }
+
+    @Test
+    fun tallIllustrationsAreNotForcedIntoTwoByTwoOrIllegiblyShrunk() {
+        val template = fixtureSession().testItem.questions.first()
+        val questions = (1..9).map { n ->
+            template.copy(id = "varying_$n", number = n,
+                croppedImagePath = "figure_$n.png")
+        }
+        val ratios = questions.associate { question ->
+            question.id to if (question.number % 3 == 1) 2.5f else .48f
+        }
+        val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
+            questions, columnCapacity = 2.35f, maxQuestionsPerColumn = 4,
+            columnWidthDp = 240f, actualImageRatios = ratios
+        )
+        assertEquals(questions.map { it.id }, pages.flatMap { it.questions }.map { it.id })
+        org.junit.Assert.assertTrue("A biology diagram may legitimately have its own column",
+            pages.any { it.left.size == 1 || it.right.size == 1 })
+        org.junit.Assert.assertTrue(
+            "Do not put two massive diagrams in the same column",
+            pages.none { column ->
+                listOf(column.left, column.right).any { group ->
+                    group.count { ratios.getValue(it.id) > 2f } > 1
+                }
+            }
+        )
     }
 
     @Test

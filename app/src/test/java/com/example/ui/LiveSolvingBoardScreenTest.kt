@@ -233,6 +233,24 @@ class LiveSolvingBoardScreenTest {
     }
 
     @Test
+    fun enlargedImageNeverReservesPhantomHeightBeyondItsRealColumnWidth() {
+        val source = fixtureSession().testItem.questions.first().copy(
+            id = "scaled_crop", croppedImagePath = "scaled.jpg"
+        )
+        val ratio = mapOf(source.id to 1.2f)
+        val base = com.example.ui.screens.estimatedBookQuestionUnits(
+            source, 350f, ratio, mapOf(source.id to 1f)
+        )
+        val enlarged = com.example.ui.screens.estimatedBookQuestionUnits(
+            source, 350f, ratio, mapOf(source.id to 1.90f)
+        )
+        org.junit.Assert.assertEquals(
+            "No blank 1.9x-height container when the image already fills its width",
+            base, enlarged, .001f
+        )
+    }
+
+    @Test
     fun narrowWhiteHeavyCropIsExpandedWithoutCuttingAnyPrintedInk() {
         val image = android.graphics.Bitmap.createBitmap(
             800, 1000, android.graphics.Bitmap.Config.ARGB_8888

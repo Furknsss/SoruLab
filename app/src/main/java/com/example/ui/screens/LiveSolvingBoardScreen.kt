@@ -3974,19 +3974,35 @@ private fun FullScreenTwinQuestionComparisonView(
                                 )
                             }
                         } else if (twinData.errorMessage != null) {
-                            Box(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(24.dp),
-                                contentAlignment = Alignment.Center
+                                    .padding(22.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
                                 Text(
                                     text = twinData.errorMessage,
                                     color = Color(0xFFB91C1C),
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 14.sp,
-                                    textAlign = TextAlign.Center
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.testTag("twin_generation_error")
                                 )
+                                Spacer(Modifier.height(18.dp))
+                                Surface(
+                                    onClick = onRegenerateTwin,
+                                    modifier = Modifier.testTag("retry_twin_generation_btn"),
+                                    shape = RoundedCornerShape(50),
+                                    color = Color(0xFF1D4ED8)
+                                ) {
+                                    Text(
+                                        text = "Yeniden İkiz Oluştur",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
+                                    )
+                                }
                             }
                         } else {
                             Column(

@@ -447,8 +447,9 @@ internal fun estimatedBookQuestionUnits(
     // multiplied by 1.9 while the Image remained capped at 1.0, leaving a
     // giant invisible vertical slot between otherwise adjacent questions.
     val imageWidthDp = minOf(usableImageWidthDp * desiredScale, usableImageWidthDp)
-    val isImage = question.imagePath.isNotBlank() ||
-        question.imageBase64.isNotBlank() || question.pdfFilePath.isNotBlank()
+    val isImage = question.croppedImagePath.isNotBlank() ||
+        question.imagePath.isNotBlank() || question.imageBase64.isNotBlank() ||
+        question.pdfFilePath.isNotBlank()
     val contentHeightDp = if (isImage) {
         val fallback = if (normalizedWidth >= 0.98f && normalizedHeight >= 0.98f) 1f
             else (normalizedHeight / normalizedWidth * 1.45f).coerceIn(0.18f, 4.5f)

@@ -229,6 +229,12 @@ jobs:
             sleep 7
             adb exec-out screencap -p > out/visual-qa/paper-layout-final-page.png
             test "$(stat -c%s out/visual-qa/paper-layout-final-page.png)" -gt 20000
+            # Real Compose two-by-two, long-diagram Polinomlar golden fixture.
+            adb shell am force-stop com.aistudio.sorulab.ykslab
+            adb shell am start -W -n com.aistudio.sorulab.ykslab/com.example.PaperLayoutPreviewActivity --ez polynomial_reference true
+            sleep 8
+            adb exec-out screencap -p > out/visual-qa/polynomials-golden-2x2.png
+            test "$(stat -c%s out/visual-qa/polynomials-golden-2x2.png)" -gt 20000
             # Reset only this disposable test emulator before upgrading.
             adb shell am force-stop com.aistudio.sorulab.ykslab
             adb uninstall com.aistudio.sorulab.ykslab

@@ -29,18 +29,22 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.WHITE
         window.navigationBarColor = Color.BLACK
-        val questions = (1..12).map { index ->
+        val goldenReference = intent.getBooleanExtra("polynomial_reference", false)
+        val questions = (1..(if (goldenReference) 4 else 12)).map { index ->
             val publisher = when (index % 3) {
                 0 -> "ÜçDörtBeş"
                 2 -> "Barış"
                 else -> "Ergi"
             }
-            val printSize = when (index % 3) {
+            val printSize = if (goldenReference) {
+                when (index) { 1 -> 39f; 2 -> 37f; 3 -> 40f; else -> 38f }
+            } else when (index % 3) {
                 0 -> 29f
                 2 -> 52f
                 else -> 24f
             }
             val imageHeight = when {
+                goldenReference -> 1040
                 index % 5 == 4 -> 520
                 index % 4 == 2 -> 380
                 index % 3 == 0 -> 315
@@ -57,14 +61,14 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
                 options = mapOf("A" to "1", "B" to "2", "C" to "3", "D" to "4", "E" to "5"),
                 correctOption = "B",
                 stepByStepSolution = "Görsel düzen örneği",
-                imageBase64 = makeQuestionImage(index, printSize, imageHeight)
+                imageBase64 = makeQuestionImage(index, printSize, imageHeight, goldenReference)
             )
         }
         val test = YksTestItem(
-            id = "paper_visual_qa",
+            id = if (goldenReference) "paper_polynomial_golden_qa" else "paper_visual_qa",
             topicId = "polinomlar",
-            title = "Polinomlar - Test 4",
-            fullTitle = "Polinomlar - Test 4",
+            title = if (goldenReference) "Polinomlar - Referans Testi" else "Polinomlar - Test 4",
+            fullTitle = if (goldenReference) "Polinomlar - Referans Testi" else "Polinomlar - Test 4",
             difficulty = DifficultyLevel.ZOR,
             difficultyPosition = 0.8f,
             questions = questions
@@ -112,18 +116,21 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
         }
     }
 
-    private fun makeQuestionImage(index: Int, fontSize: Float, suggestedHeight: Int): String {
+    private fun makeQuestionImage(index: Int, fontSize: Float, suggestedHeight: Int, goldenReference: Boolean = false): String {
         // Visual acceptance images MUST contain a complete prompt, graph (when
         // applicable) and all five alternatives. The previous fixture silently
         // omitted C/D/E when it ran out of bitmap height, falsely blaming the
         // paper layout for missing source content.
         val mediumSize = fontSize * 0.75f
-        val hasDiagram = index % 5 == 4
+        val hasDiagram = goldenReference || index % 5 == 4
         val statementY = fontSize + 16f
         val contextY = statementY + fontSize * 1.5f
         val diagramTop = contextY + fontSize * 1.45f + 16f
-        val questionY = if (hasDiagram) diagramTop + 228f else
-            contextY + fontSize * 1.45f
+        val questionY = when {
+            goldenReference -> diagramTop + 685f
+            hasDiagram -> diagramTop + 228f
+            else -> contextY + fontSize * 1.45f
+        }
         val optionsY = questionY + fontSize * 1.85f
         val optionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(22, 27, 37)
@@ -157,6 +164,26 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
             canvas.drawLine(left + 130, diagramTop, left + 130, diagramTop + 200, shape)
             canvas.drawLine(left + 30, diagramTop + 125, left + 235, diagramTop + 30, shape)
             canvas.drawLine(left + 30, diagramTop + 30, left + 235, diagramTop + 125, shape)
+            if (goldenReference) {
+                // Four complete, tall, diagram-heavy ORIGINAL fixture cards.
+                // Their rendered crop proportions match the 10 Nov Polinomlar
+                // reference much better than 12 little one-line equations.
+                val mathText = Paint(medium).apply {
+                    textSize = fontSize * .78f
+                    color = Color.rgb(28, 46, 80)
+                }
+                canvas.drawRoundRect(
+                    85f, diagramTop + 215f, 690f, diagramTop + 565f,
+                    22f, 22f, shape
+                )
+                canvas.drawLine(130f, diagramTop + 420f, 645f, diagramTop + 420f, shape)
+                canvas.drawLine(380f, diagramTop + 250f, 380f, diagramTop + 535f, shape)
+                canvas.drawText("P(x)", 188f, diagramTop + 315f, mathText)
+                canvas.drawText("B(x)", 490f, diagramTop + 315f, mathText)
+                canvas.drawText("K(x)", 188f, diagramTop + 495f, mathText)
+                canvas.drawText("R(x)", 490f, diagramTop + 495f, mathText)
+                canvas.drawText("x² + 2x + 1", 255f, diagramTop + 620f, mathText)
+            }
         }
         canvas.drawText("ifadelerin toplamı kaçtır?", 18f, questionY, medium)
         if (optionsNeedTwoLines) {

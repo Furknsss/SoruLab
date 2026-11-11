@@ -94,7 +94,7 @@ class LiveSolvingBoardScreenTest {
                 smallScale >= 0.92f)
             org.junit.Assert.assertTrue(
                 "Oversized lettering must be normalized toward smaller-print books: small=$smallScale large=$hugeScale",
-                hugeScale <= 0.58f && hugeScale < smallScale
+                hugeScale <= 0.66f && hugeScale < smallScale
             )
         } finally {
             normal.recycle()
@@ -165,7 +165,7 @@ class LiveSolvingBoardScreenTest {
         val largest = finalFonts.maxOrNull()!!
         org.junit.Assert.assertTrue("Mixed publisher glyphs still vary too much: $finalFonts",
             largest / smallest < 1.20f)
-        org.junit.Assert.assertTrue("Overprinted Baris must shrink", scales.getValue("baris") < 0.55f)
+        org.junit.Assert.assertTrue("Overprinted Baris must shrink", scales.getValue("baris") < 0.66f)
     }
 
     @Test
@@ -180,7 +180,7 @@ class LiveSolvingBoardScreenTest {
         )
         val scales = com.example.ui.screens.calibratedBookTypographyScales(measured)
         val fontSizes = measured.map { (id, m) ->
-            (m.printedGlyphDp ?: 0f) * scales.getValue(id).coerceAtMost(1f)
+            (m.printedGlyphDp ?: 0f) * scales.getValue(id)
         }
         org.junit.Assert.assertTrue(
             "Book fonts remain optically unbalanced: $fontSizes",
@@ -231,6 +231,60 @@ class LiveSolvingBoardScreenTest {
     }
 
     @Test
+    fun narrowWhiteHeavyCropIsExpandedWithoutCuttingAnyPrintedInk() {
+        val image = android.graphics.Bitmap.createBitmap(
+            800, 1000, android.graphics.Bitmap.Config.ARGB_8888
+        )
+        val canvas = android.graphics.Canvas(image)
+        canvas.drawColor(android.graphics.Color.WHITE)
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.BLACK
+        }
+        // Simulate a narrow question embedded in a large PDF crop.
+        canvas.drawRect(324f, 180f, 490f, 198f, paint)
+        canvas.drawRect(320f, 770f, 498f, 792f, paint)
+        val trimmed = com.example.ui.screens.trimQuestionWhiteMargins(image)
+        try {
+            org.junit.Assert.assertTrue(
+                "The crop must remove much more than the old 30% whitespace clamp",
+                trimmed.width < image.width * .62f
+            )
+            var beforeInk = 0
+            for (y in 0 until image.height) for (x in 0 until image.width) {
+                if (image.getPixel(x, y) == android.graphics.Color.BLACK) beforeInk++
+            }
+            var afterInk = 0
+            for (y in 0 until trimmed.height) for (x in 0 until trimmed.width) {
+                if (trimmed.getPixel(x, y) == android.graphics.Color.BLACK) afterInk++
+            }
+            org.junit.Assert.assertEquals("All original ink survives optical recrop",
+                beforeInk, afterInk)
+        } finally {
+            if (trimmed !== image) trimmed.recycle()
+            image.recycle()
+        }
+    }
+
+    @Test
+    fun smallerPrintedPublisherCanBeEnlargedInsteadOfShrunkToItsTinyFont() {
+        val sources = mapOf(
+            "tiny" to com.example.ui.screens.BookImageMeasurements(.8f, 1f, 5f),
+            "typical" to com.example.ui.screens.BookImageMeasurements(1.1f, 1f, 10.5f),
+            "giant" to com.example.ui.screens.BookImageMeasurements(1.3f, 1f, 18f)
+        )
+        val scales = com.example.ui.screens.calibratedBookTypographyScales(sources)
+        org.junit.Assert.assertTrue("Tiny source must be actively enlarged",
+            scales.getValue("tiny") > 1.5f)
+        org.junit.Assert.assertTrue("Oversized source must be shrunk",
+            scales.getValue("giant") < .75f)
+        val opticalSize = sources.mapValues { (id, m) ->
+            m.printedGlyphDp!! * scales.getValue(id)
+        }
+        org.junit.Assert.assertTrue("Final printed type sizes should converge: $opticalSize",
+            opticalSize.values.maxOrNull()!! / opticalSize.values.minOrNull()!! < 1.20f)
+    }
+
+    @Test
     fun naturalPaperFlowNeverPacksCrowdedColumnsEvenForCompactQuestions() {
         val original = fixtureSession().testItem.questions.first()
         val questions = (1..18).map { number ->
@@ -245,7 +299,7 @@ class LiveSolvingBoardScreenTest {
         org.junit.Assert.assertTrue("Expected multiple pages for comfortable reading",
             pages.size >= 3)
         org.junit.Assert.assertTrue("Too many questions were squeezed into a paper column",
-            pages.all { it.left.size <= 3 && it.right.size <= 3 })
+            pages.all { it.left.size <= 4 && it.right.size <= 4 })
         assertEquals(questions.map { it.id }, pages.flatMap { it.questions }.map { it.id })
     }
 

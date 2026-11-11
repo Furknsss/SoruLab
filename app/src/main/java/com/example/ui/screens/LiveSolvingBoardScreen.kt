@@ -483,7 +483,7 @@ internal fun fittedBookImageSizeDp(
 }
 
 /**
- * Reference style: Polinomlar Test 1 (10 November).
+ * Adaptive textbook rhythm for EVERY test (Polinomlar was one example).
  * The question bodies keep their *measured* heights. Only the space
  * between complete questions is opened up, with a strict ceiling.
  * This avoids both old extremes: SpaceBetween pinning to page edges and
@@ -621,8 +621,16 @@ internal fun packQuestionsIntoTwoColumnPages(
                 // print or forced two-by-two layouts. A lone final page gets
                 // a modest penalty so neighboring pages reflow naturally.
                 val loneColumnPenalty = if (rightCount == 0) 24f else 0f
+                // If more questions remain, never prefer a nearly empty
+                // 1+1 opening page to a balanced use of subsequent content.
+                // A genuinely sparse LAST page is acceptable; stretching
+                // questions or squeezing diagrams to erase blank space isn't.
+                val prematureBlankPenalty = if (next < n &&
+                    leftFill < .35f && rightFill < .35f
+                ) 140f else 0f
                 val score = 110.0 + blankPenalty + imbalancePenalty +
-                    shrinkPenalty + loneColumnPenalty + bestCost[next]
+                    shrinkPenalty + loneColumnPenalty + prematureBlankPenalty +
+                    bestCost[next]
                 if (score < bestCost[start] - 0.0001) {
                     bestCost[start] = score
                     bestLeft[start] = leftCount

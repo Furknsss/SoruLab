@@ -3,7 +3,7 @@ name: SoruLab v1.4.2 Integrated Signed APK and Visual QA
 on:
   push:
     branches:
-      - fix/v142-optical-twin-generation-20261111
+      - fix/v142-polynomial-reference-paper-20261112
   workflow_dispatch:
 
 concurrency:

@@ -4262,15 +4262,18 @@ private fun FullScreenTwinQuestionComparisonView(
                                     val aspect = originalBitmap.width.toFloat() /
                                         originalBitmap.height.toFloat().coerceAtLeast(1f)
                                     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                                        val nativeWidth = with(LocalDensity.current) { originalBitmap.width.toDp() }
-                                        val imageWidth = minOf(maxWidth, 300.dp, nativeWidth)
+                                        // In the comparison screen the source
+                                        // crop previously stopped at 300dp even
+                                        // on wide tablets: it looked miniature.
+                                        // Fit the complete source to the card,
+                                        // then allow vertical scrolling naturally.
                                         Image(
                                             bitmap = originalBitmap.asImageBitmap(),
                                             contentDescription = "Orijinal Test Sorusu",
                                             contentScale = ContentScale.Fit,
                                             alignment = Alignment.TopStart,
                                             modifier = Modifier
-                                                .width(imageWidth)
+                                                .fillMaxWidth()
                                                 .aspectRatio(aspect)
                                         )
                                     }

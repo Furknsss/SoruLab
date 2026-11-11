@@ -135,8 +135,137 @@ class LiveSolvingBoardScreenTest {
             q, java.io.File("/unused_book_file_dir"), 190f
         )
         org.junit.Assert.assertNotNull(metrics)
-        org.junit.Assert.assertEquals(640f / 430f, metrics!!.heightOverWidth, 0.01f)
-        org.junit.Assert.assertTrue(metrics.typographyScale < 0.9f)
+        // The new visual engine safely trims unused white pixels; its effective
+        // aspect ratio must exactly match the same decoded image after trimming,
+        // rather than the uncropped PNG's nominal width/height.
+        val source = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        val displayed = com.example.ui.screens.trimQuestionWhiteMargins(source)
+        try {
+            val expected = displayed.height.toFloat() / displayed.width
+            org.junit.Assert.assertEquals(expected, metrics!!.heightOverWidth, 0.015f)
+            org.junit.Assert.assertTrue(metrics.typographyScale < 0.9f)
+        } finally {
+            if (displayed !== source) displayed.recycle()
+            source.recycle()
+        }
+    }
+
+    @Test
+    fun paperFontCalibrationMakesThreePublishersOpticallyComparable() {
+        val measured = mapOf(
+            "ergi" to com.example.ui.screens.BookImageMeasurements(1.4f, 1f, 7.0f),
+            "baris" to com.example.ui.screens.BookImageMeasurements(1.2f, 1f, 18.0f),
+            "ucdortbes" to com.example.ui.screens.BookImageMeasurements(1.0f, 1f, 8.4f)
+        )
+        val scales = com.example.ui.screens.calibratedBookTypographyScales(measured)
+        val finalFonts = measured.map { (id, metrics) ->
+            metrics.printedGlyphDp!! * scales.getValue(id)
+        }
+        val smallest = finalFonts.minOrNull()!!
+        val largest = finalFonts.maxOrNull()!!
+        org.junit.Assert.assertTrue("Mixed publisher glyphs still vary too much: $finalFonts",
+            largest / smallest < 1.20f)
+        org.junit.Assert.assertTrue("Overprinted Baris must shrink", scales.getValue("baris") < 0.55f)
+    }
+
+    @Test
+    fun twoColumnPrintedFontDoesNotLeaveBarisTwiceErgiSize() {
+        // Regression from an actual Android v1.3.8 screenshot: Ergi 10px,
+        // Barış 21px. Since the smaller question already fills its column,
+        // normalize the large print DOWN to the smaller reference.
+        val measured = mapOf(
+            "ergi" to com.example.ui.screens.BookImageMeasurements(1f, 1f, 5f),
+            "baris" to com.example.ui.screens.BookImageMeasurements(1f, 1f, 10.5f),
+            "ucdortbes" to com.example.ui.screens.BookImageMeasurements(1f, 1f, 5.5f)
+        )
+        val scales = com.example.ui.screens.calibratedBookTypographyScales(measured)
+        val fontSizes = measured.map { (id, m) ->
+            (m.printedGlyphDp ?: 0f) * scales.getValue(id).coerceAtMost(1f)
+        }
+        org.junit.Assert.assertTrue(
+            "Book fonts remain optically unbalanced: $fontSizes",
+            fontSizes.maxOrNull()!! / fontSizes.minOrNull()!! < 1.20f
+        )
+    }
+
+    @Test
+    fun removingBlankMarginsNeverCropsBlackQuestionTextOrAnswers() {
+        val image = android.graphics.Bitmap.createBitmap(
+            800, 550, android.graphics.Bitmap.Config.ARGB_8888
+        )
+        val canvas = android.graphics.Canvas(image)
+        canvas.drawColor(android.graphics.Color.WHITE)
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.BLACK
+        }
+        canvas.drawRect(170f, 70f, 520f, 110f, paint)
+        canvas.drawRect(170f, 310f, 610f, 345f, paint)
+        canvas.drawRect(170f, 480f, 665f, 492f, paint) // Far-right option E
+        val trimmed = com.example.ui.screens.trimQuestionWhiteMargins(image)
+        try {
+            org.junit.Assert.assertTrue("Pure blank width was not removed",
+                trimmed.width < image.width)
+            val dark = android.graphics.Color.BLACK
+            var count = 0
+            for (y in 0 until trimmed.height) {
+                for (x in 0 until trimmed.width) {
+                    if (trimmed.getPixel(x, y) == dark) count++
+                }
+            }
+            // Robolectric can rasterize Canvas rectangles differently from
+            // hardware. Compare ACTUAL dark source pixels, not nominal areas.
+            var originalInk = 0
+            for (y in 0 until image.height) {
+                for (x in 0 until image.width) {
+                    if (image.getPixel(x, y) == dark) originalInk++
+                }
+            }
+            org.junit.Assert.assertTrue("The test image must contain actual ink", originalInk > 0)
+            org.junit.Assert.assertEquals(
+                "Every part of the answer choices must survive", originalInk, count
+            )
+        } finally {
+            if (trimmed !== image) trimmed.recycle()
+            image.recycle()
+        }
+    }
+
+    @Test
+    fun naturalPaperFlowNeverPacksCrowdedColumnsEvenForCompactQuestions() {
+        val original = fixtureSession().testItem.questions.first()
+        val questions = (1..18).map { number ->
+            original.copy(id = "airy_$number", number = number,
+                croppedImagePath = "airy_$number.png")
+        }
+        val ratios = questions.associate { it.id to 0.38f }
+        val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
+            questions, columnCapacity = 3.8f, maxQuestionsPerColumn = 8,
+            columnWidthDp = 240f, actualImageRatios = ratios
+        )
+        org.junit.Assert.assertTrue("Expected multiple pages for comfortable reading",
+            pages.size >= 3)
+        org.junit.Assert.assertTrue("Too many questions were squeezed into a paper column",
+            pages.all { it.left.size <= 3 && it.right.size <= 3 })
+        assertEquals(questions.map { it.id }, pages.flatMap { it.questions }.map { it.id })
+    }
+
+    @Test
+    fun airyPaperLayoutsStillBalanceShortAndLongQuestionsInSourceOrder() {
+        val original = fixtureSession().testItem.questions.first()
+        val questions = (1..9).map { n ->
+            original.copy(id = "mixed_height_$n", number = n,
+                croppedImagePath = "mixed_$n.png")
+        }
+        val ratios = questions.associate { q ->
+            q.id to if (q.number == 3 || q.number == 7) 2.2f else 0.48f
+        }
+        val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
+            questions, columnCapacity = 2.3f, maxQuestionsPerColumn = 3,
+            columnWidthDp = 240f, actualImageRatios = ratios
+        )
+        assertEquals(questions.map { it.id }, pages.flatMap { it.questions }.map { it.id })
+        org.junit.Assert.assertTrue(pages.all { it.left.size <= 3 && it.right.size <= 3 })
+        org.junit.Assert.assertTrue(pages.none { it.right.isEmpty() && it.questions.size > 1 })
     }
 
     @Test

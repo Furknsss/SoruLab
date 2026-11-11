@@ -304,6 +304,61 @@ class LiveSolvingBoardScreenTest {
     }
 
     @Test
+    fun polynomialGoldenReferenceTwoTallQuestionsHaveBreathingRoom() {
+        val layout = com.example.ui.screens.polynomialReferenceColumnRhythm(
+            listOf(272f, 288f), 686f
+        )
+        org.junit.Assert.assertTrue("Two real textbook questions need visible separation",
+            layout.gapDp in 45f..62f)
+        org.junit.Assert.assertTrue("Golden layout must never squash source print",
+            layout.slotScale > .95f)
+        org.junit.Assert.assertTrue("Natural top margin stays subtle",
+            layout.topInsetDp in 0f..18f)
+        val consumed = (272f + 288f) * layout.slotScale +
+            layout.gapDp + layout.topInsetDp
+        org.junit.Assert.assertTrue("No bottom clipping", consumed <= 686.01f)
+    }
+
+    @Test
+    fun threeAndFourQuestionColumnsUseProgressivelySmallerGaps() {
+        val paperHeight = 680f
+        val three = com.example.ui.screens.polynomialReferenceColumnRhythm(
+            listOf(172f, 184f, 176f), paperHeight
+        )
+        val four = com.example.ui.screens.polynomialReferenceColumnRhythm(
+            listOf(148f, 152f, 148f, 150f), paperHeight
+        )
+        org.junit.Assert.assertTrue("Three-question rhythm must remain airy",
+            three.gapDp in 20f..38f)
+        org.junit.Assert.assertTrue("Four-question rhythm must never overlap",
+            four.gapDp in 16f..26f)
+        org.junit.Assert.assertTrue("Less crowded columns get more breathing room",
+            three.gapDp > four.gapDp)
+        listOf(
+            listOf(172f, 184f, 176f) to three,
+            listOf(148f, 152f, 148f, 150f) to four
+        ).forEach { (heights, rhythm) ->
+            val occupied = heights.sum() * rhythm.slotScale +
+                (heights.size - 1) * rhythm.gapDp + rhythm.topInsetDp
+            org.junit.Assert.assertTrue(
+                "Must fit all full questions within page: $occupied",
+                occupied <= paperHeight + .01f
+            )
+        }
+    }
+
+    @Test
+    fun oversizedFigureShrinksOnlyEnoughToFitWithoutClipping() {
+        val rhythm = com.example.ui.screens.polynomialReferenceColumnRhythm(
+            listOf(780f), 605f
+        )
+        org.junit.Assert.assertTrue(rhythm.slotScale < 1f)
+        org.junit.Assert.assertTrue(
+            780f * rhythm.slotScale + rhythm.topInsetDp <= 605.01f
+        )
+    }
+
+    @Test
     fun naturalPaperFlowNeverPacksCrowdedColumnsEvenForCompactQuestions() {
         val original = fixtureSession().testItem.questions.first()
         val questions = (1..18).map { number ->

@@ -495,7 +495,7 @@ internal data class BookColumnRhythm(
     val topInsetDp: Float
 )
 
-internal fun polynomialReferenceColumnRhythm(
+internal fun adaptiveBookColumnRhythm(
     measuredQuestionHeightsDp: List<Float>,
     paperHeightDp: Float
 ): BookColumnRhythm {
@@ -537,7 +537,7 @@ private fun bookColumnHeightRhythm(
     paperHeightDp: Float,
     imageRatios: Map<String, Float>,
     typographyScales: Map<String, Float>
-): BookColumnRhythm = polynomialReferenceColumnRhythm(
+): BookColumnRhythm = adaptiveBookColumnRhythm(
     questions.map { question ->
         estimatedBookQuestionUnits(
             question, columnWidthDp, imageRatios, typographyScales
@@ -561,69 +561,93 @@ internal fun packQuestionsIntoTwoColumnPages(
 ): List<TwoColumnQuestionPage> {
     if (questions.isEmpty()) return listOf(TwoColumnQuestionPage(emptyList(), emptyList()))
 
-    // One physical height model for packing AND rendering. No forced "two
-    // questions per column" rule: long Dr. Biyoloji diagrams must keep their
-    // labels, while short Barış equations may share a column.
+    // Measure what will actually be drawn. Never fix a page to a 2x2 grid:
+    // a tall diagram might own a column, while six genuinely short equations
+    // can comfortably share one. Preserve reading order across every page.
     val width = columnWidthDp.coerceAtLeast(120f)
-    // Reserve breathing room and never pack for the absolute theoretical
-    // limit. Height is more important than squeezing another question in.
-    val capacity = (columnCapacity * 0.94f).coerceAtLeast(0.5f)
-    val columnLimit = maxQuestionsPerColumn.coerceIn(1, 4)
-    val questionUnits = FloatArray(questions.size) { index ->
-        estimatedBookQuestionUnits(questions[index], width, actualImageRatios, imageTypographyScales)
+    val paperHeight = (columnCapacity * width).coerceAtLeast(100f)
+    val heights = FloatArray(questions.size) { i ->
+        estimatedBookQuestionUnits(
+            questions[i], width, actualImageRatios, imageTypographyScales
+        ) * width
     }
-    val gap = 18f / width
-    val pages = mutableListOf<TwoColumnQuestionPage>()
-    var start = 0
+    val requestLimit = maxQuestionsPerColumn.coerceIn(1, 6)
+    val shortCount = heights.count { it < paperHeight * 0.17f }
+    // Expand the *ceiling*, not the requested number: only truly compact
+    // questions can go beyond four. The printed size is never shrunk to fit.
+    val columnLimit = if (questions.size >= 10 &&
+        shortCount >= (questions.size * 0.75f) && requestLimit >= 4
+    ) 6 else requestLimit
 
-    while (start < questions.size) {
-        var bestLeftCount = 1
-        var bestRightCount = 0
-        var bestTotal = 0
-        var bestImbalance = Float.POSITIVE_INFINITY
-        var leftUnits = 0f
+    // Global dynamic programming instead of a page-by-page greedy "fit the
+    // most now" strategy. It prevents leaving the final page with one lone
+    // question and allows both columns to reach comparable visual heights.
+    val n = questions.size
+    val bestCost = DoubleArray(n + 1) { Double.POSITIVE_INFINITY }
+    val bestLeft = IntArray(n)
+    val bestRight = IntArray(n)
+    bestCost[n] = 0.0
 
-        // Fill the maximum number of complete questions on each paper page.
-        // Among equally full choices, move the column divider to make both
-        // sides similar in height without changing the original question order.
-        for (leftCount in 1..minOf(columnLimit, questions.size - start)) {
-            leftUnits += questionUnits[start + leftCount - 1] +
-                if (leftCount == 1) 0f else gap
-            if (leftCount > 1 && leftUnits > capacity) break
+    for (start in n - 1 downTo 0) {
+        for (leftCount in 1..minOf(columnLimit, n - start)) {
+            val leftHeight = heights.slice(start until start + leftCount)
+            val leftRhythm = adaptiveBookColumnRhythm(leftHeight, paperHeight)
+            // Do not squeeze several printed questions just to reduce pages.
+            if (leftCount > 1 && leftRhythm.slotScale < .88f) continue
 
-            var rightUnits = 0f
-            for (rightCount in 0..minOf(columnLimit, questions.size - start - leftCount)) {
-                if (rightCount > 0) {
-                    rightUnits += questionUnits[start + leftCount + rightCount - 1] +
-                        if (rightCount == 1) 0f else gap
-                    if (rightCount > 1 && rightUnits > capacity) break
-                    if (rightCount == 1 && rightUnits > capacity) {
-                        // A single oversized graphic still owns a complete
-                        // column. The image will be fitted, never cropped.
-                    }
+            for (rightCount in 0..minOf(columnLimit, n - start - leftCount)) {
+                if (rightCount == 0 && n - start > 1) continue
+                val next = start + leftCount + rightCount
+                val rightHeight = heights.slice(start + leftCount until next)
+                val rightRhythm = adaptiveBookColumnRhythm(rightHeight, paperHeight)
+                if (rightCount > 1 && rightRhythm.slotScale < .88f) continue
+                if (!bestCost[next].isFinite()) continue
+
+                fun occupation(values: List<Float>, rhythm: BookColumnRhythm): Float {
+                    if (values.isEmpty()) return 0f
+                    return (values.sum() * rhythm.slotScale +
+                        (values.size - 1) * rhythm.gapDp + rhythm.topInsetDp
+                    ).coerceIn(0f, paperHeight)
                 }
-                val total = leftCount + rightCount
-                val imbalance = if (rightCount == 0 && total > 1) capacity
-                    else if (rightCount == 0) 0f
-                    else kotlin.math.abs(
-                        leftUnits.coerceAtMost(capacity) - rightUnits.coerceAtMost(capacity)
-                    )
-                if (total > bestTotal ||
-                    (total == bestTotal && imbalance < bestImbalance - 0.0001f)
-                ) {
-                    bestLeftCount = leftCount
-                    bestRightCount = rightCount
-                    bestTotal = total
-                    bestImbalance = imbalance
+                val leftFill = occupation(leftHeight, leftRhythm) / paperHeight
+                val rightFill = occupation(rightHeight, rightRhythm) / paperHeight
+                val blankPenalty = (1f - leftFill) * (1f - leftFill) * 52f +
+                    (1f - rightFill) * (1f - rightFill) * 52f
+                val imbalancePenalty = kotlin.math.abs(leftFill - rightFill) * 32f
+                val shrinkPenalty =
+                    (1f - leftRhythm.slotScale) * 85f +
+                    (1f - rightRhythm.slotScale) * 85f
+                // Fewer pages are useful, but never at the expense of tiny
+                // print or forced two-by-two layouts. A lone final page gets
+                // a modest penalty so neighboring pages reflow naturally.
+                val loneColumnPenalty = if (rightCount == 0) 24f else 0f
+                val score = 110.0 + blankPenalty + imbalancePenalty +
+                    shrinkPenalty + loneColumnPenalty + bestCost[next]
+                if (score < bestCost[start] - 0.0001) {
+                    bestCost[start] = score
+                    bestLeft[start] = leftCount
+                    bestRight[start] = rightCount
                 }
             }
         }
-        val next = start + bestLeftCount
+        // Every source is representable, even a gigantic diagram which must
+        // be fitted alone. Never lose or reorder a question.
+        if (!bestCost[start].isFinite()) {
+            bestCost[start] = 110.0 + bestCost[start + 1]
+            bestLeft[start] = 1
+            bestRight[start] = 0
+        }
+    }
+    val pages = mutableListOf<TwoColumnQuestionPage>()
+    var start = 0
+    while (start < n) {
+        val split = start + bestLeft[start].coerceAtLeast(1)
+        val finish = split + bestRight[start]
         pages += TwoColumnQuestionPage(
-            left = questions.subList(start, next),
-            right = questions.subList(next, next + bestRightCount)
+            questions.subList(start, split),
+            questions.subList(split, finish)
         )
-        start = next + bestRightCount
+        start = finish
     }
     return pages
 }

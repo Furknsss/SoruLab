@@ -439,8 +439,14 @@ private fun estimatedBookQuestionUnits(
     val normalizedHeight = (question.normBottom - question.normTop).coerceAtLeast(0.04f)
     // Match the ACTUAL drawing width: 42dp publisher/number gutter + 4dp gap.
     // The old 108dp deduction underestimated tall book crops by up to 50%.
-    val imageWidthDp = (columnWidthDp - 46f).coerceAtLeast(90f) *
-        (imageTypographyScales[question.id] ?: 1f).coerceIn(0.60f, 1.90f)
+    val usableImageWidthDp = (columnWidthDp - 46f).coerceAtLeast(90f)
+    val desiredScale = (imageTypographyScales[question.id] ?: 1f)
+        .coerceIn(0.60f, 1.90f)
+    // Mirror fittedBookImageSizeDp: increasing the scale cannot make an
+    // image wider than its actual content column. The previous estimator
+    // multiplied by 1.9 while the Image remained capped at 1.0, leaving a
+    // giant invisible vertical slot between otherwise adjacent questions.
+    val imageWidthDp = minOf(usableImageWidthDp * desiredScale, usableImageWidthDp)
     val isImage = question.imagePath.isNotBlank() ||
         question.imageBase64.isNotBlank() || question.pdfFilePath.isNotBlank()
     val contentHeightDp = if (isImage) {

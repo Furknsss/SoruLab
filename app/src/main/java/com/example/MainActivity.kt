@@ -290,7 +290,12 @@ private fun ActiveSolvingSessionHost(
                 mainViewModel.startStrengtheningTestFromSession(curSession, target)
             },
             onGenerateTwinQuestion = { q, cb ->
-                cb(mainViewModel.findGroundedTwinQuestion(q, curSession))
+                // Generate a NEW, independently reviewed twin from the source.
+                // The old library-only matcher never called the AI engine and
+                // incorrectly told users to import ZIP files to make twins.
+                aiViewModel.generateTwinQuestionOnDemand(
+                    q, context.applicationContext, cb
+                )
             },
             onGenerateSolutionForQuestion = { q, cb ->
                 aiViewModel.generateQuestionSolutionOnDemand(q, context.applicationContext, cb)

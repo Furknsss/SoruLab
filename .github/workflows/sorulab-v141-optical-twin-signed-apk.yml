@@ -75,6 +75,17 @@ jobs:
           --config firebase.json
           "bash ./gradlew :app:testDebugUnitTest --no-daemon --no-configuration-cache --max-workers=2"
 
+      - name: Preserve failing Kotlin test XML for exact root-cause repair
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoruLab-v1.4.1-Failed-Android-Test-Reports
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            app/build/test-results/testDebugUnitTest/
+            app/build/reports/tests/testDebugUnitTest/
+
       - name: Restore Firebase config and release keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}

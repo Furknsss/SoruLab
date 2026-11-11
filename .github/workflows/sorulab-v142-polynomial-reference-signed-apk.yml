@@ -58,8 +58,8 @@ jobs:
               "private fun BookPageQuestionItem345(",1
           )[0]
           assert "Arrangement.SpaceBetween" not in page, "Questions pinned to top & bottom"
-          assert "Arrangement.spacedBy(leftRhythm.gapDp.dp)" in page, "Golden reference rhythm missing"
-          assert "polynomialReferenceColumnRhythm" in screen, "Reference algorithm absent"
+          assert "Arrangement.spacedBy(leftRhythm.gapDp.dp)" in page, "Adaptive paper rhythm missing"
+          assert "adaptiveBookColumnRhythm" in screen, "Reference algorithm absent"
           assert "rightRhythm.gapDp.dp" in page, "Right column not adapted"
           print("Real AI twin callback + no pin-to-edges layout: OK")
           PY
@@ -229,11 +229,11 @@ jobs:
             sleep 7
             adb exec-out screencap -p > out/visual-qa/paper-layout-final-page.png
             test "$(stat -c%s out/visual-qa/paper-layout-final-page.png)" -gt 20000
-            # Real Compose two-by-two, long-diagram Polinomlar golden fixture.
+            # One representative Polinomlar 2+2 fixture; other screens exercise variable density.
             adb shell am force-stop com.aistudio.sorulab.ykslab
             adb shell am start -W -n com.aistudio.sorulab.ykslab/com.example.PaperLayoutPreviewActivity --ez polynomial_reference true
             sleep 8
-            adb exec-out screencap -p > out/visual-qa/polynomials-golden-2x2.png
+            adb exec-out screencap -p > out/visual-qa/polynomials-reference-example.png
             test "$(stat -c%s out/visual-qa/polynomials-golden-2x2.png)" -gt 20000
             # Reset only this disposable test emulator before upgrading.
             adb shell am force-stop com.aistudio.sorulab.ykslab

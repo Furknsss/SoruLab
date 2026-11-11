@@ -397,6 +397,31 @@ class LiveSolvingBoardScreenTest {
     }
 
     @Test
+    fun mixedQuestionsDoNotStrandTwoTinyQuestionsOnAnEarlyPage() {
+        val template = fixtureSession().testItem.questions.first()
+        val source = (1..9).map { n ->
+            template.copy(id = "mixed_page_$n", number = n,
+                croppedImagePath = "mixed_page_$n.png")
+        }
+        val ratios = source.associate { q ->
+            q.id to if (q.number == 3 || q.number == 7) 2.2f else .48f
+        }
+        val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
+            source, columnCapacity = 2.3f, maxQuestionsPerColumn = 3,
+            columnWidthDp = 240f, actualImageRatios = ratios
+        )
+        org.junit.Assert.assertTrue(pages.size >= 2)
+        org.junit.Assert.assertTrue(
+            "Do not leave a nearly empty page in the middle of a longer test",
+            pages.dropLast(1).none { page ->
+                page.left.size == 1 && page.right.size == 1 &&
+                    (page.left + page.right).all { ratios.getValue(it.id) < .7f }
+            }
+        )
+        assertEquals(source.map { it.id }, pages.flatMap { it.questions }.map { it.id })
+    }
+
+    @Test
     fun tallIllustrationsAreNotForcedIntoTwoByTwoOrIllegiblyShrunk() {
         val template = fixtureSession().testItem.questions.first()
         val questions = (1..9).map { n ->

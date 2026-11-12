@@ -851,5 +851,3 @@ class LiveSolvingBoardScreenTest {
         )
     }
 }
-
-

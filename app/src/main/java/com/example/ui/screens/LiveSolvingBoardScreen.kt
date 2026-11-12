@@ -213,8 +213,8 @@ private fun MeasuredBookPages(
                         }
                     }.single().measure(Constraints(minWidth = columnWidthPx, maxWidth = columnWidthPx)).height
                 }
-                val packingHeight = available + (available * .5f).toInt()
-                val pages = packMeasuredTestPages(heights, packingHeight,
+                val packingHeight = available
+                val pages = packMeasuredTestPages(heights.map { it + (it * .35f).toInt().coerceIn(64.dp.roundToPx(), 144.dp.roundToPx()) }, packingHeight,
                     TestPageDimensions.minGap.roundToPx(), columns).map { page ->
                     TwoColumnQuestionPage(page.columns[0].map(questions::get),
                         page.columns.getOrNull(1).orEmpty().map(questions::get), columns)
@@ -2416,20 +2416,22 @@ private fun RealTwoColumnBookPageSurface(
                 val columns = if (columnCount == 2)
                     listOf(measured.take(leftCount), measured.drop(leftCount)) else listOf(measured)
                 val minGap = TestPageDimensions.minGap.roundToPx()
-                // Keep the accepted airy rhythm. When content is only slightly too
-                // long, continue the paper vertically instead of creating a sparse page.
-                val preferredGap = minOf(TestPageDimensions.maxGap.roundToPx(),
-                    (viewportHeight.roundToPx() * .18f).toInt()).coerceAtLeast(minGap)
-                val height = maxOf(viewportHeight.roundToPx(), columns.maxOf { items ->
-                    items.sumOf { it.height } + (items.size - 1).coerceAtLeast(0) * preferredGap
-                })
+                val minWork = 64.dp.roundToPx()
+                val maxWork = 144.dp.roundToPx()
+                fun work(height: Int) = (height * .35f).toInt().coerceIn(minWork, maxWork)
+                fun occupied(items: List<androidx.compose.ui.layout.Placeable>) =
+                    items.sumOf { it.height + work(it.height) } + (items.size - 1).coerceAtLeast(0) * minGap
+                val height = maxOf(viewportHeight.roundToPx(), columns.maxOf(::occupied))
                 layout(constraints.maxWidth, height) {
                     columns.forEachIndexed { column, items ->
-                        val gap = preferredGap
+                        val gap = minGap
+                        val spare = (height - occupied(items)).coerceAtLeast(0)
+                        val weight = items.sumOf { kotlin.math.sqrt(it.height.toDouble().coerceAtLeast(1.0)) }
                         var y = 0
                         items.forEach { item ->
                             item.placeRelative(if (column == 0) 0 else constraints.maxWidth - width, y)
-                            y += item.height + gap
+                            y += item.height + work(item.height) +
+                                (if (weight > 0) spare * kotlin.math.sqrt(item.height.toDouble().coerceAtLeast(1.0)) / weight else 0.0).toInt() + gap
                         }
                     }
                 }

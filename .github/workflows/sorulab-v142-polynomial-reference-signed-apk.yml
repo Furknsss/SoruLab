@@ -261,6 +261,24 @@ jobs:
               dark=sum(1 for p in image.getdata() if max(p)<105)/n
               print(path.name, "bright",round(bright,3),"dark",round(dark,3))
               assert bright>.35 and dark>.007, "Missing rendered paper/text; refuse release"
+              if path.name == "paper-layout-sparse-five-questions.png":
+                  # The previous release literally had RGB(239,238,246) at
+                  # these positions, leaving a grey footer and side gutters.
+                  # Check the real Android screenshot, NOT just Kotlin colors.
+                  for px,py in [
+                      (.005,.35),(.995,.35),(.005,.75),(.995,.75),
+                      (.025,.86),(.25,.86),(.75,.86),(.975,.86),
+                      (.025,.93),(.25,.93),(.75,.93),(.975,.93)
+                  ]:
+                      rgb=image.getpixel((
+                          min(image.width-1,int(image.width*px)),
+                          min(image.height-1,int(image.height*py))
+                      ))
+                      assert min(rgb)>=246, (
+                          f"Grey test-paper gutter/footer at ({px},{py}): "
+                          f"{rgb}; reject APK"
+                      )
+                  print("Full-white test canvas: real Android pixels verified")
           PY
 
       - name: Upload the actual Android test-page screenshot for visual review

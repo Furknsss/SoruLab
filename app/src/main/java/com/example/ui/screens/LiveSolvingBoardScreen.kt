@@ -3053,10 +3053,11 @@ private fun ThreeDotQuestionPopoverCard345(
                         )
                     }
                 } else {
-                    Box(
+                    // Intentionally empty status ring: use a Spacer instead
+                    // of an empty Box without a content lambda.
+                    Spacer(
                         modifier = Modifier.size(22.dp)
-                            .border(2.dp, Color(0xFFA5A4B3), CircleShape),
-                        contentAlignment = Alignment.Center
+                            .border(2.dp, Color(0xFFA5A4B3), CircleShape)
                     )
                 }
             }
@@ -3125,7 +3126,7 @@ private fun ThreeDotQuestionPopoverCard345(
                                 if (wrongChoice) Color(0xFFDE3E4A) else Color(0xFFCECBD9)
                             ),
                         modifier = Modifier.weight(1f).height(40.dp)
-                            .testTag("popover_answer_${question.number}_$"+"option")
+                            .testTag("popover_answer_${question.number}_${option}")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
@@ -3143,7 +3144,7 @@ private fun ThreeDotQuestionPopoverCard345(
 
             if (marked != null && verified && !isCorrect) {
                 Text(
-                    "İşaretlediğin: $"+"marked",
+                    "İşaretlediğin: $marked",
                     color = Color(0xFFDE3E4A),
                     fontSize = 12.sp,
                     modifier = Modifier.testTag("popover_marked_answer_${question.number}")

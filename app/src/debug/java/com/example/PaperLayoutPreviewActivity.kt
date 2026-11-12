@@ -44,7 +44,7 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
                 else -> 24f
             }
             val imageHeight = when {
-                goldenReference -> 1040
+                goldenReference -> 755
                 index % 5 == 4 -> 520
                 index % 4 == 2 -> 380
                 index % 3 == 0 -> 315
@@ -127,7 +127,7 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
         val contextY = statementY + fontSize * 1.5f
         val diagramTop = contextY + fontSize * 1.45f + 16f
         val questionY = when {
-            goldenReference -> diagramTop + 685f
+            goldenReference -> diagramTop + 450f
             hasDiagram -> diagramTop + 228f
             else -> contextY + fontSize * 1.45f
         }
@@ -173,16 +173,16 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
                     color = Color.rgb(28, 46, 80)
                 }
                 canvas.drawRoundRect(
-                    85f, diagramTop + 215f, 690f, diagramTop + 565f,
+                    85f, diagramTop + 215f, 690f, diagramTop + 365f,
                     22f, 22f, shape
                 )
-                canvas.drawLine(130f, diagramTop + 420f, 645f, diagramTop + 420f, shape)
-                canvas.drawLine(380f, diagramTop + 250f, 380f, diagramTop + 535f, shape)
-                canvas.drawText("P(x)", 188f, diagramTop + 315f, mathText)
-                canvas.drawText("B(x)", 490f, diagramTop + 315f, mathText)
-                canvas.drawText("K(x)", 188f, diagramTop + 495f, mathText)
-                canvas.drawText("R(x)", 490f, diagramTop + 495f, mathText)
-                canvas.drawText("x² + 2x + 1", 255f, diagramTop + 620f, mathText)
+                canvas.drawLine(130f, diagramTop + 280f, 645f, diagramTop + 280f, shape)
+                canvas.drawLine(380f, diagramTop + 225f, 380f, diagramTop + 355f, shape)
+                canvas.drawText("P(x)", 188f, diagramTop + 265f, mathText)
+                canvas.drawText("B(x)", 490f, diagramTop + 265f, mathText)
+                canvas.drawText("K(x)", 188f, diagramTop + 345f, mathText)
+                canvas.drawText("R(x)", 490f, diagramTop + 345f, mathText)
+                canvas.drawText("x² + 2x + 1", 255f, diagramTop + 410f, mathText)
             }
         }
         canvas.drawText("ifadelerin toplamı kaçtır?", 18f, questionY, medium)

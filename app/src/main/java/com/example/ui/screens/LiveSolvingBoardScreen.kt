@@ -447,8 +447,9 @@ internal fun estimatedBookQuestionUnits(
     // multiplied by 1.9 while the Image remained capped at 1.0, leaving a
     // giant invisible vertical slot between otherwise adjacent questions.
     val imageWidthDp = minOf(usableImageWidthDp * desiredScale, usableImageWidthDp)
-    val isImage = question.imagePath.isNotBlank() ||
-        question.imageBase64.isNotBlank() || question.pdfFilePath.isNotBlank()
+    val isImage = question.croppedImagePath.isNotBlank() ||
+        question.imagePath.isNotBlank() || question.imageBase64.isNotBlank() ||
+        question.pdfFilePath.isNotBlank()
     val contentHeightDp = if (isImage) {
         val fallback = if (normalizedWidth >= 0.98f && normalizedHeight >= 0.98f) 1f
             else (normalizedHeight / normalizedWidth * 1.45f).coerceIn(0.18f, 4.5f)
@@ -482,29 +483,94 @@ internal fun fittedBookImageSizeDp(
     return width to (width / ratio).coerceAtMost(availableHeight)
 }
 
-/** Real ink-height-based slot, never a forced count of two per column. */
-private fun bookColumnHeightScale(
+/**
+ * Adaptive textbook rhythm for EVERY test (Polinomlar was one example).
+ * The question bodies keep their *measured* heights. Only the space
+ * between complete questions is opened up, with a strict ceiling.
+ * This avoids both old extremes: SpaceBetween pinning to page edges and
+ * 18dp compact stacking followed by a huge empty bottom half.
+ */
+internal data class BookColumnRhythm(
+    val slotScale: Float,
+    val gapDp: Float,
+    val topInsetDp: Float
+)
+
+internal fun adaptiveBookColumnRhythm(
+    measuredQuestionHeightsDp: List<Float>,
+    paperHeightDp: Float
+): BookColumnRhythm {
+    if (measuredQuestionHeightsDp.isEmpty()) return BookColumnRhythm(1f, 0f, 0f)
+    val count = measuredQuestionHeightsDp.size
+    val content = measuredQuestionHeightsDp.sum().coerceAtLeast(1f)
+    // Determine space from the *actual average question height*, not from
+    // any 2/3/4-question page template. Large diagrams breathe more, short
+    // equations stay comfortably grouped. Keep margins within visual limits.
+    val intervals = (count - 1).coerceAtLeast(0)
+    val averageQuestionHeight = content / count
+    val preferredGap = (averageQuestionHeight * 0.18f).coerceIn(18f, 56f)
+    val free = (paperHeightDp - content).coerceAtLeast(0f)
+    val wantedGap = if (intervals == 0) 0f else
+        minOf(preferredGap, (free - 10f).coerceAtLeast(18f))
+    val remainingForContent = (paperHeightDp - wantedGap * intervals - 6f)
+        .coerceAtLeast(1f)
+    val scale = (remainingForContent / content).coerceIn(0.35f, 1f)
+    // Keep the top aligned with the textbook's common baseline, but don't
+    // force all leftover height to the final bottom edge when it's modest.
+    val spare = (paperHeightDp - content * scale - wantedGap * intervals)
+        .coerceAtLeast(0f)
+    val inset = (spare * 0.12f).coerceIn(0f, 18f)
+    return BookColumnRhythm(scale, wantedGap, inset)
+}
+
+/**
+ * Use the real bottommost printed question to size the visible sheet.
+ *
+ * A physical book page is not a mandate to show 300dp of white blank space
+ * below a short final column. Never stretch a small crop vertically or pin
+ * questions to the very bottom merely to pretend that the page is full.
+ * Instead end the white page a small safe margin after its actual content,
+ * leaving the surrounding reader canvas neutral. Tall/full pages retain
+ * their full available height, so writing/stylus coordinates do not shift.
+ */
+internal fun visibleBookPaperHeightDp(
+    viewportHeightDp: Float,
+    leftHeightsDp: List<Float>,
+    rightHeightsDp: List<Float>,
+    leftRhythm: BookColumnRhythm,
+    rightRhythm: BookColumnRhythm
+): Float {
+    if (viewportHeightDp <= 0f) return 0f
+    fun occupied(heights: List<Float>, rhythm: BookColumnRhythm): Float {
+        if (heights.isEmpty()) return 0f
+        val count = heights.size
+        return heights.sum() * rhythm.slotScale +
+            ((count - 1) * rhythm.gapDp) + rhythm.topInsetDp
+    }
+    // 12dp top padding + 2dp column top + 2dp bottom + 24dp breathing room.
+    val consumed = maxOf(
+        occupied(leftHeightsDp, leftRhythm),
+        occupied(rightHeightsDp, rightRhythm)
+    ) + 40f
+    return consumed.coerceIn(
+        minOf(viewportHeightDp, 240f), viewportHeightDp
+    )
+}
+
+private fun bookColumnHeightRhythm(
     questions: List<YksQuestion>,
     columnWidthDp: Float,
     paperHeightDp: Float,
     imageRatios: Map<String, Float>,
-    typographyScales: Map<String, Float>,
-    gapDp: Float = 18f
-): Float {
-    if (questions.isEmpty()) return 1f
-    val desired = questions.sumOf { q ->
-        (estimatedBookQuestionUnits(q, columnWidthDp, imageRatios, typographyScales) *
-            columnWidthDp).toDouble()
-    }.toFloat()
-    val gaps = (questions.size - 1).coerceAtLeast(0) * gapDp
-    val spaceFit = ((paperHeightDp - gaps).coerceAtLeast(1f) /
-        desired.coerceAtLeast(1f)).coerceAtMost(1f)
-    // Normal paper columns should not squeeze readable questions to tiny
-    // postage stamps. One tall diagram may occupy a page by itself and fit.
-    // The old 0.82 floor could overflow its slot and clip the last answer.
-    // Use the actual fit fraction; smaller columns are handled by repacking.
-    return spaceFit.coerceIn(0.35f, 1f)
-}
+    typographyScales: Map<String, Float>
+): BookColumnRhythm = adaptiveBookColumnRhythm(
+    questions.map { question ->
+        estimatedBookQuestionUnits(
+            question, columnWidthDp, imageRatios, typographyScales
+        ) * columnWidthDp
+    },
+    paperHeightDp
+)
 
 /**
  * A paper-style flow layout. Each column holds as many whole question images as
@@ -514,76 +580,125 @@ private fun bookColumnHeightScale(
 internal fun packQuestionsIntoTwoColumnPages(
     questions: List<YksQuestion>,
     columnCapacity: Float = 2.1f,
-    maxQuestionsPerColumn: Int = 3,
     columnWidthDp: Float = 360f,
     actualImageRatios: Map<String, Float> = emptyMap(),
     imageTypographyScales: Map<String, Float> = emptyMap()
 ): List<TwoColumnQuestionPage> {
     if (questions.isEmpty()) return listOf(TwoColumnQuestionPage(emptyList(), emptyList()))
 
-    // One physical height model for packing AND rendering. No forced "two
-    // questions per column" rule: long Dr. Biyoloji diagrams must keep their
-    // labels, while short Barış equations may share a column.
+    // Measure what will actually be drawn. Never fix a page to a 2x2 grid:
+    // a tall diagram might own a column, while six genuinely short equations
+    // can comfortably share one. Preserve reading order across every page.
     val width = columnWidthDp.coerceAtLeast(120f)
-    // Reserve breathing room and never pack for the absolute theoretical
-    // limit. Height is more important than squeezing another question in.
-    val capacity = (columnCapacity * 0.94f).coerceAtLeast(0.5f)
-    val columnLimit = maxQuestionsPerColumn.coerceIn(1, 4)
-    val questionUnits = FloatArray(questions.size) { index ->
-        estimatedBookQuestionUnits(questions[index], width, actualImageRatios, imageTypographyScales)
+    val paperHeight = (columnCapacity * width).coerceAtLeast(100f)
+    val heights = FloatArray(questions.size) { i ->
+        estimatedBookQuestionUnits(
+            questions[i], width, actualImageRatios, imageTypographyScales
+        ) * width
     }
-    val gap = 18f / width
-    val pages = mutableListOf<TwoColumnQuestionPage>()
-    var start = 0
+    // Candidate counts come ONLY from how many *whole* measured questions
+    // physically fit in the available height. No 4-per-page, 6-per-column,
+    // or publisher-specific numerical quotas are permitted.
+    fun naturalColumnLimit(start: Int): Int {
+        var totalMeasuredHeight = 0f
+        var included = 0
+        for (index in start until questions.size) {
+            totalMeasuredHeight += heights[index]
+            val requiredBreathing = included * 18f
+            // Preserve readable font: a multi-question column is rejected if
+            // it would require more than 7% downscaling, even with minimum gap.
+            if (included > 0 &&
+                totalMeasuredHeight * .93f + requiredBreathing > paperHeight - 6f
+            ) break
+            included++
+        }
+        // A single unusually tall figure always gets its own fitted column.
+        return included.coerceAtLeast(1)
+    }
 
-    while (start < questions.size) {
-        var bestLeftCount = 1
-        var bestRightCount = 0
-        var bestTotal = 0
-        var bestImbalance = Float.POSITIVE_INFINITY
-        var leftUnits = 0f
+    // Global dynamic programming instead of a page-by-page greedy "fit the
+    // most now" strategy. It prevents leaving the final page with one lone
+    // question and allows both columns to reach comparable visual heights.
+    val n = questions.size
+    val bestCost = DoubleArray(n + 1) { Double.POSITIVE_INFINITY }
+    val bestLeft = IntArray(n)
+    val bestRight = IntArray(n)
+    bestCost[n] = 0.0
 
-        // Fill the maximum number of complete questions on each paper page.
-        // Among equally full choices, move the column divider to make both
-        // sides similar in height without changing the original question order.
-        for (leftCount in 1..minOf(columnLimit, questions.size - start)) {
-            leftUnits += questionUnits[start + leftCount - 1] +
-                if (leftCount == 1) 0f else gap
-            if (leftCount > 1 && leftUnits > capacity) break
+    for (start in n - 1 downTo 0) {
+        for (leftCount in 1..minOf(naturalColumnLimit(start), n - start)) {
+            val leftHeight = heights.slice(start until start + leftCount)
+            val leftRhythm = adaptiveBookColumnRhythm(leftHeight, paperHeight)
+            // Do not squeeze several printed questions just to reduce pages.
+            if (leftCount > 1 && leftRhythm.slotScale < .93f) continue
 
-            var rightUnits = 0f
-            for (rightCount in 0..minOf(columnLimit, questions.size - start - leftCount)) {
-                if (rightCount > 0) {
-                    rightUnits += questionUnits[start + leftCount + rightCount - 1] +
-                        if (rightCount == 1) 0f else gap
-                    if (rightCount > 1 && rightUnits > capacity) break
-                    if (rightCount == 1 && rightUnits > capacity) {
-                        // A single oversized graphic still owns a complete
-                        // column. The image will be fitted, never cropped.
-                    }
+            for (rightCount in 0..minOf(
+                naturalColumnLimit(start + leftCount), n - start - leftCount
+            )) {
+                if (rightCount == 0 && n - start > 1) continue
+                val next = start + leftCount + rightCount
+                val rightHeight = heights.slice(start + leftCount until next)
+                val rightRhythm = adaptiveBookColumnRhythm(rightHeight, paperHeight)
+                if (rightCount > 1 && rightRhythm.slotScale < .93f) continue
+                if (!bestCost[next].isFinite()) continue
+
+                fun occupation(values: List<Float>, rhythm: BookColumnRhythm): Float {
+                    if (values.isEmpty()) return 0f
+                    return (values.sum() * rhythm.slotScale +
+                        (values.size - 1) * rhythm.gapDp + rhythm.topInsetDp
+                    ).coerceIn(0f, paperHeight)
                 }
-                val total = leftCount + rightCount
-                val imbalance = if (rightCount == 0 && total > 1) capacity
-                    else if (rightCount == 0) 0f
-                    else kotlin.math.abs(
-                        leftUnits.coerceAtMost(capacity) - rightUnits.coerceAtMost(capacity)
-                    )
-                if (total > bestTotal ||
-                    (total == bestTotal && imbalance < bestImbalance - 0.0001f)
-                ) {
-                    bestLeftCount = leftCount
-                    bestRightCount = rightCount
-                    bestTotal = total
-                    bestImbalance = imbalance
+                val leftFill = occupation(leftHeight, leftRhythm) / paperHeight
+                val rightFill = occupation(rightHeight, rightRhythm) / paperHeight
+                val blankPenalty = (1f - leftFill) * (1f - leftFill) * 52f +
+                    (1f - rightFill) * (1f - rightFill) * 52f
+                val imbalancePenalty = kotlin.math.abs(leftFill - rightFill) * 32f
+                val shrinkPenalty =
+                    (1f - leftRhythm.slotScale) * 85f +
+                    (1f - rightRhythm.slotScale) * 85f
+                // Fewer pages are useful, but never at the expense of tiny
+                // print or forced two-by-two layouts. A lone final page gets
+                // a modest penalty so neighboring pages reflow naturally.
+                val loneColumnPenalty = if (rightCount == 0) 24f else 0f
+                // If more questions remain, never prefer a nearly empty
+                // 1+1 opening page to a balanced use of subsequent content.
+                // A genuinely sparse LAST page is acceptable; stretching
+                // questions or squeezing diagrams to erase blank space isn't.
+                val prematureBlankPenalty = if (next < n &&
+                    leftFill < .35f && rightFill < .35f
+                ) 140f else 0f
+                // Optimize the full test by REAL filled area, typography
+                // and comfortable gaps. There is deliberately no target
+                // question count and no forced even 6+6 / 4+4 page split.
+                // Some long questions correctly occupy a whole column.
+                val score = 110.0 + blankPenalty + imbalancePenalty +
+                    shrinkPenalty + loneColumnPenalty + prematureBlankPenalty +
+                    bestCost[next]
+                if (score < bestCost[start] - 0.0001) {
+                    bestCost[start] = score
+                    bestLeft[start] = leftCount
+                    bestRight[start] = rightCount
                 }
             }
         }
-        val next = start + bestLeftCount
+        // Every source is representable, even a gigantic diagram which must
+        // be fitted alone. Never lose or reorder a question.
+        if (!bestCost[start].isFinite()) {
+            bestCost[start] = 110.0 + bestCost[start + 1]
+            bestLeft[start] = 1
+            bestRight[start] = 0
+        }
+    }
+    val pages = mutableListOf<TwoColumnQuestionPage>()
+    var start = 0
+    while (start < n) {
+        val split = start + bestLeft[start].coerceAtLeast(1)
+        val finish = split + bestRight[start]
         pages += TwoColumnQuestionPage(
-            left = questions.subList(start, next),
-            right = questions.subList(next, next + bestRightCount)
+            questions.subList(start, split),
+            questions.subList(split, finish)
         )
-        start = next + bestRightCount
+        start = finish
     }
     return pages
 }
@@ -655,7 +770,7 @@ fun LiveSolvingBoardScreen(
     }
     val packedBookPages = remember(questions, columnCapacity, columnWidth, imageMeasurements) {
         packQuestionsIntoTwoColumnPages(
-            questions, columnCapacity, 4, columnWidth, actualImageRatios, imageTypographyScales
+            questions, columnCapacity, columnWidth, actualImageRatios, imageTypographyScales
         )
     }
     val totalBookPages = packedBookPages.size.coerceAtLeast(1)
@@ -943,7 +1058,9 @@ fun LiveSolvingBoardScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFEFEEF6))
+            // White across the ENTIRE viewport, including the area past the
+            // last printed question, side gutters and tablet edges.
+            .background(Color.White)
             .testTag("live_solving_board")
     ) {
         // 1. ÜST BEYAZ BAR: Solda Geri Oku, Ortada Test Başlığı, Sağda Mavi Hap Buton
@@ -1020,11 +1137,10 @@ fun LiveSolvingBoardScreen(
             // Book Page Container with Horizontal Finger/Hand Swipe (HorizontalPager) + Pinch-to-Zoom support
             Box(
                 modifier = Modifier
+                    // Edge-to-edge real book paper. No rounded grey frame,
+                    // external 8dp gutter or card shadow around the sheet.
                     .fillMaxSize()
-                    .padding(horizontal = 8.dp, vertical = 8.dp)
-                    .clip(RoundedCornerShape(8.dp))
                     .background(Color.White)
-                    .shadow(2.dp, RoundedCornerShape(8.dp))
                     .testTag("board_ink_viewport")
                     .semantics { stateDescription = zoomStateDescription }
                     // Initial pass wins two-finger gestures before the pager
@@ -2085,21 +2201,31 @@ private fun RealTwoColumnBookPageSurface(
 ) {
     val leftColumnQuestions = pageQuestions.left
     val rightColumnQuestions = pageQuestions.right
-    // Tam Ekran Kitap Sayfası Deneyimi (Üstte gereksiz başlıklar kaldırıldı, alttaki boşluk sıfırlandı)
+    // Full-height canvas, variable-height paper: no fabricated empty lower half.
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
+            // The page may end early for a naturally short test, but the
+            // backing surface must NEVER become grey underneath it.
             .background(Color.White)
     ) {
         val actualColumnWidthDp = ((maxWidth.value - 44f) / 2f).coerceAtLeast(145f)
         val contentHeightDp = (maxHeight.value - 28f).coerceAtLeast(80f)
-        val leftColumnScale = bookColumnHeightScale(
-            leftColumnQuestions, actualColumnWidthDp, contentHeightDp,
-            actualImageRatios, imageTypographyScales
-        )
-        val rightColumnScale = bookColumnHeightScale(
-            rightColumnQuestions, actualColumnWidthDp, contentHeightDp,
-            actualImageRatios, imageTypographyScales
+        val leftHeightsDp = leftColumnQuestions.map {
+            estimatedBookQuestionUnits(
+                it, actualColumnWidthDp, actualImageRatios, imageTypographyScales
+            ) * actualColumnWidthDp
+        }
+        val rightHeightsDp = rightColumnQuestions.map {
+            estimatedBookQuestionUnits(
+                it, actualColumnWidthDp, actualImageRatios, imageTypographyScales
+            ) * actualColumnWidthDp
+        }
+        val leftRhythm = adaptiveBookColumnRhythm(leftHeightsDp, contentHeightDp)
+        val rightRhythm = adaptiveBookColumnRhythm(rightHeightsDp, contentHeightDp)
+        val visiblePaperHeightDp = visibleBookPaperHeightDp(
+            maxHeight.value,
+            leftHeightsDp, rightHeightsDp, leftRhythm, rightRhythm
         )
         // Dışarı tıklandığında açık olan `⋮` Popover menüsünü kapatan şeffaf arka plan katmanı
         if (openThreeDotQuestionNumber != null) {
@@ -2117,7 +2243,9 @@ private fun RealTwoColumnBookPageSurface(
 
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .height(visiblePaperHeightDp.dp)
+                .background(Color.White)
                 .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)
@@ -2137,21 +2265,21 @@ private fun RealTwoColumnBookPageSurface(
                         .weight(1f)
                         .fillMaxHeight()
                         .zIndex(if (isLeftPopoverOpen) 60f else 1f)
-                        .padding(end = 7.dp, top = 2.dp, bottom = 2.dp),
+                        .padding(end = 7.dp, top = (2f + leftRhythm.topInsetDp).dp, bottom = 2.dp),
                     // Comfortable paper flow: 1-3 whole questions according
                     // to their measured height. Do not squeeze 5-8 tiny
                     // questions into a column merely to fill whitespace.
                     // Never pin the first question to the top and the last to
                     // the bottom: it creates the huge empty middle in the user's
                     // actual page screenshot. Real tests have a stable rhythm.
-                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                    verticalArrangement = Arrangement.spacedBy(leftRhythm.gapDp.dp)
                 ) {
                     leftColumnQuestions.forEachIndexed { idx, q ->
                         BoxWithConstraints(
                             modifier = Modifier.height(
                                 (estimatedBookQuestionUnits(q, actualColumnWidthDp,
                                     actualImageRatios, imageTypographyScales) *
-                                    actualColumnWidthDp * leftColumnScale).dp
+                                    actualColumnWidthDp * leftRhythm.slotScale).dp
                             ).fillMaxWidth(),
                             contentAlignment = Alignment.TopStart
                         ) {
@@ -2190,8 +2318,8 @@ private fun RealTwoColumnBookPageSurface(
                         .weight(1f)
                         .fillMaxHeight()
                         .zIndex(if (isRightPopoverOpen) 60f else 1f)
-                        .padding(start = 7.dp, top = 2.dp, bottom = 2.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                        .padding(start = 7.dp, top = (2f + rightRhythm.topInsetDp).dp, bottom = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(rightRhythm.gapDp.dp)
                 ) {
                     if (rightColumnQuestions.isEmpty()) {
                         Spacer(modifier = Modifier.height(80.dp))
@@ -2201,7 +2329,7 @@ private fun RealTwoColumnBookPageSurface(
                                 modifier = Modifier.height(
                                     (estimatedBookQuestionUnits(q, actualColumnWidthDp,
                                         actualImageRatios, imageTypographyScales) *
-                                        actualColumnWidthDp * rightColumnScale).dp
+                                        actualColumnWidthDp * rightRhythm.slotScale).dp
                                 ).fillMaxWidth(),
                                 contentAlignment = Alignment.TopStart
                             ) {

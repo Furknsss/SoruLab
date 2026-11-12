@@ -235,6 +235,13 @@ jobs:
             sleep 8
             adb exec-out screencap -p > out/visual-qa/polynomials-reference-example.png
             test "$(stat -c%s out/visual-qa/polynomials-reference-example.png)" -gt 20000
+            # Real five-question short last page: whitespace must not mimic
+            # an empty lower half of a fixed-height printed sheet.
+            adb shell am force-stop com.aistudio.sorulab.ykslab
+            adb shell am start -W -n com.aistudio.sorulab.ykslab/com.example.PaperLayoutPreviewActivity --ez sparse_final_page true
+            sleep 8
+            adb exec-out screencap -p > out/visual-qa/paper-layout-sparse-five-questions.png
+            test "$(stat -c%s out/visual-qa/paper-layout-sparse-five-questions.png)" -gt 20000
             # Reset only this disposable test emulator before upgrading.
             adb shell am force-stop com.aistudio.sorulab.ykslab
             adb uninstall com.aistudio.sorulab.ykslab

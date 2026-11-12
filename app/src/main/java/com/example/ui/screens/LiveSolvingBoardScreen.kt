@@ -63,6 +63,10 @@ import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
@@ -95,6 +99,7 @@ import com.example.util.StylusInputPolicy
 import com.example.util.BoardInkCoordinates
 import com.example.util.TestAnswerAnalyticsEngine
 import com.example.viewmodel.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -107,7 +112,8 @@ import kotlin.math.sqrt
 
 internal data class TwoColumnQuestionPage(
     val left: List<YksQuestion>,
-    val right: List<YksQuestion>
+    val right: List<YksQuestion>,
+    val columnCount: Int = 2
 ) {
     val questions: List<YksQuestion> get() = left + right
 }
@@ -117,6 +123,110 @@ internal data class BookImageMeasurements(
     val typographyScale: Float,
     val printedGlyphDp: Float? = null
 )
+
+private object TestPageDimensions {
+    val edgeHandleSpace = 30.dp
+    val pageHorizontal = 18.dp
+    val pageVertical = 16.dp
+    val footerHeight = 40.dp
+    val gutter = 29.dp
+    val minGap = 24.dp
+    val maxGap = 160.dp
+}
+
+private val LocalTestBitmaps = staticCompositionLocalOf<Map<String, Bitmap?>> { emptyMap() }
+
+private data class PreparedTestPaper(
+    val columnWidth: Float,
+    val bitmaps: Map<String, Bitmap?>,
+    val scales: Map<String, Float>
+)
+
+/** Actual Compose measurement is the only source of page geometry. */
+@Composable
+private fun MeasuredBookPages(
+    questions: List<YksQuestion>,
+    customPublishers: List<YksPublisherInfo>,
+    isImmersive: Boolean,
+    content: @Composable (List<TwoColumnQuestionPage>, Map<String, Float>) -> Unit
+) {
+    val context = LocalContext.current.applicationContext
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val columns = if (maxWidth >= 600.dp) 2 else 1
+        val density = LocalDensity.current
+        val columnWidthPx = with(density) {
+            val inner = constraints.maxWidth - TestPageDimensions.edgeHandleSpace.roundToPx() -
+                2 * TestPageDimensions.pageHorizontal.roundToPx()
+            if (columns == 2) ((inner - TestPageDimensions.gutter.roundToPx()) / 2).coerceAtLeast(1)
+            else inner.coerceAtLeast(1)
+        }
+        val columnWidthDp = with(density) { columnWidthPx.toDp().value }
+        val prepared by produceState<PreparedTestPaper?>(null, questions, columnWidthDp) {
+            val loaded = withContext(Dispatchers.IO) {
+                val bitmaps = questions.associate { q ->
+                    q.id to StudioImageAndPdfEngine.loadGuaranteedQuestionBitmap(
+                        context, q.id, q.imagePath, q.imageBase64, q.pdfFilePath,
+                        q.pageIndex, q.normLeft, q.normTop, q.normRight, q.normBottom
+                    )?.let(::trimTestImageMargins)
+                }
+                val metrics = bitmaps.mapNotNull { (id, bitmap) ->
+                    bitmap?.let {
+                        id to BookImageMeasurements(
+                            it.height.toFloat() / it.width,
+                            estimateBookTypographyScale(it, (columnWidthDp - 46f).coerceAtLeast(1f)),
+                            detectTypicalPrintedGlyphDp(it, (columnWidthDp - 46f).coerceAtLeast(1f))
+                        )
+                    }
+                }.toMap()
+                PreparedTestPaper(columnWidthDp, bitmaps, calibratedBookTypographyScales(metrics))
+            }
+            // Publish on the Android UI thread, including when a test frame-clock
+            // interceptor resumes the IO continuation on a background worker.
+            withContext(Dispatchers.Main.immediate) { value = loaded }
+        }
+        val paper = prepared?.takeIf { it.columnWidth == columnWidthDp }
+        if (paper == null) {
+            Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    CircularProgressIndicator(Modifier.size(28.dp), color = Color(0xFF3475F5))
+                    Text("Test sayfaları hazırlanıyor", color = Color(0xFF64748B), fontSize = 14.sp)
+                }
+            }
+        } else CompositionLocalProvider(LocalTestBitmaps provides paper.bitmaps) {
+            SubcomposeLayout(Modifier.fillMaxSize()) { constraints ->
+                val chrome = 58.dp.roundToPx() + if (isImmersive) 0 else 54.dp.roundToPx()
+                val available = (constraints.maxHeight - chrome -
+                    2 * TestPageDimensions.pageVertical.roundToPx() -
+                    TestPageDimensions.footerHeight.roundToPx()).coerceAtLeast(1)
+                val heights = questions.map { q ->
+                    subcompose("measure_" + q.id) {
+                        Box(Modifier.clearAndSetSemantics { }) {
+                        BookPageQuestionItem345(
+                            question = q, maxImageHeight = (available.toDp() - 38.dp).coerceAtLeast(1.dp),
+                            imageTypographyScale = paper.scales[q.id] ?: 1f,
+                            isReviewMode = false, selectedOption = null,
+                            isThreeDotMenuOpen = false, customPublishers = customPublishers,
+                            onToggleThreeDotMenu = {}, onSelectOption = {}, onOpenTopicLecture = {},
+                            onOpenSolutionModal = {}, onOpenTwinScreen = {}, onAddToKumbara = {}
+                        )
+                        }
+                    }.single().measure(Constraints(minWidth = columnWidthPx, maxWidth = columnWidthPx)).height
+                }
+                val packingHeight = available
+                val pages = packMeasuredTestPages(heights.map { it + (it * .35f).toInt().coerceIn(64.dp.roundToPx(), 144.dp.roundToPx()) }, packingHeight,
+                    TestPageDimensions.minGap.roundToPx(), columns).map { page ->
+                    TwoColumnQuestionPage(page.columns[0].map(questions::get),
+                        page.columns.getOrNull(1).orEmpty().map(questions::get), columns)
+                }
+                val board = subcompose("board") {
+                    Box(Modifier.fillMaxSize()) { content(pages, paper.scales) }
+                }.single().measure(constraints)
+                layout(constraints.maxWidth, constraints.maxHeight) { board.placeRelative(0, 0) }
+            }
+        }
+    }
+}
 
 /** Conservatively remove peripheral white only. Original ZIP image stays unchanged. */
 internal fun trimQuestionWhiteMargins(source: Bitmap): Bitmap {
@@ -738,41 +848,84 @@ fun LiveSolvingBoardScreen(
     onAddQuestionToKumbara: (YksQuestion) -> Unit = {},
     customPublishers: List<YksPublisherInfo> = emptyList()
 ) {
-    val questions = session.testItem.questions
-    val totalQuestions = questions.size.coerceAtLeast(1)
-    val context = LocalContext.current
-    val configuration = LocalConfiguration.current
-    val density = LocalDensity.current.density
-    var bookAreaSize by remember(session.testItem.id) { mutableStateOf(IntSize.Zero) }
-    val sheetWidthDp = if (bookAreaSize.width > 0) bookAreaSize.width / density
-        else configuration.screenWidthDp.toFloat()
-    val sheetHeightDp = if (bookAreaSize.height > 0) bookAreaSize.height / density
-        else (configuration.screenHeightDp - 130f).coerceAtLeast(300f)
-    // Reserve only real paper gutters; the old 100dp deduction made columns narrow.
-    val columnWidth = ((sheetWidthDp - 44f) / 2f).coerceAtLeast(145f)
-    val columnCapacity = ((sheetHeightDp - 36f) / columnWidth).coerceAtLeast(0.5f)
-    val imageMeasurements by produceState<Map<String, BookImageMeasurements>>(
-        initialValue = emptyMap(),
-        key1 = questions, key2 = context.filesDir.absolutePath, key3 = columnWidth
-    ) {
-        value = withContext(Dispatchers.IO) {
-            questions.mapNotNull { question ->
-                estimateBookImageMeasurements(question, context.filesDir, columnWidth - 46f)
-                    ?.let { question.id to it }
-            }.toMap()
+    var isImmersive by rememberSaveable(session.testItem.id) { mutableStateOf(false) }
+    BackHandler(onBack = onExitSession)
+    key(session.testItem.id, session.testItem.questions) {
+        MeasuredBookPages(session.testItem.questions, customPublishers, isImmersive) { pages, scales ->
+            LiveSolvingBoardContent(
+                session = session,
+                strokes = strokes,
+                currentCanvasKey = currentCanvasKey,
+                activeTool = activeTool,
+                selectedStrokeSizeIndex = selectedStrokeSizeIndex,
+                selectedPenColorHex = selectedPenColorHex,
+                onExitSession = onExitSession,
+                onToggleViewMode = onToggleViewMode,
+                onSelectTool = onSelectTool,
+                onSelectStrokeSize = onSelectStrokeSize,
+                onSelectPenColor = onSelectPenColor,
+                onAddStroke = onAddStroke,
+                onBookPageChanged = onBookPageChanged,
+                onClearCanvas = onClearCanvas,
+                onSelectQuestionIndex = onSelectQuestionIndex,
+                onSelectOption = onSelectOption,
+                onToggleOpticalForm = onToggleOpticalForm,
+                onToggleStatsDrawer = onToggleStatsDrawer,
+                onToggleQuestionMap = onToggleQuestionMap,
+                onFinishTest = onFinishTest,
+                onGoToStatsTab = onGoToStatsTab,
+                onAskAiForQuestion = onAskAiForQuestion,
+                onSolveTwinTest = onSolveTwinTest,
+                onStrengthenFromFrequency = onStrengthenFromFrequency,
+                onGenerateTwinQuestion = onGenerateTwinQuestion,
+                onGenerateSolutionForQuestion = onGenerateSolutionForQuestion,
+                onAddQuestionToKumbara = onAddQuestionToKumbara,
+                customPublishers = customPublishers,
+                packedBookPages = pages, imageTypographyScales = scales,
+                isImmersive = isImmersive, onToggleImmersive = { isImmersive = !isImmersive }
+            )
         }
     }
-    val actualImageRatios = remember(imageMeasurements) {
-        imageMeasurements.mapValues { it.value.heightOverWidth }
-    }
-    val imageTypographyScales = remember(imageMeasurements) {
-        calibratedBookTypographyScales(imageMeasurements)
-    }
-    val packedBookPages = remember(questions, columnCapacity, columnWidth, imageMeasurements) {
-        packQuestionsIntoTwoColumnPages(
-            questions, columnCapacity, columnWidth, actualImageRatios, imageTypographyScales
-        )
-    }
+}
+
+@Composable
+private fun LiveSolvingBoardContent(
+    session: ActiveSolvingSession,
+    strokes: List<DrawStroke>,
+    currentCanvasKey: String,
+    activeTool: DrawingTool,
+    selectedStrokeSizeIndex: Int,
+    selectedPenColorHex: Long,
+    onExitSession: () -> Unit,
+    onToggleViewMode: () -> Unit,
+    onSelectTool: (DrawingTool) -> Unit,
+    onSelectStrokeSize: (Int) -> Unit,
+    onSelectPenColor: (Long) -> Unit,
+    onAddStroke: (String, List<Offset>, List<Float>) -> Unit,
+    onBookPageChanged: (Int) -> Unit,
+    onClearCanvas: (String) -> Unit,
+    onSelectQuestionIndex: (Int) -> Unit,
+    onSelectOption: (Int, String) -> Unit,
+    onToggleOpticalForm: () -> Unit,
+    onToggleStatsDrawer: () -> Unit,
+    onToggleQuestionMap: () -> Unit,
+    onFinishTest: () -> Unit,
+    onGoToStatsTab: () -> Unit,
+    onAskAiForQuestion: (YksQuestion) -> Unit,
+    onSolveTwinTest: () -> Unit = {},
+    onStrengthenFromFrequency: (com.example.util.FrequencyPracticeTarget) -> Unit = {},
+    onGenerateTwinQuestion: (YksQuestion, (TwinQuestionModalData) -> Unit) -> Unit = { _, _ -> },
+    onGenerateSolutionForQuestion: (YksQuestion, (String) -> Unit) -> Unit = { _, _ -> },
+    onAddQuestionToKumbara: (YksQuestion) -> Unit = {},
+    customPublishers: List<YksPublisherInfo> = emptyList(),
+    packedBookPages: List<TwoColumnQuestionPage>,
+    imageTypographyScales: Map<String, Float>,
+    isImmersive: Boolean,
+    onToggleImmersive: () -> Unit
+) {
+    val questions = session.testItem.questions
+    val totalQuestions = questions.size.coerceAtLeast(1)
+    val density = LocalDensity.current.density
     val totalBookPages = packedBookPages.size.coerceAtLeast(1)
     val currentQuestionId = questions.getOrNull(session.currentQuestionIndex)?.id
     val initialBookPage = packedBookPages.indexOfFirst { page ->
@@ -855,7 +1008,6 @@ fun LiveSolvingBoardScreen(
     var showFullReportCardScreen by remember(session.testItem.id) { mutableStateOf(false) }
     var showFrequencyFromDrawer by remember(session.testItem.id) { mutableStateOf(false) }
     var showFinishConfirmation by remember(session.testItem.id) { mutableStateOf(false) }
-    var isImmersive by rememberSaveable(session.testItem.id) { mutableStateOf(false) }
     val screenContext = LocalContext.current
     DisposableEffect(isImmersive, screenContext) {
         var context: android.content.Context? = screenContext
@@ -890,6 +1042,18 @@ fun LiveSolvingBoardScreen(
     var activeTwinScreenQuestion by remember { mutableStateOf<YksQuestion?>(null) }
     var activeTwinScreenData by remember { mutableStateOf<TwinQuestionModalData?>(null) }
     var isGeneratingTwin by remember { mutableStateOf(false) }
+    var twinRequestVersion by remember { mutableIntStateOf(0) }
+    LaunchedEffect(activeTwinScreenQuestion?.id, twinRequestVersion, isGeneratingTwin) {
+        if (activeTwinScreenQuestion != null && isGeneratingTwin) {
+            delay(150_000L)
+            twinRequestVersion++
+            activeTwinScreenData = TwinQuestionModalData(
+                topicTitle = activeTwinScreenQuestion?.topicHeader.orEmpty(),
+                errorMessage = "İkiz soru üretimi zaman aşımına uğradı. Yeniden deneyebilirsin."
+            )
+            isGeneratingTwin = false
+        }
+    }
 
     // 3. `⋮` (Three-Dot) Popover active question number
     var openThreeDotQuestionNumber by remember { mutableStateOf<Int?>(null) }
@@ -909,9 +1073,7 @@ fun LiveSolvingBoardScreen(
     val singleQuestionScrollStates = remember(session.testItem.id) {
         mutableMapOf<String, ScrollState>()
     }
-    val displayedDocumentScroll = if (session.viewMode == BoardViewMode.SINGLE_QUESTION) {
-        singleQuestionScrollStates.getOrPut(displayedCanvasKey) { ScrollState(0) }
-    } else null
+    val displayedDocumentScroll = singleQuestionScrollStates.getOrPut(displayedCanvasKey) { ScrollState(0) }
 
     BackHandler {
         when {
@@ -929,7 +1091,7 @@ fun LiveSolvingBoardScreen(
                 openThreeDotQuestionNumber = null
             }
             isImmersive -> {
-                isImmersive = false
+                onToggleImmersive()
             }
             else -> onExitSession()
         }
@@ -982,9 +1144,12 @@ fun LiveSolvingBoardScreen(
                 if (!isGeneratingTwin) {
                     activeTwinScreenData = null
                     isGeneratingTwin = true
+                    val requestVersion = ++twinRequestVersion
                     onGenerateTwinQuestion(twinTargetQ) { generated ->
-                        activeTwinScreenData = generated
-                        isGeneratingTwin = false
+                        if (requestVersion == twinRequestVersion && activeTwinScreenQuestion?.id == twinTargetQ.id) {
+                            activeTwinScreenData = generated
+                            isGeneratingTwin = false
+                        }
                     }
                 }
             }
@@ -1043,10 +1208,13 @@ fun LiveSolvingBoardScreen(
                 activeTwinScreenQuestion = q
                 activeTwinScreenData = null
                 isGeneratingTwin = true
-                onGenerateTwinQuestion(q) { generated ->
-                    activeTwinScreenData = generated
-                    isGeneratingTwin = false
-                }
+                val requestVersion = ++twinRequestVersion
+                    onGenerateTwinQuestion(q) { generated ->
+                        if (requestVersion == twinRequestVersion && activeTwinScreenQuestion?.id == q.id) {
+                            activeTwinScreenData = generated
+                            isGeneratingTwin = false
+                        }
+                    }
             }
         )
         return
@@ -1069,9 +1237,7 @@ fun LiveSolvingBoardScreen(
                 testTitle = if (session.viewMode == BoardViewMode.SINGLE_QUESTION)
                     "Soru ${session.currentQuestionIndex + 1}/$totalQuestions"
                     else session.testItem.fullTitle.ifBlank { "${session.topicName} - Test 1" },
-                onOpenOpticalForm = onToggleOpticalForm.takeIf {
-                    session.viewMode == BoardViewMode.SINGLE_QUESTION && !session.isReviewMode
-                },
+                onOpenOpticalForm = null,
                 isReviewMode = session.isReviewMode,
                 onBack = onExitSession,
                 onFinishTest = { showFinishConfirmation = true },
@@ -1112,7 +1278,7 @@ fun LiveSolvingBoardScreen(
                 onClearCanvas = { onClearCanvas(displayedCanvasKey) },
                 isImmersive = isImmersive,
                 showImmersiveToggle = true,
-                onToggleImmersive = { isImmersive = !isImmersive }
+                onToggleImmersive = onToggleImmersive
             )
         }
 
@@ -1121,7 +1287,6 @@ fun LiveSolvingBoardScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .onSizeChanged { area -> if (area != bookAreaSize) bookAreaSize = area }
         ) {
             val strokeWidths = listOf(4.5f, 8.0f, 13.0f)
             val currentStrokePx = strokeWidths.getOrElse(selectedStrokeSizeIndex) { 8.0f }
@@ -1140,6 +1305,7 @@ fun LiveSolvingBoardScreen(
                     // Edge-to-edge real book paper. No rounded grey frame,
                     // external 8dp gutter or card shadow around the sheet.
                     .fillMaxSize()
+                    .padding(end = TestPageDimensions.edgeHandleSpace)
                     .background(Color.White)
                     .testTag("board_ink_viewport")
                     .semantics { stateDescription = zoomStateDescription }
@@ -1396,7 +1562,7 @@ fun LiveSolvingBoardScreen(
                             RealTwoColumnBookPageSurface(
                                 session = session,
                                 pageQuestions = pageQuestions,
-                                actualImageRatios = actualImageRatios,
+                                scrollState = singleQuestionScrollStates.getOrPut(StylusInputPolicy.canvasKey(session.testItem.id, pageIdx)) { ScrollState(0) },
                                 imageTypographyScales = imageTypographyScales,
                                 currentBookPageIndex = pageIdx,
                                 totalBookPages = totalBookPages,
@@ -1430,10 +1596,13 @@ fun LiveSolvingBoardScreen(
                                     activeTwinScreenQuestion = q
                                     activeTwinScreenData = null
                                     isGeneratingTwin = true
-                                    onGenerateTwinQuestion(q) { generated ->
-                                        activeTwinScreenData = generated
-                                        isGeneratingTwin = false
-                                    }
+                                    val requestVersion = ++twinRequestVersion
+                    onGenerateTwinQuestion(q) { generated ->
+                        if (requestVersion == twinRequestVersion && activeTwinScreenQuestion?.id == q.id) {
+                            activeTwinScreenData = generated
+                            isGeneratingTwin = false
+                        }
+                    }
                                 },
                                 onAddToKumbara = { q ->
                                     openThreeDotQuestionNumber = null
@@ -1513,10 +1682,13 @@ fun LiveSolvingBoardScreen(
                                     activeTwinScreenQuestion = q
                                     activeTwinScreenData = null
                                     isGeneratingTwin = true
-                                    onGenerateTwinQuestion(q) { generated ->
-                                        activeTwinScreenData = generated
-                                        isGeneratingTwin = false
-                                    }
+                                    val requestVersion = ++twinRequestVersion
+                    onGenerateTwinQuestion(q) { generated ->
+                        if (requestVersion == twinRequestVersion && activeTwinScreenQuestion?.id == q.id) {
+                            activeTwinScreenData = generated
+                            isGeneratingTwin = false
+                        }
+                    }
                                 },
                                 onAddToKumbara = { q ->
                                     openThreeDotQuestionNumber = null
@@ -1608,14 +1780,14 @@ fun LiveSolvingBoardScreen(
             if (!session.isReviewMode) {
                 RightSlidingOpticalFormDrawer345(
                     isOpen = session.isOpticalFormDrawerOpen,
-                    showClosedTab = session.viewMode == BoardViewMode.FULL_PAGE,
+                    showClosedTab = true,
                     questions = questions,
                     selectedAnswers = session.selectedAnswers,
                     onToggleDrawer = onToggleOpticalForm,
                     onSelectOption = onSelectOption,
                     onFinishTest = { showFinishConfirmation = true },
                     // Float beside the book, vertically centered as in the
-                    // reference tablet screenshot; never consume book width.
+                    // reference tablet screenshot; the grip has its own safe edge margin.
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .zIndex(35f)
@@ -2183,7 +2355,7 @@ private fun BookPageTopBar345(
 private fun RealTwoColumnBookPageSurface(
     session: ActiveSolvingSession,
     pageQuestions: TwoColumnQuestionPage,
-    actualImageRatios: Map<String, Float>,
+    scrollState: ScrollState,
     imageTypographyScales: Map<String, Float>,
     currentBookPageIndex: Int,
     totalBookPages: Int,
@@ -2199,162 +2371,97 @@ private fun RealTwoColumnBookPageSurface(
     onPrevBookPage: () -> Unit = {},
     onNextBookPage: () -> Unit = {}
 ) {
-    val leftColumnQuestions = pageQuestions.left
-    val rightColumnQuestions = pageQuestions.right
-    // Full-height canvas, variable-height paper: no fabricated empty lower half.
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            // The page may end early for a naturally short test, but the
-            // backing surface must NEVER become grey underneath it.
-            .background(Color.White)
+    Column(
+        Modifier.fillMaxSize().background(Color.White)
+            .padding(horizontal = TestPageDimensions.pageHorizontal, vertical = TestPageDimensions.pageVertical)
     ) {
-        val actualColumnWidthDp = ((maxWidth.value - 44f) / 2f).coerceAtLeast(145f)
-        val contentHeightDp = (maxHeight.value - 28f).coerceAtLeast(80f)
-        val leftHeightsDp = leftColumnQuestions.map {
-            estimatedBookQuestionUnits(
-                it, actualColumnWidthDp, actualImageRatios, imageTypographyScales
-            ) * actualColumnWidthDp
-        }
-        val rightHeightsDp = rightColumnQuestions.map {
-            estimatedBookQuestionUnits(
-                it, actualColumnWidthDp, actualImageRatios, imageTypographyScales
-            ) * actualColumnWidthDp
-        }
-        val leftRhythm = adaptiveBookColumnRhythm(leftHeightsDp, contentHeightDp)
-        val rightRhythm = adaptiveBookColumnRhythm(rightHeightsDp, contentHeightDp)
-        val visiblePaperHeightDp = visibleBookPaperHeightDp(
-            maxHeight.value,
-            leftHeightsDp, rightHeightsDp, leftRhythm, rightRhythm
-        )
-        // Dışarı tıklandığında açık olan `⋮` Popover menüsünü kapatan şeffaf arka plan katmanı
-        if (openThreeDotQuestionNumber != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .zIndex(15f)
-                    .clickable(
-                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                        indication = null,
-                        onClick = onDismissThreeDotMenu
-                    )
-            )
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(visiblePaperHeightDp.dp)
-                .background(Color.White)
-                .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
-        ) {
-            // ÇİFT SÜTUNLU (SOL SÜTUN & SAĞ SÜTUN) VE ORTADAN İNCE DİKEY ÇİZGİLİ TAM SAYFA DÜZENİ
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f, fill = true),
-                horizontalArrangement = Arrangement.spacedBy(0.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                // SOL SÜTUN — Sorular kendi boylarına göre yerleşir.
-                val isLeftPopoverOpen = leftColumnQuestions.any { it.number == openThreeDotQuestionNumber }
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .zIndex(if (isLeftPopoverOpen) 60f else 1f)
-                        .padding(end = 7.dp, top = (2f + leftRhythm.topInsetDp).dp, bottom = 2.dp),
-                    // Comfortable paper flow: 1-3 whole questions according
-                    // to their measured height. Do not squeeze 5-8 tiny
-                    // questions into a column merely to fill whitespace.
-                    // Never pin the first question to the top and the last to
-                    // the bottom: it creates the huge empty middle in the user's
-                    // actual page screenshot. Real tests have a stable rhythm.
-                    verticalArrangement = Arrangement.spacedBy(leftRhythm.gapDp.dp)
-                ) {
-                    leftColumnQuestions.forEachIndexed { idx, q ->
-                        BoxWithConstraints(
-                            modifier = Modifier.height(
-                                (estimatedBookQuestionUnits(q, actualColumnWidthDp,
-                                    actualImageRatios, imageTypographyScales) *
-                                    actualColumnWidthDp * leftRhythm.slotScale).dp
-                            ).fillMaxWidth(),
-                            contentAlignment = Alignment.TopStart
-                        ) {
-                        BookPageQuestionItem345(
-                            question = q,
-                            // A tall image receives more height than a short one.
-                            maxImageHeight = (maxHeight - 8.dp).coerceAtLeast(8.dp),
-                            imageTypographyScale = imageTypographyScales[q.id] ?: 1f,
-                            isReviewMode = session.isReviewMode,
-                            selectedOption = session.selectedAnswers[q.number],
-                            isThreeDotMenuOpen = openThreeDotQuestionNumber == q.number,
-                            customPublishers = customPublishers,
-                            onToggleThreeDotMenu = { onToggleThreeDotMenu(q.number) },
-                            onSelectOption = { opt -> onSelectOptionInBook(q.number, opt) },
-                            onOpenTopicLecture = { onOpenTopicLecture(q) },
-                            onOpenSolutionModal = { onOpenSolutionModal(q) },
-                            onOpenTwinScreen = { onOpenTwinScreen(q) },
-                            onAddToKumbara = { onAddToKumbara(q) }
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val viewportHeight = maxHeight
+            val columnCount = pageQuestions.columnCount
+            val leftCount = pageQuestions.left.size
+            Layout(
+                modifier = Modifier.fillMaxWidth()
+                    .verticalScroll(scrollState)
+                    .testTag("test_page_columns")
+                    .drawBehind {
+                        if (columnCount == 2) drawLine(
+                            Color(0xFFE2E8F0), Offset(size.width / 2, 0f),
+                            Offset(size.width / 2, size.height), 1.dp.toPx()
                         )
-                        }
-                    }
-                }
-
-                // ORTADAKİ İNCE DİKEY KİTAP SAYFASI ÇİZGİSİ
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .width(1.dp)
-                        .background(Color(0xFFD6DCE5))
-                )
-
-                // SAĞ SÜTUN — Sabit soru adedi yoktur.
-                val isRightPopoverOpen = rightColumnQuestions.any { it.number == openThreeDotQuestionNumber }
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .zIndex(if (isRightPopoverOpen) 60f else 1f)
-                        .padding(start = 7.dp, top = (2f + rightRhythm.topInsetDp).dp, bottom = 2.dp),
-                    verticalArrangement = Arrangement.spacedBy(rightRhythm.gapDp.dp)
-                ) {
-                    if (rightColumnQuestions.isEmpty()) {
-                        Spacer(modifier = Modifier.height(80.dp))
-                    } else {
-                        rightColumnQuestions.forEachIndexed { idx, q ->
-                            BoxWithConstraints(
-                                modifier = Modifier.height(
-                                    (estimatedBookQuestionUnits(q, actualColumnWidthDp,
-                                        actualImageRatios, imageTypographyScales) *
-                                        actualColumnWidthDp * rightRhythm.slotScale).dp
-                                ).fillMaxWidth(),
-                                contentAlignment = Alignment.TopStart
-                            ) {
+                    },
+                content = {
+                    pageQuestions.questions.forEach { q ->
+                        key(q.id) {
                             BookPageQuestionItem345(
-                                question = q,
-                                maxImageHeight = (maxHeight - 8.dp).coerceAtLeast(8.dp),
-                            imageTypographyScale = imageTypographyScales[q.id] ?: 1f,
-                                isReviewMode = session.isReviewMode,
+                                question = q, maxImageHeight = (viewportHeight - 38.dp).coerceAtLeast(1.dp),
+                                imageTypographyScale = imageTypographyScales[q.id] ?: 1f, isReviewMode = session.isReviewMode,
                                 selectedOption = session.selectedAnswers[q.number],
                                 isThreeDotMenuOpen = openThreeDotQuestionNumber == q.number,
                                 customPublishers = customPublishers,
                                 onToggleThreeDotMenu = { onToggleThreeDotMenu(q.number) },
-                                onSelectOption = { opt -> onSelectOptionInBook(q.number, opt) },
+                                onSelectOption = { onSelectOptionInBook(q.number, it) },
                                 onOpenTopicLecture = { onOpenTopicLecture(q) },
                                 onOpenSolutionModal = { onOpenSolutionModal(q) },
                                 onOpenTwinScreen = { onOpenTwinScreen(q) },
                                 onAddToKumbara = { onAddToKumbara(q) }
                             )
-                            }
+                        }
+                    }
+                }
+            ) { measurables, constraints ->
+                val gutter = TestPageDimensions.gutter.roundToPx()
+                val width = if (columnCount == 2)
+                    ((constraints.maxWidth - gutter) / 2).coerceAtLeast(1) else constraints.maxWidth
+                val measured = measurables.map { it.measure(Constraints(minWidth = width, maxWidth = width)) }
+                val columns = if (columnCount == 2)
+                    listOf(measured.take(leftCount), measured.drop(leftCount)) else listOf(measured)
+                val minGap = TestPageDimensions.minGap.roundToPx()
+                val minWork = 64.dp.roundToPx()
+                val maxWork = 144.dp.roundToPx()
+                fun work(height: Int) = (height * .35f).toInt().coerceIn(minWork, maxWork)
+                fun occupied(items: List<androidx.compose.ui.layout.Placeable>) =
+                    items.sumOf { it.height + work(it.height) } + (items.size - 1).coerceAtLeast(0) * minGap
+                val height = maxOf(viewportHeight.roundToPx(), columns.maxOf(::occupied))
+                layout(constraints.maxWidth, height) {
+                    columns.forEachIndexed { column, items ->
+                        val gap = minGap
+                        val spare = (height - occupied(items)).coerceAtLeast(0)
+                        val weight = items.sumOf { kotlin.math.sqrt(it.height.toDouble().coerceAtLeast(1.0)) }
+                        var y = 0
+                        items.forEach { item ->
+                            item.placeRelative(if (column == 0) 0 else constraints.maxWidth - width, y)
+                            y += item.height + work(item.height) +
+                                (if (weight > 0) spare * kotlin.math.sqrt(item.height.toDouble().coerceAtLeast(1.0)) / weight else 0.0).toInt() + gap
                         }
                     }
                 }
             }
-
-
+        }
+        Row(
+            Modifier.fillMaxWidth().height(TestPageDimensions.footerHeight).testTag("test_page_footer"),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Sorular " + (pageQuestions.questions.firstOrNull()?.number ?: 0) +
+                    "–" + (pageQuestions.questions.lastOrNull()?.number ?: 0) +
+                    if (scrollState.maxValue > 0) " · Dikey kaydır" else "",
+                color = Color(0xFF64748B), fontSize = 11.sp
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onPrevBookPage, enabled = currentBookPageIndex > 0,
+                    modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Önceki sayfa", Modifier.size(16.dp))
+                }
+                Text(
+                    (currentBookPageIndex + 1).toString() + " / $totalBookPages",
+                    color = Color(0xFF334155), fontSize = 12.sp, fontWeight = FontWeight.SemiBold
+                )
+                IconButton(onClick = onNextBookPage, enabled = currentBookPageIndex < totalBookPages - 1,
+                    modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, "Sonraki sayfa", Modifier.size(16.dp))
+                }
+            }
         }
     }
 }
@@ -2371,6 +2478,7 @@ private fun RealTwoColumnBookPageSurface(
  *     ve tıklanınca hemen altında açılan 5 kademeli zorluk barlı Popover Kartı!
  */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun BookPageQuestionItem345(
     question: YksQuestion,
     maxImageHeight: Dp = 560.dp,
@@ -2393,51 +2501,9 @@ private fun BookPageQuestionItem345(
         customPublishers.firstOrNull { it.id == question.publisherId && question.publisherId.isNotBlank() }
             ?: SoruLabPublisherPresets.resolvePublisher(question.publisherName, customPublishers)
     }
-    val croppedBitmap by produceState<Bitmap?>(
-        initialValue = null,
-        question.id,
-        question.imagePath,
-        question.imageBase64
-    ) {
-        value = withContext(Dispatchers.IO) {
-            val file = question.imagePath?.let(::File)
-            val fallbackFile = File(context.filesDir, "questions/q_${question.id}.jpg")
-
-            val bitmap = file
-                ?.takeIf(File::exists)
-                ?.let { StudioImageAndPdfEngine.getCachedBitmap(it.absolutePath) }
-                ?: fallbackFile
-                    .takeIf(File::exists)
-                    ?.let { StudioImageAndPdfEngine.getCachedBitmap(it.absolutePath) }
-                ?: question.imageBase64
-                    ?.takeIf(String::isNotBlank)
-                    ?.let { base64 ->
-                        try {
-                            val bytes = Base64.decode(base64, Base64.DEFAULT)
-                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                        } catch (exception: IllegalArgumentException) {
-                            Log.e("SoruLab", "Soru görseli Base64 verisi çözümlenemedi. ID: ${question.id}", exception)
-                            null
-                        }
-                    }
-
-            if (bitmap == null) {
-                val reason = when {
-                    file != null && file.exists() -> "Belirtilen dosya bulundu ancak çözümlenemedi."
-                    fallbackFile.exists() -> "Yedek dosya bulundu ancak çözümlenemedi."
-                    question.imageBase64.isNullOrBlank() -> "Dosyalar bulunamadı ve Base64 görsel verisi yok."
-                    else -> "Dosyalar bulunamadı veya görsel verisi çözümlenemedi."
-                }
-                Log.e(
-                    "SoruLab",
-                    "Görsel bulunamadı! Path: ${question.imagePath}, ID: ${question.id}, " +
-                        "FilesDir: ${context.filesDir.absolutePath}. $reason"
-                )
-            }
-
-            bitmap?.let(::trimQuestionWhiteMargins)
-        }
-    }
+    val preparedBitmaps = LocalTestBitmaps.current
+    val croppedBitmap = if (preparedBitmaps.containsKey(question.id)) preparedBitmaps[question.id]
+        else StudioImageAndPdfEngine.rememberGuaranteedQuestionBitmap(question)
     if (sourceDetailsVisible) {
         AlertDialog(
             onDismissRequest = { sourceDetailsVisible = false },
@@ -2488,6 +2554,54 @@ private fun BookPageQuestionItem345(
     val isEmpty = selectedOption.isNullOrBlank()
     val isUngraded = !question.answerKeyVerified
     val isCorrect = !isEmpty && question.answerKeyVerified && selectedOption == question.correctOption
+
+    val questionActions: @Composable () -> Unit = {
+            Box(
+                modifier = Modifier.size(32.dp),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                Surface(
+                    onClick = onToggleThreeDotMenu,
+                    shape = CircleShape,
+                    color = if (isThreeDotMenuOpen) Color(0xFF3475F5) else Color(0xFFF1F5F9),
+                    shadowElevation = 0.dp,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .testTag("three_dot_btn_${question.number}")
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "${question.number}. Soru Seçenekleri",
+                            tint = if (isThreeDotMenuOpen) Color.White else Color(0xFF64748B),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                if (isThreeDotMenuOpen) {
+                    Popup(
+                        alignment = Alignment.TopEnd,
+                        offset = IntOffset(0, 100),
+                        onDismissRequest = onToggleThreeDotMenu,
+                        properties = PopupProperties(
+                            focusable = true,
+                            dismissOnBackPress = true,
+                            dismissOnClickOutside = true
+                        )
+                    ) {
+                        ThreeDotQuestionPopoverCard345(
+                            question = question,
+                            selectedOption = selectedOption,
+                            onOpenTopicLecture = onOpenTopicLecture,
+                            onOpenSolutionModal = onOpenSolutionModal,
+                            onOpenTwinScreen = onOpenTwinScreen,
+                            onAddToKumbara = onAddToKumbara
+                        )
+                    }
+                }
+            }
+
+    }
 
     Box(
         modifier = Modifier
@@ -2661,7 +2775,7 @@ private fun BookPageQuestionItem345(
                                 Text(
                                     text = if (optVal == optKey) "$optKey)" else "$optKey) $optVal",
                                     color = Color(0xFF1E293B),
-                                    fontWeight = if (isChosen) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                    fontWeight = FontWeight.SemiBold,
                                     fontSize = 12.sp
                                 )
                             }
@@ -2671,59 +2785,14 @@ private fun BookPageQuestionItem345(
                         Column(Modifier.fillMaxWidth().padding(top = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp)) { optionsContent() }
                     } else {
-                        Row(Modifier.fillMaxWidth().padding(top = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically) { optionsContent() }
+                        FlowRow(Modifier.fillMaxWidth().padding(top = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)) { optionsContent() }
                     }
                 }
             }
 
-            if (isReviewMode) {
-            Box(
-                modifier = Modifier.width(36.dp),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                Surface(
-                    onClick = onToggleThreeDotMenu,
-                    shape = CircleShape,
-                    color = if (isThreeDotMenuOpen) Color(0xFF3475F5) else Color(0xFF60A5FA),
-                    shadowElevation = 4.dp,
-                    modifier = Modifier
-                        .size(28.dp)
-                        .testTag("three_dot_btn_${question.number}")
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = "${question.number}. Soru Seçenekleri",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-                if (isThreeDotMenuOpen) {
-                    Popup(
-                        alignment = Alignment.TopEnd,
-                        offset = IntOffset(0, 100),
-                        onDismissRequest = onToggleThreeDotMenu,
-                        properties = PopupProperties(
-                            focusable = true,
-                            dismissOnBackPress = true,
-                            dismissOnClickOutside = true
-                        )
-                    ) {
-                        ThreeDotQuestionPopoverCard345(
-                            question = question,
-                            selectedOption = selectedOption,
-                            onOpenTopicLecture = onOpenTopicLecture,
-                            onOpenSolutionModal = onOpenSolutionModal,
-                            onOpenTwinScreen = onOpenTwinScreen,
-                            onAddToKumbara = onAddToKumbara
-                        )
-                    }
-                }
-            }
-            }
+            if (isReviewMode) questionActions()
         }
     }
 }
@@ -3142,10 +3211,10 @@ private fun RightSlidingOpticalFormDrawer345(
     val configuration = LocalConfiguration.current
     val drawerWidth = (configuration.screenWidthDp *
         if (configuration.screenWidthDp >= 600) 0.46f else 0.79f).dp
-        .coerceIn(280.dp, 340.dp)
+        .coerceIn(280.dp, 380.dp)
     // Keep the answer sheet compact on tablets. Additional questions still
     // scroll inside the panel, without a mostly empty full-height drawer.
-    val requestedHeight = (125 + questions.size.coerceAtMost(7) * 48).dp
+    val requestedHeight = (132 + questions.size.coerceAtMost(6) * 56).dp
     val availableHeight = (configuration.screenHeightDp - 110).coerceAtLeast(214).dp
     val drawerHeight = requestedHeight.coerceAtMost(availableHeight)
     // Render only the handle while closed; the hidden drawer cannot
@@ -3173,28 +3242,30 @@ private fun RightSlidingOpticalFormDrawer345(
             )
         }
         Surface(
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(18.dp),
             color = Color.White,
-            shadowElevation = 14.dp,
+            shadowElevation = 12.dp,
+            border = BorderStroke(1.dp, Color(0xFFE8ECF2)),
             modifier = Modifier.width(drawerWidth).height(drawerHeight).then(
                 if (isOpen) Modifier.testTag("optical_form_drawer")
                 else Modifier.clearAndSetSemantics { }
             )
         ) {
             Column(
-                Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 12.dp),
+                Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Reference photo: only a centered title, an open answer grid,
                 // and one big blue Finish Test button. No redundant progress UI.
                 Text(
                     "Optik Form", color = Color(0xFF181725),
-                    fontSize = 17.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 12.dp)
                 )
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(1.dp),
+                    modifier = Modifier.fillMaxWidth().weight(1f, fill = false)
+                        .heightIn(max = (questions.size.coerceAtMost(6) * 56).dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
                     contentPadding = PaddingValues(bottom = 4.dp)
                 ) {
                     items(questions, key = { it.number }) { question ->
@@ -3206,14 +3277,14 @@ private fun RightSlidingOpticalFormDrawer345(
                                 (gridWidth - 40.dp) / 5f - 4.dp
                             ).coerceIn(27.dp, 38.dp)
                             Row(
-                                Modifier.width(gridWidth).height(48.dp)
+                                Modifier.width(gridWidth).height(56.dp)
                                     .align(Alignment.Center),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     "${question.number}.",
                                     color = Color(0xFF25213A),
-                                    fontSize = 14.sp,
+                                    fontSize = 15.sp,
                                     modifier = Modifier.width(32.dp),
                                     textAlign = TextAlign.End
                                 )
@@ -3221,7 +3292,7 @@ private fun RightSlidingOpticalFormDrawer345(
                                 listOf("A", "B", "C", "D", "E").forEach { option ->
                                     val checked = selectedAnswers[question.number] == option
                                     Box(
-                                        Modifier.weight(1f).height(48.dp)
+                                        Modifier.weight(1f).height(56.dp)
                                             .semantics {
                                                 selected = checked
                                                 contentDescription =
@@ -3234,13 +3305,13 @@ private fun RightSlidingOpticalFormDrawer345(
                                         Box(
                                             Modifier.size(circleDiameter).clip(CircleShape)
                                                 .background(
-                                                    if (checked) Color(0xFF2C78ED)
+                                                    if (checked) Color(0xFF168BFA)
                                                     else Color.White
                                                 )
                                                 .border(
                                                     1.dp,
-                                                    if (checked) Color(0xFF2C78ED)
-                                                    else Color(0xFFD1D0DB),
+                                                    if (checked) Color(0xFF168BFA)
+                                                    else Color(0xFFCDD2DB),
                                                     CircleShape
                                                 ),
                                             contentAlignment = Alignment.Center
@@ -3248,7 +3319,7 @@ private fun RightSlidingOpticalFormDrawer345(
                                             Text(
                                                 option, fontSize = 13.sp,
                                                 color = if (checked) Color.White
-                                                    else Color(0xFFACADB9),
+                                                    else Color(0xFF9AA3B2),
                                                 fontWeight = if (checked) FontWeight.Bold
                                                     else FontWeight.Normal
                                             )
@@ -3262,9 +3333,9 @@ private fun RightSlidingOpticalFormDrawer345(
                 Surface(
                     onClick = onFinishTest,
                     shape = CircleShape,
-                    color = Color(0xFF2878E9),
+                    color = Color(0xFF168BFA),
                     shadowElevation = 3.dp,
-                    modifier = Modifier.fillMaxWidth().height(44.dp)
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
                         .testTag("drawer_finish_test_btn")
                 ) {
                     Row(
@@ -3278,7 +3349,7 @@ private fun RightSlidingOpticalFormDrawer345(
                         Spacer(Modifier.width(9.dp))
                         Text(
                             "Testi Bitir", color = Color.White,
-                            fontSize = 14.sp, fontWeight = FontWeight.Bold
+                            fontSize = 15.sp, fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
@@ -3508,7 +3579,7 @@ private fun VerticalBlueSideTab345(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(topStart = 9.dp, bottomStart = 9.dp),
-        color = Color(0xFF3475F5),
+        color = if (isStatsIcon) Color(0xFF3475F5) else Color(0xFF168BFA),
         shadowElevation = 3.dp,
         modifier = Modifier
             .width(30.dp)

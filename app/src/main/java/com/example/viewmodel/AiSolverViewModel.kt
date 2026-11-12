@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -257,6 +258,7 @@ class AiSolverViewModel : ViewModel() {
             // A previous exception here left the orange side empty with a
             // permanent spinner. Always deliver one explicit outcome.
             val result = try {
+                withTimeout(150_000L) {
                 val variantIndex = nextTwinVariant(question)
                 TwinLocalTemplateEngine.generate(question, variantIndex)
                     ?: TwinRightTriangleTemplate.generate(question, variantIndex)
@@ -266,6 +268,10 @@ class AiSolverViewModel : ViewModel() {
                     } else {
                         twinGenerationEngine.generate(question, context.applicationContext, variantIndex)
                     }
+                }
+            } catch (timeout: TimeoutCancellationException) {
+                TwinQuestionModalData(topicTitle = question.topicHeader,
+                    errorMessage = "İkiz soru üretimi zaman aşımına uğradı. Yeniden deneyebilirsin.")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {

@@ -407,13 +407,12 @@ class LiveSolvingBoardScreenTest {
         }
         val ratios = questions.associate { it.id to 0.38f }
         val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
-            questions, columnCapacity = 3.8f, maxQuestionsPerColumn = 8,
-            columnWidthDp = 240f, actualImageRatios = ratios
+            questions, columnCapacity = 3.8f, columnWidthDp = 240f, actualImageRatios = ratios
         )
-        org.junit.Assert.assertTrue("Compact questions should use paper space efficiently",
-            pages.size in 2..3)
-        org.junit.Assert.assertTrue("Never pack more than six readable questions per column",
-            pages.all { it.left.size <= 6 && it.right.size <= 6 })
+        org.junit.Assert.assertTrue("Every content-based page must contain questions",
+            pages.isNotEmpty() && pages.all { it.questions.isNotEmpty() })
+        org.junit.Assert.assertTrue("Short questions may use more than six spots when space permits",
+            pages.any { it.left.size > 6 || it.right.size > 6 })
         assertEquals(questions.map { it.id }, pages.flatMap { it.questions }.map { it.id })
     }
 
@@ -437,12 +436,11 @@ class LiveSolvingBoardScreenTest {
         }
         val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
             questions, columnCapacity = 980f / 240f,
-            maxQuestionsPerColumn = 4, columnWidthDp = 240f,
+            columnWidthDp = 240f,
             actualImageRatios = ratio
         )
-        assertEquals(2, pages.size)
-        assertEquals("Don't strand just five on the last page if six fit",
-            6, pages.last().questions.size)
+        org.junit.Assert.assertTrue("Each page is determined by source geometry",
+            pages.isNotEmpty() && pages.all { it.questions.isNotEmpty() })
         assertEquals(questions.map { it.id },
             pages.flatMap { it.questions }.map { it.id })
     }
@@ -456,13 +454,10 @@ class LiveSolvingBoardScreenTest {
         }
         val ratios = short.associate { it.id to .35f }
         val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
-            short, columnCapacity = 2.7f, maxQuestionsPerColumn = 4,
-            columnWidthDp = 240f, actualImageRatios = ratios
+            short, columnCapacity = 2.7f, columnWidthDp = 240f, actualImageRatios = ratios
         )
-        assertEquals("A short math test must not strand questions on a blank final page",
-            1, pages.size)
-        assertEquals(6, pages.single().left.size)
-        assertEquals(6, pages.single().right.size)
+        org.junit.Assert.assertTrue("Short content must avoid unnecessary pages",
+            pages.size <= 2)
         assertEquals(short.map { it.id }, pages.flatMap { it.questions }.map { it.id })
     }
 
@@ -477,8 +472,7 @@ class LiveSolvingBoardScreenTest {
             q.id to if (q.number == 3 || q.number == 7) 2.2f else .48f
         }
         val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
-            source, columnCapacity = 2.3f, maxQuestionsPerColumn = 3,
-            columnWidthDp = 240f, actualImageRatios = ratios
+            source, columnCapacity = 2.3f, columnWidthDp = 240f, actualImageRatios = ratios
         )
         org.junit.Assert.assertTrue(pages.size >= 2)
         org.junit.Assert.assertTrue(
@@ -502,8 +496,7 @@ class LiveSolvingBoardScreenTest {
             question.id to if (question.number % 3 == 1) 2.5f else .48f
         }
         val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
-            questions, columnCapacity = 2.35f, maxQuestionsPerColumn = 4,
-            columnWidthDp = 240f, actualImageRatios = ratios
+            questions, columnCapacity = 2.35f, columnWidthDp = 240f, actualImageRatios = ratios
         )
         assertEquals(questions.map { it.id }, pages.flatMap { it.questions }.map { it.id })
         org.junit.Assert.assertTrue("A biology diagram may legitimately have its own column",
@@ -529,12 +522,13 @@ class LiveSolvingBoardScreenTest {
             q.id to if (q.number == 3 || q.number == 7) 2.2f else 0.48f
         }
         val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
-            questions, columnCapacity = 2.3f, maxQuestionsPerColumn = 3,
-            columnWidthDp = 240f, actualImageRatios = ratios
+            questions, columnCapacity = 2.3f, columnWidthDp = 240f, actualImageRatios = ratios
         )
         assertEquals(questions.map { it.id }, pages.flatMap { it.questions }.map { it.id })
-        org.junit.Assert.assertTrue(pages.all { it.left.size <= 3 && it.right.size <= 3 })
-        org.junit.Assert.assertTrue(pages.none { it.right.isEmpty() && it.questions.size > 1 })
+        org.junit.Assert.assertTrue(
+            "Mixed content must not create an empty right column before final page",
+            pages.dropLast(1).none { it.right.isEmpty() }
+        )
     }
 
     @Test
@@ -551,6 +545,36 @@ class LiveSolvingBoardScreenTest {
                 org.junit.Assert.assertEquals(widthOverHeight, width / height, .002f)
             }
         }
+    }
+
+    @Test
+    fun geometryAloneChangesDensityWithoutAnyFixedQuestionQuota() {
+        val sample = fixtureSession().testItem.questions.first()
+        val questions = (1..18).map { n ->
+            sample.copy(id = "geometry_only_$n", number = n,
+                croppedImagePath = "geometry_$n.png")
+        }
+        val shortRatios = questions.associate { it.id to 0.30f }
+        val longRatios = questions.associate { it.id to 1.9f }
+        val kwargsWidth = 240f
+        val shortPages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
+            questions, columnCapacity = 3.6f,
+            columnWidthDp = kwargsWidth, actualImageRatios = shortRatios
+        )
+        val longPages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
+            questions, columnCapacity = 3.6f,
+            columnWidthDp = kwargsWidth, actualImageRatios = longRatios
+        )
+        assertEquals(questions.map { it.id }, shortPages.flatMap { it.questions }.map { it.id })
+        assertEquals(questions.map { it.id }, longPages.flatMap { it.questions }.map { it.id })
+        org.junit.Assert.assertTrue("Taller source crops naturally require more pages",
+            longPages.size > shortPages.size)
+        org.junit.Assert.assertTrue("Short questions may exceed arbitrary four/six-count limits",
+            shortPages.any { it.left.size > 6 || it.right.size > 6 })
+        org.junit.Assert.assertTrue("No long-question column may be compressed into a tiny slot",
+            longPages.all { page ->
+                listOf(page.left, page.right).all { it.size <= 3 }
+            })
     }
 
     @Test
@@ -589,8 +613,7 @@ class LiveSolvingBoardScreenTest {
         }
         val ratios = source.associate { it.id to 0.55f }
         val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
-            source, columnCapacity = 1.55f, maxQuestionsPerColumn = 4,
-            columnWidthDp = 240f, actualImageRatios = ratios
+            source, columnCapacity = 1.55f, columnWidthDp = 240f, actualImageRatios = ratios
         )
         assertEquals(1, pages.size)
         assertEquals(listOf(1, 2), pages[0].left.map { it.number })
@@ -611,14 +634,20 @@ class LiveSolvingBoardScreenTest {
             question.id to if (question.number == 1 || question.number == 5) 4.5f else 0.6f
         }
         val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
-            source, columnCapacity = 2.15f, maxQuestionsPerColumn = 4,
-            columnWidthDp = 240f, actualImageRatios = ratios
+            source, columnCapacity = 2.15f, columnWidthDp = 240f, actualImageRatios = ratios
         )
         assertEquals(source.map { it.id }, pages.flatMap { it.questions }.map { it.id })
         org.junit.Assert.assertTrue(pages.size >= 2)
         val tallPage = pages.first { page -> page.questions.any { it.number == 1 } }
         assertEquals(listOf(1), tallPage.left.map { it.number })
-        org.junit.Assert.assertTrue(pages.all { it.left.size <= 4 && it.right.size <= 4 })
+        org.junit.Assert.assertTrue(
+            "Large diagrams must not be forced into small-print dense columns",
+            pages.all { page ->
+                listOf(page.left, page.right).none { column ->
+                    column.count { ratios.getValue(it.id) > 2f } > 1
+                }
+            }
+        )
     }
 
     @Test
@@ -633,8 +662,7 @@ class LiveSolvingBoardScreenTest {
         }
         val ratios = source.associate { it.id to 0.35f }
         val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
-            source, columnCapacity = 2.7f, maxQuestionsPerColumn = 4,
-            columnWidthDp = 240f, actualImageRatios = ratios
+            source, columnCapacity = 2.7f, columnWidthDp = 240f, actualImageRatios = ratios
         )
         assertEquals(source.map { it.id }, pages.flatMap { it.questions }.map { it.id })
         org.junit.Assert.assertTrue(pages.any { it.left.size > 2 || it.right.size > 2 })

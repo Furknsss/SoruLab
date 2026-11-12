@@ -508,14 +508,14 @@ internal fun adaptiveBookColumnRhythm(
     val minGap = when (count) {
         1 -> 0f
         2 -> 24f
-        3 -> 20f
-        else -> 16f
+        3 -> 24f
+        else -> 18f
     }
     val maxGap = when (count) {
         1 -> 0f
         2 -> 62f
-        3 -> 38f
-        else -> 26f
+        3 -> 52f
+        else -> 30f
     }
     val intervals = (count - 1).coerceAtLeast(0)
     val free = (paperHeightDp - content).coerceAtLeast(0f)
@@ -530,6 +530,40 @@ internal fun adaptiveBookColumnRhythm(
         .coerceAtLeast(0f)
     val inset = (spare * 0.12f).coerceIn(0f, 18f)
     return BookColumnRhythm(scale, wantedGap, inset)
+}
+
+/**
+ * Use the real bottommost printed question to size the visible sheet.
+ *
+ * A physical book page is not a mandate to show 300dp of white blank space
+ * below a short final column. Never stretch a small crop vertically or pin
+ * questions to the very bottom merely to pretend that the page is full.
+ * Instead end the white page a small safe margin after its actual content,
+ * leaving the surrounding reader canvas neutral. Tall/full pages retain
+ * their full available height, so writing/stylus coordinates do not shift.
+ */
+internal fun visibleBookPaperHeightDp(
+    viewportHeightDp: Float,
+    leftHeightsDp: List<Float>,
+    rightHeightsDp: List<Float>,
+    leftRhythm: BookColumnRhythm,
+    rightRhythm: BookColumnRhythm
+): Float {
+    if (viewportHeightDp <= 0f) return 0f
+    fun occupied(heights: List<Float>, rhythm: BookColumnRhythm): Float {
+        if (heights.isEmpty()) return 0f
+        val count = heights.size
+        return heights.sum() * rhythm.slotScale +
+            ((count - 1) * rhythm.gapDp) + rhythm.topInsetDp
+    }
+    // 12dp top padding + 2dp column top + 2dp bottom + 24dp breathing room.
+    val consumed = maxOf(
+        occupied(leftHeightsDp, leftRhythm),
+        occupied(rightHeightsDp, rightRhythm)
+    ) + 40f
+    return consumed.coerceIn(
+        minOf(viewportHeightDp, 240f), viewportHeightDp
+    )
 }
 
 private fun bookColumnHeightRhythm(
@@ -2158,21 +2192,29 @@ private fun RealTwoColumnBookPageSurface(
 ) {
     val leftColumnQuestions = pageQuestions.left
     val rightColumnQuestions = pageQuestions.right
-    // Tam Ekran Kitap Sayfası Deneyimi (Üstte gereksiz başlıklar kaldırıldı, alttaki boşluk sıfırlandı)
+    // Full-height canvas, variable-height paper: no fabricated empty lower half.
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(Color(0xFFEFEEF6))
     ) {
         val actualColumnWidthDp = ((maxWidth.value - 44f) / 2f).coerceAtLeast(145f)
         val contentHeightDp = (maxHeight.value - 28f).coerceAtLeast(80f)
-        val leftRhythm = bookColumnHeightRhythm(
-            leftColumnQuestions, actualColumnWidthDp, contentHeightDp,
-            actualImageRatios, imageTypographyScales
-        )
-        val rightRhythm = bookColumnHeightRhythm(
-            rightColumnQuestions, actualColumnWidthDp, contentHeightDp,
-            actualImageRatios, imageTypographyScales
+        val leftHeightsDp = leftColumnQuestions.map {
+            estimatedBookQuestionUnits(
+                it, actualColumnWidthDp, actualImageRatios, imageTypographyScales
+            ) * actualColumnWidthDp
+        }
+        val rightHeightsDp = rightColumnQuestions.map {
+            estimatedBookQuestionUnits(
+                it, actualColumnWidthDp, actualImageRatios, imageTypographyScales
+            ) * actualColumnWidthDp
+        }
+        val leftRhythm = adaptiveBookColumnRhythm(leftHeightsDp, contentHeightDp)
+        val rightRhythm = adaptiveBookColumnRhythm(rightHeightsDp, contentHeightDp)
+        val visiblePaperHeightDp = visibleBookPaperHeightDp(
+            maxHeight.value,
+            leftHeightsDp, rightHeightsDp, leftRhythm, rightRhythm
         )
         // Dışarı tıklandığında açık olan `⋮` Popover menüsünü kapatan şeffaf arka plan katmanı
         if (openThreeDotQuestionNumber != null) {
@@ -2190,7 +2232,9 @@ private fun RealTwoColumnBookPageSurface(
 
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .height(visiblePaperHeightDp.dp)
+                .background(Color.White)
                 .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)

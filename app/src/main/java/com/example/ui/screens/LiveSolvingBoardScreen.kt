@@ -213,7 +213,8 @@ private fun MeasuredBookPages(
                         }
                     }.single().measure(Constraints(minWidth = columnWidthPx, maxWidth = columnWidthPx)).height
                 }
-                val pages = packMeasuredTestPages(heights, available,
+                val packingHeight = available + minOf(160.dp.roundToPx(), (available * .18f).toInt())
+                val pages = packMeasuredTestPages(heights, packingHeight,
                     TestPageDimensions.minGap.roundToPx(), columns).map { page ->
                     TwoColumnQuestionPage(page.columns[0].map(questions::get),
                         page.columns.getOrNull(1).orEmpty().map(questions::get), columns)
@@ -2441,7 +2442,8 @@ private fun RealTwoColumnBookPageSurface(
         ) {
             Text(
                 "Sorular " + (pageQuestions.questions.firstOrNull()?.number ?: 0) +
-                    "–" + (pageQuestions.questions.lastOrNull()?.number ?: 0),
+                    "–" + (pageQuestions.questions.lastOrNull()?.number ?: 0) +
+                    if (scrollState.maxValue > 0) " · Dikey kaydır" else "",
                 color = Color(0xFF64748B), fontSize = 11.sp
             )
             Row(verticalAlignment = Alignment.CenterVertically) {

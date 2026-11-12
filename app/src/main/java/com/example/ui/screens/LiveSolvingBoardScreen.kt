@@ -99,6 +99,7 @@ import com.example.util.StylusInputPolicy
 import com.example.util.BoardInkCoordinates
 import com.example.util.TestAnswerAnalyticsEngine
 import com.example.viewmodel.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -130,7 +131,7 @@ private object TestPageDimensions {
     val footerHeight = 40.dp
     val gutter = 29.dp
     val minGap = 24.dp
-    val maxGap = 160.dp
+    val maxGap = 48.dp
 }
 
 private val LocalTestBitmaps = staticCompositionLocalOf<Map<String, Bitmap?>> { emptyMap() }
@@ -172,8 +173,8 @@ private fun MeasuredBookPages(
                     bitmap?.let {
                         id to BookImageMeasurements(
                             it.height.toFloat() / it.width,
-                            estimateBookTypographyScale(it, columnWidthDp),
-                            detectTypicalPrintedGlyphDp(it, columnWidthDp)
+                            estimateBookTypographyScale(it, (columnWidthDp - 46f).coerceAtLeast(1f)),
+                            detectTypicalPrintedGlyphDp(it, (columnWidthDp - 46f).coerceAtLeast(1f))
                         )
                     }
                 }.toMap()
@@ -296,8 +297,7 @@ internal fun calibratedBookTypographyScales(
     }
     // Target a readable common printed glyph, not the smallest 30th-percentile
     // tiny font. Both narrow publisher crops and big publisher crops converge.
-    val commonFontDp = observed[(observed.size * 0.55f).toInt()
-        .coerceIn(0, observed.lastIndex)].coerceIn(10.5f, 13.0f)
+    val commonFontDp = 10.5f
     return measurements.mapValues { (_, metric) ->
         metric.printedGlyphDp?.takeIf { it.isFinite() && it > 0f }
             ?.let { (commonFontDp / it).coerceIn(0.60f, 1.90f) }
@@ -1040,6 +1040,18 @@ private fun LiveSolvingBoardContent(
     var activeTwinScreenQuestion by remember { mutableStateOf<YksQuestion?>(null) }
     var activeTwinScreenData by remember { mutableStateOf<TwinQuestionModalData?>(null) }
     var isGeneratingTwin by remember { mutableStateOf(false) }
+    var twinRequestVersion by remember { mutableIntStateOf(0) }
+    LaunchedEffect(activeTwinScreenQuestion?.id, twinRequestVersion, isGeneratingTwin) {
+        if (activeTwinScreenQuestion != null && isGeneratingTwin) {
+            delay(150_000L)
+            twinRequestVersion++
+            activeTwinScreenData = TwinQuestionModalData(
+                topicTitle = activeTwinScreenQuestion?.topicHeader.orEmpty(),
+                errorMessage = "İkiz soru üretimi zaman aşımına uğradı. Yeniden deneyebilirsin."
+            )
+            isGeneratingTwin = false
+        }
+    }
 
     // 3. `⋮` (Three-Dot) Popover active question number
     var openThreeDotQuestionNumber by remember { mutableStateOf<Int?>(null) }
@@ -1130,9 +1142,12 @@ private fun LiveSolvingBoardContent(
                 if (!isGeneratingTwin) {
                     activeTwinScreenData = null
                     isGeneratingTwin = true
+                    val requestVersion = ++twinRequestVersion
                     onGenerateTwinQuestion(twinTargetQ) { generated ->
-                        activeTwinScreenData = generated
-                        isGeneratingTwin = false
+                        if (requestVersion == twinRequestVersion && activeTwinScreenQuestion?.id == twinTargetQ.id) {
+                            activeTwinScreenData = generated
+                            isGeneratingTwin = false
+                        }
                     }
                 }
             }
@@ -1191,10 +1206,13 @@ private fun LiveSolvingBoardContent(
                 activeTwinScreenQuestion = q
                 activeTwinScreenData = null
                 isGeneratingTwin = true
-                onGenerateTwinQuestion(q) { generated ->
-                    activeTwinScreenData = generated
-                    isGeneratingTwin = false
-                }
+                val requestVersion = ++twinRequestVersion
+                    onGenerateTwinQuestion(q) { generated ->
+                        if (requestVersion == twinRequestVersion && activeTwinScreenQuestion?.id == q.id) {
+                            activeTwinScreenData = generated
+                            isGeneratingTwin = false
+                        }
+                    }
             }
         )
         return
@@ -1576,10 +1594,13 @@ private fun LiveSolvingBoardContent(
                                     activeTwinScreenQuestion = q
                                     activeTwinScreenData = null
                                     isGeneratingTwin = true
-                                    onGenerateTwinQuestion(q) { generated ->
-                                        activeTwinScreenData = generated
-                                        isGeneratingTwin = false
-                                    }
+                                    val requestVersion = ++twinRequestVersion
+                    onGenerateTwinQuestion(q) { generated ->
+                        if (requestVersion == twinRequestVersion && activeTwinScreenQuestion?.id == q.id) {
+                            activeTwinScreenData = generated
+                            isGeneratingTwin = false
+                        }
+                    }
                                 },
                                 onAddToKumbara = { q ->
                                     openThreeDotQuestionNumber = null
@@ -1659,10 +1680,13 @@ private fun LiveSolvingBoardContent(
                                     activeTwinScreenQuestion = q
                                     activeTwinScreenData = null
                                     isGeneratingTwin = true
-                                    onGenerateTwinQuestion(q) { generated ->
-                                        activeTwinScreenData = generated
-                                        isGeneratingTwin = false
-                                    }
+                                    val requestVersion = ++twinRequestVersion
+                    onGenerateTwinQuestion(q) { generated ->
+                        if (requestVersion == twinRequestVersion && activeTwinScreenQuestion?.id == q.id) {
+                            activeTwinScreenData = generated
+                            isGeneratingTwin = false
+                        }
+                    }
                                 },
                                 onAddToKumbara = { q ->
                                     openThreeDotQuestionNumber = null
@@ -2395,13 +2419,12 @@ private fun RealTwoColumnBookPageSurface(
                 })
                 layout(constraints.maxWidth, height) {
                     columns.forEachIndexed { column, items ->
-                        // Use spare height as working room BETWEEN whole questions,
-                        // rather than accumulating it beneath the final answer row.
-                        val maxGap = minOf(TestPageDimensions.maxGap.roundToPx(), (height * .18f).toInt())
-                            .coerceAtLeast(minGap)
-                        val gap = if (items.size > 1)
-                            ((height - items.sumOf { it.height } - minGap) / (items.size - 1))
-                                .coerceIn(minGap, maxGap) else 0
+                        // Content-sized breathing room; never justify sparse pages to viewport height.
+                        val average = if (items.isEmpty()) 0 else items.sumOf { it.height } / items.size
+                        val preferredGap = (average * .14f).toInt().coerceIn(minGap,
+                            TestPageDimensions.maxGap.roundToPx().coerceAtLeast(minGap))
+                        val gap = if (items.size > 1) minOf(preferredGap,
+                            ((height - items.sumOf { it.height }) / (items.size - 1)).coerceAtLeast(minGap)) else 0
                         var y = 0
                         items.forEach { item ->
                             item.placeRelative(if (column == 0) 0 else constraints.maxWidth - width, y)
@@ -2608,36 +2631,15 @@ private fun BookPageQuestionItem345(
             }
         }
 
-        if (!singleQuestionLayout) {
-            Row(Modifier.fillMaxWidth().height(32.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(32.dp), contentAlignment = Alignment.CenterStart) {
-                    Text(question.number.toString() + ".", color = Color(0xFF172554),
-                        fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    if (isReviewMode) HandDrawnBrushMark345(
-                        isEmpty = isEmpty || isUngraded, isCorrect = isCorrect,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                Box(Modifier.size(32.dp).testTag("question_source_logo_" + question.number)
-                    .clickable { sourceDetailsVisible = true }, contentAlignment = Alignment.Center) {
-                    PublisherLogoEmblem(publisher = sourcePublisher, size = 24.dp,
-                        overrideLogoPath = question.publisherLogoUri)
-                }
-                if (isReviewMode) questionActions()
-            }
-        }
-
         // 1. SORU İÇERİĞİ: Sol başta soru numarası, sağında saf soru görseli
         Row(
             modifier = Modifier.fillMaxWidth().padding(
-                top = if (singleQuestionLayout) 54.dp else 38.dp
+                top = if (singleQuestionLayout) 54.dp else 0.dp
             ),
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             // Sol oluk: logo ve soru numarası soru görselinden ayrı tutulur.
-            if (singleQuestionLayout) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.width(if (singleQuestionLayout) 30.dp else 42.dp)
@@ -2677,8 +2679,6 @@ private fun BookPageQuestionItem345(
                         )
                     }
                 }
-            }
-
             }
 
             // Soru içeriği; sağ aksiyon marjı ayrı olduğundan görselin üstüne binmez.
@@ -2788,7 +2788,7 @@ private fun BookPageQuestionItem345(
                 }
             }
 
-            if (isReviewMode && singleQuestionLayout) questionActions()
+            if (isReviewMode) questionActions()
         }
     }
 }

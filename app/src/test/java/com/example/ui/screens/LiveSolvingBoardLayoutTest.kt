@@ -36,7 +36,9 @@ class LiveSolvingBoardLayoutTest {
         val footer = compose.onAllNodesWithTag("test_page_footer").fetchSemanticsNodes().first().boundsInRoot
         assertTrue("Footer must fit the viewport", footer.bottom <= 1280f)
         val lastImage = compose.onNodeWithTag("book_question_3").fetchSemanticsNode().boundsInRoot
-        assertTrue("Working room must not accumulate as a large blank footer", footer.top - lastImage.bottom < 160f)
+        val logo = compose.onNodeWithTag("question_source_logo_1").fetchSemanticsNode().boundsInRoot
+        val number = compose.onNodeWithText("1.").fetchSemanticsNode().boundsInRoot
+        assertTrue("Publisher must sit above the question number", logo.bottom <= number.top)
         capture("test-tablet")
         compose.onNodeWithTag("optical_form_tab").performClick()
         compose.onNodeWithTag("optic_q1_A").assertIsDisplayed()

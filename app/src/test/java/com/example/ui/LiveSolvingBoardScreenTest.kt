@@ -840,4 +840,14 @@ class LiveSolvingBoardScreenTest {
             topicName = "Fonksiyonlar"
         )
     }
-}
+}    @Test
+    fun twinRequestWithoutCallbackStopsLoadingAndOffersRetry() {
+        showBoard(review = true, onTwinRequested = { _, _ -> })
+        compose.onNodeWithTag("three_dot_btn_1").performClick()
+        compose.onNodeWithText("İkiz Soru").performClick()
+        compose.mainClock.advanceTimeBy(150_100L)
+        compose.onNodeWithTag("twin_generation_error").assertExists()
+        compose.onNodeWithTag("retry_twin_generation_btn").assertExists()
+    }
+
+

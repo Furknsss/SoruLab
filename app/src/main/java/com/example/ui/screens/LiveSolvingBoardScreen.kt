@@ -161,7 +161,7 @@ private fun MeasuredBookPages(
         }
         val columnWidthDp = with(density) { columnWidthPx.toDp().value }
         val prepared by produceState<PreparedTestPaper?>(null, questions, columnWidthDp) {
-            value = withContext(Dispatchers.IO) {
+            val loaded = withContext(Dispatchers.IO) {
                 val bitmaps = questions.associate { q ->
                     q.id to StudioImageAndPdfEngine.loadGuaranteedQuestionBitmap(
                         context, q.id, q.imagePath, q.imageBase64, q.pdfFilePath,
@@ -179,6 +179,9 @@ private fun MeasuredBookPages(
                 }.toMap()
                 PreparedTestPaper(columnWidthDp, bitmaps, calibratedBookTypographyScales(metrics))
             }
+            // Publish on the Android UI thread, including when a test frame-clock
+            // interceptor resumes the IO continuation on a background worker.
+            withContext(Dispatchers.Main.immediate) { value = loaded }
         }
         val paper = prepared?.takeIf { it.columnWidth == columnWidthDp }
         if (paper == null) {

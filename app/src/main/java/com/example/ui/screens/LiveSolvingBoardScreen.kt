@@ -131,7 +131,7 @@ private object TestPageDimensions {
     val footerHeight = 40.dp
     val gutter = 29.dp
     val minGap = 24.dp
-    val maxGap = 48.dp
+    val maxGap = 160.dp
 }
 
 private val LocalTestBitmaps = staticCompositionLocalOf<Map<String, Bitmap?>> { emptyMap() }
@@ -213,7 +213,7 @@ private fun MeasuredBookPages(
                         }
                     }.single().measure(Constraints(minWidth = columnWidthPx, maxWidth = columnWidthPx)).height
                 }
-                val packingHeight = available + minOf(160.dp.roundToPx(), (available * .18f).toInt())
+                val packingHeight = available + (available * .5f).toInt()
                 val pages = packMeasuredTestPages(heights, packingHeight,
                     TestPageDimensions.minGap.roundToPx(), columns).map { page ->
                     TwoColumnQuestionPage(page.columns[0].map(questions::get),
@@ -298,7 +298,8 @@ internal fun calibratedBookTypographyScales(
     }
     // Target a readable common printed glyph, not the smallest 30th-percentile
     // tiny font. Both narrow publisher crops and big publisher crops converge.
-    val commonFontDp = 10.5f
+    val commonFontDp = observed[(observed.size * 0.55f).toInt()
+        .coerceIn(0, observed.lastIndex)].coerceIn(10.5f, 13.0f)
     return measurements.mapValues { (_, metric) ->
         metric.printedGlyphDp?.takeIf { it.isFinite() && it > 0f }
             ?.let { (commonFontDp / it).coerceIn(0.60f, 1.90f) }
@@ -2415,17 +2416,16 @@ private fun RealTwoColumnBookPageSurface(
                 val columns = if (columnCount == 2)
                     listOf(measured.take(leftCount), measured.drop(leftCount)) else listOf(measured)
                 val minGap = TestPageDimensions.minGap.roundToPx()
+                // Keep the accepted airy rhythm. When content is only slightly too
+                // long, continue the paper vertically instead of creating a sparse page.
+                val preferredGap = minOf(TestPageDimensions.maxGap.roundToPx(),
+                    (viewportHeight.roundToPx() * .18f).toInt()).coerceAtLeast(minGap)
                 val height = maxOf(viewportHeight.roundToPx(), columns.maxOf { items ->
-                    items.sumOf { it.height } + (items.size - 1).coerceAtLeast(0) * minGap
+                    items.sumOf { it.height } + (items.size - 1).coerceAtLeast(0) * preferredGap
                 })
                 layout(constraints.maxWidth, height) {
                     columns.forEachIndexed { column, items ->
-                        // Content-sized breathing room; never justify sparse pages to viewport height.
-                        val average = if (items.isEmpty()) 0 else items.sumOf { it.height } / items.size
-                        val preferredGap = (average * .14f).toInt().coerceIn(minGap,
-                            TestPageDimensions.maxGap.roundToPx().coerceAtLeast(minGap))
-                        val gap = if (items.size > 1) minOf(preferredGap,
-                            ((height - items.sumOf { it.height }) / (items.size - 1)).coerceAtLeast(minGap)) else 0
+                        val gap = preferredGap
                         var y = 0
                         items.forEach { item ->
                             item.placeRelative(if (column == 0) 0 else constraints.maxWidth - width, y)

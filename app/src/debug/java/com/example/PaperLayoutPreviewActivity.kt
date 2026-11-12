@@ -30,7 +30,10 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
         window.statusBarColor = Color.WHITE
         window.navigationBarColor = Color.BLACK
         val goldenReference = intent.getBooleanExtra("polynomial_reference", false)
-        val questions = (1..(if (goldenReference) 4 else 12)).map { index ->
+        // Exactly five real crop-shaped questions reproduces a short 3+2
+        // final page instead of passing only a beautiful synthetic 2+2 page.
+        val sparseLastPage = intent.getBooleanExtra("sparse_final_page", false)
+        val questions = (1..(if (goldenReference) 4 else if (sparseLastPage) 5 else 12)).map { index ->
             val publisher = when (index % 3) {
                 0 -> "ÜçDörtBeş"
                 2 -> "Barış"
@@ -44,6 +47,9 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
                 else -> 24f
             }
             val imageHeight = when {
+                sparseLastPage -> when (index) {
+                    1 -> 460; 2 -> 390; 3 -> 380; 4 -> 470; else -> 340
+                }
                 goldenReference -> 755
                 index % 5 == 4 -> 520
                 index % 4 == 2 -> 380
@@ -65,10 +71,22 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
             )
         }
         val test = YksTestItem(
-            id = if (goldenReference) "paper_polynomial_golden_qa" else "paper_visual_qa",
+            id = when {
+                goldenReference -> "paper_polynomial_golden_qa"
+                sparseLastPage -> "paper_sparse_final_page_qa"
+                else -> "paper_visual_qa"
+            },
             topicId = "polinomlar",
-            title = if (goldenReference) "Polinomlar - Referans Testi" else "Polinomlar - Test 4",
-            fullTitle = if (goldenReference) "Polinomlar - Referans Testi" else "Polinomlar - Test 4",
+            title = when {
+                goldenReference -> "Polinomlar - Referans Testi"
+                sparseLastPage -> "Polinomlar - 3+2 Son Sayfa"
+                else -> "Polinomlar - Test 4"
+            },
+            fullTitle = when {
+                goldenReference -> "Polinomlar - Referans Testi"
+                sparseLastPage -> "Polinomlar - 3+2 Son Sayfa"
+                else -> "Polinomlar - Test 4"
+            },
             difficulty = DifficultyLevel.ZOR,
             difficultyPosition = 0.8f,
             questions = questions

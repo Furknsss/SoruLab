@@ -12,6 +12,11 @@ concurrency:
 permissions:
   contents: read
 
+# Single source of truth. NEVER repeat hardcoded APK filenames in later steps.
+env:
+  APK_FILE: out/SoruLab-v1.4.6.apk
+  BASELINE_RELEASE: v1.4.5
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -77,17 +82,22 @@ jobs:
           mkdir -p out
           APK_PATH="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
           test -n "$APK_PATH"
-          cp "$APK_PATH" out/SoruLab-v1.4.6.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify out/SoruLab-v1.4.5.apk
+          cp "$APK_PATH" "$APK_FILE"
+          test -s "$APK_FILE" || { echo "::error::Signed APK not produced: $APK_FILE"; exit 1; }
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK_FILE"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK_FILE" | head -n 1 | grep -F "versionName='1.4.6'"
+          echo "Signed artifact verified: $APK_FILE"
 
       - name: Verify compatibility with the previously distributed signed APK
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p baseline
-          gh release download v1.3.7 --repo "$GITHUB_REPOSITORY" --pattern '*.apk' --dir baseline
+          gh release download "$BASELINE_RELEASE" --repo "$GITHUB_REPOSITORY" --pattern '*.apk' --dir baseline
           OLD_APK="$(find baseline -name '*.apk' -type f -print -quit)"
-          bash scripts/check_inplace_upgrade.sh "$OLD_APK" out/SoruLab-v1.4.5.apk
+          test -s "$OLD_APK" || { echo "::error::Baseline APK not found"; exit 1; }
+          bash scripts/check_inplace_upgrade.sh "$OLD_APK" "$APK_FILE"
+          echo "Previous signed release upgrade compatibility verified"
 
       - name: Upload test reports
         if: always()
@@ -104,6 +114,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: SoruLab-v1.4.6-Signed-APK
-          path: out/SoruLab-v1.4.5.apk
+          path: ${{ env.APK_FILE }}
+          if-no-files-found: error
           retention-days: 30
 

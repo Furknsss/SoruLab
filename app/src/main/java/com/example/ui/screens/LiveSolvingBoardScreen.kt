@@ -1058,7 +1058,9 @@ fun LiveSolvingBoardScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFEFEEF6))
+            // White across the ENTIRE viewport, including the area past the
+            // last printed question, side gutters and tablet edges.
+            .background(Color.White)
             .testTag("live_solving_board")
     ) {
         // 1. ÜST BEYAZ BAR: Solda Geri Oku, Ortada Test Başlığı, Sağda Mavi Hap Buton
@@ -1135,11 +1137,10 @@ fun LiveSolvingBoardScreen(
             // Book Page Container with Horizontal Finger/Hand Swipe (HorizontalPager) + Pinch-to-Zoom support
             Box(
                 modifier = Modifier
+                    // Edge-to-edge real book paper. No rounded grey frame,
+                    // external 8dp gutter or card shadow around the sheet.
                     .fillMaxSize()
-                    .padding(horizontal = 8.dp, vertical = 8.dp)
-                    .clip(RoundedCornerShape(8.dp))
                     .background(Color.White)
-                    .shadow(2.dp, RoundedCornerShape(8.dp))
                     .testTag("board_ink_viewport")
                     .semantics { stateDescription = zoomStateDescription }
                     // Initial pass wins two-finger gestures before the pager
@@ -2204,7 +2205,9 @@ private fun RealTwoColumnBookPageSurface(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFEFEEF6))
+            // The page may end early for a naturally short test, but the
+            // backing surface must NEVER become grey underneath it.
+            .background(Color.White)
     ) {
         val actualColumnWidthDp = ((maxWidth.value - 44f) / 2f).coerceAtLeast(145f)
         val contentHeightDp = (maxHeight.value - 28f).coerceAtLeast(80f)

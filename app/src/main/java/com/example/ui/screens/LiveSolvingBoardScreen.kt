@@ -663,9 +663,18 @@ internal fun packQuestionsIntoTwoColumnPages(
                 val prematureBlankPenalty = if (next < n &&
                     leftFill < .35f && rightFill < .35f
                 ) 140f else 0f
+                // The former DP greedily used seven questions on page one
+                // and stranded 8–12 on a 3+2 final sheet. Consider the FINAL
+                // page's optical density more strongly so a source-order-safe
+                // 6+6 split can win when it genuinely fits at readable size.
+                // This is a preference, never a fixed number-of-questions rule.
+                val terminalDensityPenalty = if (next == n && start > 0) {
+                    ((1f - leftFill) * (1f - leftFill) +
+                        (1f - rightFill) * (1f - rightFill)) * 250f
+                } else 0f
                 val score = 110.0 + blankPenalty + imbalancePenalty +
                     shrinkPenalty + loneColumnPenalty + prematureBlankPenalty +
-                    bestCost[next]
+                    terminalDensityPenalty + bestCost[next]
                 if (score < bestCost[start] - 0.0001) {
                     bestCost[start] = score
                     bestLeft[start] = leftCount

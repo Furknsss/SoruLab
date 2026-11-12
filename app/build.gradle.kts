@@ -72,7 +72,7 @@ android {
           Instant.parse("2026-01-01T00:00:00Z").epochSecond / 60L
       )
     ).coerceIn(35L, 2_100_000_000L).toInt()
-    versionName = "1.4.5"
+    versionName = "1.4.6"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     // Optional self-hosted Qwen+SymPy endpoint. Public URL is compiled into APK,

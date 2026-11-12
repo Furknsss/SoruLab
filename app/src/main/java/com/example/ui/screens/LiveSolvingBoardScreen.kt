@@ -2997,150 +2997,161 @@ private fun ThreeDotQuestionPopoverCard345(
     onOpenTwinScreen: () -> Unit,
     onAddToKumbara: () -> Unit
 ) {
-    val isEmpty = selectedOption.isNullOrBlank()
-    val isCorrect = !isEmpty && question.answerKeyVerified && selectedOption == question.correctOption
-    val statusText = when {
-        !question.answerKeyVerified -> "Cevap anahtarı doğrulanmadı"
-        isCorrect -> "Doğru Yanıt"
-        isEmpty -> "Boş Bırakıldı"
-        else -> "Yanlış Yanıt"
+    // The verified answer and the learner's marked option are distinct.
+    // Never label a guessed or missing answer key as the correct option.
+    val verified = question.answerKeyVerified &&
+        question.correctOption in setOf("A", "B", "C", "D", "E")
+    val marked = selectedOption?.takeIf { it in setOf("A", "B", "C", "D", "E") }
+    val isCorrect = verified && marked == question.correctOption
+    val wrong = verified && marked != null && !isCorrect
+    val difficultyFraction = when (question.difficulty) {
+        DifficultyLevel.KOLAY -> .16f
+        DifficultyLevel.ORTA, DifficultyLevel.OSYM -> .55f
+        DifficultyLevel.ZOR -> .84f
+        DifficultyLevel.COK_ZOR -> .96f
     }
-    val diffFraction = when (question.difficulty) {
-        DifficultyLevel.KOLAY -> 0.12f
-        DifficultyLevel.ORTA -> 0.34f
-        DifficultyLevel.OSYM -> 0.54f
-        DifficultyLevel.ZOR -> 0.76f
-        DifficultyLevel.COK_ZOR -> 0.94f
+    val difficultyLabel = when (question.difficulty) {
+        DifficultyLevel.KOLAY -> "Kolay"
+        DifficultyLevel.ORTA, DifficultyLevel.OSYM -> "Orta"
+        DifficultyLevel.ZOR, DifficultyLevel.COK_ZOR -> "Zor"
     }
-
     Surface(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(22.dp),
         color = Color.White,
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-        shadowElevation = 16.dp,
+        shadowElevation = 18.dp,
+        border = BorderStroke(1.dp, Color(0xFFE9E8F0)),
         modifier = Modifier
-            .width(262.dp)
+            .width(306.dp)
             .testTag("three_dot_popover_${question.number}")
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 15.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // 1. Üst Başlık: "[X]. Soru" + Durum Dairesi
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
                     text = "${question.number}. Soru",
-                    color = Color(0xFF25215D),
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 16.sp
+                    color = Color(0xFF292458),
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
-                if (isEmpty) {
-                    // Boş bırakılan soru için içi boş gri çember (`○`, #94A3B8)
+                if (verified && marked != null) {
                     Box(
-                        modifier = Modifier
-                            .size(22.dp)
-                            .border(2.2.dp, Color(0xFF94A3B8), CircleShape)
-                    )
+                        modifier = Modifier.size(24.dp)
+                            .clip(CircleShape)
+                            .background(if (isCorrect) Color(0xFF15961B) else Color(0xFFDE3E4A)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isCorrect) Icons.Default.Check else Icons.Default.Close,
+                            contentDescription = if (isCorrect) "Doğru" else "Yanlış",
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
                 } else {
+                    // Intentionally empty status ring: use a Spacer instead
+                    // of an empty Box without a content lambda.
+                    Spacer(
+                        modifier = Modifier.size(22.dp)
+                            .border(2.dp, Color(0xFFA5A4B3), CircleShape)
+                    )
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Canvas(modifier = Modifier.fillMaxWidth().height(24.dp)) {
+                    val barHeight = 10.dp.toPx()
+                    val barTop = size.height - barHeight
+                    val filled = (size.width * difficultyFraction)
+                        .coerceIn(8.dp.toPx(), size.width)
+                    drawRoundRect(
+                        color = Color(0xFFE7E5EF),
+                        topLeft = Offset(0f, barTop),
+                        size = Size(size.width, barHeight),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(barHeight / 2f)
+                    )
+                    drawRoundRect(
+                        color = Color(0xFFF68A39),
+                        topLeft = Offset(0f, barTop),
+                        size = Size(filled, barHeight),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(barHeight / 2f)
+                    )
+                    val triangleX = filled.coerceIn(7.dp.toPx(), size.width - 7.dp.toPx())
+                    val triangle = Path().apply {
+                        moveTo(triangleX - 5.dp.toPx(), 1.dp.toPx())
+                        lineTo(triangleX + 5.dp.toPx(), 1.dp.toPx())
+                        lineTo(triangleX, barTop - 2.dp.toPx())
+                        close()
+                    }
+                    drawPath(triangle, Color(0xFF25215D))
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    listOf("Kolay", "Orta", "Zor").forEach { name ->
+                        Text(
+                            name,
+                            fontSize = 11.sp,
+                            fontWeight = if (difficultyLabel == name) FontWeight.SemiBold
+                                else FontWeight.Normal,
+                            color = if (difficultyLabel == name) Color(0xFF292458)
+                                else Color(0xFFA09DAF)
+                        )
+                    }
+                }
+            }
+
+            Text(
+                if (verified) "Doğru Yanıt" else "Cevap anahtarı doğrulanmadı",
+                fontSize = 14.sp,
+                color = Color(0xFF292458),
+                fontWeight = FontWeight.Medium
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf("A", "B", "C", "D", "E").forEach { option ->
+                    val correctAnswer = verified && option == question.correctOption
+                    val wrongChoice = wrong && marked == option
                     Surface(
                         shape = CircleShape,
-                        color = if (isCorrect) Color(0xFF15803D) else Color(0xFFDC2626),
-                        modifier = Modifier.size(22.dp)
+                        color = if (correctAnswer) Color(0xFF11881D) else Color.White,
+                        border = if (correctAnswer) null
+                            else BorderStroke(
+                                if (wrongChoice) 2.dp else 1.5.dp,
+                                if (wrongChoice) Color(0xFFDE3E4A) else Color(0xFFCECBD9)
+                            ),
+                        modifier = Modifier.weight(1f).height(40.dp)
+                            .testTag("popover_answer_${question.number}_${option}")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = if (isCorrect) Icons.Default.Check else Icons.Default.Close,
-                                contentDescription = statusText,
-                                tint = Color.White,
-                                modifier = Modifier.size(14.dp)
+                            Text(
+                                option,
+                                fontSize = 16.sp,
+                                fontWeight = if (correctAnswer || wrongChoice)
+                                    FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (correctAnswer) Color.White else
+                                    if (wrongChoice) Color(0xFFDE3E4A) else Color(0xFF8B879C)
                             )
                         }
                     }
                 }
             }
 
-            // 2. 5 Kademeli Zorluk Seviyesi Barı (Kolay - Orta - ÖSYM - Zor - Çok Zor + Üstte Siyah Ters Üçgen ▼)
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(18.dp)
-                ) {
-                    val barHeight = 7.dp.toPx()
-                    val barTop = size.height - barHeight
-                    val fillWidth = (size.width * diffFraction).coerceIn(14f, size.width)
-
-                    // Gri arka çubuk
-                    drawRoundRect(
-                        color = Color(0xFFE2E8F0),
-                        topLeft = Offset(0f, barTop),
-                        size = Size(size.width, barHeight),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(barHeight / 2f, barHeight / 2f)
-                    )
-                    // Turuncu doluluk çubuğu
-                    drawRoundRect(
-                        color = Color(0xFFF97316),
-                        topLeft = Offset(0f, barTop),
-                        size = Size(fillWidth, barHeight),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(barHeight / 2f, barHeight / 2f)
-                    )
-                    // Siyah ters üçgen ok (▼)
-                    val triX = fillWidth.coerceIn(8f, size.width - 8f)
-                    val triPath = Path().apply {
-                        moveTo(triX - 5.dp.toPx(), 1.dp.toPx())
-                        lineTo(triX + 5.dp.toPx(), 1.dp.toPx())
-                        lineTo(triX, barTop - 1.dp.toPx())
-                        close()
-                    }
-                    drawPath(path = triPath, color = Color(0xFF25215D))
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    DifficultyLevel.entries.forEach { lvl ->
-                        val isCurrent = question.difficulty == lvl
-                        Text(
-                            text = lvl.label,
-                            color = if (isCurrent) Color(0xFFEA580C) else Color(0xFF475569),
-                            fontSize = 9.5.sp,
-                            fontWeight = if (isCurrent) FontWeight.ExtraBold else FontWeight.Medium
-                        )
-                    }
-                }
+            if (marked != null && verified && !isCorrect) {
+                Text(
+                    "İşaretlediğin: $marked",
+                    color = Color(0xFFDE3E4A),
+                    fontSize = 12.sp,
+                    modifier = Modifier.testTag("popover_marked_answer_${question.number}")
+                )
             }
 
-            // 3. Durum Yazısı ("Doğru Yanıt" / "Yanlış Yanıt" / "Boş Bırakıldı")
-            Text(
-                text = statusText,
-                color = when {
-                    isCorrect -> Color(0xFF15803D)
-                    isEmpty -> Color(0xFF64748B)
-                    else -> Color(0xFFDC2626)
-                },
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                modifier = Modifier.padding(vertical = 1.dp)
-            )
-
-            // 4. Alt Alta 4 Oval Buton (Konu Anlatımı, Çözüm İzle, İkiz Soru, Soru Kumbarama Ekle)
-            PopoverPillButton345(
-                label = "Konu Anlatımı",
-                backgroundColor = Color(0xFFE2E8F0),
-                textColor = Color(0xFF3475F5),
-                onClick = onOpenTopicLecture
-            )
+            Spacer(Modifier.height(16.dp))
             PopoverPillButton345(
                 label = "Çözüm İzle",
                 backgroundColor = Color(0xFF3475F5),
@@ -3149,16 +3160,12 @@ private fun ThreeDotQuestionPopoverCard345(
             )
             PopoverPillButton345(
                 label = "İkiz Soru",
-                backgroundColor = Color(0xFFE2E8F0),
+                backgroundColor = Color(0xFFF1F0F5),
                 textColor = Color(0xFF3475F5),
                 onClick = onOpenTwinScreen
             )
-            PopoverPillButton345(
-                label = "Soru Kumbarama Ekle",
-                backgroundColor = Color(0xFFE2E8F0),
-                textColor = Color(0xFF1E293B),
-                onClick = onAddToKumbara
-            )
+            // Existing lecture and question-bank callbacks remain in the
+            // caller for compatibility with other reader actions.
         }
     }
 }

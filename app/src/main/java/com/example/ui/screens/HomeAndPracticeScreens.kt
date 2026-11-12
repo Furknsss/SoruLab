@@ -2626,7 +2626,8 @@ internal fun TopicTestsDetailView(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFEFEEF6))
+            // The complete subject test catalog is a continuous clean paper.
+            .background(Color.White)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Top bar: Back + SubjectFormulaBadge + Topic Name ONLY (no redundant level badge on top-right!) + "Oluştur" button
@@ -2782,9 +2783,9 @@ internal fun TopicTestsDetailView(
             Card(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 14.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F7FC)),
+                    .padding(start = 0.dp, end = 0.dp, top = 2.dp, bottom = 0.dp),
+                shape = RoundedCornerShape(0.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Box(
@@ -2946,6 +2947,7 @@ internal fun TopicTestsDetailView(
                                 ) { testItem ->
                                     PremiumPracticeTestRow(
                                         test = testItem,
+                                        topicName = topic.name,
                                         completed = isTestCompleted(testItem),
                                         onOpen = { onTestClicked(testItem) },
                                         onDelete = { onDeleteTest(testItem) }
@@ -3100,9 +3102,30 @@ internal fun TopicTestsDetailView(
     }
 }
 
+/**
+ * Display labels follow the source's level and sequence without modifying
+ * stored test titles, answers or identifiers.  A title such as
+ * "Trigonometri - ÖSYM 2" becomes "Trigonometri • ÖSYM Test 2".
+ */
+internal fun premiumTestDisplayName(test: YksTestItem, topicName: String): String {
+    val source = test.fullTitle.ifBlank { test.title }.trim()
+    val cleaned = source.removePrefix(topicName)
+        .trimStart(' ', '-', '•', ':', '–').trim()
+    val generic = Regex("^Test\\s*(\\d+[A-Za-z]?)$", RegexOption.IGNORE_CASE)
+    val legacyOsym = Regex("^ÖSYM\\s*(\\d+[A-Za-z]?)$", RegexOption.IGNORE_CASE)
+    val suffix = when {
+        cleaned.isBlank() -> test.level.displayTitle + " Test"
+        generic.matches(cleaned) -> "${test.level.displayTitle} Test ${generic.matchEntire(cleaned)!!.groupValues[1]}"
+        legacyOsym.matches(cleaned) -> "ÖSYM Test ${legacyOsym.matchEntire(cleaned)!!.groupValues[1]}"
+        else -> cleaned
+    }
+    return "$topicName • $suffix"
+}
+
 @Composable
 internal fun PremiumPracticeTestRow(
     test: YksTestItem,
+    topicName: String,
     completed: Boolean,
     onOpen: () -> Unit,
     onDelete: () -> Unit
@@ -3113,7 +3136,7 @@ internal fun PremiumPracticeTestRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 76.dp)
+                .heightIn(min = 80.dp)
                 .clickable(onClick = onOpen)
                 .testTag("test_row_${test.id}")
                 .padding(start = if (compact) 10.dp else 18.dp, top = 12.dp, bottom = 12.dp),
@@ -3136,19 +3159,13 @@ internal fun PremiumPracticeTestRow(
             Spacer(Modifier.width(if (compact) 10.dp else 14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = test.fullTitle,
+                    text = premiumTestDisplayName(test, topicName),
                     color = Color(0xFF28215E),
-                    fontSize = if (compact) 14.sp else 16.sp,
+                    fontSize = if (compact) 15.sp else 17.sp,
                     fontWeight = FontWeight.Medium,
                     lineHeight = 22.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "${test.questions.size} soru",
-                    color = Color(0xFF8B84A7),
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(top = 3.dp)
                 )
             }
             Spacer(Modifier.width(12.dp))
@@ -3219,6 +3236,16 @@ private fun RadialLevelWheelOverlay(
         }
     }
 
+    // Only this wheel borrows the requested reference palette. The existing
+    // six level identities, selection callbacks and question pools stay intact.
+    val referenceWedgePalette = listOf(
+        Color(0xFFF9E6B4), // Seviye Tespit: warm ivory
+        Color(0xFFFAD2A7), // Başlangıç: apricot
+        Color(0xFFF4B2A4), // İkiz: soft coral
+        Color(0xFF288FDC), // Pekiştirme: vivid sky blue
+        Color(0xFF93C9E9), // ÖSYM: pale azure
+        Color(0xFF9998CC)  // Derece: lavender
+    )
     val safeAlpha = animProgress.coerceIn(0f, 1f)
 
     Box(
@@ -3298,7 +3325,7 @@ private fun RadialLevelWheelOverlay(
                 val sliceSize = Size(sliceRadius * 2f, sliceRadius * 2f)
 
                 drawArc(
-                    color = Color(level.wedgeColorHex).copy(alpha = safeAlpha),
+                    color = referenceWedgePalette[index].copy(alpha = safeAlpha),
                     startAngle = sliceStart,
                     sweepAngle = dynamicSliceSweep,
                     useCenter = true,
@@ -3352,7 +3379,7 @@ private fun RadialLevelWheelOverlay(
 
             // Top 90° outer border frame (Amber)
             drawArc(
-                color = Color(0xFFD98A16).copy(alpha = safeAlpha),
+                color = Color(0xFFF7B631).copy(alpha = safeAlpha),
                 startAngle = -90f,
                 sweepAngle = 89.2f,
                 useCenter = false,
@@ -3363,7 +3390,7 @@ private fun RadialLevelWheelOverlay(
 
             // Bottom 90° outer border frame (Cyan-Blue)
             drawArc(
-                color = Color(0xFF0E8AC8).copy(alpha = safeAlpha),
+                color = Color(0xFF2BA9D7).copy(alpha = safeAlpha),
                 startAngle = 0.8f,
                 sweepAngle = 89.2f,
                 useCenter = false,

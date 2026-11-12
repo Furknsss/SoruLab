@@ -1,0 +1,109 @@
+name: SoruLab v1.4.6 Reference UI Preview QA
+
+on:
+  push:
+    branches: [feature/v146-reference-test-ui-20261112]
+  workflow_dispatch:
+
+concurrency:
+  group: sorulab-v146-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install Android build tools
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager "platforms;android-36.1" "build-tools;36.0.0"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore existing release signing configuration
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64" && test -n "$STORE_PASSWORD" && test -n "$KEY_PASSWORD"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+          keytool -list -keystore my-upload-key.jks -alias upload -storepass "$STORE_PASSWORD" > /dev/null
+          base64 --decode google-services.json.base64 > app/google-services.json
+          RELEASE_CERT_SHA1="$(keytool -list -v -keystore my-upload-key.jks -alias upload -storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" | awk -F': ' '/SHA1:/{print $2; exit}' | tr -d ':')"
+          test -n "$RELEASE_CERT_SHA1"
+          RELEASE_CERT_SHA1="$RELEASE_CERT_SHA1" python3 - <<'PY'
+          import json, os
+          config = json.load(open("app/google-services.json"))
+          assert config["project_info"]["project_id"] == "gen-lang-client-0143749618"
+          client = next(c for c in config["client"] if c["client_info"]["android_client_info"]["package_name"] == "com.aistudio.sorulab.ykslab")
+          oauth = client.get("oauth_client", [])
+          assert any(c.get("client_type") == 3 for c in oauth), "Missing Web OAuth client"
+          assert any(c.get("client_type") == 1 and c.get("android_info", {}).get("certificate_hash", "").replace(":", "").lower() == os.environ["RELEASE_CERT_SHA1"].lower() for c in oauth), "Release certificate is not registered for Google Sign-In"
+          print("Firebase and existing release signing certificate verified")
+          PY
+
+      - name: Run reference test UI, paper and optical regression tests
+        run: >-
+          bash ./gradlew :app:testDebugUnitTest
+          --tests 'com.example.ui.LiveSolvingBoardScreenTest'
+          --tests 'com.example.ui.ReferenceTestCatalogTitleTest'
+          --tests 'com.example.ui.screens.LiveSolvingBoardLayoutTest'
+          --tests 'com.example.ui.screens.TestImageMarginsTest'
+          --tests 'com.example.ui.screens.TestPagePackingTest'
+          --no-daemon --no-configuration-cache --max-workers=2
+
+      - name: Build signed release APK
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          bash ./gradlew :app:assembleRelease --no-daemon --no-configuration-cache --max-workers=2
+          mkdir -p out
+          APK_PATH="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK_PATH"
+          cp "$APK_PATH" out/SoruLab-v1.4.6.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify out/SoruLab-v1.4.5.apk
+
+      - name: Verify compatibility with the previously distributed signed APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p baseline
+          gh release download v1.3.7 --repo "$GITHUB_REPOSITORY" --pattern '*.apk' --dir baseline
+          OLD_APK="$(find baseline -name '*.apk' -type f -print -quit)"
+          bash scripts/check_inplace_upgrade.sh "$OLD_APK" out/SoruLab-v1.4.5.apk
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoruLab-v1.4.6-Test-And-Visual-QA
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+            app/build/reports/test-layout/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SoruLab-v1.4.6-Signed-APK
+          path: out/SoruLab-v1.4.5.apk
+          retention-days: 30
+

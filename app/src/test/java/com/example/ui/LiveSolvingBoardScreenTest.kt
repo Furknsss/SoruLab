@@ -329,9 +329,9 @@ class LiveSolvingBoardScreenTest {
             listOf(148f, 152f, 148f, 150f), paperHeight
         )
         org.junit.Assert.assertTrue("Three-question rhythm must remain airy",
-            three.gapDp in 20f..38f)
+            three.gapDp in 24f..52f)
         org.junit.Assert.assertTrue("Four-question rhythm must never overlap",
-            four.gapDp in 16f..26f)
+            four.gapDp in 18f..30f)
         org.junit.Assert.assertTrue("Less crowded columns get more breathing room",
             three.gapDp > four.gapDp)
         listOf(
@@ -345,6 +345,46 @@ class LiveSolvingBoardScreenTest {
                 occupied <= paperHeight + .01f
             )
         }
+    }
+
+
+    @Test
+    fun sparseLastPageEndsAtContentWithoutFakeHalfPageOfWhiteSpace() {
+        // A 3+2 final page like the user's real Polinomlar Test 3 screenshot.
+        // The old full-height white sheet reserved hundreds of empty pixels.
+        val left = listOf(204f, 192f, 186f)
+        val right = listOf(275f, 230f)
+        val viewport = 1060f
+        val leftRhythm = com.example.ui.screens.adaptiveBookColumnRhythm(left, viewport - 28f)
+        val rightRhythm = com.example.ui.screens.adaptiveBookColumnRhythm(right, viewport - 28f)
+        val sheet = com.example.ui.screens.visibleBookPaperHeightDp(
+            viewport, left, right, leftRhythm, rightRhythm
+        )
+        val occupiedLeft = left.sum() * leftRhythm.slotScale +
+            (left.size - 1) * leftRhythm.gapDp + leftRhythm.topInsetDp
+        val occupiedRight = right.sum() * rightRhythm.slotScale +
+            (right.size - 1) * rightRhythm.gapDp + rightRhythm.topInsetDp
+        val used = maxOf(occupiedLeft, occupiedRight)
+        org.junit.Assert.assertTrue("Never cut off any printed answer or image",
+            used + 35f <= sheet + .01f)
+        org.junit.Assert.assertTrue("A sparse 3+2 page may not end with 250dp blank paper",
+            sheet < viewport - 150f)
+        org.junit.Assert.assertTrue("Question gaps stay naturally breathable",
+            leftRhythm.gapDp in 24f..52f)
+    }
+
+    @Test
+    fun fullBookPageRetainsItsViewportAndDoesNotHideLongFigures() {
+        val left = listOf(340f, 330f)
+        val right = listOf(310f, 332f)
+        val viewport = 760f
+        val l = com.example.ui.screens.adaptiveBookColumnRhythm(left, viewport - 28f)
+        val r = com.example.ui.screens.adaptiveBookColumnRhythm(right, viewport - 28f)
+        val sheet = com.example.ui.screens.visibleBookPaperHeightDp(
+            viewport, left, right, l, r
+        )
+        org.junit.Assert.assertTrue("Keep full height when content is tall", sheet > 730f)
+        org.junit.Assert.assertTrue("Sheet must fit screen", sheet <= viewport)
     }
 
     @Test

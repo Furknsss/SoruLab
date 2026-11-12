@@ -503,24 +503,15 @@ internal fun adaptiveBookColumnRhythm(
     if (measuredQuestionHeightsDp.isEmpty()) return BookColumnRhythm(1f, 0f, 0f)
     val count = measuredQuestionHeightsDp.size
     val content = measuredQuestionHeightsDp.sum().coerceAtLeast(1f)
-    // The reference 2-question column has a larger pause; 3/4-question
-    // columns receive proportionately smaller gaps, never cramped.
-    val minGap = when (count) {
-        1 -> 0f
-        2 -> 24f
-        3 -> 24f
-        else -> 18f
-    }
-    val maxGap = when (count) {
-        1 -> 0f
-        2 -> 62f
-        3 -> 52f
-        else -> 30f
-    }
+    // Determine space from the *actual average question height*, not from
+    // any 2/3/4-question page template. Large diagrams breathe more, short
+    // equations stay comfortably grouped. Keep margins within visual limits.
     val intervals = (count - 1).coerceAtLeast(0)
+    val averageQuestionHeight = content / count
+    val preferredGap = (averageQuestionHeight * 0.18f).coerceIn(18f, 56f)
     val free = (paperHeightDp - content).coerceAtLeast(0f)
     val wantedGap = if (intervals == 0) 0f else
-        ((free - 22f) / intervals).coerceIn(minGap, maxGap)
+        minOf(preferredGap, (free - 10f).coerceAtLeast(18f))
     val remainingForContent = (paperHeightDp - wantedGap * intervals - 6f)
         .coerceAtLeast(1f)
     val scale = (remainingForContent / content).coerceIn(0.35f, 1f)
@@ -589,7 +580,6 @@ private fun bookColumnHeightRhythm(
 internal fun packQuestionsIntoTwoColumnPages(
     questions: List<YksQuestion>,
     columnCapacity: Float = 2.1f,
-    maxQuestionsPerColumn: Int = 3,
     columnWidthDp: Float = 360f,
     actualImageRatios: Map<String, Float> = emptyMap(),
     imageTypographyScales: Map<String, Float> = emptyMap()
@@ -606,13 +596,25 @@ internal fun packQuestionsIntoTwoColumnPages(
             questions[i], width, actualImageRatios, imageTypographyScales
         ) * width
     }
-    val requestLimit = maxQuestionsPerColumn.coerceIn(1, 6)
-    val shortCount = heights.count { it < paperHeight * 0.17f }
-    // Expand the *ceiling*, not the requested number: only truly compact
-    // questions can go beyond four. The printed size is never shrunk to fit.
-    val columnLimit = if (questions.size >= 10 &&
-        shortCount >= (questions.size * 0.75f) && requestLimit >= 4
-    ) 6 else requestLimit
+    // Candidate counts come ONLY from how many *whole* measured questions
+    // physically fit in the available height. No 4-per-page, 6-per-column,
+    // or publisher-specific numerical quotas are permitted.
+    fun naturalColumnLimit(start: Int): Int {
+        var totalMeasuredHeight = 0f
+        var included = 0
+        for (index in start until questions.size) {
+            totalMeasuredHeight += heights[index]
+            val requiredBreathing = included * 18f
+            // Preserve readable font: a multi-question column is rejected if
+            // it would require more than 7% downscaling, even with minimum gap.
+            if (included > 0 &&
+                totalMeasuredHeight * .93f + requiredBreathing > paperHeight - 6f
+            ) break
+            included++
+        }
+        // A single unusually tall figure always gets its own fitted column.
+        return included.coerceAtLeast(1)
+    }
 
     // Global dynamic programming instead of a page-by-page greedy "fit the
     // most now" strategy. It prevents leaving the final page with one lone
@@ -624,18 +626,20 @@ internal fun packQuestionsIntoTwoColumnPages(
     bestCost[n] = 0.0
 
     for (start in n - 1 downTo 0) {
-        for (leftCount in 1..minOf(columnLimit, n - start)) {
+        for (leftCount in 1..minOf(naturalColumnLimit(start), n - start)) {
             val leftHeight = heights.slice(start until start + leftCount)
             val leftRhythm = adaptiveBookColumnRhythm(leftHeight, paperHeight)
             // Do not squeeze several printed questions just to reduce pages.
-            if (leftCount > 1 && leftRhythm.slotScale < .88f) continue
+            if (leftCount > 1 && leftRhythm.slotScale < .93f) continue
 
-            for (rightCount in 0..minOf(columnLimit, n - start - leftCount)) {
+            for (rightCount in 0..minOf(
+                naturalColumnLimit(start + leftCount), n - start - leftCount
+            )) {
                 if (rightCount == 0 && n - start > 1) continue
                 val next = start + leftCount + rightCount
                 val rightHeight = heights.slice(start + leftCount until next)
                 val rightRhythm = adaptiveBookColumnRhythm(rightHeight, paperHeight)
-                if (rightCount > 1 && rightRhythm.slotScale < .88f) continue
+                if (rightCount > 1 && rightRhythm.slotScale < .93f) continue
                 if (!bestCost[next].isFinite()) continue
 
                 fun occupation(values: List<Float>, rhythm: BookColumnRhythm): Float {
@@ -663,18 +667,13 @@ internal fun packQuestionsIntoTwoColumnPages(
                 val prematureBlankPenalty = if (next < n &&
                     leftFill < .35f && rightFill < .35f
                 ) 140f else 0f
-                // The former DP greedily used seven questions on page one
-                // and stranded 8–12 on a 3+2 final sheet. Consider the FINAL
-                // page's optical density more strongly so a source-order-safe
-                // 6+6 split can win when it genuinely fits at readable size.
-                // This is a preference, never a fixed number-of-questions rule.
-                val terminalDensityPenalty = if (next == n && start > 0) {
-                    ((1f - leftFill) * (1f - leftFill) +
-                        (1f - rightFill) * (1f - rightFill)) * 250f
-                } else 0f
+                // Optimize the full test by REAL filled area, typography
+                // and comfortable gaps. There is deliberately no target
+                // question count and no forced even 6+6 / 4+4 page split.
+                // Some long questions correctly occupy a whole column.
                 val score = 110.0 + blankPenalty + imbalancePenalty +
                     shrinkPenalty + loneColumnPenalty + prematureBlankPenalty +
-                    terminalDensityPenalty + bestCost[next]
+                    bestCost[next]
                 if (score < bestCost[start] - 0.0001) {
                     bestCost[start] = score
                     bestLeft[start] = leftCount
@@ -771,7 +770,7 @@ fun LiveSolvingBoardScreen(
     }
     val packedBookPages = remember(questions, columnCapacity, columnWidth, imageMeasurements) {
         packQuestionsIntoTwoColumnPages(
-            questions, columnCapacity, 4, columnWidth, actualImageRatios, imageTypographyScales
+            questions, columnCapacity, columnWidth, actualImageRatios, imageTypographyScales
         )
     }
     val totalBookPages = packedBookPages.size.coerceAtLeast(1)

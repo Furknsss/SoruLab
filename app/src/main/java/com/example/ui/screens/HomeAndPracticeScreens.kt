@@ -3119,7 +3119,7 @@ internal fun premiumTestDisplayName(test: YksTestItem, topicName: String): Strin
         legacyOsym.matches(cleaned) -> "ÖSYM Test ${legacyOsym.matchEntire(cleaned)!!.groupValues[1]}"
         else -> cleaned
     }
-    return "$"+"topicName • $"+"suffix"
+    return "$topicName • $suffix"
 }
 
 @Composable

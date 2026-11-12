@@ -418,6 +418,36 @@ class LiveSolvingBoardScreenTest {
     }
 
     @Test
+    fun finalPageRebalancesSevenPlusFiveWhenSixPlusSixActuallyFits() {
+        val original = fixtureSession().testItem.questions.first()
+        // Realistic crop ratios matching a mixed 12-question source test.
+        // Earlier output yielded pages 1–7 and 8–12 with a giant blank
+        // lower area. No fixed 2x2 or artificial max question count is used.
+        val heights = listOf(188f, 187f, 203f, 235f, 239f, 309f,
+            334f, 186f, 323f, 230f, 346f, 319f)
+        val questions = heights.indices.map { ix ->
+            original.copy(
+                id = "last_page_balance_${ix + 1}",
+                number = ix + 1,
+                croppedImagePath = "final_balance_${ix + 1}.png"
+            )
+        }
+        val ratio = questions.associate { q ->
+            q.id to (heights[q.number - 1] / 194f)
+        }
+        val pages = com.example.ui.screens.packQuestionsIntoTwoColumnPages(
+            questions, columnCapacity = 980f / 240f,
+            maxQuestionsPerColumn = 4, columnWidthDp = 240f,
+            actualImageRatios = ratio
+        )
+        assertEquals(2, pages.size)
+        assertEquals("Don't strand just five on the last page if six fit",
+            6, pages.last().questions.size)
+        assertEquals(questions.map { it.id },
+            pages.flatMap { it.questions }.map { it.id })
+    }
+
+    @Test
     fun shortEquationsFillPageWithoutAnArtificialFourQuestionLimit() {
         val template = fixtureSession().testItem.questions.first()
         val short = (1..12).map { n ->

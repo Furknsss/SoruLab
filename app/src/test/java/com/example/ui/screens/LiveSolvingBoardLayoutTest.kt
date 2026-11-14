@@ -42,7 +42,15 @@ class LiveSolvingBoardLayoutTest {
         val firstQuestion = compose.onNodeWithTag("book_question_1").fetchSemanticsNode().boundsInRoot
         val secondQuestion = compose.onNodeWithTag("book_question_2").fetchSemanticsNode().boundsInRoot
         assertTrue("Spare viewport height must not become huge gaps between short questions",
-            secondQuestion.top - firstQuestion.bottom < 180f)
+            secondQuestion.top - firstQuestion.bottom < 280f)
+        val thirdQuestion = compose.onNodeWithTag("book_question_3").fetchSemanticsNode().boundsInRoot
+        val gapOne = secondQuestion.top - firstQuestion.bottom
+        val gapTwo = thirdQuestion.top - secondQuestion.bottom
+        assertTrue("Every question should receive a comparable comfortable writing area",
+            kotlin.math.abs(gapOne - gapTwo) < 3f)
+        val footerTop = compose.onAllNodesWithTag("test_page_footer").fetchSemanticsNodes().first().boundsInRoot.top
+        assertTrue("The bottom must not accumulate the unused writing area",
+            footerTop - thirdQuestion.bottom <= gapTwo + 30f)
         capture("test-tablet")
         compose.onNodeWithTag("optical_form_tab").performClick()
         compose.onNodeWithTag("optic_q1_A").assertIsDisplayed()
@@ -70,7 +78,7 @@ class LiveSolvingBoardLayoutTest {
         val second = compose.onNodeWithTag("book_question_2").fetchSemanticsNode().boundsInRoot
         assertTrue("Source print remains readable", first.width > 300f && first.height > 70f)
         assertTrue("Printed questions keep reading order without overlap", second.top >= first.bottom)
-        assertTrue("Actual image pages avoid artificial giant gaps", second.top - first.bottom < 180f)
+        assertTrue("Actual image pages avoid artificial giant gaps", second.top - first.bottom < 280f)
         capture("test-tablet-printed")
     }
 

@@ -2467,10 +2467,15 @@ private fun RealTwoColumnBookPageSurface(
                 layout(constraints.maxWidth, height) {
                     columns.forEachIndexed { column, items ->
                         val gap = minGap
+                        // Share the available writing area across every question,
+                        // including the final one. Never collect it all below the page.
+                        val writingBudget = (height - items.sumOf { it.height } -
+                            (items.size - 1).coerceAtLeast(0) * gap).coerceAtLeast(0)
+                        val writingShare = if (items.isEmpty()) 0 else writingBudget / items.size
                         var y = 0
                         items.forEach { item ->
                             item.placeRelative(if (column == 0) 0 else constraints.maxWidth - width, y)
-                            y += item.height + work(item.height) + gap
+                            y += item.height + writingShare + gap
                         }
                     }
                 }

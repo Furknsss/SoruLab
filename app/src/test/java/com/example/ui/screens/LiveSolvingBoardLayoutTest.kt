@@ -57,7 +57,30 @@ class LiveSolvingBoardLayoutTest {
         assertTrue("Phone question must use full page width", first.width > 310f)
         compose.onAllNodesWithTag("test_page_footer").onFirst().assertIsDisplayed()
         compose.onAllNodesWithText("A) 11").onFirst().performClick()
+        compose.onNodeWithTag("tool_eraser_btn").assertIsDisplayed()
+        compose.onNodeWithTag("tool_hand_pan_btn").assertIsDisplayed()
         capture("test-phone")
+    }
+
+    @Test @Config(qualifiers = "w800dp-h1280dp-mdpi")
+    fun printedQuestionImagesStayBalancedAndReadableOnTablet() {
+        showBoard(useImages = true)
+        compose.onNodeWithTag("test_page_footer").assertIsDisplayed()
+        val first = compose.onNodeWithTag("book_question_1").fetchSemanticsNode().boundsInRoot
+        val second = compose.onNodeWithTag("book_question_2").fetchSemanticsNode().boundsInRoot
+        assertTrue("Source print remains readable", first.width > 300f && first.height > 70f)
+        assertTrue("Printed questions keep reading order without overlap", second.top >= first.bottom)
+        assertTrue("Actual image pages avoid artificial giant gaps", second.top - first.bottom < 180f)
+        capture("test-tablet-printed")
+    }
+
+    @Test @Config(qualifiers = "w393dp-h851dp-mdpi")
+    fun printedQuestionImagesUseFullPhoneWidthWithoutClipping() {
+        showBoard(useImages = true)
+        val first = compose.onNodeWithTag("book_question_1").fetchSemanticsNode().boundsInRoot
+        assertTrue("Phone source print uses available width", first.width > 310f)
+        compose.onAllNodesWithTag("test_page_footer").onFirst().assertIsDisplayed()
+        capture("test-phone-printed")
     }
 
     private fun showBoard(useImages: Boolean = false) {

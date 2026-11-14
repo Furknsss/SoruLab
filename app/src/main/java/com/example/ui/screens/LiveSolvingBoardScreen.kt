@@ -3794,23 +3794,42 @@ private fun BottomDarkNavyDrawingBar345(
                                 tint = Color.White, modifier = Modifier.size(22.dp))
                         }
                     }
-                    // Akıllı Şekil (Smart Shape)
-                    val isSmartShapeActive = activeTool == DrawingTool.SMART_SHAPE && !isZoomMagnifierEnabled
+                    // Compact, icon-only eraser matching the other tools.
+                    val isEraserActive = activeTool == DrawingTool.ERASER &&
+                        !isZoomMagnifierEnabled
                     Surface(
                         onClick = {
                             showColorPalettePopup = false
-                            onSelectTool(DrawingTool.SMART_SHAPE)
+                            onSelectTool(DrawingTool.ERASER)
                         },
                         shape = CircleShape,
-                        color = if (isSmartShapeActive) Color(0xFF3475F5) else Color.Transparent,
+                        color = if (isEraserActive) Color(0xFF3475F5)
+                            else Color.Transparent,
+                        modifier = Modifier.size(44.dp).testTag("tool_eraser_btn")
+                            .semantics { contentDescription = "Silgi" }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            PremiumEraserGlyph()
+                        }
+                    }
+
+                    // El (Sayfa Kaydırma / Pan)
+                    val isPanActive = activeTool == DrawingTool.HAND_PAN && !isZoomMagnifierEnabled
+                    Surface(
+                        onClick = {
+                            showColorPalettePopup = false
+                            onSelectTool(DrawingTool.HAND_PAN)
+                        },
+                        shape = CircleShape,
+                        color = if (isPanActive) Color(0xFF3475F5) else Color.Transparent,
                         modifier = Modifier
-                            .size(38.dp)
-                            .testTag("tool_smart_shape_btn")
+                            .size(44.dp)
+                            .testTag("tool_hand_pan_btn")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
-                                imageVector = Icons.Default.ChangeHistory,
-                                contentDescription = "Akıllı Şekil",
+                                imageVector = Icons.Default.PanTool,
+                                contentDescription = "Sayfa Kaydır",
                                 tint = Color.White,
                                 modifier = Modifier.size(19.dp)
                             )
@@ -3838,45 +3857,26 @@ private fun BottomDarkNavyDrawingBar345(
                         }
                     }
 
-                    // El (Sayfa Kaydırma / Pan)
-                    val isPanActive = activeTool == DrawingTool.HAND_PAN && !isZoomMagnifierEnabled
+                    // Akıllı Şekil (Smart Shape)
+                    val isSmartShapeActive = activeTool == DrawingTool.SMART_SHAPE && !isZoomMagnifierEnabled
                     Surface(
                         onClick = {
                             showColorPalettePopup = false
-                            onSelectTool(DrawingTool.HAND_PAN)
+                            onSelectTool(DrawingTool.SMART_SHAPE)
                         },
                         shape = CircleShape,
-                        color = if (isPanActive) Color(0xFF3475F5) else Color.Transparent,
+                        color = if (isSmartShapeActive) Color(0xFF3475F5) else Color.Transparent,
                         modifier = Modifier
-                            .size(44.dp)
-                            .testTag("tool_hand_pan_btn")
+                            .size(38.dp)
+                            .testTag("tool_smart_shape_btn")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
-                                imageVector = Icons.Default.PanTool,
-                                contentDescription = "Sayfa Kaydır",
+                                imageVector = Icons.Default.ChangeHistory,
+                                contentDescription = "Akıllı Şekil",
                                 tint = Color.White,
                                 modifier = Modifier.size(19.dp)
                             )
-                        }
-                    }
-
-                    // Compact, icon-only eraser matching the other tools.
-                    val isEraserActive = activeTool == DrawingTool.ERASER &&
-                        !isZoomMagnifierEnabled
-                    Surface(
-                        onClick = {
-                            showColorPalettePopup = false
-                            onSelectTool(DrawingTool.ERASER)
-                        },
-                        shape = CircleShape,
-                        color = if (isEraserActive) Color(0xFF3475F5)
-                            else Color.Transparent,
-                        modifier = Modifier.size(44.dp).testTag("tool_eraser_btn")
-                            .semantics { contentDescription = "Silgi" }
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            PremiumEraserGlyph()
                         }
                     }
 

@@ -3490,23 +3490,23 @@ private fun SoruLabAiTestGeneratorDialog(
     if (isSetupPhase) {
         val autoTestName = "${topic.name} - Test $nextTestNumber"
 
-        Dialog(onDismissRequest = onDismiss) {
+        Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
             Card(
                 shape = RoundedCornerShape(26.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
                 modifier = Modifier
-                    .widthIn(max = 520.dp)
+                    .widthIn(max = 560.dp)
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
+                    .padding(horizontal = 16.dp)
                     .testTag("interactive_test_builder_dialog")
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 22.dp, vertical = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                        .padding(horizontal = 18.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -3515,7 +3515,7 @@ private fun SoruLabAiTestGeneratorDialog(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "İnteraktif Test Oluşturucu",
+                                text = "Test oluştur",
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 18.sp
@@ -3524,7 +3524,7 @@ private fun SoruLabAiTestGeneratorDialog(
                             )
                             Spacer(modifier = Modifier.height(3.dp))
                             Text(
-                                text = "Otomatik Ad: $autoTestName",
+                                text = "$autoTestName",
                                 style = MaterialTheme.typography.labelLarge.copy(
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp

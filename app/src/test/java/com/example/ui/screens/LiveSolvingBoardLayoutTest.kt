@@ -90,7 +90,7 @@ class LiveSolvingBoardLayoutTest {
                             BoardViewMode.SINGLE_QUESTION else BoardViewMode.FULL_PAGE)
                     },
                     onSelectTool = {}, onSelectStrokeSize = {}, onSelectPenColor = {},
-                    onAddStroke = { _, _, _ -> }, onBookPageChanged = {}, onClearCanvas = {},
+                    onAddStroke = { _, _, _, _ -> }, onBookPageChanged = {}, onClearCanvas = {},
                     onSelectQuestionIndex = { session = session.copy(currentQuestionIndex = it) },
                     onSelectOption = { q, opt -> session = session.copy(selectedAnswers = session.selectedAnswers + (q to opt)) },
                     onToggleOpticalForm = { session = session.copy(isOpticalFormDrawerOpen = !session.isOpticalFormDrawerOpen) },

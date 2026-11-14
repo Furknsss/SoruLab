@@ -2356,22 +2356,18 @@ class SoruLabViewModel(
     fun addStrokeToCanvas(
         canvasKey: String,
         points: List<Offset>,
-        pressureSamples: List<Float> = emptyList()
+        pressureSamples: List<Float> = emptyList(),
+        strokeTool: DrawingTool = _activeTool.value
     ) {
         if (points.size < 2 || canvasKey.isBlank()) return
         val key = canvasKey
-        val tool = _activeTool.value
+        val tool = strokeTool
         val currentList = _boardStrokes.value[key].orEmpty()
 
         if (tool == DrawingTool.ERASER) {
             val eraserWidthPx = listOf(18f, 38f, 68f)
                 .getOrElse(_selectedStrokeSizeIndex.value) { 38f }
-            val eraseRadius = eraserWidthPx / 2f + 4f
-            val remaining = currentList.filter { stroke ->
-                stroke.isEraser || stroke.points.none { pt ->
-                    points.any { erasePt -> (pt - erasePt).getDistance() < eraseRadius }
-                }
-            }
+            val remaining = currentList
             val finalStrokes = if (remaining.any { !it.isEraser }) {
                 val eraserStroke = DrawStroke(
                     points = points,

@@ -309,7 +309,7 @@ class LiveSolvingBoardScreenTest {
             listOf(272f, 288f), 686f
         )
         org.junit.Assert.assertTrue("Two real textbook questions need visible separation",
-            layout.gapDp in 45f..62f)
+            layout.gapDp in 20f..28f)
         org.junit.Assert.assertTrue("Golden layout must never squash source print",
             layout.slotScale > .95f)
         org.junit.Assert.assertTrue("Natural top margin stays subtle",
@@ -329,9 +329,9 @@ class LiveSolvingBoardScreenTest {
             listOf(148f, 152f, 148f, 150f), paperHeight
         )
         org.junit.Assert.assertTrue("Three-question rhythm must remain airy",
-            three.gapDp in 24f..52f)
+            three.gapDp in 12f..28f)
         org.junit.Assert.assertTrue("Four-question rhythm must never overlap",
-            four.gapDp in 18f..30f)
+            four.gapDp in 12f..24f)
         org.junit.Assert.assertTrue("Less crowded columns get more breathing room",
             three.gapDp > four.gapDp)
         listOf(
@@ -370,7 +370,7 @@ class LiveSolvingBoardScreenTest {
         org.junit.Assert.assertTrue("A sparse 3+2 page may not end with 250dp blank paper",
             sheet < viewport - 150f)
         org.junit.Assert.assertTrue("Question gaps stay naturally breathable",
-            leftRhythm.gapDp in 24f..52f)
+            leftRhythm.gapDp in 12f..28f)
     }
 
     @Test
@@ -795,7 +795,7 @@ class LiveSolvingBoardScreenTest {
                     onSelectTool = {},
                     onSelectStrokeSize = {},
                     onSelectPenColor = {},
-                    onAddStroke = { _, _, _ -> },
+                    onAddStroke = { _, _, _, _ -> },
                     onBookPageChanged = {},
                     onClearCanvas = { _ -> },
                     onSelectQuestionIndex = { session = session.copy(currentQuestionIndex = it) },

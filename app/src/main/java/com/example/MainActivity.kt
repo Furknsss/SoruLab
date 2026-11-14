@@ -272,8 +272,8 @@ private fun ActiveSolvingSessionHost(
             onSelectTool = { mainViewModel.selectDrawingTool(it) },
             onSelectStrokeSize = { mainViewModel.selectStrokeSize(it) },
             onSelectPenColor = { mainViewModel.selectPenColor(it) },
-            onAddStroke = { canvas, points, pressures ->
-                mainViewModel.addStrokeToCanvas(canvas, points, pressures)
+            onAddStroke = { canvas, points, pressures, tool ->
+                mainViewModel.addStrokeToCanvas(canvas, points, pressures, tool)
             },
             onBookPageChanged = { mainViewModel.selectBookPageIndex(it) },
             onClearCanvas = { canvas -> mainViewModel.clearCanvasStrokes(canvas) },

@@ -66,7 +66,9 @@ jobs:
         run: >-
           bash ./gradlew :app:testDebugUnitTest
           --tests 'com.example.ui.LiveSolvingBoardScreenTest'
-          --tests 'com.example.ui.ReferenceTestCatalogTitleTest'\n          --tests 'com.example.viewmodel.DenemeBlueprintEngineTest'
+          --tests 'com.example.ui.ReferenceTestCatalogTitleTest'
+          --tests 'com.example.viewmodel.DenemeBlueprintEngineTest'
+          --tests 'com.example.ui.screens.DenemeStudioScreenTest'
           --tests 'com.example.ui.screens.LiveSolvingBoardLayoutTest'
           --tests 'com.example.ui.screens.TestImageMarginsTest'
           --tests 'com.example.ui.screens.TestPagePackingTest'

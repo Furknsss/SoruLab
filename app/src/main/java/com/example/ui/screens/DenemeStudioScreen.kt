@@ -27,7 +27,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
+import com.example.viewmodel.DenemeTopicProfiles
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.example.data.CustomQuestionRecord
 import com.example.data.ExamType
 import com.example.data.MockExamItem
@@ -148,6 +152,7 @@ fun DenemeStudioScreen(
         } else {
             items(listed,key={it.id}) { exam ->
                 val attempts = histories.filter { it.testId == exam.linkedTest.id }
+                val createdAt = exam.id.substringAfterLast("_").toLongOrNull()?.takeIf { it > 1_000_000_000_000L }
                 val last = attempts.firstOrNull()
                 Surface(
                     color = Color.White, shape = RoundedCornerShape(19.dp),
@@ -172,6 +177,11 @@ fun DenemeStudioScreen(
                             }
                         }
                         HorizontalDivider(color = Color(0xFFF0F2F7))
+                        createdAt?.let {
+                            Text(java.text.SimpleDateFormat("d MMM yyyy • HH:mm",Locale.forLanguageTag("tr-TR"))
+                                .apply { timeZone=java.util.TimeZone.getTimeZone("Europe/Istanbul") }.format(java.util.Date(it)),
+                                color=grey,fontSize=11.sp)
+                        }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically) {
                             if(last != null) {
@@ -275,13 +285,21 @@ private fun DenemeCreatorSheet(
     var difficulty by remember { mutableStateOf(DenemeDifficulty.DENGELI) }
     var count by remember { mutableIntStateOf(12) }
     var duration by remember { mutableIntStateOf(0) }
+    var showDistribution by remember { mutableStateOf(false) }
+    var branchMenu by remember { mutableStateOf(false) }
+    var topicMenu by remember { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
     val choices = remember(examType) { DenemeBlueprints.forType(examType) }
     val subjects = remember(examType) { SoruLabCatalog.allSubjects.filter { it.examType == examType } }
     val chosenSubject = subjects.firstOrNull { it.id == subjectId } ?: subjects.first()
     val chosenTopic = chosenSubject.topics.firstOrNull { it.id == topicId } ?: chosenSubject.topics.first()
     val blueprint = choices.firstOrNull { it.id == blueprintId } ?: choices.first()
     val request = DenemeRequest(kind,examType,blueprint.id,chosenSubject.id,chosenTopic.id,count,difficulty,duration)
-    val preview = remember(request,questions) { DenemePlanner.build(request,questions,sequence=0L) }
+    val preview by key(request, questions) {
+        produceState<DenemePlan?>(initialValue = null) {
+            value = withContext(Dispatchers.Default) { DenemePlanner.build(request,questions,sequence=0L) }
+        }
+    }
     val quota = if (kind == DenemeKind.BRANS) blueprint.questionCount else count
     ModalBottomSheet(onDismissRequest=onDismiss,
         sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true),
@@ -292,7 +310,7 @@ private fun DenemeCreatorSheet(
                 verticalAlignment=Alignment.CenterVertically) {
                 Column {
                     Text("Deneme Oluştur",color=navy,fontWeight=FontWeight.ExtraBold,fontSize=22.sp)
-                    Text("ÖSYM dağılımına göre • Kişisel soru kitaplığından",color=grey,fontSize=12.sp)
+                    Text("Konu planıyla • Kişisel soru kitaplığından",color=grey,fontSize=12.sp)
                 }
                 IconButton(onClick=onDismiss) { Icon(Icons.Default.Close,contentDescription="Kapat") }
             }
@@ -319,19 +337,18 @@ private fun DenemeCreatorSheet(
                 }
                 if(kind==DenemeKind.BRANS) {
                     Text("Branş seçimi",color=navy,fontSize=13.sp,fontWeight=FontWeight.Bold)
-                    Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                        choices.forEach { value ->
-                            Surface(onClick={blueprintId=value.id;duration=0},
-                                shape=RoundedCornerShape(12.dp),
-                                color=if(blueprint.id==value.id)Color(0xFFEAF0FF) else pale,
-                                border=BorderStroke(1.dp,if(blueprint.id==value.id)cobalt else Color.Transparent),
-                                modifier=Modifier.fillMaxWidth()) {
-                                Row(Modifier.padding(11.dp), verticalAlignment=Alignment.CenterVertically) {
-                                    Text(value.label,modifier=Modifier.weight(1f),color=navy,
-                                        fontWeight=if(blueprint.id==value.id)FontWeight.Bold else FontWeight.Normal,
-                                        fontSize=13.sp)
-                                    Text(value.questionCount.toString()+" soru",color=cobalt,fontSize=12.sp)
-                                }
+                    Box(Modifier.fillMaxWidth()) {
+                        OutlinedButton(onClick={ branchMenu=true },
+                            modifier=Modifier.fillMaxWidth().testTag("deneme_branch_selector"),
+                            shape=RoundedCornerShape(12.dp)) {
+                            Text(blueprint.label,Modifier.weight(1f),color=navy)
+                            Text(blueprint.questionCount.toString()+" soru ▾",color=cobalt,fontSize=12.sp)
+                        }
+                        DropdownMenu(expanded=branchMenu,onDismissRequest={branchMenu=false},
+                            modifier=Modifier.heightIn(max=360.dp)) {
+                            choices.forEach { value ->
+                                DropdownMenuItem(text={ Text(value.label+" • "+value.questionCount+" soru") },
+                                    onClick={blueprintId=value.id;duration=0;branchMenu=false})
                             }
                         }
                     }
@@ -349,13 +366,17 @@ private fun DenemeCreatorSheet(
                         }
                     }
                     Text("Konu",color=navy,fontSize=13.sp,fontWeight=FontWeight.Bold)
-                    Column(verticalArrangement=Arrangement.spacedBy(5.dp)) {
-                        chosenSubject.topics.forEach { topic ->
-                            Surface(onClick={topicId=topic.id},shape=RoundedCornerShape(10.dp),
-                                color=if(chosenTopic.id==topic.id)Color(0xFFEAF0FF) else pale,
-                                modifier=Modifier.fillMaxWidth()) {
-                                Text(topic.name,Modifier.padding(11.dp),color=navy,fontSize=12.sp,
-                                    fontWeight=if(chosenTopic.id==topic.id)FontWeight.Bold else FontWeight.Normal)
+                    Box(Modifier.fillMaxWidth()) {
+                        OutlinedButton(onClick={topicMenu=true},modifier=Modifier.fillMaxWidth(),
+                            shape=RoundedCornerShape(12.dp)) {
+                            Text(chosenTopic.name,Modifier.weight(1f),color=navy)
+                            Text("▾",color=cobalt)
+                        }
+                        DropdownMenu(expanded=topicMenu,onDismissRequest={topicMenu=false},
+                            modifier=Modifier.heightIn(max=360.dp)) {
+                            chosenSubject.topics.forEach { topic ->
+                                DropdownMenuItem(text={Text(topic.name)},
+                                    onClick={topicId=topic.id;topicMenu=false})
                             }
                         }
                     }
@@ -366,8 +387,41 @@ private fun DenemeCreatorSheet(
                         }
                     }
                 }
+                if (kind == DenemeKind.BRANS) {
+                    Surface(color = pale, shape = RoundedCornerShape(14.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            TextButton(onClick = { showDistribution = !showDistribution },
+                                contentPadding = PaddingValues(0.dp)) {
+                                Text(if(showDistribution) "Konu dağılımını gizle" else "Konu dağılımını gör",
+                                    fontWeight = FontWeight.Bold, color = cobalt)
+                            }
+                            if (showDistribution) {
+                                blueprint.sections.forEach { section ->
+                                    Text(section.label, color = navy, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    DenemeTopicProfiles.forSection(section).forEach { quota ->
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text(quota.label, Modifier.weight(1f), color = grey, fontSize = 12.sp)
+                                            val missing = (preview as? DenemePlan.Missing)?.shortage?.firstOrNull {
+                                                it.section == section.label + " • " + quota.label
+                                            }
+                                            Text(if(missing == null) quota.count.toString() + " soru"
+                                                else missing.available.toString() + "/" + quota.count + " uygun",
+                                                color = if(missing == null) navy else Color(0xFFAE5F12), fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold)
+                                        }
+                                    }
+                                    TextButton(onClick = { uriHandler.openUri(DenemeTopicProfiles.sourceFor(section)) },
+                                        contentPadding = PaddingValues(0.dp)) {
+                                        Text("Geçmiş yılların dağılımı ↗", color = cobalt, fontSize = 11.sp)
+                                    }
+                                }
+                                Text(DenemeTopicProfiles.NOTICE, color = grey, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
                 Text("Zorluk",color=navy,fontSize=13.sp,fontWeight=FontWeight.Bold)
-                LazyRow(horizontalArrangement=Arrangement.spacedBy(7.dp)) {
+                LazyRow(modifier=Modifier.testTag("deneme_difficulty_row"),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
                     items(DenemeDifficulty.entries) { d ->
                         ChoiceChip(d.label,difficulty==d) { difficulty=d }
                     }
@@ -385,15 +439,19 @@ private fun DenemeCreatorSheet(
             Surface(color=if(preview is DenemePlan.Ready)Color(0xFFEAF9F1) else Color(0xFFFFF6E6),
                 shape=RoundedCornerShape(13.dp),modifier=Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
-                    if(preview is DenemePlan.Ready) {
+                    val current = preview
+                    if(current == null) {
+                        Text("Soru kitaplığın kontrol ediliyor…", color = grey, fontSize = 12.sp)
+                    } else if(current is DenemePlan.Ready) {
                         Text("Hazır • "+quota+" doğrulanmış soru",
                             color=success,fontWeight=FontWeight.Bold,fontSize=13.sp)
-                        Text(preview.sectionSummary.joinToString(" • "){ it.first+": "+it.second },
+                        Text(current.sectionSummary.joinToString(" • "){ it.first+": "+it.second },
                             color=grey,fontSize=11.sp)
-                    } else if(preview is DenemePlan.Missing) {
+                    } else if(current is DenemePlan.Missing) {
                         Text("Soru havuzunda eksikler var",color=Color(0xFFAE5F12),
                             fontSize=13.sp,fontWeight=FontWeight.Bold)
-                        preview.shortage.forEach {
+                        if(current.shortage.size > 4) Text("+" + (current.shortage.size-4) + " konuda daha eksik var. Konu dağılımını kontrol et.",color=grey,fontSize=11.sp)
+                        current.shortage.take(4).forEach {
                             Text(it.section+": "+it.available+"/"+it.needed+" uygun soru",
                                 color=Color(0xFF9A5B18),fontSize=11.sp)
                         }
@@ -420,7 +478,7 @@ private fun DenemeCreatorSheet(
 private data class CourseScore(val name:String,val correct:Int,val wrong:Int,val blank:Int) {
     val net:Double get()=correct-wrong*.25
 }
-private fun courseScoreBreakdown(record:TestResultRecord): Pair<List<CourseScore>,List<Pair<String,Int>>> {
+private fun courseScoreBreakdown(record:TestResultRecord): Pair<List<CourseScore>,List<Pair<String,Double>>> {
     val snapshot = TestSnapshotCodec.decode(record.testSnapshotJson) ?: return emptyList<CourseScore>() to emptyList()
     val answers=runCatching{JSONObject(record.answersMapJson)}.getOrNull() ?: JSONObject()
     val groups=snapshot.questions.groupBy { it.subject.ifBlank { "Ders" } }
@@ -434,11 +492,11 @@ private fun courseScoreBreakdown(record:TestResultRecord): Pair<List<CourseScore
         }
         CourseScore(name,d,y,b)
     }
-    val topicLoss=snapshot.questions.filter { q ->
-        answers.optString(q.number.toString()) != q.correctOption
-    }.groupingBy { it.topicHeader.ifBlank { "Etiketlenmeyen konu" } }
-        .eachCount().entries.sortedByDescending { it.value }.take(6)
-        .map { it.key to it.value }
+    val topicLoss=snapshot.questions.groupBy { it.subject + " • " + it.topicHeader.ifBlank { "Konu" } }
+        .map { (topic, questions) -> topic to questions.sumOf { q ->
+            val answer = answers.optString(q.number.toString())
+            when { answer.isEmpty() -> 1.0; answer == q.correctOption -> 0.0; else -> 1.25 }
+        } }.filter { it.second > 0.0 }.sortedByDescending { it.second }.take(6)
     return courses to topicLoss
 }
 
@@ -449,7 +507,8 @@ private fun DenemeResultSheet(
     onDismiss:()->Unit,
     onReview:()->Unit
 ) {
-    val breakdown=remember(record.id) { courseScoreBreakdown(record) }
+    val breakdown=remember(record) { courseScoreBreakdown(record) }
+    val snapshot=remember(record.testSnapshotJson) { TestSnapshotCodec.decode(record.testSnapshotJson) }
     ModalBottomSheet(onDismissRequest=onDismiss,
         sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true),
         containerColor=Color.White) {
@@ -470,6 +529,15 @@ private fun DenemeResultSheet(
             }
             Column(Modifier.weight(1f).verticalScroll(androidx.compose.foundation.rememberScrollState()),
                 verticalArrangement=Arrangement.spacedBy(11.dp)) {
+                snapshot?.takeIf { it.denemeProfileVersion.isNotBlank() }?.let { saved ->
+                    Text(saved.denemeDifficultyLabel + " • Plan " + saved.denemeProfileVersion,
+                        color = cobalt, fontSize = 11.sp)
+                    Text(if (saved.denemeReusedQuestionCount > 0)
+                        saved.denemeReusedQuestionCount.toString() + " soru son 6 denemende de vardı."
+                        else "Son 6 denemenden tekrar soru kullanılmadı.", color = grey, fontSize = 11.sp)
+                    Text("Uygulanan konu planı",color=navy,fontWeight=FontWeight.Bold,fontSize=14.sp)
+                    Text(saved.denemeDistributionSummary,color=grey,fontSize=12.sp)
+                }
                 Text("Ders Bazlı Sonuçlar",color=navy,fontWeight=FontWeight.Bold,fontSize=16.sp)
                 breakdown.first.forEach { course ->
                     Surface(color=pale,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth()) {
@@ -497,7 +565,7 @@ private fun DenemeResultSheet(
                 breakdown.second.forEach { (topic,loss) ->
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                         Text(topic,color=grey,fontSize=12.sp,modifier=Modifier.weight(1f))
-                        Text(loss.toString()+" kayıp",color=Color(0xFFD4653A),
+                        Text(String.format(Locale.forLanguageTag("tr-TR"),"%.2f net",loss),color=Color(0xFFD4653A),
                             fontWeight=FontWeight.Bold,fontSize=12.sp)
                     }
                 }

@@ -2087,30 +2087,31 @@ class SoruLabViewModel(
     }
 
     fun createAndStartDeneme(request: DenemeRequest) {
-        val plan = DenemePlanner.build(
-            request, _userCustomQuestions.value,
-            _userTestResults.value.filter { it.testId.startsWith("deneme_v147_") }
-        )
-        when (plan) {
-            is DenemePlan.Missing -> {
-                showBanner("Deneme oluşturulamadı: " + plan.shortage.joinToString("; ") {
-                    it.section + " " + it.available + "/" + it.needed + " doğrulanmış soru"
-                }.take(175))
-            }
-            is DenemePlan.Ready -> viewModelScope.launch {
-                val uid = effectiveUserId() ?: "device_yks_student_tr"
-                val saved = withContext(Dispatchers.IO) {
-                    runCatching { repository.saveCachedGeneratedTestSnapshot(uid,plan.test) }
+        viewModelScope.launch {
+            val pool = _userCustomQuestions.value
+            val previous = _userTestResults.value.filter { it.testId.startsWith("deneme_v147_") }
+            val plan = withContext(Dispatchers.Default) { DenemePlanner.build(request, pool, previous) }
+            when (plan) {
+                is DenemePlan.Missing -> {
+                    showBanner("Deneme oluşturulamadı: " + plan.shortage.joinToString("; ") {
+                        it.section + " " + it.available + "/" + it.needed + " doğrulanmış soru"
+                    }.take(175))
                 }
-                if (saved.isFailure) {
-                    showBanner("Deneme cihazda saklanamadı; soru kayıtlarını riske atmamak için açılmadı.")
-                    return@launch
+                is DenemePlan.Ready -> {
+                    val uid = effectiveUserId() ?: "device_yks_student_tr"
+                    val saved = withContext(Dispatchers.IO) {
+                        runCatching { repository.saveCachedGeneratedTestSnapshot(uid,plan.test) }
+                    }
+                    if (saved.isFailure) {
+                        showBanner("Deneme cihazda saklanamadı; soru kayıtlarını riske atmamak için açılmadı.")
+                        return@launch
+                    }
+                    val exam = DenemeBlueprints.fromSnapshot(plan.test) ?: return@launch
+                    _generatedMockExams.value = (listOf(exam) + _generatedMockExams.value)
+                        .distinctBy { it.id }
+                    startMockExam(exam)
+                    showBanner("Deneme hazır • " + plan.test.questions.size + " doğrulanmış soru")
                 }
-                val exam = DenemeBlueprints.fromSnapshot(plan.test) ?: return@launch
-                _generatedMockExams.value = (listOf(exam) + _generatedMockExams.value)
-                    .distinctBy { it.id }
-                startMockExam(exam)
-                showBanner("Deneme hazır • " + plan.test.questions.size + " doğrulanmış soru")
             }
         }
     }

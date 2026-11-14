@@ -686,7 +686,11 @@ data class YksTestItem(
     val defaultCompleted: Boolean = false,
     val starRating: Int = 0,
     val level: TopicTestLevel = TopicTestLevel.OSYM,
-    val questions: List<YksQuestion>
+    val questions: List<YksQuestion>,
+    val denemeProfileVersion: String = "",
+    val denemeDifficultyLabel: String = "",
+    val denemeReusedQuestionCount: Int = 0,
+    val denemeDistributionSummary: String = ""
 )
 
 @Immutable
@@ -1439,6 +1443,10 @@ object SoruLabCatalog {
             name = "Felsefe ve Din Kültürü",
             accentColorHex = 0xFF6366F1,
             topics = listOf(
+                topicEntry("bilim_felsefesi", "tyt_felsefe_din", "Bilim Felsefesi", 0, 0xFF356CF3, "book"),
+                topicEntry("din_felsefesi", "tyt_felsefe_din", "Din Felsefesi", 0, 0xFF356CF3, "book"),
+                topicEntry("siyaset_felsefesi", "tyt_felsefe_din", "Siyaset Felsefesi", 0, 0xFF356CF3, "book"),
+                topicEntry("sanat_felsefesi", "tyt_felsefe_din", "Sanat Felsefesi", 0, 0xFF356CF3, "book"),
                 topicEntry("felsefeyi_tanima", "tyt_felsefe_din", "Felsefeyi Tanıma", 0, 0xFF6366F1, "book"),
                 topicEntry("bilgi_felsefesi", "tyt_felsefe_din", "Bilgi Felsefesi", 0, 0xFF6366F1, "book"),
                 topicEntry("varlik_felsefesi", "tyt_felsefe_din", "Varlık Felsefesi", 0, 0xFF6366F1, "book"),
@@ -1455,6 +1463,12 @@ object SoruLabCatalog {
             name = "Matematik",
             accentColorHex = 0xFFE05A47,
             topics = listOf(
+                topicEntry("ayt_temel_kavramlar", "ayt_mat", "Temel Kavramlar ve Sayılar", 0, 0xFF356CF3, "book"),
+                topicEntry("ayt_esitsizlikler", "ayt_mat", "Temel Eşitsizlikler ve Mutlak Değer", 0, 0xFF356CF3, "book"),
+                topicEntry("ayt_uslu_koklu", "ayt_mat", "Üslü ve Köklü İfadeler", 0, 0xFF356CF3, "book"),
+                topicEntry("ayt_mantik", "ayt_mat", "Mantık", 0, 0xFF356CF3, "book"),
+                topicEntry("ayt_kumeler", "ayt_mat", "Kümeler", 0, 0xFF356CF3, "book"),
+                topicEntry("ayt_sayma_olasilik", "ayt_mat", "Sayma ve Olasılık", 0, 0xFF356CF3, "book"),
                 topicEntry("fonksiyonlar", "ayt_mat", "Fonksiyonlarda Uygulamalar", 0, 0xFFE05A47, "math"),
                 topicEntry("polinomlar", "ayt_mat", "Polinomlar", 0, 0xFFE05A47, "math"),
                 topicEntry("ikinci_derece_denklemler", "ayt_mat", "2. Dereceden Denklemler", 0, 0xFFE05A47, "math"),
@@ -1477,6 +1491,8 @@ object SoruLabCatalog {
             name = "Geometri",
             accentColorHex = 0xFF0EA5E9,
             topics = listOf(
+                topicEntry("ayt_prizmalar", "ayt_geo", "Prizmalar", 0, 0xFF356CF3, "book"),
+                topicEntry("ayt_ucgen_dortgen", "ayt_geo", "Üçgenler ve Dörtgenler", 0, 0xFF356CF3, "book"),
                 topicEntry("cemberde_aci", "ayt_geo", "Çemberde Açı", 0, 0xFF0EA5E9, "angle"),
                 topicEntry("cemberde_uzunluk", "ayt_geo", "Çemberde Uzunluk", 0, 0xFF0EA5E9, "angle"),
                 topicEntry("dairede_alan", "ayt_geo", "Dairede Çevre ve Alan", 0, 0xFF0EA5E9, "angle"),
@@ -1493,6 +1509,8 @@ object SoruLabCatalog {
             name = "Fizik",
             accentColorHex = 0xFF10B981,
             topics = listOf(
+                topicEntry("kutle_cekimi_kepler", "ayt_fizik", "Kütle Çekimi ve Kepler Yasaları", 0, 0xFF356CF3, "book"),
+                topicEntry("modern_fizik_uygulamalari", "ayt_fizik", "Modern Fiziğin Teknolojideki Uygulamaları", 0, 0xFF356CF3, "book"),
                 topicEntry("vektorler", "ayt_fizik", "Vektörler", 0, 0xFF10B981, "vector"),
                 topicEntry("bagil_hareket", "ayt_fizik", "Bağıl Hareket", 0, 0xFF10B981, "vector"),
                 topicEntry("newton_hareket_yasalari", "ayt_fizik", "Newton'un Hareket Yasaları", 0, 0xFF10B981, "vector"),
@@ -1559,6 +1577,7 @@ object SoruLabCatalog {
             name = "Edebiyat",
             accentColorHex = 0xFFE5A024,
             topics = listOf(
+                topicEntry("ayt_anlam_ve_okuma", "ayt_edebiyat", "Anlam ve Okuma", 0, 0xFF356CF3, "book"),
                 topicEntry("guzel_sanatlar_ve_edebiyat", "ayt_edebiyat", "Güzel Sanatlar ve Edebiyat", 0, 0xFFE5A024, "book"),
                 topicEntry("siir_bilgisi", "ayt_edebiyat", "Şiir Bilgisi", 0, 0xFFE5A024, "book"),
                 topicEntry("edebi_sanatlar", "ayt_edebiyat", "Edebi Sanatlar (Söz Sanatları)", 0, 0xFFE5A024, "book"),
@@ -1573,12 +1592,45 @@ object SoruLabCatalog {
                 topicEntry("edebi_akimlar", "ayt_edebiyat", "Edebi Akımlar", 0, 0xFFE5A024, "book")
             )
         ),
+        YksSubject(id = "ayt_felsefe_grubu", examType = ExamType.AYT, name = "Felsefe Grubu",
+            accentColorHex = 0xFF6366F1, topics = listOf(
+                topicEntry("ayt_felsefe_bilgi", "ayt_felsefe_grubu", "Bilgi Felsefesi", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_felsefe_alanlar", "ayt_felsefe_grubu", "Felsefenin Alanları", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_felsefe_tarihi", "ayt_felsefe_grubu", "Felsefe Tarihi", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_psikoloji_giris", "ayt_felsefe_grubu", "Psikoloji Bilimi ve Temel Süreçler", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_psikoloji_ogrenme", "ayt_felsefe_grubu", "Öğrenme, Bellek ve Düşünme", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_psikoloji_ruh", "ayt_felsefe_grubu", "Ruh Sağlığı", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_sosyoloji_giris", "ayt_felsefe_grubu", "Sosyoloji, Birey ve Toplum", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_sosyoloji_yapi", "ayt_felsefe_grubu", "Toplumsal Yapı ve Kültür", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_sosyoloji_degisme", "ayt_felsefe_grubu", "Toplumsal Değişme", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_mantik_giris", "ayt_felsefe_grubu", "Mantığa Giriş", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_klasik_mantik", "ayt_felsefe_grubu", "Klasik Mantık", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_mantik_dil", "ayt_felsefe_grubu", "Mantık ve Dil", 0, 0xFF6366F1, "book")
+            )),
+        YksSubject(id = "ayt_din", examType = ExamType.AYT, name = "Din Kültürü",
+            accentColorHex = 0xFF6366F1, topics = listOf(
+                topicEntry("ayt_din_bilim", "ayt_din", "İslam ve Bilim", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_din_kuran", "ayt_din", "Kur'an'da Kavramlar", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_din_inanc_ibadet", "ayt_din", "İnanç ve İbadet", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_din_peygamber", "ayt_din", "Hz. Muhammed", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_din_yorumlar", "ayt_din", "Tasavvufi Yorumlar ve Anadolu", 0, 0xFF6366F1, "book"),
+                topicEntry("ayt_din_guncel_dinler", "ayt_din", "Güncel Dinî Meseleler ve Dinler", 0, 0xFF6366F1, "book")
+            )),
         YksSubject(
             id = "ayt_tarih_cografya",
             examType = ExamType.AYT,
             name = "Tarih ve Coğrafya",
             accentColorHex = 0xFF2563EB,
             topics = listOf(
+                topicEntry("ayt_tarih_bilimi", "ayt_tarih_cografya", "Tarih Bilimi", 0, 0xFF356CF3, "book"),
+                topicEntry("ayt_ilk_turk_devletleri", "ayt_tarih_cografya", "İlk Türk Devletleri", 0, 0xFF356CF3, "book"),
+                topicEntry("ayt_turk_islam", "ayt_tarih_cografya", "Türk İslam Tarihi", 0, 0xFF356CF3, "book"),
+                topicEntry("ayt_osmanli_siyaset", "ayt_tarih_cografya", "Osmanlı Siyaseti ve Değişim", 0, 0xFF356CF3, "book"),
+                topicEntry("ayt_ataturk_ilkeleri", "ayt_tarih_cografya", "Atatürkçülük ve İnkılap", 0, 0xFF356CF3, "book"),
+                topicEntry("ayt_cagdas_dunya", "ayt_tarih_cografya", "Çağdaş Türk ve Dünya Tarihi", 0, 0xFF356CF3, "book"),
+                topicEntry("ayt_cevre_toplum", "ayt_tarih_cografya", "Çevre ve Toplum", 0, 0xFF356CF3, "book"),
+                topicEntry("ayt_nufus_sehir", "ayt_tarih_cografya", "Nüfus Politikaları ve Şehirleşme", 0, 0xFF356CF3, "book"),
+                topicEntry("ayt_ticaret_kalkinma", "ayt_tarih_cografya", "Ticaret, Kaynaklar ve Kalkınma", 0, 0xFF356CF3, "book"),
                 topicEntry("ayt_ilk_cag_uygarliklari", "ayt_tarih_cografya", "İlk ve Orta Çağ Uygarlıkları", 0, 0xFF2563EB, "book"),
                 topicEntry("ayt_osmanli_kultur_medeniyet", "ayt_tarih_cografya", "Osmanlı Kültür ve Medeniyeti", 0, 0xFF2563EB, "book"),
                 topicEntry("ayt_xx_yuzyil_osmanli", "ayt_tarih_cografya", "20. Yüzyıl Başlarında Osmanlı ve Dünya", 0, 0xFF2563EB, "book"),

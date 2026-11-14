@@ -62,6 +62,10 @@ object TestSnapshotCodec {
             .put("defaultCompleted", test.defaultCompleted)
             .put("starRating", test.starRating)
             .put("level", test.level.name)
+            .put("denemeProfileVersion", test.denemeProfileVersion)
+            .put("denemeDifficultyLabel", test.denemeDifficultyLabel)
+            .put("denemeReusedQuestionCount", test.denemeReusedQuestionCount)
+            .put("denemeDistributionSummary", test.denemeDistributionSummary)
             .put("questions", questions)
             .toString()
     }
@@ -138,7 +142,11 @@ object TestSnapshotCodec {
             defaultCompleted = root.optBoolean("defaultCompleted"),
             starRating = root.optInt("starRating"),
             level = TopicTestLevel.fromPersistedName(root.optString("level")) ?: TopicTestLevel.OSYM,
-            questions = questions
+            questions = questions,
+            denemeProfileVersion = root.optString("denemeProfileVersion"),
+            denemeDifficultyLabel = root.optString("denemeDifficultyLabel"),
+            denemeReusedQuestionCount = root.optInt("denemeReusedQuestionCount"),
+            denemeDistributionSummary = root.optString("denemeDistributionSummary")
         )
     }.getOrNull()
 }

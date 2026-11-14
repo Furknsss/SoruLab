@@ -23,7 +23,8 @@ data class DenemeSection(
     val subjectId: String,
     val count: Int,
     val label: String,
-    val allowedTopicIds: Set<String> = emptySet()
+    val allowedTopicIds: Set<String> = emptySet(),
+    val profileKey: String = ""
 )
 data class DenemeBlueprint(
     val id: String,
@@ -66,8 +67,14 @@ object DenemeBlueprints {
     private fun slice(subject: String, count: Int, label: String = subject) =
         DenemeSection(subject, count, label)
 
-    private val philosophy = setOf("felsefeyi_tanima","bilgi_felsefesi","varlik_felsefesi","ahlak_felsefesi")
+    private val philosophy = setOf("felsefeyi_tanima","bilgi_felsefesi","varlik_felsefesi","ahlak_felsefesi",
+        "bilim_felsefesi","din_felsefesi","siyaset_felsefesi","sanat_felsefesi")
     private val religion = setOf("bilgi_ve_inanc","din_ve_islam")
+
+    private val aytHistory = setOf("ayt_ilk_cag_uygarliklari","ayt_osmanli_kultur_medeniyet","ayt_xx_yuzyil_osmanli","ayt_milli_mucadele","ayt_tarih_bilimi","ayt_ilk_turk_devletleri","ayt_turk_islam","ayt_osmanli_siyaset","ayt_ataturk_ilkeleri","ayt_cagdas_dunya")
+    private val aytGeography = setOf("ayt_ekosistem_ve_biyoceşitlilik","ayt_turkiye_ekonomisi","ayt_kuresel_ortam_bolgeler","ayt_cevre_toplum","ayt_nufus_sehir","ayt_ticaret_kalkinma")
+    private fun history(count: Int, number: Int) = DenemeSection("ayt_tarih_cografya",count,"Tarih-"+number,aytHistory,"ayt_tarih_"+number)
+    private fun geography(count: Int, number: Int) = DenemeSection("ayt_tarih_cografya",count,"Coğrafya-"+number,aytGeography,"ayt_cografya_"+number)
 
     val branş = listOf(
         DenemeBlueprint("tyt_turkce", "TYT Türkçe", ExamType.TYT, 45, listOf(slice("tyt_turkce",40,"Türkçe"))),
@@ -88,6 +95,16 @@ object DenemeBlueprints {
             listOf(DenemeSection("tyt_felsefe_din",5,"Felsefe",philosophy))),
         DenemeBlueprint("tyt_din", "TYT Din Kültürü", ExamType.TYT, 9,
             listOf(DenemeSection("tyt_felsefe_din",5,"Din Kültürü",religion))),
+        DenemeBlueprint("ayt_sosyal1", "AYT Edebiyat – Sosyal-1", ExamType.AYT, 75,
+            listOf(slice("ayt_edebiyat",24,"Türk Dili ve Edebiyatı"),history(10,1),geography(6,1))),
+        DenemeBlueprint("ayt_sosyal2", "AYT Sosyal Bilimler-2", ExamType.AYT, 70,
+            listOf(history(11,2),geography(11,2),slice("ayt_felsefe_grubu",12,"Felsefe Grubu"),slice("ayt_din",6,"Din Kültürü"))),
+        DenemeBlueprint("ayt_tarih1", "AYT Tarih-1", ExamType.AYT, 18,listOf(history(10,1))),
+        DenemeBlueprint("ayt_tarih2", "AYT Tarih-2", ExamType.AYT, 20,listOf(history(11,2))),
+        DenemeBlueprint("ayt_cografya1", "AYT Coğrafya-1", ExamType.AYT, 12,listOf(geography(6,1))),
+        DenemeBlueprint("ayt_cografya2", "AYT Coğrafya-2", ExamType.AYT, 20,listOf(geography(11,2))),
+        DenemeBlueprint("ayt_felsefe_grubu", "AYT Felsefe Grubu", ExamType.AYT, 22,listOf(slice("ayt_felsefe_grubu",12,"Felsefe Grubu"))),
+        DenemeBlueprint("ayt_din", "AYT Din Kültürü", ExamType.AYT, 12,listOf(slice("ayt_din",6,"Din Kültürü"))),
         DenemeBlueprint("ayt_mat", "AYT Matematik", ExamType.AYT, 90,
             listOf(slice("ayt_mat",31,"Matematik"),slice("ayt_geo",9,"Geometri"))),
         DenemeBlueprint("ayt_fen", "AYT Fen Bilimleri", ExamType.AYT, 80,
@@ -95,7 +112,7 @@ object DenemeBlueprints {
         DenemeBlueprint("ayt_fizik", "AYT Fizik", ExamType.AYT, 30, listOf(slice("ayt_fizik",14,"Fizik"))),
         DenemeBlueprint("ayt_kimya", "AYT Kimya", ExamType.AYT, 25, listOf(slice("ayt_kimya",13,"Kimya"))),
         DenemeBlueprint("ayt_biyoloji", "AYT Biyoloji", ExamType.AYT, 25, listOf(slice("ayt_biyoloji",13,"Biyoloji"))),
-        DenemeBlueprint("ayt_edebiyat", "AYT Edebiyat", ExamType.AYT, 36, listOf(slice("ayt_edebiyat",18,"Edebiyat")))
+        DenemeBlueprint("ayt_edebiyat", "AYT Edebiyat", ExamType.AYT, 36, listOf(slice("ayt_edebiyat",24,"Türk Dili ve Edebiyatı")))
     )
     fun find(id: String): DenemeBlueprint? = branş.firstOrNull { it.id == id }
     fun forType(examType: ExamType) = branş.filter { it.examType == examType }
@@ -115,28 +132,9 @@ object DenemeBlueprints {
 }
 
 /** Never label inferred topic counts as mandatory ÖSYM slots.
- * Stable weighted fair allocation, publisher diversity, and repeat avoidance.
+ * Explicit topic quotas, publisher diversity, and repeat avoidance.
  */
 object DenemePlanner {
-    // Source: ÖSYM 2018–2026 booklets + teacher-tagged historical frequencies.
-    // Ratios are recommendations only and are deliberately configurable.
-    private val weight = mapOf(
-        "paragrafta_anlam" to 9.0, "paragrafta_yapi" to 4.0,
-        "cumlede_anlam" to 2.2, "sozcukte_anlam" to 2.0,
-        "yazim_kurallari" to 1.5, "noktalama_isaretleri" to 1.5,
-        "problemler" to 3.0, "temel_kavramlar" to 2.0,
-        "ucgende_acilar" to 3.0, "dik_ucgen" to 2.0,
-        "optik_aydinlanma_aynalar" to 2.1, "optik_kirilma_mercekler" to 1.6,
-        "hareket_tyt" to 1.8, "kuvvet_newton_tyt" to 1.8,
-        "isi_sicaklik" to 1.8, "basinc" to 1.4,
-        "kaldirma_kuvveti" to 1.4, "dalgalar_tyt" to 1.5,
-        "madde_ve_ozellikleri" to 1.1, "elektrostatik" to 1.1,
-        "turev_alma_kurallari" to 2.4, "turev_uygulamalari" to 2.0,
-        "belirli_integral_alan" to 2.2, "trigonometri_ayt_mat" to 2.2,
-        "fonksiyonlar" to 1.8, "logaritma" to 1.8,
-        "organik_bilesikler" to 2.4, "kimyasal_denge" to 1.7,
-        "bitki_biyolojisi" to 1.6, "canlilarda_enerji_donusumleri" to 1.7
-    )
     private val keys = setOf("A","B","C","D","E")
     private fun matchedTopic(q: CustomQuestionRecord): YksTopic? =
         SoruLabCatalog.allSubjects.firstOrNull { it.id == q.subjectId }
@@ -160,7 +158,7 @@ object DenemePlanner {
         }
     }
 
-    private fun slices(request: DenemeRequest): List<DenemeSection>? {
+    fun sections(request: DenemeRequest): List<DenemeSection>? {
         if (request.kind == DenemeKind.BRANS) {
             return DenemeBlueprints.find(request.blueprintId)
                 ?.takeIf { it.examType == request.examType }?.sections
@@ -175,7 +173,8 @@ object DenemePlanner {
     private fun pickSlice(
         candidates: List<CustomQuestionRecord>,
         count: Int,
-        priorIds: Set<String>
+        priorIds: Set<String>,
+        alreadySelected: List<CustomQuestionRecord> = emptyList()
     ): List<CustomQuestionRecord> {
         val available = candidates.distinctBy { it.id }
             .groupBy { it.topicId }.mapValues { (_, items) ->
@@ -191,24 +190,24 @@ object DenemePlanner {
             }.toMutableMap()
         val selected = mutableListOf<CustomQuestionRecord>()
         val topicCounts = mutableMapOf<String, Int>()
-        val sourceCounts = mutableMapOf<String, Int>()
-        val difficultyCounts = mutableMapOf<DifficultyLevel, Int>()
+        val sourceCounts = alreadySelected.groupingBy { it.publisherTag + "/" + it.bookOrTestName }.eachCount().toMutableMap()
+        val difficultyCounts = alreadySelected.groupingBy { it.difficultyLevel5 }.eachCount().toMutableMap()
+        val difficultyShares = mapOf(DifficultyLevel.KOLAY to 1.0, DifficultyLevel.ORTA to 2.0,
+            DifficultyLevel.ZOR to 1.0, DifficultyLevel.COK_ZOR to 0.5)
         repeat(count) {
             val nonEmpty = available.filterValues { it.isNotEmpty() }
             if (nonEmpty.isEmpty()) return@repeat
-            // Weight/(already chosen + 1) is weighted round-robin across
-            // all verified topics, not a fixed annual topic quota.
+            // Distribute within this quota only. Prefer fresh subtopics first.
             val topic = nonEmpty.keys.sortedWith(
-                compareByDescending<String> {
-                    (weight[it] ?: 1.0) / ((topicCounts[it] ?: 0) + 1)
-                }.thenBy { it }
+                compareBy<String> { topic -> if (nonEmpty.getValue(topic).any { it.id !in priorIds }) 0 else 1 }
+                .thenByDescending { 1.0 / ((topicCounts[it] ?: 0) + 1) }.thenBy { it }
             ).first()
             val list = available.getValue(topic)
             val next = list.minWithOrNull(
                 compareBy<CustomQuestionRecord>(
                     { if (it.id in priorIds) 8 else 0 },
+                    { -((difficultyShares[it.difficultyLevel5] ?: 1.0) / ((difficultyCounts[it.difficultyLevel5] ?: 0) + 1)) },
                     { (sourceCounts[it.publisherTag + "/" + it.bookOrTestName] ?: 0) * 3 },
-                    { (difficultyCounts[it.difficultyLevel5] ?: 0) },
                     { it.sourceTestId },
                     { it.questionNumberInBook },
                     { it.id }
@@ -230,38 +229,35 @@ object DenemePlanner {
         previous: List<TestResultRecord> = emptyList(),
         sequence: Long = System.currentTimeMillis()
     ): DenemePlan {
-        val slices = slices(request) ?: return DenemePlan.Missing(listOf(DenemeShortage("Geçersiz deneme seçimi",1,0)))
-        val previousIds = previous.take(6).flatMap { record ->
+        val slices = sections(request) ?: return DenemePlan.Missing(listOf(DenemeShortage("Geçersiz deneme seçimi",1,0)))
+        val previousIds = previous.sortedByDescending { it.createdAt?.seconds ?: 0L }.take(6).flatMap { record ->
             TestSnapshotCodec.decode(record.testSnapshotJson)?.questions.orEmpty()
                 .map { it.sourceQuestionId }
         }.filter { it.isNotBlank() }.toSet()
         val examPool = pool.filter { it.examType.equals(request.examType.name,true) &&
-            eligible(it,request.difficulty) }
-        val counts = slices.map { slice ->
-            val found = examPool.count {
-                it.subjectId == slice.subjectId &&
-                    (slice.allowedTopicIds.isEmpty() || it.topicId in slice.allowedTopicIds)
-            }
-            DenemeShortage(slice.label,slice.count,found)
-        }
-        val shortage = counts.filter { it.available < it.needed }
-        if (shortage.isNotEmpty()) return DenemePlan.Missing(shortage)
+            eligible(it,request.difficulty) }.distinctBy { it.id }
         val selected = mutableListOf<CustomQuestionRecord>()
+        val shortages = mutableListOf<DenemeShortage>()
         slices.forEach { section ->
-            val candidates = examPool.filter {
-                it.subjectId == section.subjectId &&
-                    (section.allowedTopicIds.isEmpty() || it.topicId in section.allowedTopicIds)
-            }.filterNot { q -> selected.any { it.id == q.id } }
-            val chosen = pickSlice(candidates,section.count,previousIds)
-            if (chosen.size < section.count) return DenemePlan.Missing(
-                listOf(DenemeShortage(section.label,section.count,chosen.size))
-            )
-            selected.addAll(chosen)
+            val quotas = if (request.kind == DenemeKind.BRANS) DenemeTopicProfiles.forSection(section)
+                else listOf(DenemeTopicQuota(section.label, section.count, section.allowedTopicIds))
+            quotas.forEach { quota ->
+                val candidates = examPool.filter {
+                    it.subjectId == section.subjectId && it.topicId in quota.topicIds &&
+                        (section.allowedTopicIds.isEmpty() || it.topicId in section.allowedTopicIds)
+                }.filterNot { q -> selected.any { it.id == q.id } }
+                if (candidates.size < quota.count) {
+                    shortages.add(DenemeShortage(section.label + " • " + quota.label, quota.count, candidates.size))
+                } else {
+                    selected.addAll(pickSlice(candidates, quota.count, previousIds, selected))
+                }
+            }
         }
+        if (shortages.isNotEmpty()) return DenemePlan.Missing(shortages)
         val expected = slices.sumOf { it.count }
         if (selected.size != expected || selected.map { it.id }.distinct().size != expected)
             return DenemePlan.Missing(listOf(DenemeShortage("Benzersiz soru",expected,selected.size)))
-        val blueprint = DenemeBlueprints.find(request.blueprintId)
+        val blueprint = DenemeBlueprints.find(request.blueprintId)?.takeIf { request.kind == DenemeKind.BRANS }
         val title = if (request.kind == DenemeKind.BRANS)
             blueprint?.label ?: "Branş Denemesi"
         else {
@@ -295,7 +291,8 @@ object DenemePlanner {
                 stepByStepSolution = record.cleanSolutionSummary,
                 bookId = record.bookId,
                 sourceQuestionId = record.id,
-                subject = subject.name,
+                subject = if (request.kind == DenemeKind.KONU) subject.name else slices.firstOrNull { it.subjectId == record.subjectId &&
+                    (it.allowedTopicIds.isEmpty() || record.topicId in it.allowedTopicIds) }?.label ?: subject.name,
                 sourceBookTitle = record.sourceBookTitle.ifBlank { record.bookOrTestName },
                 sourceTestId = record.sourceTestId,
                 sourcePageIndex = record.pageIndex,
@@ -315,13 +312,21 @@ object DenemePlanner {
         val avgWeight = questions.map { it.difficulty.weight }.average().toFloat()
         val difficulty = when {
             avgWeight < .3f -> DifficultyLevel.KOLAY
-            avgWeight > .8f -> DifficultyLevel.ZOR
+            avgWeight > .6f -> DifficultyLevel.ZOR
             else -> DifficultyLevel.ORTA
         }
         return DenemePlan.Ready(
             test = YksTestItem(id,selected.first().topicId,title + " • " + expected + " Soru",
                 title + " • " + expected + " Soru",difficulty,avgWeight.coerceIn(.1f,.95f),
-                false,0,TopicTestLevel.SEVIYE_TESPIT,questions),
+                false,0,TopicTestLevel.SEVIYE_TESPIT,questions,
+                denemeProfileVersion = DenemeTopicProfiles.VERSION,
+                denemeDifficultyLabel = request.difficulty.label,
+                denemeReusedQuestionCount = selected.count { it.id in previousIds },
+                denemeDistributionSummary = slices.joinToString("\n") { section ->
+                    section.label + ": " + if (request.kind == DenemeKind.BRANS)
+                        DenemeTopicProfiles.forSection(section).joinToString(" • ") { it.label + " " + it.count }
+                    else section.count.toString() + " soru"
+                }),
             minutes = minutes,
             sectionSummary = slices.map { it.label to it.count }
         )

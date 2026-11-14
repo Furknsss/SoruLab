@@ -1,46 +1,97 @@
-# SoruLab Deneme Blueprint Rationale — 14 Kasım 2026
+# Deneme dağılımları — 14 Kasım 2026
 
-## Resmî olan ve olmayan
+Başlangıç commit: 35b0707644c52a777d5eef082519b008d4880d04 (PR #50).
+Son v1.4.6 test sayfası ve önceki deneme stüdyosu çalışması korunarak ilerlenmiştir.
 
-**Resmî soru sayıları**, ÖSYM'nin yayımladığı YKS soru kitapçıklarında görülen test ve ders sınırlarıdır. **Bir konudan gelecek kesin soru sayısı diye resmî bir garanti yoktur**. Konular arası dağılım geçmiş kitapçıkların üçüncü taraf sınıflandırmalarıyla ortaya çıkar; yanlış kategori etiketleri ve yıllar arası değişiklikler mümkündür.
+## Kaynak ile ürün kararı arasındaki ayrım
 
-Kaynaklar:
-- 2026 ÖSYM kitapçık ve cevap anahtarı: https://www.osym.gov.tr/2026yks-tyt-ayt-ve-ydt-temel-soru-kitapciklari-ve-cevap-anahtarlari
-- ÖSYM resmî duyuru: https://www.osym.gov.tr/2026-yuksekogretim-kurumlari-sinavi-2026yks-temel-soru-kitapciklari-ve-cevap-anahtarlari-yayimlandi
-- MEB 2026 YKS TYT soru bilgileri: https://shgal.meb.k12.tr/meb_iys_dosyalar/58/01/965140/dosyalar/2026_03/69aa7f4ee1c3b678752402_2026_YKS_KILAVUZU.pdf
-- Soru kitapçıklarının yıllar ve konulara göre **bağımsız** etiketleme istatistikleri: https://egitimkocu.org/soru-dagilimlari/yks/tyt ve https://egitimkocu.org/soru-dagilimlari/yks/ayt
-- 2018–2025 TYT fizik konu tablosu (MEB paylaşımı): https://reyhanlisfkasml.meb.k12.tr/meb_iys_dosyalar/31/08/963209/dosyalar/2025_12/694bcadab4eec921652162_2025TYT_Y%C4%B1llara_Gore_Soru_Dag%C4%B1l%C4%B1m%C4%B1.pdf
-- 2022–2026 TYT fizik etiketleme karşılaştırması: https://www.yekakademikursmerkezi.com/tyt-fen-soru-dagilimi/
+ÖSYM kitapçıkları ders/test toplamlarını doğrular. Konu etiketlemesi ise öğretmenlerin
+soruları sınıflandırmasına bağlıdır; ÖSYM gelecek sınavda her konu için sabit sayı vaat etmez.
+Uygulamadaki kotalar **SoruLab çalışma profilleridir**. Tarihsel tabloların aynen kopyası,
+belli bir yılın birebir simülasyonu veya sınav tahmini değildir.
+Araştırma tarihi: 14 Kasım 2026. Profil sürümü: 2026.11-v2.
 
-## Kesin branş hedefleri (yeni oluşturulacak denemeler)
+Birincil kitapçık:
+https://www.osym.gov.tr/2026yks-tyt-ayt-ve-ydt-temel-soru-kitapciklari-ve-cevap-anahtarlari
 
-| Branş | Ders kotası |
+Konu dağılımları için soruları tek tek sınıflandıran Eğitim Koçu'nun 2018–2025 ders
+tabloları incelendi. Aşağıdaki her dersin uygulama ekranında kendi kaynak bağlantısı bulunur.
+Bu üçüncü taraf sınıflandırma, resmî gelecek soru kotası olarak gösterilmez.
+
+| Ders | İncelenen konu tablosu |
 |---|---|
-| TYT Türkçe | Türkçe 40 |
-| TYT Matematik | Matematik 30 + Geometri 10 (bazı eski yıllarda 29/11; bu, kullanılan örnek şablondur) |
-| TYT Sosyal | Tarih 5 + Coğrafya 5 + Felsefe 5 + Din 5 |
-| TYT Fen | Fizik 7 + Kimya 7 + Biyoloji 6 |
-| AYT Matematik | Matematik 31 + Geometri 9 (2025 örneği, yıllara göre oynayabilir) |
-| AYT Fen | Fizik 14 + Kimya 13 + Biyoloji 13 |
-| TYT/AYT tek ders | Yukarıdaki ilgili ders kotası |
+| TYT Türkçe | https://egitimkocu.org/soru-dagilimlari/yks/tyt/turkce |
+| TYT Matematik | https://egitimkocu.org/soru-dagilimlari/yks/tyt/matematik |
+| TYT Geometri | https://egitimkocu.org/soru-dagilimlari/yks/tyt/geometri |
+| TYT Fizik | https://egitimkocu.org/soru-dagilimlari/yks/tyt/fizik |
+| TYT Kimya | https://egitimkocu.org/soru-dagilimlari/yks/tyt/kimya |
+| TYT Biyoloji | https://egitimkocu.org/soru-dagilimlari/yks/tyt/biyoloji |
+| TYT Tarih | https://egitimkocu.org/soru-dagilimlari/yks/tyt/tarih |
+| TYT Coğrafya | https://egitimkocu.org/soru-dagilimlari/yks/tyt/cografya |
+| TYT Felsefe | https://egitimkocu.org/soru-dagilimlari/yks/tyt/felsefe-grubu |
+| TYT Din | https://egitimkocu.org/soru-dagilimlari/yks/tyt/din-kulturu-ve-ahlak-bilgisi |
+| AYT Matematik | https://egitimkocu.org/soru-dagilimlari/yks/ayt/matematik |
+| AYT Geometri | https://egitimkocu.org/soru-dagilimlari/yks/ayt/geometri |
+| AYT Fizik | https://egitimkocu.org/soru-dagilimlari/yks/ayt/fizik |
+| AYT Kimya | https://egitimkocu.org/soru-dagilimlari/yks/ayt/kimya |
+| AYT Biyoloji | https://egitimkocu.org/soru-dagilimlari/yks/ayt/biyoloji |
+| AYT Edebiyat | https://egitimkocu.org/soru-dagilimlari/yks/ayt/turk-dili-ve-edebiyati |
+| AYT Anlam | https://egitimkocu.org/soru-dagilimlari/yks/ayt |
 
-Bu profile göre oluşturulan denemeler **ÖSYM'nin resmî kitabı değil**; SoruLab kitaplığından konu dengesi gözetilerek derlenmiş pratik denemelerdir.
+## Uygulanan kararlar
 
-## Konu seçiminde dayanak
+- TYT Türkçe 40, matematik 40 (30+10), sosyal 20 (5+5+5+5), fen 20 (7+7+6).
+- AYT matematik 40 (31+9), fen 40 (14+13+13). Matematik/geometri ayrımı yıllara göre
+  değişebilir; kullanılan 30+10 ve 31+9 örnek çalışma profilleridir.
+- AYT Türk Dili ve Edebiyatı 24 = anlam/okuma 6 + alan 18. Eski taslaktaki 18 soruluk
+  alan sınırı tam edebiyat branşı gibi sunulmamalıydı; düzeltildi.
+- Tek ders denemelerinde ilgili dersin kotası kullanılır. Konu denemesinde TYT/AYT,
+  ders, tek konu, 1–40 soru ve zorluk seçimi uygulanır.
+- Her dersin dağılımı DenemeTopicProfiles.kt içindedir. Grup altındaki katalog konuları
+  yalnızca kendi grup kotasını karşılayabilir. Eksik grup başka konuyla tamamlanmaz.
+- Konu grupları tarihsel başlıkların mevcut katalogdaki alt konulara eşleştirilmesiyle
+  oluşturuldu. Özellikle 5–7 soruluk derslerde her alt konuya bir soru düşmez.
+- TYT fizik örneği: madde 1, hareket/kuvvet 1, ısı/genleşme 1, basınç/kaldırma 1,
+  elektrik/manyetizma 1, dalga 1, optik 1. Bu dengeli kapsam tercihidir; her yılın
+  gerçek ÖSYM dağılımının böyle olduğu iddia edilmez.
+- AYT matematik, geometri, fizik, edebiyat ve TYT felsefenin eksik katalog başlıkları
+  eklendi. Önceki soru kayıtları değiştirilmez veya silinmez; yeni etiketlere soru
+  gelene kadar ilgili kotalar için eksik uyarısı verilmesi beklenir.
+- Dengeli seçimi, kota içinde erişilebilen zorluk çeşitliliğini gözetir; yeterli veri
+  yokken kesin bir zorluk yüzdesi iddia edilmez. Kolay/orta/zor filtresi esnetilmez.
+- Son 6 çözülmüş denemede kullanılan sorular öncelikle dışarıda tutulur. Havuz dar
+  olduğunda yeniden kullanılan soru sayısı deneme oluşturulurken kaydedilir ve karnede gösterilir.
+- Profil sürümü, uygulanan konu planı, zorluk ve tekrar sayısı soru anlık görüntüsünde
+  saklanır. Yeni profil eski denemenin içeriğini veya karnesini değiştirmez.
+- Karnede yanlış soru için tam nete göre 1,25; boş için 1,00 net kaybı hesaplanır.
+  Toplam net doğru − yanlış/4 biçimindedir.
 
-1. Branş içerisindeki ders kotası **zorunlu**. Her bölümün doğrulanmış, doğru sınav türü + ders + konu etiketli, beş seçenekli, tekil soruları bulunmalı. Yetersizse başlatma iptal edilir ve eksik ders miktarı gösterilir. **Eksik soruları başka dersten tamamlamak yok.**
-2. Konu içi seçim **sabit 1 soru/konu kalıbı değildir**. Geçmiş soru kitabı konu etiketlemelerinden çıkartılan *editoryal ağırlık*, konu çeşitliliği, kaynak/yayınevi çeşitliliği ve önceki denemelerde kullanılan soruların tekrarından kaçınma birlikte çalışır. Fizik örneği: son yıllarda optik, hareket/kuvvet, ısı/sıcaklık ve basınç/kaldırma konuları sık görülür; diğerleri dışlanmaz.
-3. Özel ağırlığı olmayan her konu aynı baz ağırlıktan başlar. O kategoride güvenilir tarihsel dağılım eşleştirmesi yapılmadıysa **yapılmış gibi gösterilmez**. Türkçe paragraf, TYT fizik ve AYT matematikte kaynaklı frekans/öncelik bilgisi kullanılır; diğer derslerde başlangıçta geniş kapsama önceliği uygulanır.
-4. Son 6 denemenin soru kimlikleri tekrar cezası alır; soru havuzu azsa eski sorular yeniden kullanılabilir fakat bunun sonuç ekranında anlaşılır olması gerekir.
-5. Konu denemesi: yalnızca kullanıcının seçtiği **tek dersin tek konusundan** oluşturulur. Soru sayısı ve zorluk seçimi sınanır.
-6. Cevap anahtarı doğrulanmamış, bozuk görsel/boş soru, yanlış müfredat konusu, kopya kimlik ve geçersiz seçenek içeren kayıtlar dışarıda bırakılır.
+## Sosyal branşları ve veri uyumluluğu
 
-## Soru havuzunun mevcut sınırı
+AYT Sosyal-1: Türk Dili ve Edebiyatı 24 + Tarih-1 10 + Coğrafya-1 6.
+AYT Sosyal-2: Tarih-2 11 + Coğrafya-2 11 + Felsefe Grubu 12 + Din 6.
+Ayrıca tek ders branşları ve bu derslerin konu denemeleri bulunur.
+Yeni AYT felsefe/din katalogları eklendi. Birleşik eski tarih/coğrafya kayıtları
+silinmez ve otomatik tahminle yeniden etiketlenmez; konu kimliklerinden kesin
+ayrılan tarih/coğrafya kümeleri kullanılır. Eksik yeni konular için soru eklenmesi
+gerekir. Felsefe grubunda felsefe, psikoloji, sosyoloji, mantık 3'er sorudur.
+Din muafiyeti için alternatif felsefe bölümü bu profilde yer almaz; standart dinli
+profil kullanılır ve ders kotaları seçimden önce gösterilir.
 
-SoruLab katalog yapısında TYT Felsefe ve Din tek `tyt_felsefe_din` dersinde depolanıyor; iki alt bölüm yalnızca açık konu kimlikleri sayesinde ayrılıyor. AYT tarih/coğrafya `ayt_tarih_cografya` olarak tek birleşik konu havuzunda. Bu birleşik AYT verisi için resmî 40 soruluk sosyal branş kotasının tamamını doğrulayacak bağımsız ders etiketleri bulunmadığından **AYT Sosyal-1 / Sosyal-2 hazır branş denemesi sunulmuyor**; konu denemesi oluşturulabilir. Destek, ders etiketlerini ayrıştıran bir veri göçüyle genişletilmeli.
+Ek incelenen öğretmen sınıflandırmaları:
+- https://egitimkocu.org/soru-dagilimlari/yks/ayt/tarih
+- https://egitimkocu.org/soru-dagilimlari/yks/ayt/cografya
+- https://egitimkocu.org/soru-dagilimlari/yks/ayt/felsefe-grubu
+- https://egitimkocu.org/soru-dagilimlari/yks/ayt/din-kulturu-ve-ahlak-bilgisi
 
-## Teknik ve güven kuralları
+Sosyal-1/2'nin alt konu grupları da editoryal çalışma planıdır. İki test için toplam
+21 tarih / 17 coğrafya tablosu, her alt testte aynı dağılım olduğu iddiasına dönüştürülmez.
 
-- Gerçek ÖSYM soru metinleri uygulamaya otomatik kopyalanmaz; mevcut kullanıcının kitaplığa yasal olarak aktardığı kaynaklar kullanılır.
-- İmzalı APK ve eski sürümün üzerine kurulum testlerinden geçmeden sürüm yayınlanmaz.
-- 2027 YKS müfredatında olası değişiklikler ve yeni yıl dağılımları veri güncellemesi gerektirir.
+## Doğrulama
+
+Her yayımlanan branşın konu kotaları, tek ders/konu izolasyonu, cevap anahtarı,
+eksik havuz, zorluk, tekrarlanan kimlikler, tekrar önceliği ve anlık görüntü
+uyumluluğu regresyon testleriyle denetlenir. Telefon oluşturma ve tablet karne
+akışları gerçek Compose bileşenleriyle Robolectric üzerinde sınanır.
+Bu yerel testler fiziksel cihaz testi yerine geçmez. İmzalı APK ayrı CI
+derlemesi ve önceki sürümle imza/versionCode kontrolünden geçmelidir.

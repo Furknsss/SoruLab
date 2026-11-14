@@ -78,7 +78,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.ExamType
 import com.example.data.SoruLabCatalog
 import com.example.ui.screens.AnaSayfaScreen
-import com.example.ui.screens.DenemelerHubScreen
+import com.example.ui.screens.DenemeStudioScreen
 import com.example.ui.screens.FloatingCircularBottomNav
 import com.example.ui.screens.IstatistiklerimScreen
 import com.example.ui.screens.LiveSolvingBoardScreen
@@ -423,6 +423,7 @@ private fun DenemelerTabHost(
     val userCustomQuestions by mainViewModel.userCustomQuestions.collectAsStateWithLifecycle()
     val customPublishers by mainViewModel.customPublishers.collectAsStateWithLifecycle()
     val userTestResults by mainViewModel.userTestResults.collectAsStateWithLifecycle()
+    val generatedMockExams by mainViewModel.generatedMockExams.collectAsStateWithLifecycle()
     val isAutoTagging by aiViewModel.isAutoTagging.collectAsStateWithLifecycle()
     val batchStatusText by aiViewModel.batchStatusText.collectAsStateWithLifecycle()
     val batchProgressPercent by aiViewModel.batchProgressPercent.collectAsStateWithLifecycle()
@@ -507,18 +508,15 @@ private fun DenemelerTabHost(
             }
         )
     } else {
-        DenemelerHubScreen(
+        DenemeStudioScreen(
             selectedFilter = selectedExamFilter,
-            mockExams = SoruLabCatalog.mockExams,
+            mockExams = generatedMockExams,
             solvedRecords = userTestResults,
-            customQuestionsCount = userCustomQuestions.size,
+            customQuestions = userCustomQuestions,
             onSelectFilter = { selectedExamFilter = it },
-            onStartExam = { mockExam ->
-                mainViewModel.startMockExam(mockExam, reviewOnly = false)
-            },
-            onReviewExam = { mockExam ->
-                mainViewModel.startMockExam(mockExam, reviewOnly = true)
-            },
+            onCreateDeneme = { request -> mainViewModel.createAndStartDeneme(request) },
+            onStartExam = { mockExam -> mainViewModel.startMockExam(mockExam) },
+            onReviewExam = { record -> mainViewModel.openRecentResultForReview(record) },
             onOpenPdfStudio = { mainViewModel.openPdfCropperStudio() }
         )
     }

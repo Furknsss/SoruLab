@@ -7,6 +7,11 @@ import androidx.compose.ui.input.pointer.PointerType
  * during mixed-input gestures; this prevents accidental palm marks.
  */
 internal object StylusInputPolicy {
+    fun isHardwareEraser(toolType: Int, buttons: Int): Boolean =
+        toolType == android.view.MotionEvent.TOOL_TYPE_ERASER ||
+            (toolType == android.view.MotionEvent.TOOL_TYPE_STYLUS &&
+                buttons and (android.view.MotionEvent.BUTTON_STYLUS_PRIMARY or android.view.MotionEvent.BUTTON_STYLUS_SECONDARY) != 0)
+
     fun canInk(type: PointerType, fingerDrawingEnabled: Boolean): Boolean =
         type == PointerType.Stylus ||
             (type == PointerType.Touch && fingerDrawingEnabled)

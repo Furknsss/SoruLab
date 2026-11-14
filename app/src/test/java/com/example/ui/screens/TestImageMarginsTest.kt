@@ -11,6 +11,18 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class TestImageMarginsTest {
+    @Test fun thinMarksAtEveryEdgeOfLongScanSurviveMarginTrimming() {
+        val source = Bitmap.createBitmap(1200, 4000, Bitmap.Config.ARGB_8888)
+        source.eraseColor(Color.WHITE)
+        source.setPixel(3, 2000, Color.BLACK)
+        source.setPixel(1196, 2000, Color.BLACK)
+        source.setPixel(600, 3, Color.GRAY)
+        source.setPixel(600, 3996, Color.GRAY)
+        val cropped = trimTestImageMargins(source)
+        assertSame("No edge mark may be lost on a large scan", source, cropped)
+        assertEquals(Color.GRAY, source.getPixel(600, 3996))
+    }
+
     @Test fun `display trim removes white borders but preserves isolated punctuation and original`() {
         val source = Bitmap.createBitmap(200, 300, Bitmap.Config.ARGB_8888)
         source.eraseColor(Color.WHITE)

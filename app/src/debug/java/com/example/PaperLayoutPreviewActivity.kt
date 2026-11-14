@@ -118,7 +118,7 @@ class PaperLayoutPreviewActivity : ComponentActivity() {
                     onSelectTool = {},
                     onSelectStrokeSize = {},
                     onSelectPenColor = {},
-                    onAddStroke = { _, _, _ -> },
+                    onAddStroke = { canvas, points, pressures, strokeTool -> },
                     onBookPageChanged = {},
                     onClearCanvas = { _ -> },
                     onSelectQuestionIndex = {},

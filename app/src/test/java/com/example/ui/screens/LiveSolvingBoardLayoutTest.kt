@@ -39,6 +39,18 @@ class LiveSolvingBoardLayoutTest {
         val logo = compose.onNodeWithTag("question_source_logo_1").fetchSemanticsNode().boundsInRoot
         val number = compose.onNodeWithText("1.").fetchSemanticsNode().boundsInRoot
         assertTrue("Publisher must sit above the question number", logo.bottom <= number.top)
+        val firstQuestion = compose.onNodeWithTag("book_question_1").fetchSemanticsNode().boundsInRoot
+        val secondQuestion = compose.onNodeWithTag("book_question_2").fetchSemanticsNode().boundsInRoot
+        assertTrue("Spare viewport height must not become huge gaps between short questions",
+            secondQuestion.top - firstQuestion.bottom < 280f)
+        val thirdQuestion = compose.onNodeWithTag("book_question_3").fetchSemanticsNode().boundsInRoot
+        val gapOne = secondQuestion.top - firstQuestion.bottom
+        val gapTwo = thirdQuestion.top - secondQuestion.bottom
+        assertTrue("Every question should receive a comparable comfortable writing area",
+            kotlin.math.abs(gapOne - gapTwo) < 3f)
+        val footerTop = compose.onAllNodesWithTag("test_page_footer").fetchSemanticsNodes().first().boundsInRoot.top
+        assertTrue("The bottom must not accumulate the unused writing area",
+            footerTop - thirdQuestion.bottom <= gapTwo + 30f)
         capture("test-tablet")
         compose.onNodeWithTag("optical_form_tab").performClick()
         compose.onNodeWithTag("optic_q1_A").assertIsDisplayed()
@@ -53,10 +65,56 @@ class LiveSolvingBoardLayoutTest {
         assertTrue("Phone question must use full page width", first.width > 310f)
         compose.onAllNodesWithTag("test_page_footer").onFirst().assertIsDisplayed()
         compose.onAllNodesWithText("A) 11").onFirst().performClick()
+        compose.onNodeWithTag("tool_eraser_btn").assertIsDisplayed()
+        compose.onNodeWithTag("tool_hand_pan_btn").assertIsDisplayed()
         capture("test-phone")
     }
 
-    private fun showBoard(useImages: Boolean = false) {
+    @Test @Config(qualifiers = "w800dp-h1280dp-mdpi")
+    fun printedQuestionImagesStayBalancedAndReadableOnTablet() {
+        showBoard(useImages = true)
+        compose.onAllNodesWithTag("test_page_footer").onFirst().assertIsDisplayed()
+        val first = compose.onNodeWithTag("book_question_1").fetchSemanticsNode().boundsInRoot
+        val second = compose.onNodeWithTag("book_question_2").fetchSemanticsNode().boundsInRoot
+        assertTrue("Source print remains readable", first.width > 300f && first.height > 70f)
+        assertTrue("Printed questions keep reading order without overlap", second.top >= first.bottom)
+        assertTrue("Actual image pages avoid artificial giant gaps", second.top - first.bottom < 280f)
+        capture("test-tablet-printed")
+    }
+
+    @Test @Config(qualifiers = "w393dp-h851dp-mdpi")
+    fun printedQuestionImagesUseFullPhoneWidthWithoutClipping() {
+        showBoard(useImages = true)
+        val first = compose.onNodeWithTag("book_question_1").fetchSemanticsNode().boundsInRoot
+        assertTrue("Phone source print uses available width", first.width > 310f)
+        compose.onAllNodesWithTag("test_page_footer").onFirst().assertIsDisplayed()
+        capture("test-phone-printed")
+    }
+
+    @Test @Config(qualifiers = "w393dp-h851dp-mdpi")
+    fun veryLongPrintedQuestionKeepsReadableWidthAndCanScrollToItsEnd() {
+        showBoard(useImages = true, longQuestion = true)
+        val image = compose.onNodeWithTag("question_crop_image_1")
+        val before = image.getUnclippedBoundsInRoot()
+        assertTrue("Tall source print must not turn into a miniature image", (before.right - before.left).value > 220f)
+        assertTrue("Full tall source must extend beyond the viewport", (before.bottom - before.top).value > 900f)
+        capture("test-long-question-top")
+        compose.onAllNodesWithTag("test_page_columns").onFirst().performTouchInput { swipeUp() }
+        compose.waitForIdle()
+        val after = image.getUnclippedBoundsInRoot()
+        assertTrue("The question must scroll rather than hide its lower part", after.top.value < before.top.value - 40f)
+        repeat(3) {
+            compose.onAllNodesWithTag("test_page_columns").onFirst().performTouchInput { swipeUp() }
+            compose.waitForIdle()
+        }
+        val end = image.getUnclippedBoundsInRoot()
+        val footer = compose.onAllNodesWithTag("test_page_footer").onFirst().getUnclippedBoundsInRoot()
+        assertTrue("The last printed answer must be reachable above the fixed footer",
+            end.bottom.value <= footer.top.value + 1f)
+        capture("test-long-question-scrolled")
+    }
+
+    private fun showBoard(useImages: Boolean = false, longQuestion: Boolean = false) {
         val questions = (1..12).map { number ->
             YksQuestion(
                 id = "layout_$number", number = number, publisherName = "SoruLab",
@@ -74,7 +132,7 @@ class LiveSolvingBoardLayoutTest {
                 correctOption = "A", stepByStepSolution = ""
             )
         }
-        val displayedQuestions = if (useImages) questions.map { q -> q.copy(imageBase64 = printedImage(q)) } else questions
+        val displayedQuestions = if (useImages) questions.map { q -> q.copy(imageBase64 = printedImage(q, longQuestion && q.number == 1)) } else questions
         val test = YksTestItem("layout", "diziler", "Test 1", "Diziler · Test 1",
             DifficultyLevel.ORTA, 0.4f, questions = displayedQuestions)
         compose.setContent {
@@ -90,7 +148,7 @@ class LiveSolvingBoardLayoutTest {
                             BoardViewMode.SINGLE_QUESTION else BoardViewMode.FULL_PAGE)
                     },
                     onSelectTool = {}, onSelectStrokeSize = {}, onSelectPenColor = {},
-                    onAddStroke = { _, _, _ -> }, onBookPageChanged = {}, onClearCanvas = {},
+                    onAddStroke = { _, _, _, _ -> }, onBookPageChanged = {}, onClearCanvas = {},
                     onSelectQuestionIndex = { session = session.copy(currentQuestionIndex = it) },
                     onSelectOption = { q, opt -> session = session.copy(selectedAnswers = session.selectedAnswers + (q to opt)) },
                     onToggleOpticalForm = { session = session.copy(isOpticalFormDrawerOpen = !session.isOpticalFormDrawerOpen) },
@@ -105,8 +163,8 @@ class LiveSolvingBoardLayoutTest {
         compose.waitForIdle()
     }
 
-    private fun printedImage(q: YksQuestion): String {
-        val bitmap = Bitmap.createBitmap(650, if (q.number % 3 == 0) 490 else 335, Bitmap.Config.ARGB_8888)
+    private fun printedImage(q: YksQuestion, longQuestion: Boolean = false): String {
+        val bitmap = Bitmap.createBitmap(650, if (longQuestion) 2600 else if (q.number % 3 == 0) 490 else 335, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
         canvas.drawColor(android.graphics.Color.WHITE)
         val paint = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
@@ -122,7 +180,11 @@ class LiveSolvingBoardLayoutTest {
             layout.draw(canvas)
             canvas.restore()
         }
-        text(q.stemTop, 20f)
+        if (longQuestion) {
+            for (line in 0..59) text("Uzun soru satırı " + (line + 1) + ": x + y = 2, koşulları inceleyiniz.", 20f + line * 40f)
+            text("E) SON ŞIK — sorunun sonu korunur", 2480f, true)
+        } else text(q.stemTop, 20f)
+        if (!longQuestion) {
         text("aₙ = a₁ + (n − 1) · d", 103f)
         if (q.number % 3 == 0) {
             val pen = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
@@ -137,6 +199,7 @@ class LiveSolvingBoardLayoutTest {
         val bottom = if (q.number % 3 == 0) 320f else 170f
         text(q.stemBottom, bottom, true)
         text("A) 11     B) 13     C) 15     D) 17     E) 19", bottom + 85f)
+        }
         val data = java.io.ByteArrayOutputStream().use { output ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
             output.toByteArray()

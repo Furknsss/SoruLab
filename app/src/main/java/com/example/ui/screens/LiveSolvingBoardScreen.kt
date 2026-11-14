@@ -1,5 +1,9 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package com.example.ui.screens
 
+import android.view.MotionEvent
+import androidx.compose.ui.input.pointer.motionEventSpy
 import android.app.Activity
 import android.content.ContextWrapper
 import android.graphics.Bitmap
@@ -126,11 +130,11 @@ internal data class BookImageMeasurements(
 
 private object TestPageDimensions {
     val edgeHandleSpace = 30.dp
-    val pageHorizontal = 18.dp
-    val pageVertical = 16.dp
+    val pageHorizontal = 12.dp
+    val pageVertical = 10.dp
     val footerHeight = 40.dp
-    val gutter = 29.dp
-    val minGap = 24.dp
+    val gutter = 20.dp
+    val minGap = 16.dp
     val maxGap = 160.dp
 }
 
@@ -214,7 +218,7 @@ private fun MeasuredBookPages(
                     }.single().measure(Constraints(minWidth = columnWidthPx, maxWidth = columnWidthPx)).height
                 }
                 val packingHeight = available
-                val pages = packMeasuredTestPages(heights.map { it + (it * .35f).toInt().coerceIn(64.dp.roundToPx(), 144.dp.roundToPx()) }, packingHeight,
+                val pages = packMeasuredTestPages(heights.map { it + (it * .18f).toInt().coerceIn(24.dp.roundToPx(), 64.dp.roundToPx()) }, packingHeight,
                     TestPageDimensions.minGap.roundToPx(), columns).map { page ->
                     TwoColumnQuestionPage(page.columns[0].map(questions::get),
                         page.columns.getOrNull(1).orEmpty().map(questions::get), columns)
@@ -576,7 +580,7 @@ internal fun estimatedBookQuestionUnits(
     return (contentHeightDp + 8f).coerceAtLeast(74f) / columnWidthDp.coerceAtLeast(120f)
 }
 
-/** Fit the *entire* cropped image inside its allotted paper slot. */
+/** Preserve readable width and aspect ratio. Tall images extend into vertical scrolling. */
 internal fun fittedBookImageSizeDp(
     availableWidth: Float,
     availableHeight: Float,
@@ -588,9 +592,8 @@ internal fun fittedBookImageSizeDp(
     val ratio = widthOverHeight.takeIf { it.isFinite() && it > 0f } ?: 1f
     val visualScale = if (singleQuestionLayout) 1f else
         typographyScale.coerceIn(0.60f, 1.90f)
-    val width = minOf(availableWidth * visualScale, availableWidth,
-        availableHeight * ratio).coerceAtLeast(0f)
-    return width to (width / ratio).coerceAtMost(availableHeight)
+    val width = minOf(availableWidth * visualScale, availableWidth).coerceAtLeast(0f)
+    return width to (width / ratio)
 }
 
 /**
@@ -618,7 +621,7 @@ internal fun adaptiveBookColumnRhythm(
     // equations stay comfortably grouped. Keep margins within visual limits.
     val intervals = (count - 1).coerceAtLeast(0)
     val averageQuestionHeight = content / count
-    val preferredGap = (averageQuestionHeight * 0.18f).coerceIn(18f, 56f)
+    val preferredGap = (averageQuestionHeight * 0.10f).coerceIn(12f, 28f)
     val free = (paperHeightDp - content).coerceAtLeast(0f)
     val wantedGap = if (intervals == 0) 0f else
         minOf(preferredGap, (free - 10f).coerceAtLeast(18f))
@@ -629,7 +632,7 @@ internal fun adaptiveBookColumnRhythm(
     // force all leftover height to the final bottom edge when it's modest.
     val spare = (paperHeightDp - content * scale - wantedGap * intervals)
         .coerceAtLeast(0f)
-    val inset = (spare * 0.12f).coerceIn(0f, 18f)
+    val inset = (spare * 0.04f).coerceIn(0f, 6f)
     return BookColumnRhythm(scale, wantedGap, inset)
 }
 
@@ -830,7 +833,7 @@ fun LiveSolvingBoardScreen(
     onSelectTool: (DrawingTool) -> Unit,
     onSelectStrokeSize: (Int) -> Unit,
     onSelectPenColor: (Long) -> Unit,
-    onAddStroke: (String, List<Offset>, List<Float>) -> Unit,
+    onAddStroke: (String, List<Offset>, List<Float>, DrawingTool) -> Unit,
     onBookPageChanged: (Int) -> Unit,
     onClearCanvas: (String) -> Unit,
     onSelectQuestionIndex: (Int) -> Unit,
@@ -901,7 +904,7 @@ private fun LiveSolvingBoardContent(
     onSelectTool: (DrawingTool) -> Unit,
     onSelectStrokeSize: (Int) -> Unit,
     onSelectPenColor: (Long) -> Unit,
-    onAddStroke: (String, List<Offset>, List<Float>) -> Unit,
+    onAddStroke: (String, List<Offset>, List<Float>, DrawingTool) -> Unit,
     onBookPageChanged: (Int) -> Unit,
     onClearCanvas: (String) -> Unit,
     onSelectQuestionIndex: (Int) -> Unit,
@@ -1295,6 +1298,8 @@ private fun LiveSolvingBoardContent(
 
             // Zero-latency raw path buffer (mutated directly during S-Pen/Mouse drag without recomposing UI tree!)
             val liveRawPath = remember { Path() }
+            var liveTool by remember { mutableStateOf(activeTool) }
+            var hardwareEraser by remember { mutableStateOf(false) }
             val liveRawPoints = remember { mutableListOf<Offset>() }
             val liveRawPressures = remember { mutableListOf<Float>() }
             val liveDrawTick = remember { mutableIntStateOf(0) }
@@ -1383,6 +1388,11 @@ private fun LiveSolvingBoardContent(
                         }
                     }
 
+                    .motionEventSpy { event ->
+                        hardwareEraser = (0 until event.pointerCount).any { i ->
+                            StylusInputPolicy.isHardwareEraser(event.getToolType(i), event.buttonState)
+                        }
+                    }
                     // Ink input belongs on the shared parent, not the drawing
                     // Canvas sibling. Smart-mode finger taps/swipes can then
                     // reach the page pager; S Pen strokes are consumed early.
@@ -1431,6 +1441,17 @@ private fun LiveSolvingBoardContent(
                                     zoomScale, panOffset, displayedDocumentScroll?.value?.toFloat() ?: 0f
                                 )
                                 val start = documentPoint(down.position)
+                                liveTool = if (hardwareEraser) DrawingTool.ERASER else activeTool
+                                fun commitSegment() {
+                                    if (liveRawPoints.isEmpty()) return
+                                    val points = liveRawPoints.toMutableList()
+                                    val pressures = liveRawPressures.toMutableList()
+                                    if (points.size == 1) {
+                                        points.add(points.first() + Offset(0.05f, 0.05f))
+                                        pressures.add(pressures.first())
+                                    }
+                                    onAddStroke(displayedCanvasKey, points, pressures, liveTool)
+                                }
 
                                 val activeId = down.id
                                 liveRawPoints.clear()
@@ -1478,6 +1499,20 @@ private fun LiveSolvingBoardContent(
                                             break
                                         }
                                         val curPt = documentPoint(active.position)
+                                        val nextTool = if (hardwareEraser && active.type == PointerType.Stylus)
+                                            DrawingTool.ERASER else activeTool
+                                        if (active.pressed && nextTool != liveTool) {
+                                            commitSegment()
+                                            liveTool = nextTool
+                                            liveRawPoints.clear()
+                                            liveRawPressures.clear()
+                                            liveRawPoints.add(curPt)
+                                            liveRawPressures.add(active.pressure)
+                                            liveRawPath.reset()
+                                            liveRawPath.moveTo(curPt.x, curPt.y)
+                                            prevPt = curPt
+                                            liveDrawTick.intValue++
+                                        }
                                         if ((curPt - prevPt).getDistance() >= 0.6f) {
                                             liveRawPoints.add(curPt)
                                             liveRawPressures.add(
@@ -1509,7 +1544,7 @@ private fun LiveSolvingBoardContent(
                                             onAddStroke(
                                                 displayedCanvasKey,
                                                 liveRawPoints.toList(),
-                                                liveRawPressures.toList()
+                                                liveRawPressures.toList(), liveTool
                                             )
                                         }
                                     }
@@ -1712,7 +1747,7 @@ private fun LiveSolvingBoardContent(
                     // temporarily composites old ink with its Clear path in
                     // the preview layer for immediate visual feedback.
                     translate(top = -(displayedDocumentScroll?.value ?: 0).toFloat()) {
-                    val liveErasing = activeTool == DrawingTool.ERASER &&
+                    val liveErasing = liveTool == DrawingTool.ERASER &&
                         liveDrawTick.intValue >= 0 && liveRawPoints.isNotEmpty()
                     if (!liveErasing) {
                         displayedStrokes.forEach { stroke -> drawSmoothStroke(stroke) }
@@ -1729,14 +1764,14 @@ private fun LiveSolvingBoardContent(
                     val tick = liveDrawTick.intValue
                     // The clear stroke must share an offscreen layer with the
                     // ink it erases. Otherwise erasing would only appear on UP.
-                    if (activeTool == DrawingTool.ERASER &&
+                    if (liveTool == DrawingTool.ERASER &&
                         liveRawPoints.isNotEmpty()
                     ) {
                         displayedStrokes.forEach { stroke -> drawSmoothStroke(stroke) }
                     }
                     if (tick >= 0 && liveRawPoints.size >= 2) {
-                        val isEraser = activeTool == DrawingTool.ERASER
-                        val isHigh = activeTool == DrawingTool.HIGHLIGHTER
+                        val isEraser = liveTool == DrawingTool.ERASER
+                        val isHigh = liveTool == DrawingTool.HIGHLIGHTER
                         if (isEraser) {
                             drawPath(
                                 path = liveRawPath,
@@ -1747,6 +1782,12 @@ private fun LiveSolvingBoardContent(
                                     join = StrokeJoin.Round
                                 ),
                                 blendMode = BlendMode.Clear
+                            )
+                            drawCircle(
+                                color = Color(0xFF3475F5).copy(alpha = 0.8f),
+                                radius = eraserStrokePx / 2f,
+                                center = liveRawPoints.last(),
+                                style = Stroke(width = 1.dp.toPx())
                             )
                         } else if (!isHigh &&
                             liveRawPressures.size == liveRawPoints.size
@@ -2416,22 +2457,24 @@ private fun RealTwoColumnBookPageSurface(
                 val columns = if (columnCount == 2)
                     listOf(measured.take(leftCount), measured.drop(leftCount)) else listOf(measured)
                 val minGap = TestPageDimensions.minGap.roundToPx()
-                val minWork = 64.dp.roundToPx()
-                val maxWork = 144.dp.roundToPx()
-                fun work(height: Int) = (height * .35f).toInt().coerceIn(minWork, maxWork)
+                val minWork = 24.dp.roundToPx()
+                val maxWork = 64.dp.roundToPx()
+                fun work(height: Int) = (height * .18f).toInt().coerceIn(minWork, maxWork)
                 fun occupied(items: List<androidx.compose.ui.layout.Placeable>) =
                     items.sumOf { it.height + work(it.height) } + (items.size - 1).coerceAtLeast(0) * minGap
                 val height = maxOf(viewportHeight.roundToPx(), columns.maxOf(::occupied))
                 layout(constraints.maxWidth, height) {
                     columns.forEachIndexed { column, items ->
                         val gap = minGap
-                        val spare = (height - occupied(items)).coerceAtLeast(0)
-                        val weight = items.sumOf { kotlin.math.sqrt(it.height.toDouble().coerceAtLeast(1.0)) }
+                        // Share the available writing area across every question,
+                        // including the final one. Never collect it all below the page.
+                        val writingBudget = (height - items.sumOf { it.height } -
+                            (items.size - 1).coerceAtLeast(0) * gap).coerceAtLeast(0)
+                        val writingShare = if (items.isEmpty()) 0 else writingBudget / items.size
                         var y = 0
                         items.forEach { item ->
                             item.placeRelative(if (column == 0) 0 else constraints.maxWidth - width, y)
-                            y += item.height + work(item.height) +
-                                (if (weight > 0) spare * kotlin.math.sqrt(item.height.toDouble().coerceAtLeast(1.0)) / weight else 0.0).toInt() + gap
+                            y += item.height + writingShare + gap
                         }
                     }
                 }
@@ -3755,6 +3798,69 @@ private fun BottomDarkNavyDrawingBar345(
                                 tint = Color.White, modifier = Modifier.size(22.dp))
                         }
                     }
+                    // Compact, icon-only eraser matching the other tools.
+                    val isEraserActive = activeTool == DrawingTool.ERASER &&
+                        !isZoomMagnifierEnabled
+                    Surface(
+                        onClick = {
+                            showColorPalettePopup = false
+                            onSelectTool(DrawingTool.ERASER)
+                        },
+                        shape = CircleShape,
+                        color = if (isEraserActive) Color(0xFF3475F5)
+                            else Color.Transparent,
+                        modifier = Modifier.size(44.dp).testTag("tool_eraser_btn")
+                            .semantics { contentDescription = "Silgi" }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            PremiumEraserGlyph()
+                        }
+                    }
+
+                    // El (Sayfa Kaydırma / Pan)
+                    val isPanActive = activeTool == DrawingTool.HAND_PAN && !isZoomMagnifierEnabled
+                    Surface(
+                        onClick = {
+                            showColorPalettePopup = false
+                            onSelectTool(DrawingTool.HAND_PAN)
+                        },
+                        shape = CircleShape,
+                        color = if (isPanActive) Color(0xFF3475F5) else Color.Transparent,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .testTag("tool_hand_pan_btn")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.PanTool,
+                                contentDescription = "Sayfa Kaydır",
+                                tint = Color.White,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                    }
+
+                    // Büyüteç (Zoom)
+                    Surface(
+                        onClick = {
+                            showColorPalettePopup = false
+                            onToggleZoom()
+                        },
+                        shape = CircleShape,
+                        color = if (isZoomMagnifierEnabled) Color(0xFF3475F5) else Color.Transparent,
+                        modifier = Modifier.size(44.dp).testTag("board_zoom_toggle")
+                            .semantics { selected = isZoomMagnifierEnabled }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.ZoomIn,
+                                contentDescription = "Yakınlaştır",
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
                     // Akıllı Şekil (Smart Shape)
                     val isSmartShapeActive = activeTool == DrawingTool.SMART_SHAPE && !isZoomMagnifierEnabled
                     Surface(
@@ -3774,74 +3880,6 @@ private fun BottomDarkNavyDrawingBar345(
                                 contentDescription = "Akıllı Şekil",
                                 tint = Color.White,
                                 modifier = Modifier.size(19.dp)
-                            )
-                        }
-                    }
-
-                    // Büyüteç (Zoom)
-                    Surface(
-                        onClick = {
-                            showColorPalettePopup = false
-                            onToggleZoom()
-                        },
-                        shape = CircleShape,
-                        color = if (isZoomMagnifierEnabled) Color(0xFF3475F5) else Color.Transparent,
-                        modifier = Modifier.size(40.dp).testTag("board_zoom_toggle")
-                            .semantics { selected = isZoomMagnifierEnabled }
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.ZoomIn,
-                                contentDescription = "Yakınlaştır",
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
-
-                    // El (Sayfa Kaydırma / Pan)
-                    val isPanActive = activeTool == DrawingTool.HAND_PAN && !isZoomMagnifierEnabled
-                    Surface(
-                        onClick = {
-                            showColorPalettePopup = false
-                            onSelectTool(DrawingTool.HAND_PAN)
-                        },
-                        shape = CircleShape,
-                        color = if (isPanActive) Color(0xFF3475F5) else Color.Transparent,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .testTag("tool_hand_pan_btn")
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.PanTool,
-                                contentDescription = "Sayfa Kaydır",
-                                tint = Color.White,
-                                modifier = Modifier.size(19.dp)
-                            )
-                        }
-                    }
-
-                    // Compact, icon-only eraser matching the other tools.
-                    val isEraserActive = activeTool == DrawingTool.ERASER &&
-                        !isZoomMagnifierEnabled
-                    Surface(
-                        onClick = {
-                            showColorPalettePopup = false
-                            onSelectTool(DrawingTool.ERASER)
-                        },
-                        shape = CircleShape,
-                        color = if (isEraserActive) Color(0xFF3475F5)
-                            else Color.Transparent,
-                        modifier = Modifier.size(40.dp).testTag("tool_eraser_btn")
-                            .semantics { contentDescription = "Silgi" }
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.AutoFixOff,
-                                contentDescription = "Silgi",
-                                tint = Color.White,
-                                modifier = Modifier.size(23.dp)
                             )
                         }
                     }

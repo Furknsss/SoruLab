@@ -7,6 +7,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StylusInputPolicyTest {
+    @Test fun hardware_button_erases_only_for_a_stylus() {
+        val pen = android.view.MotionEvent.TOOL_TYPE_STYLUS
+        val primary = android.view.MotionEvent.BUTTON_STYLUS_PRIMARY
+        val secondary = android.view.MotionEvent.BUTTON_STYLUS_SECONDARY
+        assertTrue(StylusInputPolicy.isHardwareEraser(pen, primary))
+        assertTrue(StylusInputPolicy.isHardwareEraser(pen, secondary))
+        assertFalse(StylusInputPolicy.isHardwareEraser(pen, 0))
+        assertFalse(StylusInputPolicy.isHardwareEraser(android.view.MotionEvent.TOOL_TYPE_FINGER, primary))
+        assertFalse(StylusInputPolicy.isHardwareEraser(android.view.MotionEvent.TOOL_TYPE_MOUSE, secondary))
+        assertTrue(StylusInputPolicy.isHardwareEraser(android.view.MotionEvent.TOOL_TYPE_ERASER, 0))
+    }
+
     @Test
     fun `smart mode rejects fingers and palms while allowing S Pen`() {
         assertTrue(StylusInputPolicy.canInk(PointerType.Stylus, false))

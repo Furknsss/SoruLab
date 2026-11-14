@@ -30,6 +30,7 @@ import org.robolectric.annotation.Config
 class LiveSolvingBoardScreenTest {
     @get:Rule
     val compose = createComposeRule()
+    private var inputView: android.view.View? = null
 
     @Test
     fun oversizedBookPrintIsDownscaledButSmallPrintIsNotShrunkFurther() {
@@ -769,7 +770,48 @@ class LiveSolvingBoardScreenTest {
         compose.onNodeWithTag("retry_twin_generation_btn").assertExists()
     }
 
+    @Test
+    fun stylusButtonSwitchesToolMidContactAndReturnsToPen() {
+        val tools = mutableListOf<DrawingTool>()
+        showBoard(drawingTool = DrawingTool.PEN, onStrokeTool = { tools.add(it) })
+        val area = compose.onNodeWithTag("live_spen_preview").fetchSemanticsNode().boundsInRoot
+        val downTime = android.os.SystemClock.uptimeMillis()
+        fun send(action: Int, dx: Float, buttons: Int, delay: Long) {
+            compose.runOnIdle {
+                val props = android.view.MotionEvent.PointerProperties().apply {
+                    id = 0
+                    toolType = android.view.MotionEvent.TOOL_TYPE_STYLUS
+                }
+                val coords = android.view.MotionEvent.PointerCoords().apply {
+                    x = area.left + 90f + dx
+                    y = area.top + 90f
+                    pressure = 0.7f
+                    size = 0.1f
+                }
+                val event = android.view.MotionEvent.obtain(
+                    downTime, downTime + delay, action, 1,
+                    arrayOf(props), arrayOf(coords), 0, buttons,
+                    1f, 1f, 0, 0, android.view.InputDevice.SOURCE_STYLUS, 0
+                )
+                inputView!!.rootView.dispatchTouchEvent(event)
+                event.recycle()
+            }
+        }
+        send(android.view.MotionEvent.ACTION_DOWN, 0f, 0, 0)
+        send(android.view.MotionEvent.ACTION_MOVE, 10f, 0, 16)
+        send(android.view.MotionEvent.ACTION_MOVE, 20f, android.view.MotionEvent.BUTTON_STYLUS_PRIMARY, 32)
+        send(android.view.MotionEvent.ACTION_MOVE, 30f, android.view.MotionEvent.BUTTON_STYLUS_PRIMARY, 48)
+        send(android.view.MotionEvent.ACTION_MOVE, 40f, 0, 64)
+        send(android.view.MotionEvent.ACTION_MOVE, 50f, 0, 80)
+        send(android.view.MotionEvent.ACTION_UP, 50f, 0, 96)
+        compose.runOnIdle {
+            assertEquals(listOf(DrawingTool.PEN, DrawingTool.ERASER, DrawingTool.PEN), tools)
+        }
+    }
+
     private fun showBoard(
+        drawingTool: DrawingTool = DrawingTool.HAND_PAN,
+        onStrokeTool: (DrawingTool) -> Unit = {},
         onFinish: () -> Unit = {},
         onAnswersChanged: (Map<Int, String>) -> Unit = {},
         review: Boolean = false,
@@ -779,6 +821,8 @@ class LiveSolvingBoardScreenTest {
         ) -> Unit = { _, _ -> }
     ) {
         compose.setContent {
+            val localView = androidx.compose.ui.platform.LocalView.current
+            androidx.compose.runtime.SideEffect { inputView = localView }
             var session by androidx.compose.runtime.remember {
                 mutableStateOf(fixtureSession().copy(isReviewMode = review))
             }
@@ -787,7 +831,7 @@ class LiveSolvingBoardScreenTest {
                     session = session,
                     strokes = emptyList(),
                     currentCanvasKey = "full_page_fixture",
-                    activeTool = DrawingTool.HAND_PAN,
+                    activeTool = drawingTool,
                     selectedStrokeSizeIndex = 1,
                     selectedPenColorHex = 0xFF1D4ED8,
                     onExitSession = {},
@@ -795,7 +839,7 @@ class LiveSolvingBoardScreenTest {
                     onSelectTool = {},
                     onSelectStrokeSize = {},
                     onSelectPenColor = {},
-                    onAddStroke = { _, _, _, _ -> },
+                    onAddStroke = { _, _, _, tool -> onStrokeTool(tool) },
                     onBookPageChanged = {},
                     onClearCanvas = { _ -> },
                     onSelectQuestionIndex = { session = session.copy(currentQuestionIndex = it) },

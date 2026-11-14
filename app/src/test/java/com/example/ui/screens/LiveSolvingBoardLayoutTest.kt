@@ -39,6 +39,10 @@ class LiveSolvingBoardLayoutTest {
         val logo = compose.onNodeWithTag("question_source_logo_1").fetchSemanticsNode().boundsInRoot
         val number = compose.onNodeWithText("1.").fetchSemanticsNode().boundsInRoot
         assertTrue("Publisher must sit above the question number", logo.bottom <= number.top)
+        val firstQuestion = compose.onNodeWithTag("book_question_1").fetchSemanticsNode().boundsInRoot
+        val secondQuestion = compose.onNodeWithTag("book_question_2").fetchSemanticsNode().boundsInRoot
+        assertTrue("Spare viewport height must not become huge gaps between short questions",
+            secondQuestion.top - firstQuestion.bottom < 180f)
         capture("test-tablet")
         compose.onNodeWithTag("optical_form_tab").performClick()
         compose.onNodeWithTag("optic_q1_A").assertIsDisplayed()

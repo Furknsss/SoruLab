@@ -179,7 +179,8 @@ data class ActiveSolvingSession(
     val isQuestionMapDrawerOpen: Boolean = false,
     val currentQuestionIndex: Int = 0,
     val selectedAnswers: Map<Int, String> = emptyMap(),
-    val elapsedSeconds: Int = 0
+    val elapsedSeconds: Int = 0,
+    val durationLimitSeconds: Int = 0
 )
 
 class SoruLabViewModel(
@@ -216,6 +217,9 @@ class SoruLabViewModel(
 
     private val _generatedTopicTests = MutableStateFlow<Map<String, List<YksTestItem>>>(emptyMap())
     val generatedTopicTests: StateFlow<Map<String, List<YksTestItem>>> = _generatedTopicTests.asStateFlow()
+
+    private val _generatedMockExams = MutableStateFlow<List<MockExamItem>>(emptyList())
+    val generatedMockExams: StateFlow<List<MockExamItem>> = _generatedMockExams.asStateFlow()
 
     private val _deletedTestIds = MutableStateFlow<Set<String>>(emptySet())
     val deletedTestIds: StateFlow<Set<String>> = _deletedTestIds.asStateFlow()
@@ -416,6 +420,10 @@ class SoruLabViewModel(
                     _boardStrokes.value = cachedStrokes
                 }
                 syncPdfPoolToPracticeTests(_userCustomQuestions.value)
+                _generatedMockExams.value = cachedSnapshots.values
+                    .mapNotNull { snapshot ->
+                        TestSnapshotCodec.decode(snapshot)?.let(DenemeBlueprints::fromSnapshot)
+                    }.distinctBy { it.id }.sortedByDescending { it.id }
                 if (cachedEntries.isNotEmpty()) {
                     mergeGeneratedEntriesIntoState(
                         uid,
@@ -555,6 +563,7 @@ class SoruLabViewModel(
     private fun resetUserScopedData() {
         allCloudTestRecords = emptyList()
         _userTestResults.value = emptyList()
+        _generatedMockExams.value = emptyList()
         _userCustomQuestions.value = emptyList()
         _generatedTopicTests.value = emptyMap()
         _deletedTestIds.value = emptySet()
@@ -606,7 +615,9 @@ class SoruLabViewModel(
     private fun refreshTopicProgressSummaries() {
         viewModelScope.launch(Dispatchers.Default) {
             val pool = _userCustomQuestions.value
-            val solvedResults = _userTestResults.value.filter { it.isSolvedAttempt }
+            val solvedResults = _userTestResults.value.filter {
+                it.isSolvedAttempt && !it.testId.startsWith("deneme_v147_")
+            }
             val genMap = _generatedTopicTests.value
             val deleted = _deletedTestIds.value
 
@@ -1789,6 +1800,11 @@ class SoruLabViewModel(
                     val cur = _activeSession.value ?: break
                     if (!cur.isReviewMode) {
                         _elapsedSeconds.value += 1
+                        if (cur.durationLimitSeconds > 0 &&
+                            _elapsedSeconds.value >= cur.durationLimitSeconds) {
+                            finishActiveTestAndReview()
+                            break
+                        }
                     }
                 }
             }
@@ -2049,13 +2065,54 @@ class SoruLabViewModel(
     }
 
     fun startMockExam(mockExam: MockExamItem, reviewOnly: Boolean = false) {
-        val mathTopic = SoruLabCatalog.allSubjects.first { it.examType == mockExam.examType }.topics.first()
+        val first = mockExam.linkedTest.questions.firstOrNull()
+        val realSubject = SoruLabCatalog.allSubjects.firstOrNull {
+            it.examType == mockExam.examType &&
+                it.name.equals(first?.subject, ignoreCase = true)
+        } ?: SoruLabCatalog.allSubjects.first { it.examType == mockExam.examType }
+        val realTopic = realSubject.topics.firstOrNull {
+            it.id == mockExam.linkedTest.topicId
+        } ?: realSubject.topics.first()
         startSolvingSession(
-            topic = mathTopic.copy(name = mockExam.publisher),
+            topic = realTopic,
             testItem = mockExam.linkedTest,
             initialViewMode = BoardViewMode.FULL_PAGE,
             isReviewMode = reviewOnly
         )
+        if (!reviewOnly) {
+            _activeSession.value = _activeSession.value?.copy(
+                durationLimitSeconds = mockExam.durationMinutes.coerceAtLeast(1) * 60
+            )
+        }
+    }
+
+    fun createAndStartDeneme(request: DenemeRequest) {
+        val plan = DenemePlanner.build(
+            request, _userCustomQuestions.value,
+            _userTestResults.value.filter { it.testId.startsWith("deneme_v147_") }
+        )
+        when (plan) {
+            is DenemePlan.Missing -> {
+                showBanner("Deneme oluşturulamadı: " + plan.shortage.joinToString("; ") {
+                    it.section + " " + it.available + "/" + it.needed + " doğrulanmış soru"
+                }.take(175))
+            }
+            is DenemePlan.Ready -> viewModelScope.launch {
+                val uid = effectiveUserId() ?: "device_yks_student_tr"
+                val saved = withContext(Dispatchers.IO) {
+                    runCatching { repository.saveCachedGeneratedTestSnapshot(uid,plan.test) }
+                }
+                if (saved.isFailure) {
+                    showBanner("Deneme cihazda saklanamadı; soru kayıtlarını riske atmamak için açılmadı.")
+                    return@launch
+                }
+                val exam = DenemeBlueprints.fromSnapshot(plan.test) ?: return@launch
+                _generatedMockExams.value = (listOf(exam) + _generatedMockExams.value)
+                    .distinctBy { it.id }
+                startMockExam(exam)
+                showBanner("Deneme hazır • " + plan.test.questions.size + " doğrulanmış soru")
+            }
+        }
     }
 
     fun openRecentResultForReview(record: TestResultRecord) {

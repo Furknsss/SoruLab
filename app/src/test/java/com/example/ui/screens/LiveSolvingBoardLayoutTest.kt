@@ -184,6 +184,7 @@ class LiveSolvingBoardLayoutTest {
             for (line in 0..59) text("Uzun soru satırı " + (line + 1) + ": x + y = 2, koşulları inceleyiniz.", 20f + line * 40f)
             text("E) SON ŞIK — sorunun sonu korunur", 2480f, true)
         } else text(q.stemTop, 20f)
+        if (!longQuestion) {
         text("aₙ = a₁ + (n − 1) · d", 103f)
         if (q.number % 3 == 0) {
             val pen = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
@@ -198,6 +199,7 @@ class LiveSolvingBoardLayoutTest {
         val bottom = if (q.number % 3 == 0) 320f else 170f
         text(q.stemBottom, bottom, true)
         text("A) 11     B) 13     C) 15     D) 17     E) 19", bottom + 85f)
+        }
         val data = java.io.ByteArrayOutputStream().use { output ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
             output.toByteArray()

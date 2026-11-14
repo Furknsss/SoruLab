@@ -85,7 +85,7 @@ jobs:
           cp "$APK_PATH" "$APK_FILE"
           test -s "$APK_FILE" || { echo "::error::Signed APK not produced: $APK_FILE"; exit 1; }
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK_FILE"
-          VERSION_NAME="$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)".*/\\1/p' app/build.gradle.kts | head -n 1)"
+          VERSION_NAME="$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts | head -n 1)"
           test -n "$VERSION_NAME" || { echo "::error::Could not read versionName from Gradle"; exit 1; }
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK_FILE" | head -n 1 | grep -F "versionName='$VERSION_NAME'"
           echo "Signed artifact verified: $APK_FILE"

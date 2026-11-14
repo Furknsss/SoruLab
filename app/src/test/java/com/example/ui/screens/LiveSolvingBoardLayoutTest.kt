@@ -91,7 +91,30 @@ class LiveSolvingBoardLayoutTest {
         capture("test-phone-printed")
     }
 
-    private fun showBoard(useImages: Boolean = false) {
+    @Test @Config(qualifiers = "w393dp-h851dp-mdpi")
+    fun veryLongPrintedQuestionKeepsReadableWidthAndCanScrollToItsEnd() {
+        showBoard(useImages = true, longQuestion = true)
+        val image = compose.onNodeWithTag("question_crop_image_1")
+        val before = image.getUnclippedBoundsInRoot()
+        assertTrue("Tall source print must not turn into a miniature image", (before.right - before.left).value > 220f)
+        assertTrue("Full tall source must extend beyond the viewport", (before.bottom - before.top).value > 900f)
+        capture("test-long-question-top")
+        compose.onAllNodesWithTag("test_page_columns").onFirst().performTouchInput { swipeUp() }
+        compose.waitForIdle()
+        val after = image.getUnclippedBoundsInRoot()
+        assertTrue("The question must scroll rather than hide its lower part", after.top.value < before.top.value - 40f)
+        repeat(3) {
+            compose.onAllNodesWithTag("test_page_columns").onFirst().performTouchInput { swipeUp() }
+            compose.waitForIdle()
+        }
+        val end = image.getUnclippedBoundsInRoot()
+        val footer = compose.onAllNodesWithTag("test_page_footer").onFirst().getUnclippedBoundsInRoot()
+        assertTrue("The last printed answer must be reachable above the fixed footer",
+            end.bottom.value <= footer.top.value + 1f)
+        capture("test-long-question-scrolled")
+    }
+
+    private fun showBoard(useImages: Boolean = false, longQuestion: Boolean = false) {
         val questions = (1..12).map { number ->
             YksQuestion(
                 id = "layout_$number", number = number, publisherName = "SoruLab",
@@ -109,7 +132,7 @@ class LiveSolvingBoardLayoutTest {
                 correctOption = "A", stepByStepSolution = ""
             )
         }
-        val displayedQuestions = if (useImages) questions.map { q -> q.copy(imageBase64 = printedImage(q)) } else questions
+        val displayedQuestions = if (useImages) questions.map { q -> q.copy(imageBase64 = printedImage(q, longQuestion && q.number == 1)) } else questions
         val test = YksTestItem("layout", "diziler", "Test 1", "Diziler · Test 1",
             DifficultyLevel.ORTA, 0.4f, questions = displayedQuestions)
         compose.setContent {
@@ -140,8 +163,8 @@ class LiveSolvingBoardLayoutTest {
         compose.waitForIdle()
     }
 
-    private fun printedImage(q: YksQuestion): String {
-        val bitmap = Bitmap.createBitmap(650, if (q.number % 3 == 0) 490 else 335, Bitmap.Config.ARGB_8888)
+    private fun printedImage(q: YksQuestion, longQuestion: Boolean = false): String {
+        val bitmap = Bitmap.createBitmap(650, if (longQuestion) 2600 else if (q.number % 3 == 0) 490 else 335, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
         canvas.drawColor(android.graphics.Color.WHITE)
         val paint = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
@@ -157,7 +180,10 @@ class LiveSolvingBoardLayoutTest {
             layout.draw(canvas)
             canvas.restore()
         }
-        text(q.stemTop, 20f)
+        if (longQuestion) {
+            for (line in 0..59) text("Uzun soru satırı " + (line + 1) + ": x + y = 2, koşulları inceleyiniz.", 20f + line * 40f)
+            text("E) SON ŞIK — sorunun sonu korunur", 2480f, true)
+        } else text(q.stemTop, 20f)
         text("aₙ = a₁ + (n − 1) · d", 103f)
         if (q.number % 3 == 0) {
             val pen = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {

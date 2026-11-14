@@ -314,7 +314,7 @@ object StudioImageAndPdfEngine {
     ): Bitmap? = withContext(Dispatchers.IO) {
         try {
             val diskBitmap = if (imagePath.isNotBlank()) {
-                getCachedBitmap(context, imagePath)
+                resolveQuestionImageFile(context, imagePath)?.let { getQuestionDisplayBitmap(it.absolutePath) }
             } else {
                 null
             }
@@ -327,14 +327,20 @@ object StudioImageAndPdfEngine {
             for (safeId in safeQuestionIds) {
                 val questionFile = File(File(context.filesDir, "questions"), "q_$safeId.jpg")
                 if (questionFile.isFile && questionFile.length() > 0L) {
-                    getCachedBitmap(questionFile.absolutePath)?.let { return@withContext it }
+                    getQuestionDisplayBitmap(questionFile.absolutePath)?.let { return@withContext it }
                 }
             }
 
             if (imageBase64.isNotBlank()) {
                 val bytes = runCatching { Base64.decode(imageBase64, Base64.DEFAULT) }.getOrNull()
                 if (bytes != null) {
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { decoded ->
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                    val options = BitmapFactory.Options().apply {
+                        inSampleSize = questionBitmapSampleSize(bounds.outWidth, bounds.outHeight)
+                        inPreferredConfig = Bitmap.Config.ARGB_8888
+                    }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.let { decoded ->
                         bitmapCache.put("base64:$questionId", decoded)
                         return@withContext decoded
                     }
@@ -645,6 +651,24 @@ object StudioImageAndPdfEngine {
      * Loads and caches cropped question / publisher logo bitmaps in RAM so LazyColumn / Book Page
      * scrolling and page turning run at 120 FPS without repeated disk decoding or OOM.
      */
+    private fun getQuestionDisplayBitmap(path: String): Bitmap? {
+        val cacheKey = "question-display:" + path
+        bitmapCache.get(cacheKey)?.takeUnless { it.isRecycled }?.let { return it }
+        val file = File(path)
+        if (!file.isFile || file.length() == 0L) return null
+        val bitmap = runCatching {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(path, bounds)
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = questionBitmapSampleSize(bounds.outWidth, bounds.outHeight)
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            BitmapFactory.decodeFile(path, options)
+        }.getOrNull() ?: return null
+        bitmapCache.put(cacheKey, bitmap)
+        return bitmap
+    }
+
     fun getCachedBitmap(path: String, maxDimension: Int = 1440): Bitmap? {
         if (path.isBlank()) return null
         bitmapCache.get(path)?.let { cached ->

@@ -533,7 +533,7 @@ class LiveSolvingBoardScreenTest {
     }
 
     @Test
-    fun fullQuestionImageAlwaysFitsItsPaperSlotWithoutHorizontalOrVerticalClipping() {
+    fun fullQuestionImagePreservesReadableWidthAndScrollsInsteadOfShrinkingToViewport() {
         listOf(0.24f, 0.55f, 1f, 2.4f, 6f).forEach { widthOverHeight ->
             listOf(0.28f, 0.5f, 1f, 1.16f).forEach { printScale ->
                 val availableWidth = 230f
@@ -542,7 +542,8 @@ class LiveSolvingBoardScreenTest {
                     availableWidth, availableHeight, widthOverHeight, printScale
                 )
                 org.junit.Assert.assertTrue("Image spills horizontally", width <= availableWidth + .001f)
-                org.junit.Assert.assertTrue("Image spills vertically", height <= availableHeight + .001f)
+                org.junit.Assert.assertEquals("Viewport height must not shrink readable print",
+                    availableWidth * printScale.coerceIn(.60f, 1f), width, .001f)
                 org.junit.Assert.assertEquals(widthOverHeight, width / height, .002f)
             }
         }

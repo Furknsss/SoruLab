@@ -10,3 +10,5 @@ Based on latest PR #50 commit 2387a64, not main.
 
 Android source: https://developer.android.com/reference/android/view/MotionEvent
 Hardware button support requires the device to deliver stylus button events to the app. Physical Samsung S Pen testing has not been performed here.
+
+Long-question follow-up: full cropped images now retain their reading width and extend into vertical scrolling. Disk and base64 image decoding use a reading-width/pixel-budget policy; long narrow scans are not reduced solely because of their height. Margin scans use a row buffer rather than a second full bitmap-sized integer array. Regression coverage checks access to the final answer and thin marks on the edges of large scans.

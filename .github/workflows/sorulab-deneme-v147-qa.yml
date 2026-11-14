@@ -67,6 +67,7 @@ jobs:
           bash ./gradlew :app:testDebugUnitTest
           --tests 'com.example.ui.LiveSolvingBoardScreenTest'
           --tests 'com.example.util.StylusInputPolicyTest'
+          --tests 'com.example.util.QuestionBitmapSizingTest'
           --tests 'com.example.ui.screens.TopicPublisherFilterUiTest'
           --tests 'com.example.ui.ReferenceTestCatalogTitleTest'
           --tests 'com.example.viewmodel.DenemeBlueprintEngineTest'

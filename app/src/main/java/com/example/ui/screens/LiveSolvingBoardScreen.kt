@@ -580,7 +580,7 @@ internal fun estimatedBookQuestionUnits(
     return (contentHeightDp + 8f).coerceAtLeast(74f) / columnWidthDp.coerceAtLeast(120f)
 }
 
-/** Fit the *entire* cropped image inside its allotted paper slot. */
+/** Preserve readable width and aspect ratio. Tall images extend into vertical scrolling. */
 internal fun fittedBookImageSizeDp(
     availableWidth: Float,
     availableHeight: Float,
@@ -592,9 +592,8 @@ internal fun fittedBookImageSizeDp(
     val ratio = widthOverHeight.takeIf { it.isFinite() && it > 0f } ?: 1f
     val visualScale = if (singleQuestionLayout) 1f else
         typographyScale.coerceIn(0.60f, 1.90f)
-    val width = minOf(availableWidth * visualScale, availableWidth,
-        availableHeight * ratio).coerceAtLeast(0f)
-    return width to (width / ratio).coerceAtMost(availableHeight)
+    val width = minOf(availableWidth * visualScale, availableWidth).coerceAtLeast(0f)
+    return width to (width / ratio)
 }
 
 /**

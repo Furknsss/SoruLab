@@ -4,15 +4,15 @@ import android.graphics.Bitmap
 
 /** Display-only crop: preserve every visible mark and leave the stored original intact. */
 internal fun trimTestImageMargins(source: Bitmap): Bitmap {
-    val pixels = IntArray(source.width * source.height)
-    source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+    val pixels = IntArray(source.width)
     var left = source.width
     var top = source.height
     var right = -1
     var bottom = -1
     for (y in 0 until source.height) {
+        source.getPixels(pixels, 0, source.width, 0, y, source.width, 1)
         for (x in 0 until source.width) {
-            val pixel = pixels[y * source.width + x]
+            val pixel = pixels[x]
             val alpha = pixel ushr 24
             if (alpha > 32 && ((pixel shr 16 and 255) < 240 ||
                     (pixel shr 8 and 255) < 240 || (pixel and 255) < 240)) {

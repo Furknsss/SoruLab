@@ -65,7 +65,7 @@ class LiveSolvingBoardLayoutTest {
     @Test @Config(qualifiers = "w800dp-h1280dp-mdpi")
     fun printedQuestionImagesStayBalancedAndReadableOnTablet() {
         showBoard(useImages = true)
-        compose.onNodeWithTag("test_page_footer").assertIsDisplayed()
+        compose.onAllNodesWithTag("test_page_footer").onFirst().assertIsDisplayed()
         val first = compose.onNodeWithTag("book_question_1").fetchSemanticsNode().boundsInRoot
         val second = compose.onNodeWithTag("book_question_2").fetchSemanticsNode().boundsInRoot
         assertTrue("Source print remains readable", first.width > 300f && first.height > 70f)

@@ -2,7 +2,7 @@ name: SoruLab v1.4.8 Deneme Studio Preview QA
 
 on:
   push:
-    branches: [feature/deneme-blueprints-v148-20261114]
+    branches: [feature/v148-smart-lessons-upgrade-20261116]
   workflow_dispatch:
 
 concurrency:

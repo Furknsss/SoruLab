@@ -1,6 +1,11 @@
 name: SoruLab Twin Engine Verified Draft QA
 
 on:
+  push:
+    branches: [feature/v148-outcome-video-integration-20261116]
+    paths:
+      - '.github/workflows/twin-engine-verified-draft-qa.yml'
+      - 'scripts/twin_visual_smoke.sh'
   pull_request:
     paths:
       - 'app/src/main/java/com/example/viewmodel/Twin*'

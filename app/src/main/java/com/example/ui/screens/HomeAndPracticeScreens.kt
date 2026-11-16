@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -2143,7 +2144,18 @@ fun SoruPratigiScreen(
                                 )
                             }
 
+                            // The source catalog is in curricular learning order (not
+                            // alphabetic/recently-used order). Reset the horizontal viewport
+                            // when the exam or subject changes: AYT Geometri must open at its
+                            // first AYT topic, not at TYT Geometri's last "Prizmalar" card.
+                            val topicRowState = key(selectedExamType, subject.id) {
+                                rememberLazyListState()
+                            }
+                            LaunchedEffect(selectedExamType, subject.id) {
+                                topicRowState.scrollToItem(0)
+                            }
                             LazyRow(
+                                state = topicRowState,
                                 contentPadding = PaddingValues(horizontal = 24.dp),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {

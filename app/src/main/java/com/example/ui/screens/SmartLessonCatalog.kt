@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.data.LearningOutcomeAssignment
+import com.example.data.LearningOutcomeCatalog
 import com.example.data.SoruLabCatalog
 import com.example.data.YksQuestion
 import java.net.URLEncoder
@@ -49,28 +51,36 @@ internal object SmartLessonCatalog {
 
     fun find(question: YksQuestion, examType: String, subjectName: String,
              fallbackTopic: String): List<LessonVideo> {
-        val subject = subject(examType, subjectName.ifBlank { question.subject }) ?: return emptyList()
+        val subject = subject(examType, question.subject)
+            ?: subject(examType, subjectName) ?: return emptyList()
         val topicName = question.topicHeader.ifBlank { fallbackTopic }
         val topic = SoruLabCatalog.resolveTopicInSubject(subject.id, "", topicName) ?: return emptyList()
-        val stem = lessonNormalized(listOf(question.stemTop, question.stemBottom,
-            question.analyticsText, question.bulletsOrSteps.joinToString(" ")).joinToString(" "))
-        val entries = GeneratedLessonContent.entries.filter {
+        val stored = LearningOutcomeCatalog.validated(subject.id, topic.id,
+            LearningOutcomeAssignment(question.learningOutcomeId, question.learningOutcomeName,
+                question.learningOutcomeSource, question.learningOutcomeConfidence))
+        val publisher = LearningOutcomeCatalog.fromLabel(subject.id, topic.id, question.learningOutcome)
+            .takeIf { it.id.isNotBlank() }
+            ?: LearningOutcomeCatalog.fromLabel(subject.id, topic.id, question.questionType)
+        val outcome = if (question.learningOutcomeId.isNotBlank() || question.learningOutcomeSource == "manual") stored
+            else if (question.learningOutcome.isNotBlank() || question.questionType.isNotBlank()) publisher
+            else LearningOutcomeCatalog.infer(subject.id, topic.id,
+                    listOf(question.stemTop, question.stemBottom, question.analyticsText,
+                        question.bulletsOrSteps.joinToString(" ")).joinToString(" "))
+        val exact = if (outcome.confidence >= 0.9) outcome.id else ""
+        // A topic-level video cannot stand in for an unverified question-level chapter.
+        if (exact.isBlank()) return emptyList()
+        return GeneratedLessonContent.entries.filter {
             it.subjectId == subject.id && it.topicId == topic.id &&
-                (it.phrases.isEmpty() || it.phrases.any { phrase ->
-                    Regex("(?<![a-z0-9])" + Regex.escape(lessonNormalized(phrase)) + "(?![a-z0-9])")
-                        .containsMatchIn(stem)
-                })
-        }
-        // Multiple skill hints for one teacher are ambiguous. Prefer the general lesson.
-        return entries.groupBy { it.video.teacher }.values.mapNotNull { teacherEntries ->
-            val specific = teacherEntries.filter { it.phrases.isNotEmpty() }
-            if (specific.map { it.video.outcomeId }.distinct().size == 1) specific.first().video
-            else teacherEntries.firstOrNull { it.phrases.isEmpty() }?.video
-        }.sortedByDescending { it.outcomeId.isNotBlank() }
+                it.video.outcomeId == exact
+        }.sortedByDescending { it.video.outcomeId.isNotBlank() }
+            .map { it.video }.distinctBy { it.teacher }
     }
 
-    fun select(videos: List<LessonVideo>, preferred: String): LessonVideo? =
-        videos.firstOrNull { it.teacher == preferred } ?: videos.firstOrNull()
+    fun select(videos: List<LessonVideo>, preferred: String): LessonVideo? {
+        val exact = videos.filter { it.outcomeId.isNotBlank() }
+        val eligible = exact.ifEmpty { videos }
+        return eligible.firstOrNull { it.teacher == preferred } ?: eligible.firstOrNull()
+    }
 
     fun preferenceKey(examType: String, subjectName: String, topicName: String): String {
         val subject = subject(examType, subjectName)
@@ -86,3 +96,11 @@ internal object SmartLessonCatalog {
         return "https://www.youtube.com/results?search_query=" + URLEncoder.encode(query, "UTF-8")
     }
 }
+
+/** null means no user override; an empty ID is an explicit manual clear. */
+internal fun lessonQuestionWithOverride(
+    question: YksQuestion, overrideId: String?, overrideName: String
+): YksQuestion = if (overrideId == null) question else question.copy(
+    learningOutcomeId = overrideId, learningOutcomeName = overrideName,
+    learningOutcomeSource = "manual", learningOutcomeConfidence = 1.0
+)

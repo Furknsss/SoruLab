@@ -29,13 +29,11 @@ class SmartLessonCatalogTest {
     }
 
     @Test
-    fun unspecifiedDerivativeSkillStartsGeneralVerifiedVideoFromBeginning() {
+    fun unspecifiedDerivativeSkillNeverAutoplaysGeneralVideoFromBeginning() {
         val videos = SmartLessonCatalog.find(
             question("Türev Alma Kuralları"), "AYT", "Matematik", "Türev Alma Kuralları"
         )
-        assertEquals("Rehber Matematik", videos.first().teacher)
-        assertEquals("WICamyMziqQ", videos.first().videoId)
-        assertEquals(0, videos.first().startSeconds)
+        assertTrue(videos.isEmpty())
     }
 
     @Test
@@ -44,7 +42,7 @@ class SmartLessonCatalogTest {
             question("Türev Alma Kuralları", "Köklü ifadelerin türevi"),
             "AYT", "Matematik", "Türev Alma Kuralları"
         )
-        assertEquals(0, videos.first().startSeconds)
+        assertTrue(videos.isEmpty())
     }
 
     @Test
@@ -75,7 +73,9 @@ class SmartLessonCatalogTest {
     }
 
     @Test fun unavailablePreferredTeacherFallsBackAndAvailablePreferenceWins() {
-        val videos = SmartLessonCatalog.find(question("Türev Alma Kuralları"), "AYT", "Matematik", "")
+        val videos = GeneratedLessonContent.entries.filter {
+            it.subjectId == "ayt_mat" && it.video.outcomeId.isBlank()
+        }.map { it.video }
         assertEquals(videos.first(), SmartLessonCatalog.select(videos, "Olmayan hoca"))
         assertEquals("Eyüp B", SmartLessonCatalog.select(videos, "Eyüp B")?.teacher)
         assertEquals(null, SmartLessonCatalog.select(emptyList(), "Eyüp B"))
@@ -104,9 +104,9 @@ class SmartLessonCatalogTest {
         }
     }
 
-    @Test fun embedDisablesAutoplayAndRejectsInjectionAndInvalidSegments() {
+    @Test fun embedRequestsAutoplayWithBlockedFallbackAndRejectsInvalidSegments() {
         val html = buildYoutubeEmbedHtml("2i9_HZErHMU", 662, 831)
-        assertTrue(html.contains("autoplay:0"))
+        assertTrue(html.contains("autoplay:1") && html.contains("onAutoplayBlocked"))
         assertTrue(html.contains("end:831"))
         assertTrue(html.contains("onError"))
         for (invalid in listOf("bad", "'<script>")) {
@@ -115,10 +115,18 @@ class SmartLessonCatalogTest {
         assertTrue(runCatching { buildYoutubeEmbedHtml("2i9_HZErHMU", 10, 5) }.isFailure)
     }
 
-    @Test fun ambiguousSkillsFallBackToGeneralLesson() {
+    @Test fun ambiguousSkillsNeverAutoplayGeneralLesson() {
         val videos = SmartLessonCatalog.find(question("Doğrusal Hareket", "konum ve yer değiştirme"),
             "TYT", "Fizik", "")
-        assertEquals(0, videos.first().startSeconds)
-        assertTrue(videos.first().outcomeId.isBlank())
+        assertTrue(videos.isEmpty())
+    }
+
+    @Test fun exactSkillWinsOverPreferredTeachersGeneralVideo() {
+        val videos = SmartLessonCatalog.find(
+            question("Türev Alma Kuralları", "zincir kuralı"),
+            "AYT", "Matematik", "")
+        val selected = SmartLessonCatalog.select(videos, "Rehber Matematik")
+        assertEquals("chain-rule", selected?.outcomeId)
+        assertEquals("Bıyıklı Matematik", selected?.teacher)
     }
 }

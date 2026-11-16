@@ -1065,6 +1065,56 @@ private fun LiveSolvingBoardContent(
     var activeSolutionModalQuestion by remember { mutableStateOf<YksQuestion?>(null) }
     var activeSolutionText by remember { mutableStateOf("") }
     var isGeneratingSolution by remember { mutableStateOf(false) }
+    var solutionLoadFailed by remember { mutableStateOf(false) }
+    var solutionRequestVersion by remember { mutableIntStateOf(0) }
+    val solutionRequestGate = remember(session.testItem.id) { StoredSolutionRequestGate() }
+    fun dismissStoredSolution() {
+        solutionRequestGate.cancel()
+        activeSolutionModalQuestion = null
+        isGeneratingSolution = false
+    }
+    fun openStoredSolution(question: YksQuestion, forceReload: Boolean = false) {
+        solutionRequestGate.cancel()
+        activeSolutionModalQuestion = question
+        activeSolutionText = ""
+        solutionLoadFailed = false
+        // Stored explanations are already on the question; opening one needs no model or loading fiction.
+        if (!forceReload && StoredQuestionSolution.from(question, "").hasSolution) {
+            activeSolutionText = question.stepByStepSolution
+            isGeneratingSolution = false
+            return
+        }
+        isGeneratingSolution = true
+        solutionRequestVersion++
+        val token = solutionRequestGate.begin(question.id)
+        runCatching {
+            onGenerateSolutionForQuestion(question) { text ->
+                if (solutionRequestGate.accepts(token, question.id) &&
+                    activeSolutionModalQuestion?.id == question.id) {
+                    solutionRequestGate.cancel()
+                    activeSolutionText = text
+                    isGeneratingSolution = false
+                }
+            }
+        }.onFailure {
+            if (solutionRequestGate.accepts(token, question.id)) {
+                solutionRequestGate.cancel()
+                isGeneratingSolution = false
+                solutionLoadFailed = true
+            }
+        }
+    }
+    LaunchedEffect(activeSolutionModalQuestion?.id, solutionRequestVersion, isGeneratingSolution) {
+        if (activeSolutionModalQuestion != null && isGeneratingSolution) {
+            delay(20000)
+            solutionRequestGate.cancel()
+            isGeneratingSolution = false
+            solutionLoadFailed = true
+        }
+    }
+    DisposableEffect(solutionRequestGate) {
+        onDispose { solutionRequestGate.cancel() }
+    }
     var activeTopicLectureQuestion by remember { mutableStateOf<YksQuestion?>(null) }
 
     // Zoom & Pan state for the book page
@@ -1080,6 +1130,7 @@ private fun LiveSolvingBoardContent(
 
     BackHandler {
         when {
+            activeSolutionModalQuestion != null -> dismissStoredSolution()
             activeTopicLectureQuestion != null -> {
                 activeTopicLectureQuestion = null
             }
@@ -1201,13 +1252,7 @@ private fun LiveSolvingBoardContent(
             onStrengthenFromFrequency = onStrengthenFromFrequency,
             onWatchQuestionSolution = { q ->
                 showFullReportCardScreen = false
-                activeSolutionModalQuestion = q
-                activeSolutionText = ""
-                isGeneratingSolution = true
-                onGenerateSolutionForQuestion(q) { text ->
-                    activeSolutionText = text
-                    isGeneratingSolution = false
-                }
+                openStoredSolution(q)
             },
             onOpenTwinForQuestion = { q ->
                 showFullReportCardScreen = false
@@ -1621,13 +1666,7 @@ private fun LiveSolvingBoardContent(
                                 },
                                 onOpenSolutionModal = { q ->
                                     openThreeDotQuestionNumber = null
-                                    activeSolutionModalQuestion = q
-                                    activeSolutionText = ""
-                                    isGeneratingSolution = true
-                                    onGenerateSolutionForQuestion(q) { text ->
-                                        activeSolutionText = text
-                                        isGeneratingSolution = false
-                                    }
+                                    openStoredSolution(q)
                                 },
                                 onOpenTwinScreen = { q ->
                                     openThreeDotQuestionNumber = null
@@ -1707,13 +1746,7 @@ private fun LiveSolvingBoardContent(
                                 },
                                 onOpenSolutionModal = { q ->
                                     openThreeDotQuestionNumber = null
-                                    activeSolutionModalQuestion = q
-                                    activeSolutionText = ""
-                                    isGeneratingSolution = true
-                                    onGenerateSolutionForQuestion(q) { text ->
-                                        activeSolutionText = text
-                                        isGeneratingSolution = false
-                                    }
+                                    openStoredSolution(q)
                                 },
                                 onOpenTwinScreen = { q ->
                                     openThreeDotQuestionNumber = null
@@ -1919,230 +1952,15 @@ private fun LiveSolvingBoardContent(
     // =========================================================================
     val solutionQ = activeSolutionModalQuestion
     if (solutionQ != null) {
-        Dialog(onDismissRequest = { activeSolutionModalQuestion = null }) {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = Color.White,
-                shadowElevation = 12.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(min = 380.dp, max = 600.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = Color(0xFF3475F5),
-                                modifier = Modifier.size(38.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.PlayCircleFilled,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                            }
-                            Column {
-                                Text(
-                                    text = "${solutionQ.number}. Soru • Adım Adım Çözüm",
-                                    color = Color(0xFF25215D),
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 17.sp
-                                )
-                                Text(
-                                    text = if (solutionQ.answerKeyVerified) "${solutionQ.topicHeader} • Doğru Yanıt: ${solutionQ.correctOption}"
-                                    else "${solutionQ.topicHeader} • Cevap anahtarı doğrulanmadı",
-                                    color = if (solutionQ.answerKeyVerified) Color(0xFF16A34A) else Color(0xFFB45309),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.5.sp
-                                )
-                            }
-                        }
-                        IconButton(onClick = { activeSolutionModalQuestion = null }) {
-                            Icon(Icons.Default.Close, contentDescription = "Kapat", tint = Color(0xFF64748B))
-                        }
-                    }
-
-                    HorizontalDivider(color = Color(0xFFE2E8F0))
-
-                    if (isGeneratingSolution) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 28.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            CircularProgressIndicator(color = Color(0xFF3475F5))
-                            Text(
-                                text = "Soru görseli inceleniyor ve 3 aşamalı adım adım çözüm hazırlanıyor...",
-                                color = Color(0xFF475569),
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 13.sp
-                            )
-                        }
-                    } else {
-                        val rawSol = activeSolutionText.ifBlank {
-                            solutionQ.stepByStepSolution.ifBlank {
-                                "Cevap anahtarına göre doğru yanıt ${solutionQ.correctOption} seçeneğidir."
-                            }
-                        }
-                        val structuredSol = remember(rawSol) {
-                            com.example.data.AiStructuredSolution.fromFormattedText(rawSol)
-                        }
-                        val solutionQuestionBitmap = StudioImageAndPdfEngine.rememberGuaranteedQuestionBitmap(solutionQ)
-
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 460.dp)
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            // Temizlenmiş Soru Görseli Üst Önizleme Kartı
-                            if (solutionQuestionBitmap != null) {
-                                Surface(
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = Color.White,
-                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    val aspect = (solutionQuestionBitmap.width.toFloat() / solutionQuestionBitmap.height.toFloat().coerceAtLeast(1f))
-                                        .coerceIn(0.6f, 2.8f)
-                                    Image(
-                                        bitmap = solutionQuestionBitmap.asImageBitmap(),
-                                        contentDescription = "Temizlenmiş Soru Görseli",
-                                        contentScale = ContentScale.Fit,
-                                        alignment = Alignment.TopStart,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .heightIn(max = 175.dp)
-                                            .aspectRatio(aspect)
-                                            .padding(8.dp)
-                                    )
-                                }
-                            }
-
-                            // 1. AŞAMA: Kritik Bilgi & Teorem
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFFEFF6FF),
-                                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Text(
-                                        text = "1. Kritik Bilgi & Teorem",
-                                        color = Color(0xFF1D4ED8),
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 13.5.sp
-                                    )
-                                    Text(
-                                        text = structuredSol.kritikBilgiTeorem.ifBlank {
-                                            "${solutionQ.topicHeader} kazanımına ait temel bağıntı ve sınır koşulları uygulanır."
-                                        },
-                                        color = Color(0xFF1E293B),
-                                        fontSize = 13.sp,
-                                        lineHeight = 19.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-
-                            // 2. AŞAMA: Adım Adım İşlem
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFFF0FDF4),
-                                border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        text = "2. Adım Adım İşlem",
-                                        color = Color(0xFF15803D),
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 13.5.sp
-                                    )
-                                    Text(
-                                        text = structuredSol.adimAdimCozum.ifBlank { rawSol },
-                                        color = Color(0xFF1E293B),
-                                        fontSize = 13.5.sp,
-                                        lineHeight = 20.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-
-                            // 3. AŞAMA: ÖSYM Tuzak Notu
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFFFFF7ED),
-                                border = BorderStroke(1.dp, Color(0xFFFED7AA)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Text(
-                                        text = "3. ÖSYM Tuzak Notu",
-                                        color = Color(0xFFEA580C),
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 13.5.sp
-                                    )
-                                    Text(
-                                        text = structuredSol.osymTuzakNotu.ifBlank {
-                                            "Öncül şartlarına, işaret değişimlerine ve birim dönüşümlerine dikkat edilmelidir."
-                                        },
-                                        color = Color(0xFF334155),
-                                        fontSize = 13.sp,
-                                        lineHeight = 19.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Button(
-                            onClick = { activeSolutionModalQuestion = null },
-                            shape = RoundedCornerShape(50),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3475F5))
-                        ) {
-                            Text("Anladım, Kapat", fontWeight = FontWeight.ExtraBold)
-                        }
-                    }
-                }
-            }
-        }
+        QuestionSolutionDialog(
+            question = solutionQ,
+            returnedText = activeSolutionText,
+            isLoading = isGeneratingSolution,
+            loadFailed = solutionLoadFailed,
+            onRetry = { openStoredSolution(solutionQ, forceReload = true) },
+            onDismiss = ::dismissStoredSolution
+        )
     }
-
     // v1.4.8: The old placeholder summary is replaced by an embedded, verified
     // teacher lesson. The pager state stays in place while the dialog is open.
     activeTopicLectureQuestion?.let { lectureQuestion ->

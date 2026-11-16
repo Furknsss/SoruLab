@@ -208,6 +208,23 @@ data class CustomQuestionRecord(
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 ) {
+    @get:Exclude
+    val learningOutcomeAssignment: LearningOutcomeAssignment
+        get() = LearningOutcomeCatalog.fromMetadata(parsedMetaMap)
+
+    @get:Exclude
+    val resolvedLearningOutcome: LearningOutcomeAssignment
+        get() {
+            val stored = LearningOutcomeCatalog.validated(subjectId, topicId, learningOutcomeAssignment)
+            if (stored.id.isNotBlank() || learningOutcomeAssignment.source == "manual") return stored
+            val publisher = LearningOutcomeCatalog.fromLabel(subjectId, topicId, learningOutcome)
+                .takeIf { it.id.isNotBlank() }
+                ?: LearningOutcomeCatalog.fromLabel(subjectId, topicId, questionType)
+            if (publisher.id.isNotBlank() || learningOutcome.isNotBlank() || questionType.isNotBlank())
+                return publisher
+            return LearningOutcomeCatalog.infer(subjectId, topicId, questionText)
+        }
+
     @get:Exclude val imagePath: String get() = croppedImagePath
     @get:Exclude val subject: String get() = subjectName
     @get:Exclude val topic: String get() = topicName
@@ -337,7 +354,8 @@ data class CustomQuestionRecord(
             isInKumbara: Boolean = false,
             fiveTierDifficulty: String = "",
             sourceTestId: String = "",
-            osymType: Boolean = false
+            osymType: Boolean = false,
+            learningOutcomeAssignment: LearningOutcomeAssignment = LearningOutcomeAssignment()
         ): String {
             val cleanSol = if (solutionText.startsWith("[META:")) {
                 solutionText.substringAfter("]").trimStart()
@@ -345,6 +363,15 @@ data class CustomQuestionRecord(
                 solutionText.trim()
             }
             val metaParts = buildList {
+                if (learningOutcomeAssignment.id.isNotBlank() || learningOutcomeAssignment.source == "manual") {
+                    fun safe(value: String) = value.replace("|", "").replace("]", "").take(160)
+                    add("outcome=" + safe(learningOutcomeAssignment.id))
+                    add("outcomeName=" + safe(learningOutcomeAssignment.name))
+                    add("outcomeSource=" + safe(learningOutcomeAssignment.source))
+                    add("outcomeConfidence=" + learningOutcomeAssignment.confidence.takeIf { it.isFinite() }
+                        .let { (it ?: 0.0).coerceIn(0.0, 1.0) })
+                }
+
                 if (targetLevel.isNotBlank()) add("level=${targetLevel.replace("|", "").replace("]", "")}")
                 if (fiveTierDifficulty.isNotBlank()) add("diff5=${fiveTierDifficulty.replace("|", "").replace("]", "")}")
                 if (osymType) add("osym=1")
@@ -665,6 +692,10 @@ data class YksQuestion(
     // analytics may label keyword-based suggestions separately.
     val learningOutcome: String = "",
     val questionType: String = "",
+    val learningOutcomeId: String = "",
+    val learningOutcomeName: String = "",
+    val learningOutcomeSource: String = "",
+    val learningOutcomeConfidence: Double = 0.0,
     val analyticsText: String = "",
     val isOsymType: Boolean = false
 ) {

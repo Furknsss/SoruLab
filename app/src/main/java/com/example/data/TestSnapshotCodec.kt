@@ -40,6 +40,10 @@ object TestSnapshotCodec {
                     .put("sourcePrintedQuestionNumber", question.sourcePrintedQuestionNumber)
                     .put("subject", question.subject)
                     .put("learningOutcome", question.learningOutcome)
+                    .put("learningOutcomeId", question.learningOutcomeId)
+                    .put("learningOutcomeName", question.learningOutcomeName)
+                    .put("learningOutcomeSource", question.learningOutcomeSource)
+                    .put("learningOutcomeConfidence", question.learningOutcomeConfidence.takeIf { it.isFinite() } ?: 0.0)
                     .put("questionType", question.questionType)
                     .put("analyticsText", question.analyticsText)
                     .put("imageBase64", question.imageBase64.takeIf { includeImageFallback }.orEmpty())
@@ -118,6 +122,11 @@ object TestSnapshotCodec {
                 sourcePrintedQuestionNumber = item.optInt("sourcePrintedQuestionNumber", 0),
                 subject = item.optString("subject"),
                 learningOutcome = item.optString("learningOutcome"),
+                learningOutcomeId = item.optString("learningOutcomeId"),
+                learningOutcomeName = item.optString("learningOutcomeName"),
+                learningOutcomeSource = item.optString("learningOutcomeSource"),
+                learningOutcomeConfidence = item.optDouble("learningOutcomeConfidence", 0.0)
+                    .takeIf { it.isFinite() } ?: 0.0,
                 questionType = item.optString("questionType"),
                 analyticsText = item.optString("analyticsText"),
                 imageBase64 = item.optString("imageBase64"),

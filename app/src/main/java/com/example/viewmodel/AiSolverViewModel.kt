@@ -6,6 +6,8 @@ import android.net.Uri
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.LearningOutcomeAssignment
+import com.example.data.LearningOutcomeCatalog
 import com.example.data.AiStructuredSolution
 import com.example.data.DifficultyLevel
 import com.example.data.SoruLabCatalog
@@ -122,6 +124,10 @@ data class ExtractedPdfQuestionItem(
     val pageIndex: Int = -1,
     val questionNumberInTest: Int = 0,
     val sourceTestId: String = "",
+    val learningOutcomeId: String = "",
+    val learningOutcomeName: String = "",
+    val learningOutcomeSource: String = "",
+    val learningOutcomeConfidence: Double = 0.0,
     val learningOutcome: String = "",
     val questionType: String = "",
     /** Printed ÖSYM-style marker; independent of the four difficulty labels. */
@@ -142,7 +148,8 @@ private data class QuestionOcrClassification(
     val subjectName: String,
     val topicName: String,
     val difficulty: String,
-    val targetLevel: String
+    val targetLevel: String,
+    val outcomeAssignment: LearningOutcomeAssignment = LearningOutcomeAssignment()
 )
 
 private data class PageQuestionCandidate(
@@ -790,7 +797,11 @@ class AiSolverViewModel : ViewModel() {
             com.example.data.DifficultyLevel.ZOR -> "GELISIYORUM"
             com.example.data.DifficultyLevel.COK_ZOR -> "DERECE"
         }
+        val outcomeAssignment = if (matchedSubject != null && topicClassification?.second != null)
+            LearningOutcomeCatalog.infer(matchedSubject.id, topicClassification.second.id, questionText)
+            else LearningOutcomeAssignment()
         return QuestionOcrClassification(
+            outcomeAssignment = outcomeAssignment,
             questionText = questionText,
             examType = matchedSubject?.examType?.name ?: examTypeHint,
             subjectName = matchedSubject?.name ?: subjectNameHint
@@ -1901,6 +1912,10 @@ class AiSolverViewModel : ViewModel() {
                                             examType = classification.examType,
                                             subjectName = classification.subjectName,
                                             topicName = classification.topicName,
+                                            learningOutcomeId = classification.outcomeAssignment.id,
+                                            learningOutcomeName = classification.outcomeAssignment.name,
+                                            learningOutcomeSource = classification.outcomeAssignment.source,
+                                            learningOutcomeConfidence = classification.outcomeAssignment.confidence,
                                             difficulty = classification.difficulty,
                                             targetLevel = classification.targetLevel,
                                             correctOption = verifiedAnswer.orEmpty(),

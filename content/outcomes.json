@@ -1,0 +1,800 @@
+{
+  "schemaVersion": 1,
+  "outcomes": [
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "turev_alma_kurallari",
+      "id": "chain-rule",
+      "name": "Zincir kuralı",
+      "phrases": [
+        "zincir kuralı",
+        "bileşke fonksiyon"
+      ]
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "turev_alma_kurallari",
+      "id": "power-rule",
+      "name": "Kuvvet fonksiyonunun türevi",
+      "phrases": [
+        "kuvvet fonksiyonunun türevi"
+      ]
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "turev_alma_kurallari",
+      "id": "quotient-rule",
+      "name": "Bölümün türevi",
+      "phrases": [
+        "bölümün türevi"
+      ]
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "hareket_tyt",
+      "id": "position",
+      "name": "Konum",
+      "phrases": [
+        "konum"
+      ]
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "hareket_tyt",
+      "id": "displacement",
+      "name": "Yer değiştirme",
+      "phrases": [
+        "yer değiştirme"
+      ]
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "hareket_tyt",
+      "id": "speed",
+      "name": "Sürat",
+      "phrases": [
+        "sürat"
+      ]
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "kimya_bilimi",
+      "id": "symbolic-language",
+      "name": "Kimyanın sembolik dili",
+      "phrases": [
+        "sembolik dil"
+      ]
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "kimya_bilimi",
+      "id": "hazard-signs",
+      "name": "Uyarı işaretleri",
+      "phrases": [
+        "uyarı işaretleri",
+        "güvenlik işaretleri"
+      ]
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_ortak_ozellikleri",
+      "id": "tyt_biyoloji-life-properties",
+      "name": "Canlıların ortak özellikleri",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_temel_bilesenleri",
+      "id": "tyt_biyoloji-inorganic",
+      "name": "İnorganik maddeler",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_temel_bilesenleri",
+      "id": "tyt_biyoloji-carbohydrates",
+      "name": "Karbonhidratlar",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_temel_bilesenleri",
+      "id": "tyt_biyoloji-lipids",
+      "name": "Lipitler",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_temel_bilesenleri",
+      "id": "tyt_biyoloji-proteins",
+      "name": "Proteinler",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_temel_bilesenleri",
+      "id": "tyt_biyoloji-enzymes",
+      "name": "Enzimler",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_temel_bilesenleri",
+      "id": "tyt_biyoloji-nucleic-acids",
+      "name": "Nükleik asitler",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_temel_bilesenleri",
+      "id": "tyt_biyoloji-vitamins-atp",
+      "name": "Vitaminler ve ATP",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "hucre_ve_organeller",
+      "id": "tyt_biyoloji-cell-membrane",
+      "name": "Hücre zarı ve çeperi",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "hucre_ve_organeller",
+      "id": "tyt_biyoloji-cytoplasm",
+      "name": "Sitoplazma",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "hucre_zarindan_madde_gecisi",
+      "id": "tyt_biyoloji-membrane-transport",
+      "name": "Hücre zarından madde geçişleri",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_siniflandirilmasi",
+      "id": "tyt_biyoloji-classification",
+      "name": "Sınıflandırma",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_siniflandirilmasi",
+      "id": "tyt_biyoloji-bacteria-archaea",
+      "name": "Bakteri ve arkeler",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_siniflandirilmasi",
+      "id": "tyt_biyoloji-protists-plants-fungi",
+      "name": "Protista bitkiler ve mantarlar",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_siniflandirilmasi",
+      "id": "tyt_biyoloji-invertebrates",
+      "name": "Omurgasız hayvanlar",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_siniflandirilmasi",
+      "id": "tyt_biyoloji-vertebrates",
+      "name": "Omurgalı hayvanlar",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_siniflandirilmasi",
+      "id": "tyt_biyoloji-viruses",
+      "name": "Virüsler",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "mitoz_ve_eseysiz_ureme",
+      "id": "tyt_biyoloji-mitosis",
+      "name": "Mitoz bölünme",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "mayoz_ve_eseyli_ureme",
+      "id": "tyt_biyoloji-meiosis",
+      "name": "Mayoz bölünme",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "mitoz_ve_eseysiz_ureme",
+      "id": "tyt_biyoloji-asexual-reproduction",
+      "name": "Eşeysiz üreme",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "mayoz_ve_eseyli_ureme",
+      "id": "tyt_biyoloji-sexual-reproduction",
+      "name": "Eşeyli üreme",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "kalitim",
+      "id": "tyt_biyoloji-mendel",
+      "name": "Mendel ilkeleri",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "kalitim",
+      "id": "tyt_biyoloji-crosses",
+      "name": "Monohibrit ve dihibrit çaprazlama",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "kalitim",
+      "id": "tyt_biyoloji-blood-groups",
+      "name": "Eş baskınlık çok alellik kan grupları",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "kalitim",
+      "id": "tyt_biyoloji-sex-linked",
+      "name": "Eşeye bağlı kalıtım",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "kalitim",
+      "id": "tyt_biyoloji-pedigree",
+      "name": "Soyağaçları",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "kalitim",
+      "id": "tyt_biyoloji-mutation-adaptation",
+      "name": "Mutasyon adaptasyon modifikasyon",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "ekosistem_ekolojisi",
+      "id": "tyt_biyoloji-ecosystem",
+      "name": "Ekosistem ekolojisi",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "ekosistem_ekolojisi",
+      "id": "tyt_biyoloji-energy-flow",
+      "name": "Madde ve enerji akışı",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "ekosistem_ekolojisi",
+      "id": "tyt_biyoloji-cycles",
+      "name": "Madde döngüleri",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "guncel_cevre_sorunlari",
+      "id": "tyt_biyoloji-pollution",
+      "name": "Çevre kirliliği ve sürdürülebilirlik",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "doga_ve_insan",
+      "id": "tyt_cografya-geography-fields",
+      "name": "Coğrafyanın bölümleri",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "cografi_konum",
+      "id": "tyt_cografya-geographic-location",
+      "name": "Coğrafi konum",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "harita_bilgisi",
+      "id": "tyt_cografya-maps",
+      "name": "Harita bilgisi",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "atmosfer_ve_iklim",
+      "id": "tyt_cografya-climate-elements",
+      "name": "İklim elemanları",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "atmosfer_ve_iklim",
+      "id": "tyt_cografya-pressure",
+      "name": "Basınç",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "atmosfer_ve_iklim",
+      "id": "tyt_cografya-winds",
+      "name": "Rüzgarlar",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "atmosfer_ve_iklim",
+      "id": "tyt_cografya-humidity",
+      "name": "Nem ve yağış",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "atmosfer_ve_iklim",
+      "id": "tyt_cografya-climate-types",
+      "name": "Büyük iklim tipleri",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "atmosfer_ve_iklim",
+      "id": "tyt_cografya-turkey-climate",
+      "name": "Türkiye iklimi",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "ic_ve_dis_kuvvetler",
+      "id": "tyt_cografya-internal-forces",
+      "name": "İç kuvvetler",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "ic_ve_dis_kuvvetler",
+      "id": "tyt_cografya-external-forces",
+      "name": "Dış kuvvetler",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "nufus_ve_yerlesme",
+      "id": "tyt_cografya-population",
+      "name": "Nüfus",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "ekonomik_faaliyetler",
+      "id": "tyt_cografya-economic-regions",
+      "name": "Ekonomik faaliyet ve bölgeler",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "dogal_afetler",
+      "id": "tyt_cografya-disasters",
+      "name": "Doğal afetler",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "sozcukte_yapi",
+      "id": "tyt_turkce-structure",
+      "name": "Yapı bilgisi",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "ses_bilgisi",
+      "id": "tyt_turkce-phonetics",
+      "name": "Ses bilgisi",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "sifatlar",
+      "id": "tyt_turkce-adjectives",
+      "name": "Sıfat",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "zamirler",
+      "id": "tyt_turkce-pronouns",
+      "name": "Zamir",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "zarflar",
+      "id": "tyt_turkce-adverbs",
+      "name": "Zarf",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "edat_baglac_unlem",
+      "id": "tyt_turkce-prepositions",
+      "name": "Edat",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "edat_baglac_unlem",
+      "id": "tyt_turkce-conjunctions",
+      "name": "Bağlaç",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "fiilimsiler",
+      "id": "tyt_turkce-verbals",
+      "name": "Fiilimsiler",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "cumlenin_ogeleri",
+      "id": "tyt_turkce-sentence-elements",
+      "name": "Cümlenin ögeleri",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "cumle_turleri",
+      "id": "tyt_turkce-sentence-types",
+      "name": "Cümle türleri",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "yazim_kurallari",
+      "id": "tyt_turkce-spelling",
+      "name": "Yazım kuralları",
+      "phrases": []
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "noktalama_isaretleri",
+      "id": "tyt_turkce-punctuation",
+      "name": "Noktalama işaretleri",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sinir_sistemi",
+      "id": "ayt_biyoloji-neuron-structure",
+      "name": "Sinir dokusu",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sinir_sistemi",
+      "id": "ayt_biyoloji-impulse",
+      "name": "İmpuls iletimi",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sinir_sistemi",
+      "id": "ayt_biyoloji-brain",
+      "name": "Beyin",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sinir_sistemi",
+      "id": "ayt_biyoloji-spinal-cord",
+      "name": "Omurilik",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "endokrin_sistem",
+      "id": "ayt_biyoloji-pituitary",
+      "name": "Hipotalamus hipofiz",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "endokrin_sistem",
+      "id": "ayt_biyoloji-thyroid-pancreas",
+      "name": "Tiroit paratiroit pankreas",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "endokrin_sistem",
+      "id": "ayt_biyoloji-adrenal-gonads",
+      "name": "Böbrek üstü ve eşeysel bezler",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "duyu_organlari",
+      "id": "ayt_biyoloji-eye",
+      "name": "Göz",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "duyu_organlari",
+      "id": "ayt_biyoloji-ear",
+      "name": "Kulak",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "duyu_organlari",
+      "id": "ayt_biyoloji-nose-skin-tongue",
+      "name": "Burun deri dil",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "destek_ve_hareket",
+      "id": "ayt_biyoloji-skeleton",
+      "name": "Kemik kıkırdak eklem",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "destek_ve_hareket",
+      "id": "ayt_biyoloji-muscle",
+      "name": "Kas yapısı",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "destek_ve_hareket",
+      "id": "ayt_biyoloji-muscle-contraction",
+      "name": "Kasların çalışması",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sindirim_sistemi",
+      "id": "ayt_biyoloji-digestive-organs",
+      "name": "Sindirim organları",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sindirim_sistemi",
+      "id": "ayt_biyoloji-absorption",
+      "name": "Sindirim ve emilim",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "id": "ayt_biyoloji-heart",
+      "name": "Kalp",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "id": "ayt_biyoloji-vessels",
+      "name": "Kan damarları",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "id": "ayt_biyoloji-starling",
+      "name": "Starling hipotezi",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "id": "ayt_biyoloji-blood",
+      "name": "Kan",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "id": "ayt_biyoloji-lymph",
+      "name": "Lenf dolaşımı",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "id": "ayt_biyoloji-immunity",
+      "name": "Bağışıklık",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "solunum_sistemi",
+      "id": "ayt_biyoloji-respiratory-system",
+      "name": "Solunum sistemi",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "uriner_sistem",
+      "id": "ayt_biyoloji-urinary-system",
+      "name": "Üriner sistem",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "uriner_sistem",
+      "id": "ayt_biyoloji-nephron",
+      "name": "Nefron",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "ureme_sistemi_embriyonik",
+      "id": "ayt_biyoloji-human-reproduction",
+      "name": "İnsanda üreme",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "ureme_sistemi_embriyonik",
+      "id": "ayt_biyoloji-embryonic",
+      "name": "Menstrüal döngü ve embriyo",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "komunite_ve_populasyon",
+      "id": "ayt_biyoloji-community",
+      "name": "Komünite",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "komunite_ve_populasyon",
+      "id": "ayt_biyoloji-population",
+      "name": "Popülasyon",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "genden_proteine",
+      "id": "ayt_biyoloji-nucleic-structure",
+      "name": "Nükleik asit yapısı",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "genden_proteine",
+      "id": "ayt_biyoloji-replication",
+      "name": "Replikasyon",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "genden_proteine",
+      "id": "ayt_biyoloji-protein-synthesis",
+      "name": "Protein sentezi",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "genden_proteine",
+      "id": "ayt_biyoloji-biotechnology",
+      "name": "Biyoteknoloji",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "id": "ayt_biyoloji-phosphorylation",
+      "name": "Fosforilasyon",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "id": "ayt_biyoloji-photosynthesis",
+      "name": "Fotosentez",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "id": "ayt_biyoloji-photosynthesis-reactions",
+      "name": "Fotosentez tepkimeleri",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "id": "ayt_biyoloji-chemosynthesis",
+      "name": "Kemosentez",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "id": "ayt_biyoloji-aerobic-respiration",
+      "name": "Oksijenli solunum",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "id": "ayt_biyoloji-fermentation",
+      "name": "Fermantasyon",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "id": "ayt_biyoloji-plant-tissues",
+      "name": "Bitkisel dokular",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "id": "ayt_biyoloji-plant-structure",
+      "name": "Bitki yapısı",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "id": "ayt_biyoloji-plant-growth",
+      "name": "Bitkilerde büyüme",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "id": "ayt_biyoloji-plant-hormones",
+      "name": "Bitki hormonları",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "id": "ayt_biyoloji-plant-movement",
+      "name": "Bitki hareketleri",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "id": "ayt_biyoloji-plant-transport",
+      "name": "Bitkilerde taşıma",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "id": "ayt_biyoloji-plant-reproduction",
+      "name": "Bitkilerde üreme",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilar_ve_cevre",
+      "id": "ayt_biyoloji-organisms-environment",
+      "name": "Canlılar ve çevre",
+      "phrases": []
+    }
+  ]
+}

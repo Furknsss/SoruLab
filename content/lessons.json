@@ -185,6 +185,1757 @@
         "sourceUrl": "https://www.youtube.com/watch?v=ytxYAiyYltc",
         "outcomeId": "hazard-signs"
       }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_ortak_ozellikleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Canlıların ortak özellikleri",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 165,
+        "endSeconds": 2379,
+        "detail": "Canlıların ortak özellikleri",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 02:45–39:39",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-life-properties"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_temel_bilesenleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "İnorganik maddeler",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 2379,
+        "endSeconds": 4615,
+        "detail": "İnorganik maddeler",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 39:39–01:16:55",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-inorganic"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_temel_bilesenleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Karbonhidratlar",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 4615,
+        "endSeconds": 6241,
+        "detail": "Karbonhidratlar",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 01:16:55–01:44:01",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-carbohydrates"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_temel_bilesenleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Lipitler",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 6241,
+        "endSeconds": 7586,
+        "detail": "Lipitler",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 01:44:01–02:06:26",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-lipids"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_temel_bilesenleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Proteinler",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 7586,
+        "endSeconds": 8407,
+        "detail": "Proteinler",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 02:06:26–02:20:07",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-proteins"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_temel_bilesenleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Enzimler",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 8407,
+        "endSeconds": 10477,
+        "detail": "Enzimler",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 02:20:07–02:54:37",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-enzymes"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_temel_bilesenleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Nükleik asitler",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 10477,
+        "endSeconds": 12371,
+        "detail": "Nükleik asitler",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 02:54:37–03:26:11",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-nucleic-acids"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_temel_bilesenleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Vitaminler ve ATP",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 12371,
+        "endSeconds": 13953,
+        "detail": "Vitaminler ve ATP",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 03:26:11–03:52:33",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-vitamins-atp"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "hucre_ve_organeller",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Hücre zarı ve çeperi",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 13953,
+        "endSeconds": 15688,
+        "detail": "Hücre zarı ve çeperi",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 03:52:33–04:21:28",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-cell-membrane"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "hucre_ve_organeller",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Sitoplazma",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 15688,
+        "endSeconds": 17770,
+        "detail": "Sitoplazma",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 04:21:28–04:56:10",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-cytoplasm"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "hucre_zarindan_madde_gecisi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Hücre zarından madde geçişleri",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 19696,
+        "endSeconds": 23149,
+        "detail": "Hücre zarından madde geçişleri",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 05:28:16–06:25:49",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-membrane-transport"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_siniflandirilmasi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Sınıflandırma",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 24868,
+        "endSeconds": 26612,
+        "detail": "Sınıflandırma",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 06:54:28–07:23:32",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-classification"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_siniflandirilmasi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Bakteri ve arkeler",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 26612,
+        "endSeconds": 28459,
+        "detail": "Bakteri ve arkeler",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 07:23:32–07:54:19",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-bacteria-archaea"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_siniflandirilmasi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Protista bitkiler ve mantarlar",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 28459,
+        "endSeconds": 30585,
+        "detail": "Protista bitkiler ve mantarlar",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 07:54:19–08:29:45",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-protists-plants-fungi"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_siniflandirilmasi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Omurgasız hayvanlar",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 30585,
+        "endSeconds": 32729,
+        "detail": "Omurgasız hayvanlar",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 08:29:45–09:05:29",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-invertebrates"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_siniflandirilmasi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Omurgalı hayvanlar",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 32729,
+        "endSeconds": 35407,
+        "detail": "Omurgalı hayvanlar",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 09:05:29–09:50:07",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-vertebrates"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_siniflandirilmasi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Virüsler",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 35407,
+        "endSeconds": 36824,
+        "detail": "Virüsler",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 09:50:07–10:13:44",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-viruses"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "mitoz_ve_eseysiz_ureme",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Mitoz bölünme",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 36824,
+        "endSeconds": 39958,
+        "detail": "Mitoz bölünme",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 10:13:44–11:05:58",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-mitosis"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "mayoz_ve_eseyli_ureme",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Mayoz bölünme",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 39958,
+        "endSeconds": 42461,
+        "detail": "Mayoz bölünme",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 11:05:58–11:47:41",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-meiosis"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "mitoz_ve_eseysiz_ureme",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Eşeysiz üreme",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 42461,
+        "endSeconds": 44891,
+        "detail": "Eşeysiz üreme",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 11:47:41–12:28:11",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-asexual-reproduction"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "mayoz_ve_eseyli_ureme",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Eşeyli üreme",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 44891,
+        "endSeconds": 45974,
+        "detail": "Eşeyli üreme",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 12:28:11–12:46:14",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-sexual-reproduction"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "kalitim",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Mendel ilkeleri",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 45974,
+        "endSeconds": 47098,
+        "detail": "Mendel ilkeleri",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 12:46:14–13:04:58",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-mendel"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "kalitim",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Monohibrit ve dihibrit çaprazlama",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 47098,
+        "endSeconds": 50734,
+        "detail": "Monohibrit ve dihibrit çaprazlama",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 13:04:58–14:05:34",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-crosses"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "kalitim",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Eş baskınlık çok alellik kan grupları",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 50734,
+        "endSeconds": 52737,
+        "detail": "Eş baskınlık çok alellik kan grupları",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 14:05:34–14:38:57",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-blood-groups"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "kalitim",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Eşeye bağlı kalıtım",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 52737,
+        "endSeconds": 54062,
+        "detail": "Eşeye bağlı kalıtım",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 14:38:57–15:01:02",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-sex-linked"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "kalitim",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Soyağaçları",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 54062,
+        "endSeconds": 56996,
+        "detail": "Soyağaçları",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 15:01:02–15:49:56",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-pedigree"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "kalitim",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Mutasyon adaptasyon modifikasyon",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 56996,
+        "endSeconds": 58432,
+        "detail": "Mutasyon adaptasyon modifikasyon",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 15:49:56–16:13:52",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-mutation-adaptation"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "ekosistem_ekolojisi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Ekosistem ekolojisi",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 58432,
+        "endSeconds": 60391,
+        "detail": "Ekosistem ekolojisi",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 16:13:52–16:46:31",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-ecosystem"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "ekosistem_ekolojisi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Madde ve enerji akışı",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 60391,
+        "endSeconds": 62225,
+        "detail": "Madde ve enerji akışı",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 16:46:31–17:17:05",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-energy-flow"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "ekosistem_ekolojisi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Madde döngüleri",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 62225,
+        "endSeconds": 63053,
+        "detail": "Madde döngüleri",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 17:17:05–17:30:53",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-cycles"
+      }
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "guncel_cevre_sorunlari",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Çevre kirliliği ve sürdürülebilirlik",
+        "videoId": "35lqUJGwj3Y",
+        "startSeconds": 63053,
+        "endSeconds": null,
+        "detail": "Çevre kirliliği ve sürdürülebilirlik",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 17:30:53",
+        "sourceUrl": "https://www.youtube.com/watch?v=35lqUJGwj3Y",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_biyoloji-pollution"
+      }
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "doga_ve_insan",
+      "phrases": [],
+      "video": {
+        "teacher": "Yusuf Mert Arslan",
+        "title": "Coğrafyanın bölümleri",
+        "videoId": "TFIuAo7auAU",
+        "startSeconds": 82,
+        "endSeconds": 244,
+        "detail": "Coğrafyanın bölümleri",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 01:22–04:04",
+        "sourceUrl": "https://www.youtube.com/watch?v=TFIuAo7auAU",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_cografya-geography-fields"
+      }
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "cografi_konum",
+      "phrases": [],
+      "video": {
+        "teacher": "Yusuf Mert Arslan",
+        "title": "Coğrafi konum",
+        "videoId": "TFIuAo7auAU",
+        "startSeconds": 244,
+        "endSeconds": 495,
+        "detail": "Coğrafi konum",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 04:04–08:15",
+        "sourceUrl": "https://www.youtube.com/watch?v=TFIuAo7auAU",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_cografya-geographic-location"
+      }
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "harita_bilgisi",
+      "phrases": [],
+      "video": {
+        "teacher": "Yusuf Mert Arslan",
+        "title": "Harita bilgisi",
+        "videoId": "TFIuAo7auAU",
+        "startSeconds": 495,
+        "endSeconds": 830,
+        "detail": "Harita bilgisi",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 08:15–13:50",
+        "sourceUrl": "https://www.youtube.com/watch?v=TFIuAo7auAU",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_cografya-maps"
+      }
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "atmosfer_ve_iklim",
+      "phrases": [],
+      "video": {
+        "teacher": "Yusuf Mert Arslan",
+        "title": "İklim elemanları",
+        "videoId": "TFIuAo7auAU",
+        "startSeconds": 830,
+        "endSeconds": 925,
+        "detail": "İklim elemanları",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 13:50–15:25",
+        "sourceUrl": "https://www.youtube.com/watch?v=TFIuAo7auAU",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_cografya-climate-elements"
+      }
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "atmosfer_ve_iklim",
+      "phrases": [],
+      "video": {
+        "teacher": "Yusuf Mert Arslan",
+        "title": "Basınç",
+        "videoId": "TFIuAo7auAU",
+        "startSeconds": 925,
+        "endSeconds": 1057,
+        "detail": "Basınç",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 15:25–17:37",
+        "sourceUrl": "https://www.youtube.com/watch?v=TFIuAo7auAU",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_cografya-pressure"
+      }
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "atmosfer_ve_iklim",
+      "phrases": [],
+      "video": {
+        "teacher": "Yusuf Mert Arslan",
+        "title": "Rüzgarlar",
+        "videoId": "TFIuAo7auAU",
+        "startSeconds": 1057,
+        "endSeconds": 1275,
+        "detail": "Rüzgarlar",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 17:37–21:15",
+        "sourceUrl": "https://www.youtube.com/watch?v=TFIuAo7auAU",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_cografya-winds"
+      }
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "atmosfer_ve_iklim",
+      "phrases": [],
+      "video": {
+        "teacher": "Yusuf Mert Arslan",
+        "title": "Nem ve yağış",
+        "videoId": "TFIuAo7auAU",
+        "startSeconds": 1275,
+        "endSeconds": 1471,
+        "detail": "Nem ve yağış",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 21:15–24:31",
+        "sourceUrl": "https://www.youtube.com/watch?v=TFIuAo7auAU",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_cografya-humidity"
+      }
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "atmosfer_ve_iklim",
+      "phrases": [],
+      "video": {
+        "teacher": "Yusuf Mert Arslan",
+        "title": "Büyük iklim tipleri",
+        "videoId": "TFIuAo7auAU",
+        "startSeconds": 1471,
+        "endSeconds": 1915,
+        "detail": "Büyük iklim tipleri",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 24:31–31:55",
+        "sourceUrl": "https://www.youtube.com/watch?v=TFIuAo7auAU",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_cografya-climate-types"
+      }
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "atmosfer_ve_iklim",
+      "phrases": [],
+      "video": {
+        "teacher": "Yusuf Mert Arslan",
+        "title": "Türkiye iklimi",
+        "videoId": "TFIuAo7auAU",
+        "startSeconds": 1915,
+        "endSeconds": 2000,
+        "detail": "Türkiye iklimi",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 31:55–33:20",
+        "sourceUrl": "https://www.youtube.com/watch?v=TFIuAo7auAU",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_cografya-turkey-climate"
+      }
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "ic_ve_dis_kuvvetler",
+      "phrases": [],
+      "video": {
+        "teacher": "Yusuf Mert Arslan",
+        "title": "İç kuvvetler",
+        "videoId": "TFIuAo7auAU",
+        "startSeconds": 2000,
+        "endSeconds": 2324,
+        "detail": "İç kuvvetler",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 33:20–38:44",
+        "sourceUrl": "https://www.youtube.com/watch?v=TFIuAo7auAU",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_cografya-internal-forces"
+      }
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "ic_ve_dis_kuvvetler",
+      "phrases": [],
+      "video": {
+        "teacher": "Yusuf Mert Arslan",
+        "title": "Dış kuvvetler",
+        "videoId": "TFIuAo7auAU",
+        "startSeconds": 2324,
+        "endSeconds": 2585,
+        "detail": "Dış kuvvetler",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 38:44–43:05",
+        "sourceUrl": "https://www.youtube.com/watch?v=TFIuAo7auAU",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_cografya-external-forces"
+      }
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "nufus_ve_yerlesme",
+      "phrases": [],
+      "video": {
+        "teacher": "Yusuf Mert Arslan",
+        "title": "Nüfus",
+        "videoId": "TFIuAo7auAU",
+        "startSeconds": 2585,
+        "endSeconds": 2858,
+        "detail": "Nüfus",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 43:05–47:38",
+        "sourceUrl": "https://www.youtube.com/watch?v=TFIuAo7auAU",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_cografya-population"
+      }
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "ekonomik_faaliyetler",
+      "phrases": [],
+      "video": {
+        "teacher": "Yusuf Mert Arslan",
+        "title": "Ekonomik faaliyet ve bölgeler",
+        "videoId": "TFIuAo7auAU",
+        "startSeconds": 2858,
+        "endSeconds": 3007,
+        "detail": "Ekonomik faaliyet ve bölgeler",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 47:38–50:07",
+        "sourceUrl": "https://www.youtube.com/watch?v=TFIuAo7auAU",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_cografya-economic-regions"
+      }
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "dogal_afetler",
+      "phrases": [],
+      "video": {
+        "teacher": "Yusuf Mert Arslan",
+        "title": "Doğal afetler",
+        "videoId": "TFIuAo7auAU",
+        "startSeconds": 3133,
+        "endSeconds": null,
+        "detail": "Doğal afetler",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 52:13",
+        "sourceUrl": "https://www.youtube.com/watch?v=TFIuAo7auAU",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_cografya-disasters"
+      }
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "sozcukte_yapi",
+      "phrases": [],
+      "video": {
+        "teacher": "Türkçe Saati",
+        "title": "Yapı bilgisi",
+        "videoId": "_qgXvwb1Czo",
+        "startSeconds": 703,
+        "endSeconds": 4965,
+        "detail": "Yapı bilgisi",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 00:11:43–01:22:45",
+        "sourceUrl": "https://www.youtube.com/watch?v=_qgXvwb1Czo",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_turkce-structure"
+      }
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "ses_bilgisi",
+      "phrases": [],
+      "video": {
+        "teacher": "Türkçe Saati",
+        "title": "Ses bilgisi",
+        "videoId": "_qgXvwb1Czo",
+        "startSeconds": 4965,
+        "endSeconds": 6659,
+        "detail": "Ses bilgisi",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 01:22:45–01:50:59",
+        "sourceUrl": "https://www.youtube.com/watch?v=_qgXvwb1Czo",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_turkce-phonetics"
+      }
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "sifatlar",
+      "phrases": [],
+      "video": {
+        "teacher": "Türkçe Saati",
+        "title": "Sıfat",
+        "videoId": "_qgXvwb1Czo",
+        "startSeconds": 7709,
+        "endSeconds": 8828,
+        "detail": "Sıfat",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 02:08:29–02:27:08",
+        "sourceUrl": "https://www.youtube.com/watch?v=_qgXvwb1Czo",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_turkce-adjectives"
+      }
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "zamirler",
+      "phrases": [],
+      "video": {
+        "teacher": "Türkçe Saati",
+        "title": "Zamir",
+        "videoId": "_qgXvwb1Czo",
+        "startSeconds": 8828,
+        "endSeconds": 9620,
+        "detail": "Zamir",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 02:27:08–02:40:20",
+        "sourceUrl": "https://www.youtube.com/watch?v=_qgXvwb1Czo",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_turkce-pronouns"
+      }
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "zarflar",
+      "phrases": [],
+      "video": {
+        "teacher": "Türkçe Saati",
+        "title": "Zarf",
+        "videoId": "_qgXvwb1Czo",
+        "startSeconds": 9620,
+        "endSeconds": 10449,
+        "detail": "Zarf",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 02:40:20–02:54:09",
+        "sourceUrl": "https://www.youtube.com/watch?v=_qgXvwb1Czo",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_turkce-adverbs"
+      }
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "edat_baglac_unlem",
+      "phrases": [],
+      "video": {
+        "teacher": "Türkçe Saati",
+        "title": "Edat",
+        "videoId": "_qgXvwb1Czo",
+        "startSeconds": 10449,
+        "endSeconds": 11000,
+        "detail": "Edat",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 02:54:09–03:03:20",
+        "sourceUrl": "https://www.youtube.com/watch?v=_qgXvwb1Czo",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_turkce-prepositions"
+      }
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "edat_baglac_unlem",
+      "phrases": [],
+      "video": {
+        "teacher": "Türkçe Saati",
+        "title": "Bağlaç",
+        "videoId": "_qgXvwb1Czo",
+        "startSeconds": 11000,
+        "endSeconds": 11678,
+        "detail": "Bağlaç",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 03:03:20–03:14:38",
+        "sourceUrl": "https://www.youtube.com/watch?v=_qgXvwb1Czo",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_turkce-conjunctions"
+      }
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "fiilimsiler",
+      "phrases": [],
+      "video": {
+        "teacher": "Türkçe Saati",
+        "title": "Fiilimsiler",
+        "videoId": "_qgXvwb1Czo",
+        "startSeconds": 11678,
+        "endSeconds": 12822,
+        "detail": "Fiilimsiler",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 03:14:38–03:33:42",
+        "sourceUrl": "https://www.youtube.com/watch?v=_qgXvwb1Czo",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_turkce-verbals"
+      }
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "cumlenin_ogeleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Türkçe Saati",
+        "title": "Cümlenin ögeleri",
+        "videoId": "_qgXvwb1Czo",
+        "startSeconds": 12894,
+        "endSeconds": 14760,
+        "detail": "Cümlenin ögeleri",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 03:34:54–04:06:00",
+        "sourceUrl": "https://www.youtube.com/watch?v=_qgXvwb1Czo",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_turkce-sentence-elements"
+      }
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "cumle_turleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Türkçe Saati",
+        "title": "Cümle türleri",
+        "videoId": "_qgXvwb1Czo",
+        "startSeconds": 14760,
+        "endSeconds": 15602,
+        "detail": "Cümle türleri",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 04:06:00–04:20:02",
+        "sourceUrl": "https://www.youtube.com/watch?v=_qgXvwb1Czo",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_turkce-sentence-types"
+      }
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "yazim_kurallari",
+      "phrases": [],
+      "video": {
+        "teacher": "Türkçe Saati",
+        "title": "Yazım kuralları",
+        "videoId": "_qgXvwb1Czo",
+        "startSeconds": 15602,
+        "endSeconds": 20407,
+        "detail": "Yazım kuralları",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 04:20:02–05:40:07",
+        "sourceUrl": "https://www.youtube.com/watch?v=_qgXvwb1Czo",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_turkce-spelling"
+      }
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "noktalama_isaretleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Türkçe Saati",
+        "title": "Noktalama işaretleri",
+        "videoId": "_qgXvwb1Czo",
+        "startSeconds": 20407,
+        "endSeconds": 22881,
+        "detail": "Noktalama işaretleri",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 05:40:07–06:21:21",
+        "sourceUrl": "https://www.youtube.com/watch?v=_qgXvwb1Czo",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "tyt_turkce-punctuation"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sinir_sistemi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Sinir dokusu",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 88,
+        "endSeconds": 1466,
+        "detail": "Sinir dokusu",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 01:28–24:26",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-neuron-structure"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sinir_sistemi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "İmpuls iletimi",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 1466,
+        "endSeconds": 3692,
+        "detail": "İmpuls iletimi",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 24:26–01:01:32",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-impulse"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sinir_sistemi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Beyin",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 3692,
+        "endSeconds": 6180,
+        "detail": "Beyin",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 01:01:32–01:43:00",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-brain"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sinir_sistemi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Omurilik",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 6180,
+        "endSeconds": 7554,
+        "detail": "Omurilik",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 01:43:00–02:05:54",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-spinal-cord"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "endokrin_sistem",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Hipotalamus hipofiz",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 7554,
+        "endSeconds": 9698,
+        "detail": "Hipotalamus hipofiz",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 02:05:54–02:41:38",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-pituitary"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "endokrin_sistem",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Tiroit paratiroit pankreas",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 9698,
+        "endSeconds": 12193,
+        "detail": "Tiroit paratiroit pankreas",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 02:41:38–03:23:13",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-thyroid-pancreas"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "endokrin_sistem",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Böbrek üstü ve eşeysel bezler",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 12193,
+        "endSeconds": 14008,
+        "detail": "Böbrek üstü ve eşeysel bezler",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 03:23:13–03:53:28",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-adrenal-gonads"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "duyu_organlari",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Göz",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 14008,
+        "endSeconds": 15848,
+        "detail": "Göz",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 03:53:28–04:24:08",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-eye"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "duyu_organlari",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Kulak",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 15848,
+        "endSeconds": 17026,
+        "detail": "Kulak",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 04:24:08–04:43:46",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-ear"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "duyu_organlari",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Burun deri dil",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 17026,
+        "endSeconds": 18737,
+        "detail": "Burun deri dil",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 04:43:46–05:12:17",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-nose-skin-tongue"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "destek_ve_hareket",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Kemik kıkırdak eklem",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 18737,
+        "endSeconds": 20310,
+        "detail": "Kemik kıkırdak eklem",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 05:12:17–05:38:30",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-skeleton"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "destek_ve_hareket",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Kas yapısı",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 20310,
+        "endSeconds": 21143,
+        "detail": "Kas yapısı",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 05:38:30–05:52:23",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-muscle"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "destek_ve_hareket",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Kasların çalışması",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 21143,
+        "endSeconds": 22780,
+        "detail": "Kasların çalışması",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 05:52:23–06:19:40",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-muscle-contraction"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sindirim_sistemi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Sindirim organları",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 22780,
+        "endSeconds": 24439,
+        "detail": "Sindirim organları",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 06:19:40–06:47:19",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-digestive-organs"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sindirim_sistemi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Sindirim ve emilim",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 24439,
+        "endSeconds": 26281,
+        "detail": "Sindirim ve emilim",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 06:47:19–07:18:01",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-absorption"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Kalp",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 26281,
+        "endSeconds": 27161,
+        "detail": "Kalp",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 07:18:01–07:32:41",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-heart"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Kan damarları",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 27161,
+        "endSeconds": 28142,
+        "detail": "Kan damarları",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 07:32:41–07:49:02",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-vessels"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Starling hipotezi",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 28142,
+        "endSeconds": 30206,
+        "detail": "Starling hipotezi",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 07:49:02–08:23:26",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-starling"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Kan",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 30206,
+        "endSeconds": 31308,
+        "detail": "Kan",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 08:23:26–08:41:48",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-blood"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Lenf dolaşımı",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 31308,
+        "endSeconds": 32224,
+        "detail": "Lenf dolaşımı",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 08:41:48–08:57:04",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-lymph"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Bağışıklık",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 32224,
+        "endSeconds": 33902,
+        "detail": "Bağışıklık",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 08:57:04–09:25:02",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-immunity"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "solunum_sistemi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Solunum sistemi",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 33902,
+        "endSeconds": 36318,
+        "detail": "Solunum sistemi",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 09:25:02–10:05:18",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-respiratory-system"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "uriner_sistem",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Üriner sistem",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 36318,
+        "endSeconds": 37376,
+        "detail": "Üriner sistem",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 10:05:18–10:22:56",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-urinary-system"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "uriner_sistem",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Nefron",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 37376,
+        "endSeconds": 39750,
+        "detail": "Nefron",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 10:22:56–11:02:30",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-nephron"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "ureme_sistemi_embriyonik",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "İnsanda üreme",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 39750,
+        "endSeconds": 41580,
+        "detail": "İnsanda üreme",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 11:02:30–11:33:00",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-human-reproduction"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "ureme_sistemi_embriyonik",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Menstrüal döngü ve embriyo",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 41580,
+        "endSeconds": 44039,
+        "detail": "Menstrüal döngü ve embriyo",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 11:33:00–12:13:59",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-embryonic"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "komunite_ve_populasyon",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Komünite",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 45470,
+        "endSeconds": 47589,
+        "detail": "Komünite",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 12:37:50–13:13:09",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-community"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "komunite_ve_populasyon",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Popülasyon",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 47589,
+        "endSeconds": 49204,
+        "detail": "Popülasyon",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 13:13:09–13:40:04",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-population"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "genden_proteine",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Nükleik asit yapısı",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 50170,
+        "endSeconds": 51903,
+        "detail": "Nükleik asit yapısı",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 13:56:10–14:25:03",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-nucleic-structure"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "genden_proteine",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Replikasyon",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 51903,
+        "endSeconds": 53622,
+        "detail": "Replikasyon",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 14:25:03–14:53:42",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-replication"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "genden_proteine",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Protein sentezi",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 53622,
+        "endSeconds": 56040,
+        "detail": "Protein sentezi",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 14:53:42–15:34:00",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-protein-synthesis"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "genden_proteine",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Biyoteknoloji",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 56040,
+        "endSeconds": 58555,
+        "detail": "Biyoteknoloji",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 15:34:00–16:15:55",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-biotechnology"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Fosforilasyon",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 58555,
+        "endSeconds": 59524,
+        "detail": "Fosforilasyon",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 16:15:55–16:32:04",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-phosphorylation"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Fotosentez",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 59524,
+        "endSeconds": 61233,
+        "detail": "Fotosentez",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 16:32:04–17:00:33",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-photosynthesis"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Fotosentez tepkimeleri",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 61233,
+        "endSeconds": 63365,
+        "detail": "Fotosentez tepkimeleri",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 17:00:33–17:36:05",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-photosynthesis-reactions"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Kemosentez",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 63365,
+        "endSeconds": 64098,
+        "detail": "Kemosentez",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 17:36:05–17:48:18",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-chemosynthesis"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Oksijenli solunum",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 64098,
+        "endSeconds": 66748,
+        "detail": "Oksijenli solunum",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 17:48:18–18:32:28",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-aerobic-respiration"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Fermantasyon",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 66748,
+        "endSeconds": 68362,
+        "detail": "Fermantasyon",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 18:32:28–18:59:22",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-fermentation"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Bitkisel dokular",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 68362,
+        "endSeconds": 70745,
+        "detail": "Bitkisel dokular",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 18:59:22–19:39:05",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-plant-tissues"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Bitki yapısı",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 70745,
+        "endSeconds": 73222,
+        "detail": "Bitki yapısı",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 19:39:05–20:20:22",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-plant-structure"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Bitkilerde büyüme",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 73222,
+        "endSeconds": 73747,
+        "detail": "Bitkilerde büyüme",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 20:20:22–20:29:07",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-plant-growth"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Bitki hormonları",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 73747,
+        "endSeconds": 74555,
+        "detail": "Bitki hormonları",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 20:29:07–20:42:35",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-plant-hormones"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Bitki hareketleri",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 74555,
+        "endSeconds": 76431,
+        "detail": "Bitki hareketleri",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 20:42:35–21:13:51",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-plant-movement"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Bitkilerde taşıma",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 76431,
+        "endSeconds": 78958,
+        "detail": "Bitkilerde taşıma",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 21:13:51–21:55:58",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-plant-transport"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Bitkilerde üreme",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 78958,
+        "endSeconds": 81107,
+        "detail": "Bitkilerde üreme",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 21:55:58–22:31:47",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-plant-reproduction"
+      }
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilar_ve_cevre",
+      "phrases": [],
+      "video": {
+        "teacher": "Selin Hoca",
+        "title": "Canlılar ve çevre",
+        "videoId": "faBQSFqspi0",
+        "startSeconds": 81107,
+        "endSeconds": null,
+        "detail": "Canlılar ve çevre",
+        "sourceOfTimestamp": "Yayıncı bölüm listesi: 22:31:47",
+        "sourceUrl": "https://www.youtube.com/watch?v=faBQSFqspi0",
+        "reviewedOn": "2026-11-16",
+        "outcomeId": "ayt_biyoloji-organisms-environment"
+      }
     }
   ]
 }

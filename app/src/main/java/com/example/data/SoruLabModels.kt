@@ -759,8 +759,8 @@ object SoruLabCatalog {
             rawSubjectHint
         }
         val isBiologyContext = normalizedSubjectHint.equals("Biyoloji", ignoreCase = true)
-        val isMathContext = normalizedSubjectHint.contains("matematik", ignoreCase = true) ||
-            normalizedSubjectHint.contains("geometri", ignoreCase = true)
+        val isMathContext = normalizedSubjectHint.equals("Matematik", ignoreCase = true) &&
+            examTypeHint.contains("AYT", ignoreCase = true)
         val hasDerivativeSymbol = normalizedText.contains("'") ||
             normalizedText.contains("′") ||
             Regex("""\bd\s*/\s*dx\b""").containsMatchIn(normalizedText) ||
@@ -801,26 +801,16 @@ object SoruLabCatalog {
         }
 
         val preferredName = forcedTopicName.ifBlank { suggestedTopicName.trim() }
-        val preferredExam = if (forcedTopicName.isNotBlank() || examTypeHint.contains("AYT", ignoreCase = true)) ExamType.AYT else ExamType.TYT
-        val preferredSubject = if (forcedTopicName.isNotBlank()) "Matematik" else normalizedSubjectHint
+        val preferredExam = if (examTypeHint.contains("AYT", ignoreCase = true)) ExamType.AYT else ExamType.TYT
+        val preferredSubject = normalizedSubjectHint
 
         val targetSubject = allSubjects.firstOrNull {
             it.examType == preferredExam && it.name.equals(preferredSubject, ignoreCase = true)
-        } ?: allSubjects.firstOrNull {
-            it.examType == preferredExam && it.name.equals(normalizedSubjectHint, ignoreCase = true)
-        } ?: allSubjects.firstOrNull { it.examType == preferredExam }
-            ?: return null
+        } ?: return null
 
         // Ders İzolasyonu: Matematik soruları asla Fizik havuzunda aranamaz;
         // Fizik soruları da Matematik havuzuna karışamaz.
-        val subjectSearchPool = if (preferredSubject.isNotBlank()) {
-            val matched = allSubjects.filter {
-                it.examType == preferredExam && it.name.equals(preferredSubject, ignoreCase = true)
-            }
-            if (matched.isNotEmpty()) matched else listOf(targetSubject)
-        } else {
-            allSubjects.filter { it.examType == preferredExam }
-        }
+        val subjectSearchPool = listOf(targetSubject)
 
         val resultPair: Pair<YksSubject, YksTopic> = if (preferredName.isBlank()) {
             val text = questionText.lowercase()
@@ -849,10 +839,6 @@ object SoruLabCatalog {
 
             if (bestMatch != null) {
                 bestMatch.first to bestMatch.second
-            } else if (isBiologyContext) {
-                targetSubject to (targetSubject.topics.firstOrNull { it.id == "sinir_sistemi" }
-                    ?: targetSubject.topics.firstOrNull()
-                    ?: return null)
             } else {
                 return null
             }
@@ -876,16 +862,12 @@ object SoruLabCatalog {
 
             if (matched != null) {
                 matched
-            } else if (isBiologyContext) {
-                targetSubject to (targetSubject.topics.firstOrNull { it.id == "sinir_sistemi" }
-                    ?: targetSubject.topics.firstOrNull()
-                    ?: return null)
             } else {
                 return null
             }
         }
 
-        return resultPair.takeIf { !isMathContext || it.first.name.equals(preferredSubject, ignoreCase = true) }
+        return resultPair.takeIf { it.first.id == targetSubject.id }
     }
 
     private fun findCatalogTopicByExactName(
@@ -1053,10 +1035,6 @@ object SoruLabCatalog {
 
         val matchedSubject = allSubjects.find {
             it.examType == cleanExam && it.name.equals(cleanSubj, ignoreCase = true)
-        } ?: allSubjects.find {
-            it.name.equals(cleanSubj, ignoreCase = true)
-        } ?: allSubjects.find {
-            it.examType == cleanExam
         } ?: return null
 
         val combinedSearch = "$topicOrQuestionText $fallbackTopicName".trim()
@@ -1181,10 +1159,10 @@ object SoruLabCatalog {
             accentColorHex = 0xFFE06345,
             topics = listOf(
                 topicEntry("temel_kavramlar", "tyt_mat", "Temel Kavramlar", 0, 0xFFE06345, "math"),
-                topicEntry("bolme_bolunebilme", "tyt_mat", "Bölme Bölünebilme / EBOB - EKOK", 0, 0xFFE06345, "math"),
-                topicEntry("rasyonel_sayilar", "tyt_mat", "Rasyonel Sayılar", 0, 0xFFE06345, "math"),
                 topicEntry("sayi_basamaklari", "tyt_mat", "Sayı Basamakları", 0, 0xFFE06345, "math"),
+                topicEntry("bolme_bolunebilme", "tyt_mat", "Bölme ve Bölünebilme", 0, 0xFFE06345, "math"),
                 topicEntry("ebob_ekok", "tyt_mat", "EBOB - EKOK", 0, 0xFFE06345, "math"),
+                topicEntry("rasyonel_sayilar", "tyt_mat", "Rasyonel Sayılar", 0, 0xFFE06345, "math"),
                 topicEntry("ondalik_sayilar", "tyt_mat", "Ondalık Sayılar", 0, 0xFFE05A47, "math"),
                 topicEntry("birinci_dereceden_denklemler", "tyt_mat", "1. Dereceden Denklemler", 0, 0xFFE05A47, "math"),
                 topicEntry("basit_esitsizlikler", "tyt_mat", "Basit Eşitsizlikler", 0, 0xFFE05A47, "math"),
@@ -1505,22 +1483,80 @@ object SoruLabCatalog {
         allTopicsFlat.associateBy { it.id }
     }
 
+    // Only globally unambiguous labels can be resolved without subject context.
+    // E.g. "Polinomlar" belongs to both TYT and AYT and must not be guessed.
     val topicByNormalizedNameMap: Map<String, YksTopic> by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        allTopicsFlat.associateBy { it.name.trim().lowercase() }
+        allTopicsFlat.groupBy { it.name.trim().lowercase() }
+            .filterValues { it.size == 1 }
+            .mapValues { it.value.single() }
+    }
+
+    private val legacyTopicAliases: Map<String, Set<String>> = mapOf(
+        "dairede_alan" to setOf("Dairede Alan", "Dairenin Çevresi ve Alanı"),
+        "noktanin_analitigi" to setOf("Nokta Analitiği"),
+        "dogrunun_analitigi" to setOf("Doğru Analitiği"),
+        "donusum_geometrisi" to setOf("Dönüşümler"),
+        "cemberin_analitigi" to setOf("Çember Analitiği"),
+        "kati_cisimler_ayt" to setOf("Katı Cisimler"),
+        "fonksiyonlar" to setOf("Fonksiyon Uygulamaları"),
+        "cember_daire_tyt" to setOf("Çember ve Daire"),
+        "dortgenler" to setOf("Dörtgenler"),
+        "ucgende_eslik_benzerlik" to setOf("Üçgende Benzerlik", "Üçgende Eşlik")
+    )
+
+    private fun matchesCanonicalTopicName(topic: YksTopic, name: String): Boolean {
+        val trimmed = name.trim()
+        return trimmed.isNotBlank() &&
+            (topic.name.equals(trimmed, ignoreCase = true) ||
+                legacyTopicAliases[topic.id].orEmpty().any { it.equals(trimmed, ignoreCase = true) })
+    }
+
+    /**
+     * Resolve imported legacy records without mixing TYT and AYT.
+     * The precise topic label takes precedence when it names exactly one topic in
+     * the same discipline across exams (e.g. "Üçgende Açılar" -> TYT Geometri,
+     * "Temel Kavramlar" -> TYT Matematik). Otherwise topicId decides.
+     * No first-topic or substring fallback is allowed.
+     */
+    fun resolveTopicForRecord(
+        recordSubjectId: String,
+        recordTopicId: String,
+        recordTopicName: String
+    ): YksTopic? {
+        val declared = allSubjects.firstOrNull { it.id.equals(recordSubjectId, ignoreCase = true) }
+        val idTopic = topicByIdMap[recordTopicId]
+        val disciplineName = declared?.name
+            ?: allSubjects.firstOrNull { subject -> subject.topics.any { it.id == recordTopicId } }?.name
+            ?: return null
+        val candidates = allSubjects
+            .filter { it.name.equals(disciplineName, ignoreCase = true) }
+            .flatMap { it.topics }
+            .filter { matchesCanonicalTopicName(it, recordTopicName) }
+        val preciseName = candidates.singleOrNull()
+        if (preciseName != null) return preciseName
+        if (idTopic != null && allSubjects.any {
+            it.name.equals(disciplineName, ignoreCase = true) &&
+                it.topics.any { topic -> topic.id == idTopic.id }
+        }) return idTopic
+        return candidates.firstOrNull { it.subjectId == declared?.id }
     }
 
     fun resolveTopicFast(topicId: String, topicName: String): YksTopic? {
         if (topicId.isNotBlank()) {
             topicByIdMap[topicId]?.let { return it }
         }
-        val norm = topicName.trim().lowercase()
-        if (norm.isNotBlank()) {
-            topicByNormalizedNameMap[norm]?.let { return it }
-            allTopicsFlat.firstOrNull {
-                norm.contains(it.name.lowercase()) || it.name.lowercase().contains(norm)
-            }?.let { return it }
-        }
-        return null
+        return topicByNormalizedNameMap[topicName.trim().lowercase()]
+    }
+
+    fun resolveTopicInSubject(
+        subjectId: String,
+        topicId: String,
+        topicName: String
+    ): YksTopic? {
+        val subject = allSubjects.firstOrNull { it.id.equals(subjectId, ignoreCase = true) }
+            ?: return null
+        return subject.topics.firstOrNull { it.id.equals(topicId, ignoreCase = true) }
+            ?: subject.topics.firstOrNull { matchesCanonicalTopicName(it, topicName) }
     }
 
     fun subjectNameForTopic(topicName: String): String? {

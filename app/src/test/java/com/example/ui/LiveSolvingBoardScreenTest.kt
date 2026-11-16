@@ -674,6 +674,24 @@ class LiveSolvingBoardScreenTest {
     }
 
     @Test
+    fun questionThreeDotMenuShowsAllThreeStudyActionsAndLectureReturnsToSameQuestion() {
+        showBoard(review = true)
+        compose.onNodeWithTag("three_dot_btn_1").performClick()
+        compose.onNodeWithText("Soru Çözümü").assertIsDisplayed()
+        compose.onNodeWithText("İkiz Soru").assertIsDisplayed()
+        compose.onNodeWithText("Konu Anlatımı").assertIsDisplayed()
+
+        // Test question has no curated video; this verifies the real callback
+        // and the safe fallback rather than launching arbitrary YouTube content.
+        compose.onNodeWithText("Konu Anlatımı").performClick()
+        compose.onNodeWithText("Bu konu için doğrulanmış bir video henüz eklenmemiş.")
+            .assertExists()
+        compose.onNodeWithText("Kapat").performClick()
+        compose.onNodeWithTag("book_question_1").assertExists()
+        compose.onNodeWithTag("three_dot_popover_1").assertDoesNotExist()
+    }
+
+    @Test
     fun twinScreenUsesProductionCallbackAndAllowsRetryAfterFailure() {
         var calls = 0
         showBoard(review = true, onTwinRequested = { _, callback ->

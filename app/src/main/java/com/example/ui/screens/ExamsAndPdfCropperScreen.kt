@@ -52,6 +52,9 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.*
 import com.example.util.StudioImageAndPdfEngine
 import com.example.viewmodel.BatchPdfCropState
+import androidx.compose.foundation.layout.heightIn
+import com.example.data.LearningOutcome
+import com.example.data.LearningOutcomeCatalog
 import com.example.viewmodel.ExtractedPdfQuestionItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -1867,6 +1870,15 @@ fun SoruHavuzuAndPdfStudioView(
                     if (id in excludedPdfCropIds) excludedPdfCropIds - id
                     else excludedPdfCropIds + id
             },
+            onOutcomeChange = { id, outcome ->
+                pendingPdfImport = pendingImport.copy(items = pendingImport.items.map { item ->
+                    if (item.id != id) item else item.copy(
+                        learningOutcomeId = outcome?.id.orEmpty(),
+                        learningOutcomeName = outcome?.name.orEmpty(),
+                        learningOutcomeSource = "manual",
+                        learningOutcomeConfidence = if (outcome == null) 0.0 else 1.0)
+                })
+            },
             onConfirm = {
                 val accepted = pendingImport.items.filterNot { it.id in excludedPdfCropIds }
                 val discarded = pendingImport.items.filter { it.id in excludedPdfCropIds }
@@ -2152,12 +2164,20 @@ private fun PdfImportCropReviewDialog(
     items: List<ExtractedPdfQuestionItem>,
     excludedIds: Set<String>,
     onToggleExclude: (String) -> Unit,
+    onOutcomeChange: (String, LearningOutcome?) -> Unit,
     onConfirm: () -> Unit,
     onCancel: () -> Unit
 ) {
-    var current by remember(items) { mutableIntStateOf(0) }
+    var current by remember { mutableIntStateOf(0) }
+    var showOutcomeChoices by remember { mutableStateOf(false) }
     val item = items[current.coerceIn(0, items.lastIndex)]
     val bitmap = StudioImageAndPdfEngine.rememberCachedBitmap(item.croppedImagePath)
+    val subject = SoruLabCatalog.allSubjects.firstOrNull {
+        it.examType.name == item.examType && it.name == item.subjectName
+    }
+    val topic = subject?.let { SoruLabCatalog.resolveTopicInSubject(it.id, "", item.topicName) }
+    val outcomes = if (subject != null && topic != null)
+        LearningOutcomeCatalog.candidates(subject.id, topic.id) else emptyList()
     val includedCount = items.size - excludedIds.size
     val isExcluded = item.id in excludedIds
 
@@ -2216,6 +2236,28 @@ private fun PdfImportCropReviewDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = if (item.answerKeyMatched) Color(0xFF15803D) else Color(0xFFB45309)
                 )
+                Text(
+                    "Alt kazanım: " + item.learningOutcomeName.ifBlank { "Belirlenemedi" },
+                    style = MaterialTheme.typography.bodySmall
+                )
+                if (outcomes.isNotEmpty()) {
+                    TextButton(onClick = { showOutcomeChoices = !showOutcomeChoices }) {
+                        Text("Alt kazanımı düzelt")
+                    }
+                    if (showOutcomeChoices) {
+                        Column(modifier = Modifier.heightIn(max = 120.dp)
+                            .verticalScroll(rememberScrollState())) {
+                            TextButton(onClick = {
+                                onOutcomeChange(item.id, null); showOutcomeChoices = false
+                            }) { Text("Kesin değil / eşleşmeyi kaldır") }
+                            outcomes.forEach { outcome ->
+                                TextButton(onClick = {
+                                    onOutcomeChange(item.id, outcome); showOutcomeChoices = false
+                                }) { Text(outcome.name) }
+                            }
+                        }
+                    }
+                }
                 OutlinedButton(
                     onClick = { onToggleExclude(item.id) },
                     modifier = Modifier.fillMaxWidth()

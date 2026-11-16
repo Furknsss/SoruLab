@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.data.LearningOutcomeAssignment
+import com.example.data.LearningOutcomeCatalog
 import com.example.data.SoruLabCatalog
 import com.example.data.YksQuestion
 import java.net.URLEncoder
@@ -52,21 +54,19 @@ internal object SmartLessonCatalog {
         val subject = subject(examType, subjectName.ifBlank { question.subject }) ?: return emptyList()
         val topicName = question.topicHeader.ifBlank { fallbackTopic }
         val topic = SoruLabCatalog.resolveTopicInSubject(subject.id, "", topicName) ?: return emptyList()
-        val stem = lessonNormalized(listOf(question.stemTop, question.stemBottom,
-            question.bulletsOrSteps.joinToString(" ")).joinToString(" "))
-        val entries = GeneratedLessonContent.entries.filter {
+        val stored = LearningOutcomeCatalog.validated(subject.id, topic.id,
+            LearningOutcomeAssignment(question.learningOutcomeId, question.learningOutcomeName,
+                question.learningOutcomeSource, question.learningOutcomeConfidence))
+        val outcome = if (question.learningOutcomeId.isNotBlank()) stored
+            else LearningOutcomeCatalog.infer(subject.id, topic.id,
+                listOf(question.stemTop, question.stemBottom,
+                    question.bulletsOrSteps.joinToString(" ")).joinToString(" "))
+        val exact = if (outcome.confidence >= 0.9) outcome.id else ""
+        return GeneratedLessonContent.entries.filter {
             it.subjectId == subject.id && it.topicId == topic.id &&
-                (it.phrases.isEmpty() || it.phrases.any { phrase ->
-                    Regex("(?<![a-z0-9])" + Regex.escape(lessonNormalized(phrase)) + "(?![a-z0-9])")
-                        .containsMatchIn(stem)
-                })
-        }
-        // Multiple skill hints for one teacher are ambiguous. Prefer the general lesson.
-        return entries.groupBy { it.video.teacher }.values.mapNotNull { teacherEntries ->
-            val specific = teacherEntries.filter { it.phrases.isNotEmpty() }
-            if (specific.map { it.video.outcomeId }.distinct().size == 1) specific.first().video
-            else teacherEntries.firstOrNull { it.phrases.isEmpty() }?.video
-        }.sortedByDescending { it.outcomeId.isNotBlank() }
+                (it.video.outcomeId.isBlank() || (exact.isNotBlank() && it.video.outcomeId == exact))
+        }.sortedByDescending { it.video.outcomeId.isNotBlank() }
+            .map { it.video }.distinctBy { it.teacher }
     }
 
     fun select(videos: List<LessonVideo>, preferred: String): LessonVideo? =

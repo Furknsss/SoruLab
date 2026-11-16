@@ -17,6 +17,10 @@ object TestSnapshotCodec {
                     .put("number", question.number)
                     .put("badgeTitle", question.badgeTitle)
                     .put("topicHeader", question.topicHeader)
+                    .put("learningOutcomeId", question.learningOutcomeId)
+                    .put("learningOutcomeName", question.learningOutcomeName)
+                    .put("learningOutcomeSource", question.learningOutcomeSource)
+                    .put("learningOutcomeConfidence", question.learningOutcomeConfidence.takeIf { it.isFinite() } ?: 0.0)
                     .put("publisherStamp", question.publisherStamp)
                     .put("publisherName", question.publisherName)
                     .put("publisherLogoUri", question.publisherLogoUri.takeIf { includeImageFallback }.orEmpty())
@@ -78,6 +82,11 @@ object TestSnapshotCodec {
                 number = item.optInt("number", index + 1),
                 badgeTitle = item.optString("badgeTitle"),
                 topicHeader = item.optString("topicHeader"),
+                learningOutcomeId = item.optString("learningOutcomeId"),
+                learningOutcomeName = item.optString("learningOutcomeName"),
+                learningOutcomeSource = item.optString("learningOutcomeSource"),
+                learningOutcomeConfidence = item.optDouble("learningOutcomeConfidence", 0.0)
+                    .takeIf { it.isFinite() } ?: 0.0,
                 publisherStamp = item.optString("publisherStamp"),
                 publisherName = item.optString("publisherName"),
                 publisherLogoUri = item.optString("publisherLogoUri"),

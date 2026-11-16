@@ -5,6 +5,8 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.LearningOutcomeAssignment
+import com.example.data.LearningOutcomeCatalog
 import com.example.data.AUTOMATIC_TEST_QUESTION_COUNT
 import com.example.data.CustomQuestionRecord
 import com.example.data.DifficultyLevel
@@ -804,6 +806,10 @@ class SoruLabViewModel(
                     sourcePageIndex = source.pageIndex.takeIf { it >= 0 } ?: question.sourcePageIndex,
                     sourcePrintedQuestionNumber = source.questionNumberInBook.takeIf { it > 0 } ?: question.sourcePrintedQuestionNumber,
                     subject = source.subjectName.ifBlank { question.subject },
+                    learningOutcomeId = source.resolvedLearningOutcome.id,
+                    learningOutcomeName = source.resolvedLearningOutcome.name,
+                    learningOutcomeSource = source.resolvedLearningOutcome.source,
+                    learningOutcomeConfidence = source.resolvedLearningOutcome.confidence,
                     imageBase64 = source.imageBase64.ifBlank { question.imageBase64 },
                     pdfFilePath = source.pdfFilePath.ifBlank { question.pdfFilePath },
                     pageIndex = source.pageIndex.takeIf { it >= 0 } ?: question.pageIndex,
@@ -940,6 +946,10 @@ class SoruLabViewModel(
                 sourcePageIndex = custom.pageIndex,
                 sourcePrintedQuestionNumber = custom.questionNumberInBook,
                 subject = custom.subjectName,
+                learningOutcomeId = custom.resolvedLearningOutcome.id,
+                learningOutcomeName = custom.resolvedLearningOutcome.name,
+                learningOutcomeSource = custom.resolvedLearningOutcome.source,
+                learningOutcomeConfidence = custom.resolvedLearningOutcome.confidence,
                 imageBase64 = custom.imageBase64,
                 pdfFilePath = custom.pdfFilePath,
                 pageIndex = custom.pageIndex,
@@ -1072,6 +1082,10 @@ class SoruLabViewModel(
                 sourcePageIndex = custom.pageIndex,
                 sourcePrintedQuestionNumber = custom.questionNumberInBook,
                 subject = custom.subjectName,
+                learningOutcomeId = custom.resolvedLearningOutcome.id,
+                learningOutcomeName = custom.resolvedLearningOutcome.name,
+                learningOutcomeSource = custom.resolvedLearningOutcome.source,
+                learningOutcomeConfidence = custom.resolvedLearningOutcome.confidence,
                 imageBase64 = custom.imageBase64,
                 pdfFilePath = custom.pdfFilePath,
                 pageIndex = custom.pageIndex,
@@ -1617,6 +1631,10 @@ class SoruLabViewModel(
                 sourcePageIndex = record.pageIndex,
                 sourcePrintedQuestionNumber = record.questionNumberInBook,
                 subject = record.subjectName,
+                learningOutcomeId = record.resolvedLearningOutcome.id,
+                learningOutcomeName = record.resolvedLearningOutcome.name,
+                learningOutcomeSource = record.resolvedLearningOutcome.source,
+                learningOutcomeConfidence = record.resolvedLearningOutcome.confidence,
                 imageBase64 = record.imageBase64,
                 pdfFilePath = record.pdfFilePath,
                 pageIndex = record.pageIndex,
@@ -1759,6 +1777,10 @@ class SoruLabViewModel(
                 sourcePageIndex = record.pageIndex,
                 sourcePrintedQuestionNumber = record.questionNumberInBook,
                 subject = record.subjectName,
+                learningOutcomeId = record.resolvedLearningOutcome.id,
+                learningOutcomeName = record.resolvedLearningOutcome.name,
+                learningOutcomeSource = record.resolvedLearningOutcome.source,
+                learningOutcomeConfidence = record.resolvedLearningOutcome.confidence,
                 imageBase64 = record.imageBase64,
                 pdfFilePath = record.pdfFilePath,
                 pageIndex = record.pageIndex,
@@ -2174,7 +2196,11 @@ class SoruLabViewModel(
         answerKeyVerified: Boolean = true,
         questionNumberInBook: Int = 0,
         bookOrTestName: String = "",
-        bookCoverPath: String = ""
+        bookCoverPath: String = "",
+        learningOutcomeId: String = "",
+        learningOutcomeName: String = "",
+        learningOutcomeSource: String = "manual",
+        learningOutcomeConfidence: Double = 1.0
     ) {
         val uid = effectiveUserId() ?: "device_yks_student_tr"
         val requestedSubject = SoruLabCatalog.allSubjects.firstOrNull {
@@ -2245,7 +2271,11 @@ class SoruLabViewModel(
             questionNumberInBook = questionNumberInBook,
             bookOrTestName = bookOrTestName,
             bookCoverPath = bookCoverPath,
-            fiveTierDifficulty = resolvedDifficulty
+            fiveTierDifficulty = resolvedDifficulty,
+            learningOutcome = LearningOutcomeCatalog.validated(subjectId, topicId,
+                LearningOutcomeAssignment(learningOutcomeId, learningOutcomeName,
+                    learningOutcomeSource, learningOutcomeConfidence)).takeIf { it.id.isNotBlank() }
+                ?: LearningOutcomeCatalog.infer(subjectId, topicId, questionText)
         )
 
         val firestoreCompatDiff = when {
@@ -2396,7 +2426,12 @@ class SoruLabViewModel(
                     bookOrTestName = bookOrTestName,
                     bookCoverPath = effectiveCover,
                     fiveTierDifficulty = item.difficulty,
-                    sourceTestId = item.sourceTestId
+                    sourceTestId = item.sourceTestId,
+                    learningOutcome = LearningOutcomeCatalog.validated(subjectId, topicId,
+                        LearningOutcomeAssignment(item.learningOutcomeId, item.learningOutcomeName,
+                            item.learningOutcomeSource, item.learningOutcomeConfidence))
+                        .takeIf { it.id.isNotBlank() || item.learningOutcomeSource == "manual" }
+                        ?: LearningOutcomeCatalog.infer(subjectId, topicId, item.questionText)
                 )
 
                 val firestoreCompatDiff = when {
@@ -2547,7 +2582,8 @@ class SoruLabViewModel(
                 bookCoverPath = target.bookCoverPath,
                 isInKumbara = true,
                 fiveTierDifficulty = target.effectiveDifficultyLabel,
-                sourceTestId = target.sourceTestId
+                sourceTestId = target.sourceTestId,
+                learningOutcome = target.learningOutcome
             )
             val updatedRecord = target.copy(aiSolutionSummary = updatedPacked)
             val mutable = currentQuestions.toMutableList()

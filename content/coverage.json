@@ -1,0 +1,2189 @@
+{
+  "schemaVersion": 1,
+  "complete": false,
+  "topics": [
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "sozcukte_anlam",
+      "topicName": "Sözcükte ve Söz Öbeğinde Anlam",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "cumlede_anlam",
+      "topicName": "Cümlede Anlam",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "paragrafta_anlam",
+      "topicName": "Paragrafta Anlam",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "soz_obeginde_anlam",
+      "topicName": "Söz Öbeğinde Anlam",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "paragrafta_yapi",
+      "topicName": "Paragrafta Yapı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "anlatim_bicimleri",
+      "topicName": "Anlatım Biçimleri",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "ses_bilgisi",
+      "topicName": "Ses Bilgisi",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "yazim_kurallari",
+      "topicName": "Yazım Kuralları",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "noktalama_isaretleri",
+      "topicName": "Noktalama İşaretleri",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "sozcukte_yapi",
+      "topicName": "Sözcükte Yapı ve Ekler",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "isimler",
+      "topicName": "İsimler (Adlar)",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "sifatlar",
+      "topicName": "Sıfatlar (Ön Adlar)",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "zamirler",
+      "topicName": "Zamirler (Adıllar)",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "zarflar",
+      "topicName": "Zarflar (Belirteçler)",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "edat_baglac_unlem",
+      "topicName": "Edat, Bağlaç ve Ünlem",
+      "registeredOutcomes": 2,
+      "outcomesWithVideo": 2,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 2,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "fiiller",
+      "topicName": "Fiiller (Eylemler)",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "fiilimsiler",
+      "topicName": "Fiilimsiler (Eylemsiler)",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "fiilde_cati",
+      "topicName": "Fiilde Çatı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "cumlenin_ogeleri",
+      "topicName": "Cümlenin Ögeleri",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "cumle_turleri",
+      "topicName": "Cümle Türleri",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_turkce",
+      "topicId": "anlatim_bozukluklari",
+      "topicName": "Anlatım Bozuklukları",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "temel_kavramlar",
+      "topicName": "Temel Kavramlar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "sayi_basamaklari",
+      "topicName": "Sayı Basamakları",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "bolme_bolunebilme",
+      "topicName": "Bölme ve Bölünebilme",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "ebob_ekok",
+      "topicName": "EBOB - EKOK",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "rasyonel_sayilar",
+      "topicName": "Rasyonel Sayılar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "ondalik_sayilar",
+      "topicName": "Ondalık Sayılar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "birinci_dereceden_denklemler",
+      "topicName": "1. Dereceden Denklemler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "basit_esitsizlikler",
+      "topicName": "Basit Eşitsizlikler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "mutlak_deger",
+      "topicName": "Mutlak Değer",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "uslu_sayilar",
+      "topicName": "Üslü Sayılar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "koklu_sayilar",
+      "topicName": "Köklü Sayılar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "carpanlara_ayirma",
+      "topicName": "Çarpanlara Ayırma",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "oran_oranti",
+      "topicName": "Oran - Orantı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "sayi_problemleri",
+      "topicName": "Sayı Problemleri",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "kesir_problemleri",
+      "topicName": "Kesir Problemleri",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "yas_problemleri",
+      "topicName": "Yaş Problemleri",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "isci_problemleri",
+      "topicName": "İşçi Problemleri",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "hareket_problemleri",
+      "topicName": "Hız ve Hareket Problemleri",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "yuzde_kar_zarar_problemleri",
+      "topicName": "Yüzde ve Kâr-Zarar Problemleri",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "karisim_problemleri",
+      "topicName": "Karışım Problemleri",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "grafik_problemleri",
+      "topicName": "Grafik Problemleri",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "rutin_olmayan_problemler",
+      "topicName": "Rutin Olmayan Problemler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "mantik",
+      "topicName": "Mantık",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "kumeler",
+      "topicName": "Kümeler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "kartezyen_carpim",
+      "topicName": "Kartezyen Çarpım",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "tyt_fonksiyonlar",
+      "topicName": "Fonksiyonlar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "tyt_polinomlar",
+      "topicName": "Polinomlar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "tyt_ikinci_derece_denklemler",
+      "topicName": "2. Dereceden Denklemler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "permutasyon",
+      "topicName": "Permütasyon",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "kombinasyon",
+      "topicName": "Kombinasyon",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "binom",
+      "topicName": "Binom Açılımı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "olasilik",
+      "topicName": "Olasılık",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_mat",
+      "topicId": "veri_istatistik",
+      "topicName": "Veri ve İstatistik",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "dogruda_acilar",
+      "topicName": "Doğruda Açılar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "ucgende_acilar",
+      "topicName": "Üçgende Açılar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "dik_ucgen",
+      "topicName": "Dik Üçgen ve Pisagor",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "ikizkenar_eskenar_ucgen",
+      "topicName": "İkizkenar ve Eşkenar Üçgen",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "ucgende_aciortay",
+      "topicName": "Üçgende Açıortay",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "ucgende_kenarortay",
+      "topicName": "Üçgende Kenarortay",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "ucgende_eslik_benzerlik",
+      "topicName": "Üçgende Eşlik ve Benzerlik",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "ucgende_alan",
+      "topicName": "Üçgende Alan",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "aci_kenar_bagintilari",
+      "topicName": "Açı - Kenar Bağıntıları",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "cokgenler",
+      "topicName": "Çokgenler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "dortgenler",
+      "topicName": "Genel Dörtgenler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "yamuk",
+      "topicName": "Yamuk",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "paralelkenar",
+      "topicName": "Paralelkenar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "eskenar_dortgen_deltoid",
+      "topicName": "Eşkenar Dörtgen ve Deltoid",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "dikdortgen_kare",
+      "topicName": "Dikdörtgen ve Kare",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "cember_daire_tyt",
+      "topicName": "Çember ve Daire",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "prizmalar_tyt",
+      "topicName": "Prizmalar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_geo",
+      "topicId": "piramit_koni_kure_tyt",
+      "topicName": "Piramit, Koni ve Küre",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "fizik_bilimine_giris",
+      "topicName": "Fizik Bilimine Giriş",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "madde_ve_ozellikleri",
+      "topicName": "Madde ve Özellikleri",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "hareket_tyt",
+      "topicName": "Doğrusal Hareket",
+      "registeredOutcomes": 3,
+      "outcomesWithVideo": 3,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 4,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "kuvvet_newton_tyt",
+      "topicName": "Kuvvet ve Newton Yasaları",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "is_guc_enerji_tyt",
+      "topicName": "İş, Güç ve Enerji",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "isi_sicaklik",
+      "topicName": "Isı ve Sıcaklık",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "genlesme",
+      "topicName": "Hal Değişimi ve Genleşme",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "basinc",
+      "topicName": "Basınç",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "kaldirma_kuvveti",
+      "topicName": "Kaldırma Kuvveti",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "elektrostatik",
+      "topicName": "Elektrostatik",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "elektrik_akimi_devreler",
+      "topicName": "Elektrik Akımı ve Devreler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "manyetizma_tyt",
+      "topicName": "Mıknatıslar ve Manyetizma",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "dalgalar_tyt",
+      "topicName": "Yay, Su, Ses ve Deprem Dalgaları",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "optik_aydinlanma_aynalar",
+      "topicName": "Aydınlanma ve Aynalar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "optik_kirilma_mercekler",
+      "topicName": "Kırılma, Mercekler ve Renk",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "kimya_bilimi",
+      "topicName": "Kimya Bilimi",
+      "registeredOutcomes": 2,
+      "outcomesWithVideo": 2,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 3,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "atom_modelleri",
+      "topicName": "Atom ve Yapısı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "periyodik_sistem",
+      "topicName": "Periyodik Sistem",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "kimyasal_turler_etkilesim",
+      "topicName": "Kimyasal Türler Arası Etkileşimler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "maddenin_halleri",
+      "topicName": "Maddenin Halleri",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "doga_ve_kimya",
+      "topicName": "Doğa ve Kimya",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "kimyanin_temel_kanunlari",
+      "topicName": "Kimyanın Temel Kanunları",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "mol_kavrami",
+      "topicName": "Mol Kavramı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "kimyasal_hesaplamalar",
+      "topicName": "Kimyasal Tepkimeler ve Hesaplamalar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "karisimlar",
+      "topicName": "Karışımlar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "asitler_bazlar_tuzlar",
+      "topicName": "Asitler, Bazlar ve Tuzlar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "kimya_her_yerde",
+      "topicName": "Kimya Her Yerde",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_ortak_ozellikleri",
+      "topicName": "Canlıların Ortak Özellikleri",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_temel_bilesenleri",
+      "topicName": "Canlıların Temel Bileşenleri",
+      "registeredOutcomes": 7,
+      "outcomesWithVideo": 7,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 7,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "hucre_ve_organeller",
+      "topicName": "Hücre ve Organeller",
+      "registeredOutcomes": 2,
+      "outcomesWithVideo": 2,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 2,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "hucre_zarindan_madde_gecisi",
+      "topicName": "Hücre Zarından Madde Geçişleri",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "canlilarin_siniflandirilmasi",
+      "topicName": "Canlıların Sınıflandırılması",
+      "registeredOutcomes": 6,
+      "outcomesWithVideo": 6,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 6,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "mitoz_ve_eseysiz_ureme",
+      "topicName": "Mitoz ve Eşeysiz Üreme",
+      "registeredOutcomes": 2,
+      "outcomesWithVideo": 2,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 2,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "mayoz_ve_eseyli_ureme",
+      "topicName": "Mayoz ve Eşeyli Üreme",
+      "registeredOutcomes": 2,
+      "outcomesWithVideo": 2,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 2,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "kalitim",
+      "topicName": "Kalıtım ve Biyoçeşitlilik",
+      "registeredOutcomes": 6,
+      "outcomesWithVideo": 6,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 6,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "ekosistem_ekolojisi",
+      "topicName": "Ekosistem Ekolojisi",
+      "registeredOutcomes": 3,
+      "outcomesWithVideo": 3,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 3,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_biyoloji",
+      "topicId": "guncel_cevre_sorunlari",
+      "topicName": "Güncel Çevre Sorunları",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_tarih",
+      "topicId": "tarih_ve_zaman_tyt",
+      "topicName": "Tarih ve Zaman",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_tarih",
+      "topicId": "insanligin_ilk_donemleri",
+      "topicName": "İnsanlığın İlk Dönemleri",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_tarih",
+      "topicId": "ilk_orta_cag_turk",
+      "topicName": "İlk ve Orta Çağlarda Türk Dünyası",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_tarih",
+      "topicId": "islam_medeniyetinin_dogusu",
+      "topicName": "İslam Medeniyetinin Doğuşu",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_tarih",
+      "topicId": "turklerin_islamiyeti_kabulu",
+      "topicName": "Türklerin İslamiyet'i Kabulü",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_tarih",
+      "topicId": "beylikten_devlete_osmanli",
+      "topicName": "Beylikten Devlete Osmanlı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_tarih",
+      "topicId": "dunya_gucu_osmanli",
+      "topicName": "Dünya Gücü Osmanlı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_tarih",
+      "topicId": "kurtulus_savasi_hazirlik",
+      "topicName": "Milli Mücadele Hazırlık Dönemi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_tarih",
+      "topicId": "kurtulus_savasi_cepheler",
+      "topicName": "Kurtuluş Savaşı Cepheler ve Antlaşmalar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_tarih",
+      "topicId": "ataturk_ilke_inkilaplari",
+      "topicName": "Atatürk İlke ve İnkılapları",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "doga_ve_insan",
+      "topicName": "Doğa ve İnsan",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "dunyanin_sekli_hareketleri",
+      "topicName": "Dünya'nın Şekli ve Hareketleri",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "cografi_konum",
+      "topicName": "Coğrafi Konum",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "harita_bilgisi",
+      "topicName": "Harita Bilgisi",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "atmosfer_ve_iklim",
+      "topicName": "Atmosfer ve İklim Bilgisi",
+      "registeredOutcomes": 6,
+      "outcomesWithVideo": 6,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 6,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "ic_ve_dis_kuvvetler",
+      "topicName": "İç ve Dış Kuvvetler",
+      "registeredOutcomes": 2,
+      "outcomesWithVideo": 2,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 2,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "su_toprak_bitki",
+      "topicName": "Su, Toprak ve Bitki Varlığı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "nufus_ve_yerlesme",
+      "topicName": "Nüfus ve Göç",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "ekonomik_faaliyetler",
+      "topicName": "Ekonomik Faaliyetler ve Bölgeler",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_cografya",
+      "topicId": "dogal_afetler",
+      "topicName": "Doğal Afetler",
+      "registeredOutcomes": 1,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 1,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_felsefe_din",
+      "topicId": "felsefeyi_tanima",
+      "topicName": "Felsefeyi Tanıma",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_felsefe_din",
+      "topicId": "bilgi_felsefesi",
+      "topicName": "Bilgi Felsefesi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_felsefe_din",
+      "topicId": "varlik_felsefesi",
+      "topicName": "Varlık Felsefesi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_felsefe_din",
+      "topicId": "ahlak_felsefesi",
+      "topicName": "Ahlak Felsefesi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_felsefe_din",
+      "topicId": "bilgi_ve_inanc",
+      "topicName": "Bilgi ve İnanç",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "tyt_felsefe_din",
+      "topicId": "din_ve_islam",
+      "topicName": "Din, İbadet ve Ahlak",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "fonksiyonlar",
+      "topicName": "Fonksiyonlarda Uygulamalar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "polinomlar",
+      "topicName": "Polinomlar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "ikinci_derece_denklemler",
+      "topicName": "2. Dereceden Denklemler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "karmasik_sayilar",
+      "topicName": "Karmaşık Sayılar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "parabol",
+      "topicName": "Parabol",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "ikinci_derece_esitsizlikler",
+      "topicName": "2. Dereceden Eşitsizlikler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "trigonometri_ayt_mat",
+      "topicName": "Trigonometri",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "logaritma",
+      "topicName": "Logaritma",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "diziler",
+      "topicName": "Diziler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "limit_ve_sureklilik",
+      "topicName": "Limit ve Süreklilik",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "turev_alma_kurallari",
+      "topicName": "Türev Alma Kuralları",
+      "registeredOutcomes": 3,
+      "outcomesWithVideo": 1,
+      "missingVideoOutcomeIds": [
+        "power-rule",
+        "quotient-rule"
+      ],
+      "videoReferences": 3,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "turev_uygulamalari",
+      "topicName": "Türevin Geometrik ve Fiziksel Uygulamaları",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "belirsiz_integral",
+      "topicName": "Belirsiz İntegral",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "belirli_integral_alan",
+      "topicName": "Belirli İntegral ve Alan Hesabı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_geo",
+      "topicId": "cemberde_aci",
+      "topicName": "Çemberde Açı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_geo",
+      "topicId": "cemberde_uzunluk",
+      "topicName": "Çemberde Uzunluk",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_geo",
+      "topicId": "dairede_alan",
+      "topicName": "Dairede Çevre ve Alan",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_geo",
+      "topicId": "noktanin_analitigi",
+      "topicName": "Noktanın Analitik İncelenmesi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_geo",
+      "topicId": "dogrunun_analitigi",
+      "topicName": "Doğrunun Analitik İncelenmesi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_geo",
+      "topicId": "donusum_geometrisi",
+      "topicName": "Dönüşüm Geometrisi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_geo",
+      "topicId": "cemberin_analitigi",
+      "topicName": "Çemberin Analitik İncelenmesi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_geo",
+      "topicId": "kati_cisimler_ayt",
+      "topicName": "Silindir, Koni ve Küre",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "vektorler",
+      "topicName": "Vektörler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "bagil_hareket",
+      "topicName": "Bağıl Hareket",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "newton_hareket_yasalari",
+      "topicName": "Newton'un Hareket Yasaları",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "bir_boyutta_sabit_ivmeli",
+      "topicName": "Bir Boyutta Sabit İvmeli Hareket",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "atislar",
+      "topicName": "Atışlar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "enerji_ve_hareket",
+      "topicName": "İş, Enerji ve Güç",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "itme_momentum",
+      "topicName": "İtme ve Çizgisel Momentum",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "tork_ve_denge",
+      "topicName": "Tork ve Denge",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "kutle_merkezi_basit_makine",
+      "topicName": "Kütle Merkezi ve Basit Makineler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "elektrik_alan_potansiyel",
+      "topicName": "Elektrik Alan ve Potansiyel",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "manyetizma_induksiyon",
+      "topicName": "Manyetizma ve Elektromanyetik İndüksiyon",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "alternatif_akim_transformator",
+      "topicName": "Alternatif Akım ve Transformatörler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "cembersel_hareket",
+      "topicName": "Düzgün Çembersel Hareket",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "basit_harmonik_hareket",
+      "topicName": "Basit Harmonik Hareket",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "dalga_mekanigi",
+      "topicName": "Dalga Mekaniği",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "atom_fizigi_radyoaktivite",
+      "topicName": "Atom Fiziğine Giriş ve Radyoaktivite",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_fizik",
+      "topicId": "modern_fizik",
+      "topicName": "Modern Fizik",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_kimya",
+      "topicId": "modern_atom_teorisi",
+      "topicName": "Modern Atom Teorisi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_kimya",
+      "topicId": "gazlar",
+      "topicName": "Gazlar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_kimya",
+      "topicId": "sivi_cozeltiler",
+      "topicName": "Sıvı Çözeltiler ve Çözünürlük",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_kimya",
+      "topicId": "kimyasal_enerji",
+      "topicName": "Kimyasal Tepkimelerde Enerji",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_kimya",
+      "topicId": "kimyasal_hiz",
+      "topicName": "Kimyasal Tepkimelerde Hız",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_kimya",
+      "topicId": "kimyasal_denge",
+      "topicName": "Kimyasal Tepkimelerde Denge",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_kimya",
+      "topicId": "asit_baz_dengesi",
+      "topicName": "Sulu Çözeltilerde Asit-Baz Dengesi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_kimya",
+      "topicId": "cozunurluk_dengesi",
+      "topicName": "Çözünürlük Dengesi (Kçç)",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_kimya",
+      "topicId": "kimya_ve_elektrik",
+      "topicName": "Kimya ve Elektrik",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_kimya",
+      "topicId": "karbon_kimyasina_giris",
+      "topicName": "Karbon Kimyasına Giriş",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_kimya",
+      "topicId": "organik_bilesikler",
+      "topicName": "Organik Bileşikler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sinir_sistemi",
+      "topicName": "Sinir Sistemi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "endokrin_sistem",
+      "topicName": "Endokrin Sistem",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "duyu_organlari",
+      "topicName": "Duyu Organları",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "destek_ve_hareket",
+      "topicName": "Destek ve Hareket Sistemi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sindirim_sistemi",
+      "topicName": "Sindirim Sistemi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "topicName": "Dolaşım ve Bağışıklık Sistemi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "solunum_sistemi",
+      "topicName": "Solunum Sistemi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "uriner_sistem",
+      "topicName": "Üriner (Boşaltım) Sistem",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "ureme_sistemi_embriyonik",
+      "topicName": "Üreme Sistemi ve Embriyonik Gelişim",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "komunite_ve_populasyon",
+      "topicName": "Komünite ve Popülasyon Ekolojisi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "genden_proteine",
+      "topicName": "Genden Proteine (Nükleik Asitler)",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "topicName": "Fotosentez ve Hücresel Solunum",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "topicName": "Bitki Biyolojisi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilar_ve_cevre",
+      "topicName": "Canlılar ve Çevre",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_edebiyat",
+      "topicId": "guzel_sanatlar_ve_edebiyat",
+      "topicName": "Güzel Sanatlar ve Edebiyat",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_edebiyat",
+      "topicId": "siir_bilgisi",
+      "topicName": "Şiir Bilgisi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_edebiyat",
+      "topicId": "edebi_sanatlar",
+      "topicName": "Edebi Sanatlar (Söz Sanatları)",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_edebiyat",
+      "topicId": "islamiyet_oncesi_turk_edebiyati",
+      "topicName": "İslamiyet Öncesi Türk Edebiyatı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_edebiyat",
+      "topicId": "halk_edebiyati",
+      "topicName": "Halk Edebiyatı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_edebiyat",
+      "topicId": "divan_edebiyati",
+      "topicName": "Divan Edebiyatı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_edebiyat",
+      "topicId": "tanzimat_edebiyati",
+      "topicName": "Tanzimat Dönemi Edebiyatı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_edebiyat",
+      "topicId": "servetifunun_fecriati",
+      "topicName": "Servetifünun ve Fecriati Edebiyatı",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_edebiyat",
+      "topicId": "milli_edebiyat",
+      "topicName": "Milli Edebiyat Dönemi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_edebiyat",
+      "topicId": "cumhuriyet_siir",
+      "topicName": "Cumhuriyet Dönemi Şiir",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_edebiyat",
+      "topicId": "cumhuriyet_roman_hikaye",
+      "topicName": "Cumhuriyet Dönemi Roman ve Hikâye",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_edebiyat",
+      "topicId": "edebi_akimlar",
+      "topicName": "Edebi Akımlar",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_tarih_cografya",
+      "topicId": "ayt_ilk_cag_uygarliklari",
+      "topicName": "İlk ve Orta Çağ Uygarlıkları",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_tarih_cografya",
+      "topicId": "ayt_osmanli_kultur_medeniyet",
+      "topicName": "Osmanlı Kültür ve Medeniyeti",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_tarih_cografya",
+      "topicId": "ayt_xx_yuzyil_osmanli",
+      "topicName": "20. Yüzyıl Başlarında Osmanlı ve Dünya",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_tarih_cografya",
+      "topicId": "ayt_milli_mucadele",
+      "topicName": "Milli Mücadele ve İnkılap Tarihi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_tarih_cografya",
+      "topicId": "ayt_ekosistem_ve_biyoceşitlilik",
+      "topicName": "Biyoçeşitlilik ve Ekosistem",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_tarih_cografya",
+      "topicId": "ayt_turkiye_ekonomisi",
+      "topicName": "Türkiye'de Tarım, Madenler ve Sanayi",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    },
+    {
+      "subjectId": "ayt_tarih_cografya",
+      "topicId": "ayt_kuresel_ortam_bolgeler",
+      "topicName": "Küresel Ortam: Bölgeler ve Ülkeler",
+      "registeredOutcomes": 0,
+      "outcomesWithVideo": 0,
+      "missingVideoOutcomeIds": [],
+      "videoReferences": 0,
+      "outcomeTaxonomyComplete": false
+    }
+  ]
+}

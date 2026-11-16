@@ -183,6 +183,18 @@ data class CustomQuestionRecord(
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 ) {
+    @get:Exclude
+    val learningOutcome: LearningOutcomeAssignment
+        get() = LearningOutcomeCatalog.fromMetadata(parsedMetaMap)
+
+    @get:Exclude
+    val resolvedLearningOutcome: LearningOutcomeAssignment
+        get() {
+            val stored = LearningOutcomeCatalog.validated(subjectId, topicId, learningOutcome)
+            return if (stored.id.isNotBlank() || learningOutcome.source == "manual") stored
+                else LearningOutcomeCatalog.infer(subjectId, topicId, questionText)
+        }
+
     @get:Exclude val imagePath: String get() = croppedImagePath
     @get:Exclude val subject: String get() = subjectName
     @get:Exclude val topic: String get() = topicName
@@ -298,7 +310,8 @@ data class CustomQuestionRecord(
             bookCoverPath: String = "",
             isInKumbara: Boolean = false,
             fiveTierDifficulty: String = "",
-            sourceTestId: String = ""
+            sourceTestId: String = "",
+            learningOutcome: LearningOutcomeAssignment = LearningOutcomeAssignment()
         ): String {
             val cleanSol = if (solutionText.startsWith("[META:")) {
                 solutionText.substringAfter("]").trimStart()
@@ -306,6 +319,14 @@ data class CustomQuestionRecord(
                 solutionText.trim()
             }
             val metaParts = buildList {
+                if (learningOutcome.id.isNotBlank() || learningOutcome.source == "manual") {
+                    fun safe(value: String) = value.replace("|", "").replace("]", "").take(160)
+                    add("outcome=" + safe(learningOutcome.id))
+                    add("outcomeName=" + safe(learningOutcome.name))
+                    add("outcomeSource=" + safe(learningOutcome.source))
+                    add("outcomeConfidence=" + learningOutcome.confidence.takeIf { it.isFinite() }
+                        .let { (it ?: 0.0).coerceIn(0.0, 1.0) })
+                }
                 if (targetLevel.isNotBlank()) add("level=${targetLevel.replace("|", "").replace("]", "")}")
                 if (fiveTierDifficulty.isNotBlank()) add("diff5=${fiveTierDifficulty.replace("|", "").replace("]", "")}")
                 if (croppedImagePath.isNotBlank()) add("img=${croppedImagePath.replace("|", "").replace("]", "")}")
@@ -576,7 +597,11 @@ data class YksQuestion(
     val sourceBookTitle: String = "",
     val sourceTestId: String = "",
     val sourcePageIndex: Int = -1,
-    val sourcePrintedQuestionNumber: Int = 0
+    val sourcePrintedQuestionNumber: Int = 0,
+    val learningOutcomeId: String = "",
+    val learningOutcomeName: String = "",
+    val learningOutcomeSource: String = "",
+    val learningOutcomeConfidence: Double = 0.0
 ) {
     @get:Exclude
     val imagePath: String

@@ -45,6 +45,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.YksQuestion
+import com.example.data.LearningOutcomeCatalog
 import android.webkit.ConsoleMessage
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -77,8 +78,23 @@ internal fun SmartTopicLectureDialog(
     val topicName = question.topicHeader.ifBlank { fallbackTopic }
     val subjectKey = SmartLessonCatalog.preferenceKey(examType, subjectName, "")
     val topicKey = SmartLessonCatalog.preferenceKey(examType, subjectName, topicName)
-    val lessonOptions = remember(question.id, examType, subjectName, topicName) {
-        SmartLessonCatalog.find(question, examType, subjectName, fallbackTopic)
+    val scopeSubject = SmartLessonCatalog.subject(examType, subjectName.ifBlank { question.subject })
+    val scopeTopic = scopeSubject?.let {
+        com.example.data.SoruLabCatalog.resolveTopicInSubject(it.id, "", topicName)
+    }
+    val outcomeCandidates = if (scopeSubject != null && scopeTopic != null)
+        LearningOutcomeCatalog.candidates(scopeSubject.id, scopeTopic.id) else emptyList()
+    var selectedOutcome by rememberSaveable(question.id, topicKey) {
+        mutableStateOf(prefs.getString("outcome:" + topicKey + ":" + question.id, null)
+            ?: question.learningOutcomeId)
+    }
+    var showOutcomes by rememberSaveable(question.id) { mutableStateOf(false) }
+    val selectedOutcomeName = outcomeCandidates.firstOrNull { it.id == selectedOutcome }?.name.orEmpty()
+    val effectiveQuestion = if (selectedOutcome != question.learningOutcomeId)
+        question.copy(learningOutcomeId = selectedOutcome, learningOutcomeName = selectedOutcomeName,
+            learningOutcomeSource = "manual", learningOutcomeConfidence = 1.0) else question
+    val lessonOptions = remember(effectiveQuestion, examType, subjectName, topicName) {
+        SmartLessonCatalog.find(effectiveQuestion, examType, subjectName, fallbackTopic)
     }
     var teacher by rememberSaveable(question.id, subjectKey, topicKey) {
         mutableStateOf(
@@ -146,6 +162,23 @@ internal fun SmartTopicLectureDialog(
                 }
 
                 HorizontalDivider(color = Color(0xFFE2E8F0))
+                Text(if (selectedOutcomeName.isNotBlank()) "Alt kazanım: " + selectedOutcomeName
+                    else "Alt kazanım kesinleşmedi; özel video dakikası seçilmez.", fontSize = 12.sp)
+                if (outcomeCandidates.isNotEmpty()) {
+                    TextButton(onClick = { showOutcomes = !showOutcomes }) { Text("Alt kazanımı seç / düzelt") }
+                    if (showOutcomes) {
+                        Column(modifier = Modifier.heightIn(max = 180.dp)
+                            .verticalScroll(rememberScrollState())) {
+                            outcomeCandidates.forEach { outcome ->
+                                TextButton(onClick = {
+                                    selectedOutcome = outcome.id
+                                    prefs.edit().putString("outcome:" + topicKey + ":" + question.id, outcome.id).apply()
+                                    showOutcomes = false
+                                }) { Text(outcome.name) }
+                            }
+                        }
+                    }
+                }
 
                 if (active != null) {
                     if (teacher != "Otomatik" && teacher != active.teacher) {
@@ -210,7 +243,7 @@ internal fun SmartTopicLectureDialog(
                         fontSize = 13.sp, fontWeight = FontWeight.SemiBold
                     )
                     Text(if (active.outcomeId.isBlank()) "Konu düzeyinde anlatım"
-                        else "Soru metnindeki ipucuna göre bölüm; gerekirse başka anlatım ara.",
+                        else "Alt kazanımla eşleşen bölüm; gerekirse alt kazanımı düzelt.",
                         fontSize = 11.sp, color = Color(0xFF64748B))
                     Text(active.sourceOfTimestamp, fontSize = 11.sp, color = Color(0xFF64748B))
                     Text(
@@ -233,7 +266,7 @@ internal fun SmartTopicLectureDialog(
                     TextButton(
                         onClick = {
                             openExternal(SmartLessonCatalog.searchUrl(examType, subjectName,
-                                topicName, teacher))
+                                (topicName + " " + selectedOutcomeName).trim(), teacher))
                         }
                     ) { Text("YouTube'da konu ara") }
                 }
@@ -300,7 +333,7 @@ internal fun SmartTopicLectureDialog(
                 }
                 if (active != null) {
                     TextButton(onClick = {
-                        openExternal(SmartLessonCatalog.searchUrl(examType, subjectName, topicName, teacher))
+                        openExternal(SmartLessonCatalog.searchUrl(examType, subjectName, (topicName + " " + selectedOutcomeName).trim(), teacher))
                     }) { Text("Başka anlatım ara") }
                 }
                 if (externalError) Text("Bağlantıyı açacak uygulama bulunamadı.",

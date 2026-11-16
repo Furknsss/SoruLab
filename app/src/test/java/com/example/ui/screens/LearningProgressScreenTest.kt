@@ -46,7 +46,9 @@ class LearningProgressScreenTest {
         compose.onNodeWithText("Canlıların Temel Bileşenleri").performClick()
         compose.onNodeWithTag("stats_outcome_tyt_biyoloji-enzymes").assertExists()
         compose.onNodeWithText("Enzimler").assertExists()
-        compose.onNodeWithTag("stats_result_card_result-one").performScrollTo().performClick()
+        compose.onNodeWithTag("istatistiklerim_list")
+            .performScrollToNode(hasTestTag("stats_result_card_result-one"))
+        compose.onNodeWithTag("stats_result_card_result-one").performClick()
         assertEquals("result-one", inspected)
     }
 }

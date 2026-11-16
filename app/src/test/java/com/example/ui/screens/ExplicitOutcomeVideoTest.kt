@@ -19,6 +19,17 @@ class ExplicitOutcomeVideoTest {
         assertEquals(10477, video.endSeconds)
     }
 
+    @Test fun savedOutcomeTimestampReachesActualPlayerHtmlAndExternalFallback() {
+        val video = SmartLessonCatalog.find(question("tyt_biyoloji-enzymes"),
+            "TYT", "Biyoloji", "").single()
+        val html = buildYoutubeEmbedHtml(video.videoId, video.startSeconds, video.endSeconds)
+        assertTrue(html.contains("requestedStart=8407"))
+        assertTrue(html.contains("start:8407,end:10477"))
+        assertTrue(html.contains("seekTo(requestedStart,true)"))
+        assertTrue(video.watchUrl.endsWith("&t=8407s"))
+        assertEquals("2:20:07", formatLessonTimestamp(video.startSeconds))
+    }
+
     @Test fun missingUnknownOrLowConfidenceOutcomeNeverOpensFirstChapter() {
         for (q in listOf(question(""), question("unknown"),
             question("tyt_biyoloji-enzymes", 0.4), question("chain-rule"))) {

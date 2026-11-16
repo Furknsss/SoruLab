@@ -258,6 +258,11 @@ internal fun SmartTopicLectureDialog(
                     Text(if (active.outcomeId.isBlank()) "Konu düzeyinde anlatım"
                         else "Alt kazanımla eşleşen bölüm; gerekirse alt kazanımı düzelt.",
                         fontSize = 11.sp, color = Color(0xFF64748B))
+                    Text("Bölüm başlangıcı: " + formatLessonTimestamp(active.startSeconds),
+                        fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = { resumeSecond = active.startSeconds; retry++ }) {
+                        Text("Kazanımın başlangıcına dön")
+                    }
                     Text(active.sourceOfTimestamp, fontSize = 11.sp, color = Color(0xFF64748B))
                     Text(
                         "Otomatik oynatma engellenirse oynatıcının ▶ düğmesine dokun.",
@@ -374,7 +379,25 @@ internal fun buildYoutubeEmbedHtml(videoId: String, startSeconds: Int, endSecond
         </head><body><div id="player"></div>
         <script src="https://www.youtube.com/iframe_api"></script>
         <script>
-        var player;
+        var player, positionConfirmed=false, seekAttempts=0;
+        var requestedStart=$startSeconds;
+        function checkInitialPosition(){
+          if(positionConfirmed) return true;
+          var current=player.getCurrentTime();
+          if(Number.isFinite(current) && current>=Math.max(0,requestedStart-2) && current<=requestedStart+15){
+            positionConfirmed=true;
+            console.log('SORULAB_POSITION_CONFIRMED:'+current);
+            return true;
+          }
+          if(seekAttempts<3){
+            seekAttempts++;
+            player.seekTo(requestedStart,true);
+          }else{
+            player.pauseVideo();
+            console.log('SORULAB_ERROR:POSITION');
+          }
+          return false;
+        }
         function onYouTubeIframeAPIReady(){
           player=new YT.Player('player',{
             width:'100%',height:'100%',videoId:'$videoId',
@@ -382,11 +405,16 @@ internal fun buildYoutubeEmbedHtml(videoId: String, startSeconds: Int, endSecond
               origin:'https://github.com',rel:0},
             events:{
               onReady:function(e){
-                console.log('SORULAB_READY');e.target.playVideo();
+                console.log('SORULAB_READY');
+                seekAttempts=1;e.target.seekTo(requestedStart,true);e.target.playVideo();
                 setInterval(function(){
-                  if(player && player.getCurrentTime)
+                  if(player && player.getPlayerState()===YT.PlayerState.PLAYING &&
+                      checkInitialPosition())
                     console.log('SORULAB_TIME:'+player.getCurrentTime());
                 },3000);
+              },
+              onStateChange:function(e){
+                if(e.data===YT.PlayerState.PLAYING) checkInitialPosition();
               },
               onAutoplayBlocked:function(){console.log('SORULAB_BLOCKED');},
               onError:function(e){console.log('SORULAB_ERROR:'+e.data);}
@@ -395,4 +423,13 @@ internal fun buildYoutubeEmbedHtml(videoId: String, startSeconds: Int, endSecond
         }
         </script></body></html>
     """.trimIndent()
+}
+
+internal fun formatLessonTimestamp(seconds: Int): String {
+    require(seconds >= 0)
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
+    val remainder = seconds % 60
+    return if (hours > 0) "%d:%02d:%02d".format(java.util.Locale.ROOT, hours, minutes, remainder)
+        else "%d:%02d".format(java.util.Locale.ROOT, minutes, remainder)
 }

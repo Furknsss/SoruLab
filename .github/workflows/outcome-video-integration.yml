@@ -15,7 +15,7 @@ permissions:
 # Single source of truth. NEVER repeat hardcoded APK filenames in later steps.
 env:
   APK_FILE: out/SoruLab-v1.4.9.apk
-  BASELINE_RELEASE: v1.4.5
+  BASELINE_RELEASE: v1.4.9-preview-20261116
 
 jobs:
   build:
@@ -61,6 +61,9 @@ jobs:
           assert any(c.get("client_type") == 1 and c.get("android_info", {}).get("certificate_hash", "").replace(":", "").lower() == os.environ["RELEASE_CERT_SHA1"].lower() for c in oauth), "Release certificate is not registered for Google Sign-In"
           print("Firebase and existing release signing certificate verified")
           PY
+
+      - name: Check actual WebView player startup JavaScript
+        run: node tools/test_lesson_player_start.cjs
 
       - name: Check generated lesson metadata
         run: python3 tools/generate_lesson_catalog.py --check

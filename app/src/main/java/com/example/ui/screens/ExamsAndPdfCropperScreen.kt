@@ -677,7 +677,19 @@ fun SoruHavuzuAndPdfStudioView(
                             ?: first.croppedImagePath
                         val distinctSubjects = questionsInBook
                             .asSequence()
-                            .map { "${it.examType} ${it.subjectName} • ${it.topicName}".trim() }
+                            .map { question ->
+                                val topic = SoruLabCatalog.resolveTopicForRecord(
+                                    question.subjectId, question.topicId, question.topicName
+                                )
+                                val subject = SoruLabCatalog.allSubjects.firstOrNull {
+                                    it.id == topic?.subjectId
+                                }
+                                if (subject != null && topic != null) {
+                                    "${subject.examType.name} ${subject.name} • ${topic.name}"
+                                } else {
+                                    "Konu belirlenmedi"
+                                }
+                            }
                             .distinct()
                             .take(2)
                             .joinToString(" | ")
@@ -1407,22 +1419,37 @@ fun SoruHavuzuAndPdfStudioView(
                 if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE
             }
         }
-        val topicsInBook = remember(sortedBookQuestions) {
-            sortedBookQuestions
-                .groupBy { it.topicName.ifBlank { "Konu belirlenmedi" } }
-                .map { (tName, list) -> tName to list.size }
-                .sortedByDescending { it.second }
+        // Resolve legacy labels once per opened book. Book filters use canonical
+        // topic IDs rather than raw imported text, so e.g. "Dairede Alan" and
+        // "Dairede Çevre ve Alan" do not become two separate topics.
+        val topicIdByQuestionId = remember(sortedBookQuestions) {
+            sortedBookQuestions.associate { question ->
+                question.id to SoruLabCatalog.resolveTopicForRecord(
+                    question.subjectId, question.topicId, question.topicName
+                )?.id.orEmpty()
+            }
         }
-        val filteredQuestionsForChunks = remember(sortedBookQuestions, selectedTopicInBookModal) {
+        val topicsInBook = remember(topicIdByQuestionId) {
+            val curriculumOrder = SoruLabCatalog.allTopicsFlat
+                .mapIndexed { index, topic -> topic.id to index }.toMap()
+            topicIdByQuestionId.values.groupingBy { it }.eachCount()
+                .map { (topicId, count) ->
+                    Triple(
+                        topicId,
+                        SoruLabCatalog.topicByIdMap[topicId]?.name ?: "Konu belirlenmedi",
+                        count
+                    )
+                }
+                .sortedBy { curriculumOrder[it.first] ?: Int.MAX_VALUE }
+        }
+        val filteredQuestionsForChunks = remember(
+            sortedBookQuestions, topicIdByQuestionId, selectedTopicInBookModal
+        ) {
             if (selectedTopicInBookModal == null) {
                 sortedBookQuestions
             } else {
                 sortedBookQuestions.filter {
-                    if (selectedTopicInBookModal == "Konu belirlenmedi") {
-                        it.topicName.isBlank()
-                    } else {
-                        it.topicName == selectedTopicInBookModal
-                    }
+                    topicIdByQuestionId[it.id].orEmpty() == selectedTopicInBookModal
                 }
             }
         }
@@ -1547,10 +1574,10 @@ fun SoruHavuzuAndPdfStudioView(
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
                                     )
                                 }
-                                topicsInBook.forEach { (topicName, count) ->
-                                    val isTopicSel = selectedTopicInBookModal == topicName
+                                topicsInBook.forEach { (topicId, topicName, count) ->
+                                    val isTopicSel = selectedTopicInBookModal == topicId
                                     Surface(
-                                        onClick = { selectedTopicInBookModal = topicName },
+                                        onClick = { selectedTopicInBookModal = topicId },
                                         shape = RoundedCornerShape(50),
                                         color = if (isTopicSel) Color(0xFF1D4ED8) else Color(0xFFF1F5F9),
                                         border = BorderStroke(1.dp, if (isTopicSel) Color(0xFF1D4ED8) else Color(0xFFCBD5E1))
@@ -1599,8 +1626,20 @@ fun SoruHavuzuAndPdfStudioView(
                             val firstInChunk = chunkQuestions.first()
                             val verifiedAnswerCount = chunkQuestions.count { it.answerKeyVerified }
                             val previewBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(firstInChunk.croppedImagePath)
-                            val topicTitle = firstInChunk.topicName.ifBlank { "Konu belirlenmedi" }
+                            val chunkTopicIds = chunkQuestions
+                                .map { topicIdByQuestionId[it.id].orEmpty() }.distinct()
+                            val topicTitle = if (chunkTopicIds.size == 1) {
+                                SoruLabCatalog.topicByIdMap[chunkTopicIds.first()]?.name
+                                    ?: "Konu belirlenmedi"
+                            } else {
+                                "Karma Konular"
+                            }
                             val cleanTestName = "$topicTitle - Test ${chunkIdx + 1}"
+                            val canonicalSubject = SoruLabCatalog.topicByIdMap[
+                                topicIdByQuestionId[firstInChunk.id].orEmpty()
+                            ]?.let { topic ->
+                                SoruLabCatalog.allSubjects.firstOrNull { it.id == topic.subjectId }
+                            }
 
                             Surface(
                                 onClick = {
@@ -1637,7 +1676,7 @@ fun SoruHavuzuAndPdfStudioView(
                                             fontSize = 14.5.sp
                                         )
                                         Text(
-                                            text = "${firstInChunk.examType} ${firstInChunk.subjectName} • ${chunkQuestions.size} Soru • $verifiedAnswerCount doğrulanmış anahtar",
+                                            text = "${canonicalSubject?.examType?.name ?: firstInChunk.examType} ${canonicalSubject?.name ?: firstInChunk.subjectName} • ${chunkQuestions.size} Soru • $verifiedAnswerCount doğrulanmış anahtar",
                                             color = Color(0xFF64748B),
                                             fontWeight = FontWeight.SemiBold,
                                             fontSize = 11.5.sp

@@ -761,8 +761,7 @@ object SoruLabCatalog {
         val isBiologyContext = normalizedSubjectHint.equals("Biyoloji", ignoreCase = true)
         val isMathContext = normalizedSubjectHint.equals("Matematik", ignoreCase = true) &&
             examTypeHint.contains("AYT", ignoreCase = true)
-        val hasDerivativeSymbol = normalizedText.contains("'") ||
-            normalizedText.contains("′") ||
+        val hasDerivativeSymbol =
             Regex("""\bd\s*/\s*dx\b""").containsMatchIn(normalizedText) ||
             Regex("""\b[fg]\s*['′]\s*\(\s*x\s*\)""").containsMatchIn(normalizedText)
 
@@ -773,7 +772,7 @@ object SoruLabCatalog {
             isMathContext && (
                 // 1. Polinom göstergeleri -> Polinomlar
                 Regex("""\b[qp]\s*\(\s*x\s*\)""", RegexOption.IGNORE_CASE).containsMatchIn(questionText) ||
-                    listOf("polinom", "derece", "bölümünden kalan", "bolumunden kalan", "başkatsayı", "baskatsayi", "katsayılar toplamı", "sabit terim").any(normalizedText::contains)
+                    listOf("polinom", "bölümünden kalan", "bolumunden kalan", "başkatsayı", "baskatsayi", "katsayılar toplamı", "polinomun derecesi", "kalan teoremi").any(normalizedText::contains)
                 ) -> "Polinomlar"
 
             isMathContext && (
@@ -789,7 +788,7 @@ object SoruLabCatalog {
             isMathContext && (
                 // Türev sinyali limit sinyalinden önce değerlendirilir.
                 hasDerivativeSymbol ||
-                    listOf("türev", "turev", "teğet", "teget", "ekstremum", "yerel maksimum", "yerel minimum", "artan", "azalan").any(normalizedText::contains)
+                    listOf("türev", "turev", "ekstremum", "yerel maksimum", "yerel minimum").any(normalizedText::contains)
                 ) -> "Türev Alma Kuralları"
 
             isMathContext && !hasDerivativeSymbol && (
@@ -906,7 +905,7 @@ object SoruLabCatalog {
         "canlilar_ve_cevre" to listOf("adaptasyon", "çevre", "çevresel", "doğal seçilim"),
         // AYT Matematik
         "fonksiyonlar" to listOf("fonksiyonlarda uygulama", "fonksiyon", "f(x)", "g(x)", "fog", "gof", "ters fonksiyon", "bire bir", "örten", "grafik dönüşüm", "simetri", "öteleme"),
-        "polinomlar" to listOf("polinom", "p(x)", "q(x)", "derece", "başkatsayı", "kalan", "bölümünden"),
+        "polinomlar" to listOf("polinom", "p(x)", "q(x)", "polinomun derecesi", "başkatsayı", "kalan teoremi", "bölümünden kalan"),
         "ikinci_derece_denklemler" to listOf("2. dereceden denklem", "ikinci dereceden denklem", "kökler toplamı", "kökler çarpımı", "diskriminant", "delta"),
         "karmasik_sayilar" to listOf("karmaşık sayı", "karmasik sayi", "sanal", "eşlenik", "i^2"),
         "parabol" to listOf("parabol", "tepe noktası", "simetri ekseni"),

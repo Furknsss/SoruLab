@@ -276,7 +276,7 @@ internal fun SmartTopicLectureDialog(
                 } else {
                     Text(
                         if (lessonOptions.isEmpty())
-                            "Bu konu için doğrulanmış bir video henüz eklenmemiş."
+                            "Bu alt kazanım için doğrulanmış video bölümü bulunamadı. Alt kazanımı seç veya düzelt."
                         else
                             teacher + " için bu konuda doğrulanmış bir anlatım yok. Başka hoca seç.",
                         color = Color(0xFF475569), fontSize = 13.sp

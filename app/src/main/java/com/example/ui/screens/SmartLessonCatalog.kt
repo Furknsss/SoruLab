@@ -67,9 +67,11 @@ internal object SmartLessonCatalog {
                     listOf(question.stemTop, question.stemBottom, question.analyticsText,
                         question.bulletsOrSteps.joinToString(" ")).joinToString(" "))
         val exact = if (outcome.confidence >= 0.9) outcome.id else ""
+        // A topic-level video cannot stand in for an unverified question-level chapter.
+        if (exact.isBlank()) return emptyList()
         return GeneratedLessonContent.entries.filter {
             it.subjectId == subject.id && it.topicId == topic.id &&
-                (it.video.outcomeId.isBlank() || (exact.isNotBlank() && it.video.outcomeId == exact))
+                it.video.outcomeId == exact
         }.sortedByDescending { it.video.outcomeId.isNotBlank() }
             .map { it.video }.distinctBy { it.teacher }
     }

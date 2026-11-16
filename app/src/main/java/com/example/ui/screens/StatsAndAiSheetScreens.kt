@@ -367,7 +367,7 @@ fun IstatistiklerimScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onInspectResult(res) }
-                        .testTag("stats_result_card_${res.id}"),
+                        .testTag("stats_result_card_${attempt.id}"),
                     shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = SoruLabSurface)
                 ) {

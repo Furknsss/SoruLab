@@ -158,6 +158,16 @@ class LearningProgressAnalyticsTest {
         assertEquals(ProgressEvidence.INSUFFICIENT, subject.evidence)
     }
 
+    @Test fun separateLegacyAttemptsWithoutIdsHaveUniqueUiKeysAndPreparedSummaries() {
+        val first = record("", listOf(q(1)), """{"1":"A"}""")
+        val second = first.copy(answersMapJson = """{"1":"B"}""")
+        val report = LearningProgressAnalytics.calculate(listOf(first, second), ExamType.TYT)
+        assertEquals(2, report.recentAttempts.size)
+        assertEquals(2, report.recentAttempts.map { it.id }.distinct().size)
+        assertEquals(setOf(ProgressCounts(1, 0, 0, 0), ProgressCounts(0, 1, 0, 0)),
+            report.recentAttempts.map { it.counts }.toSet())
+    }
+
     @Test fun dateWindowIsInclusiveAndUndatedAttemptsStayOnlyInAllTime() {
         val dated = record("dated", listOf(q(1)), """{"1":"A"}""")
             .copy(createdAt = Timestamp(Date(1000L)))

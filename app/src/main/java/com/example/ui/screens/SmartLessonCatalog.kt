@@ -53,7 +53,7 @@ internal object SmartLessonCatalog {
         val topicName = question.topicHeader.ifBlank { fallbackTopic }
         val topic = SoruLabCatalog.resolveTopicInSubject(subject.id, "", topicName) ?: return emptyList()
         val stem = lessonNormalized(listOf(question.stemTop, question.stemBottom,
-            question.bulletsOrSteps.joinToString(" ")).joinToString(" "))
+            question.analyticsText, question.bulletsOrSteps.joinToString(" ")).joinToString(" "))
         val entries = GeneratedLessonContent.entries.filter {
             it.subjectId == subject.id && it.topicId == topic.id &&
                 (it.phrases.isEmpty() || it.phrases.any { phrase ->

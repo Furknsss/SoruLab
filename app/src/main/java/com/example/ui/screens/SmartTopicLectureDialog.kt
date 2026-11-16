@@ -44,85 +44,18 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.YksQuestion
-import java.util.Locale
-
-/**
- * A manually checked lesson reference. startSeconds is NEVER guessed:
- * 0 means "start of this lesson"; nonzero values must be sourced from
- * a public chapter list or independently reviewed timestamp.
- */
-internal data class LessonVideo(
-    val teacher: String,
-    val title: String,
-    val videoId: String,
-    val startSeconds: Int,
-    val detail: String,
-    val sourceOfTimestamp: String
-)
-
-/**
- * Conservative initial catalog. More topics require real video validation
- * before they can be opened automatically. Never insert fabricated video IDs.
- */
-internal object SmartLessonCatalog {
-    private fun normalized(value: String): String =
-        value.lowercase(Locale.forLanguageTag("tr-TR"))
-            .replace('ı', 'i').replace('ğ', 'g').replace('ü', 'u')
-            .replace('ş', 's').replace('ö', 'o').replace('ç', 'c')
-
-    fun find(
-        question: YksQuestion,
-        examType: String,
-        subjectName: String,
-        fallbackTopic: String
-    ): List<LessonVideo> {
-        val exam = normalized(examType)
-        val subject = normalized(subjectName.ifBlank { question.subject })
-        val topic = normalized(question.topicHeader.ifBlank { fallbackTopic })
-        val stem = normalized(question.stemTop + " " + question.stemBottom + " " +
-            question.bulletsOrSteps.joinToString(" "))
-        if (!exam.contains("ayt") || !subject.contains("matematik") || !topic.contains("turev")) {
-            return emptyList()
-        }
-
-        // Only use a precise rule when the question's actual text identifies it.
-        // Images without transcribed text fall back to a general topic lesson.
-        val rehber = when {
-            stem.contains("koklu fonksiyon") || stem.contains("koklu ifade") ->
-                LessonVideo("Rehber Matematik", "Köklü ifadelerin türevi",
-                    "WICamyMziqQ", 1773, "Köklü ifadeler",
-                    "Yayıncının video açıklamasındaki 29:33 bölümü")
-            stem.contains("rasyonel ifade") || stem.contains("bolumun turevi") ->
-                LessonVideo("Rehber Matematik", "Rasyonel ifadelerin türevi",
-                    "WICamyMziqQ", 1325, "Rasyonel ifadeler",
-                    "Yayıncının video açıklamasındaki 22:05 bölümü")
-            stem.contains("dereceli fonksiyon") || stem.contains("kuvvet fonksiyonu") ->
-                LessonVideo("Rehber Matematik", "Dereceli fonksiyonların türevi",
-                    "WICamyMziqQ", 771, "Kuvvet kuralı",
-                    "Yayıncının video açıklamasındaki 12:51 bölümü")
-            else ->
-                LessonVideo("Rehber Matematik", "Türev Alma Kuralları 1",
-                    "WICamyMziqQ", 0, "Genel konu anlatımı",
-                    "Videonun başı; kesin alt kazanım dakikası bilinmiyor")
-        }
-
-        val candidates = mutableListOf<LessonVideo>()
-        // A dedicated video, not an invented timestamp inside a longer video.
-        if (stem.contains("zincir kural") || stem.contains("bileske fonksiyon")) {
-            candidates += LessonVideo("Bıyıklı Matematik", "Zincir Kuralı ile Türev",
-                "affPznU8gu0", 0, "Zincir kuralı",
-                "Bu videonun tamamı zincir kuralına ayrılmıştır")
-        }
-        candidates += rehber
-        candidates += LessonVideo("Eyüp B", "AYT Tekrar Türev-1",
-            "4gpHnUOCWEQ", 0, "Genel tekrar",
-            "Videonun başı; soru tipine özel dakika doğrulanmadı")
-        return candidates
-    }
-
-    fun preferenceKey(examType: String, subjectName: String, topicName: String): String =
-        normalized(examType + "|" + subjectName + "|" + topicName)
-}
+import android.webkit.ConsoleMessage
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebViewClient
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.layout.heightIn
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.delay
 
 /**
  * Replaces the generic, sometimes misleading formula summary with a real
@@ -146,15 +79,40 @@ internal fun SmartTopicLectureDialog(
     val lessonOptions = remember(question.id, examType, subjectName, topicName) {
         SmartLessonCatalog.find(question, examType, subjectName, fallbackTopic)
     }
-    var teacher by remember(question.id) {
+    var teacher by rememberSaveable(question.id, subjectKey, topicKey) {
         mutableStateOf(
             prefs.getString("topic:" + topicKey, null)
                 ?: prefs.getString("subject:" + subjectKey, null)
                 ?: "Otomatik"
         )
     }
-    val active = if (teacher == "Otomatik") lessonOptions.firstOrNull()
-        else lessonOptions.firstOrNull { it.teacher == teacher }
+    val active = SmartLessonCatalog.select(lessonOptions, teacher)
+    var retry by remember { mutableStateOf(0) }
+    var playerStatus by remember(active?.videoId, active?.startSeconds, retry) { mutableStateOf("loading") }
+    var externalError by remember { mutableStateOf(false) }
+    var savedPreference by remember { mutableStateOf(prefs.contains("topic:" + topicKey) ||
+        prefs.contains("subject:" + subjectKey)) }
+    var webView by remember { mutableStateOf<WebView?>(null) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) {
+                webView?.evaluateJavascript("if(window.player) player.pauseVideo();", null)
+                webView?.onPause()
+            } else if (event == Lifecycle.Event.ON_RESUME) webView?.onResume()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(active?.videoId, active?.startSeconds, retry) {
+        delay(20000)
+        if (playerStatus == "loading") playerStatus = "timeout"
+    }
+    fun openExternal(url: String) {
+        externalError = runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }.isFailure
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -188,20 +146,46 @@ internal fun SmartTopicLectureDialog(
                 HorizontalDivider(color = Color(0xFFE2E8F0))
 
                 if (active != null) {
+                    if (teacher != "Otomatik" && teacher != active.teacher) {
+                        Text("Kaydedilen hoca bu konuda yok; uygun anlatım seçildi.", fontSize = 12.sp)
+                    }
                     Text(active.title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                     // key causes a new player to load when a different instructor is chosen.
-                    key(active.videoId, active.startSeconds) {
+                    key(active.videoId, active.startSeconds, retry) {
                         AndroidView(
-                            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+                            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).heightIn(min = 200.dp),
                             factory = { ctx ->
                                 WebView(ctx).apply {
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
-                                    settings.mediaPlaybackRequiresUserGesture = false
-                                    webChromeClient = WebChromeClient()
+                                    settings.mediaPlaybackRequiresUserGesture = true
+                                    settings.allowFileAccess = false
+                                    settings.allowContentAccess = false
+                                    webView = this
+                                    webChromeClient = object : WebChromeClient() {
+                                        override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                                            val value = message.message()
+                                            if (value == "SORULAB_READY") playerStatus = "ready"
+                                            if (value.startsWith("SORULAB_ERROR:")) playerStatus = value
+                                            return true
+                                        }
+                                    }
+                                    webViewClient = object : WebViewClient() {
+                                        override fun onReceivedError(view: WebView, request: WebResourceRequest,
+                                            error: WebResourceError) {
+                                            if (request.isForMainFrame) playerStatus = "network"
+                                        }
+                                        override fun shouldOverrideUrlLoading(view: WebView,
+                                            request: WebResourceRequest): Boolean {
+                                            val uri = request.url
+                                            return uri.scheme != "https" || uri.host !in setOf(
+                                                "www.youtube.com", "www.youtube-nocookie.com",
+                                                "github.com", "accounts.google.com")
+                                        }
+                                    }
                                     setBackgroundColor(android.graphics.Color.BLACK)
                                     val html = buildYoutubeEmbedHtml(
-                                        active.videoId, active.startSeconds
+                                        active.videoId, active.startSeconds, active.endSeconds
                                     )
                                     // HTTPS base URL establishes a non-file origin and referrer.
                                     loadDataWithBaseURL(
@@ -210,8 +194,14 @@ internal fun SmartTopicLectureDialog(
                                     )
                                 }
                             },
-                            onRelease = { it.stopLoading(); it.loadUrl("about:blank"); it.destroy() }
+                            onRelease = { if (webView === it) webView = null; it.onPause(); it.stopLoading(); it.loadUrl("about:blank"); it.destroy() }
                         )
+                    }
+                    if (playerStatus == "loading") Text("Oynatıcı yükleniyor…", fontSize = 12.sp)
+                    if (playerStatus != "loading" && playerStatus != "ready") {
+                        Text("Video yüklenemedi veya yerleştirmeye kapalı. Tekrar dene ya da YouTube'da aç.",
+                            color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                        TextButton(onClick = { retry++ }) { Text("Tekrar dene") }
                     }
                     Text(
                         active.teacher + " • " + active.detail,
@@ -224,11 +214,7 @@ internal fun SmartTopicLectureDialog(
                     )
                     TextButton(
                         onClick = {
-                            val url = "https://www.youtube.com/watch?v=" + active.videoId +
-                                "&t=" + active.startSeconds + "s"
-                            runCatching {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                            }
+                            openExternal(active.watchUrl)
                         }
                     ) { Text("Oynatıcı açılmazsa YouTube'da izle") }
                 } else {
@@ -241,15 +227,8 @@ internal fun SmartTopicLectureDialog(
                     )
                     TextButton(
                         onClick = {
-                            val query = listOf(examType, subjectName, topicName, "konu anlatımı")
-                                .filter { it.isNotBlank() }.joinToString(" ")
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW,
-                                        Uri.parse("https://www.youtube.com/results?search_query=" +
-                                            Uri.encode(query)))
-                                )
-                            }
+                            openExternal(SmartLessonCatalog.searchUrl(examType, subjectName,
+                                topicName, teacher))
                         }
                     ) { Text("YouTube'da konu ara") }
                 }
@@ -277,12 +256,14 @@ internal fun SmartTopicLectureDialog(
                             OutlinedButton(
                                 onClick = {
                                     prefs.edit().putString("subject:" + subjectKey, teacher).apply()
+                                    savedPreference = true
                                 },
                                 modifier = Modifier.weight(1f)
                             ) { Text("Ders için seç", fontSize = 11.sp) }
                             Button(
                                 onClick = {
                                     prefs.edit().putString("topic:" + topicKey, teacher).apply()
+                                    savedPreference = true
                                 },
                                 modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(
@@ -291,15 +272,22 @@ internal fun SmartTopicLectureDialog(
                             ) { Text("Konu için seç", fontSize = 11.sp) }
                         }
                     }
-                    if (prefs.contains("topic:" + topicKey) ||
-                        prefs.contains("subject:" + subjectKey)) {
+                    if (savedPreference) {
                         TextButton(onClick = {
                             prefs.edit().remove("topic:" + topicKey)
                                 .remove("subject:" + subjectKey).apply()
                             teacher = "Otomatik"
+                            savedPreference = false
                         }) { Text("Kaydedilmiş hoca tercihini sıfırla") }
                     }
                 }
+                if (active != null) {
+                    TextButton(onClick = {
+                        openExternal(SmartLessonCatalog.searchUrl(examType, subjectName, topicName, teacher))
+                    }) { Text("Başka anlatım ara") }
+                }
+                if (externalError) Text("Bağlantıyı açacak uygulama bulunamadı.",
+                    color = MaterialTheme.colorScheme.error)
                 Text(
                     "Video kapatıldığında testte aynı soruda kalırsın. Her konu için " +
                         "doğrulanmış video eşleştirmesi aşamalı olarak genişletilir.",
@@ -311,26 +299,30 @@ internal fun SmartTopicLectureDialog(
     }
 }
 
-private fun buildYoutubeEmbedHtml(videoId: String, startSeconds: Int): String {
-    require(Regex("[A-Za-z0-9_-]{11}").matches(videoId)) { "Geçersiz YouTube ID" }
-    val seconds = startSeconds.coerceAtLeast(0)
-    val url = "https://www.youtube.com/embed/" + videoId +
-        "?playsinline=1&autoplay=1&start=" + seconds + "&rel=0"
+internal fun buildYoutubeEmbedHtml(videoId: String, startSeconds: Int, endSeconds: Int? = null): String {
+    require(Regex("[A-Za-z0-9_-]{11}").matches(videoId))
+    require(startSeconds >= 0 && (endSeconds == null || endSeconds > startSeconds))
+    val end = endSeconds?.let { ",end:$it" }.orEmpty()
     return """
-        <!doctype html>
-        <html lang="tr">
-          <head>
-            <meta name="viewport" content="width=device-width,initial-scale=1">
-            <meta name="referrer" content="strict-origin-when-cross-origin">
-            <style>
-              html,body{margin:0;padding:0;background:#000;width:100%;height:100%;overflow:hidden}
-              iframe{border:0;width:100%;height:100%}
-            </style>
-          </head>
-          <body>
-            <iframe src="$url" allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-              referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-          </body>
-        </html>
+        <!doctype html><html lang="tr"><head>
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <meta name="referrer" content="strict-origin-when-cross-origin">
+        <style>html,body,#player{margin:0;width:100%;height:100%;background:#000}</style>
+        </head><body><div id="player"></div>
+        <script src="https://www.youtube.com/iframe_api"></script>
+        <script>
+        var player;
+        function onYouTubeIframeAPIReady(){
+          player=new YT.Player('player',{
+            width:'100%',height:'100%',videoId:'$videoId',
+            playerVars:{playsinline:1,autoplay:0,start:$startSeconds$end,
+              origin:'https://github.com',rel:0},
+            events:{
+              onReady:function(){console.log('SORULAB_READY');},
+              onError:function(e){console.log('SORULAB_ERROR:'+e.data);}
+            }
+          });
+        }
+        </script></body></html>
     """.trimIndent()
 }

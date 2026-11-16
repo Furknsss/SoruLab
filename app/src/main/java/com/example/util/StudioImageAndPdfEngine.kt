@@ -494,8 +494,42 @@ object StudioImageAndPdfEngine {
                     ignoreCase = true
                 )
         } ?: return null
-        val normalized = text.lowercase()
+        val normalized = text.replace('İ', 'i').lowercase()
+        // Printed chapter headings are stronger evidence than generic words in
+        // a question. Resolve only against the selected TYT/AYT subject.
+        val chapterHeader = subject.topics
+            .filter { normalized.contains(it.name.replace('İ', 'i').lowercase()) }
+            .maxByOrNull { it.name.length }
+        if (chapterHeader != null) return chapterHeader.name
+
         val dictionary = when (subject.name.lowercase()) {
+            "geometri" -> if (examType.equals("TYT", ignoreCase = true)) listOf(
+                "Doğruda Açılar" to listOf("doğruda açılar", "doğruda açı"),
+                "Üçgende Açılar" to listOf("üçgende açılar", "ucgende acilar"),
+                "Dik Üçgen ve Pisagor" to listOf("dik üçgen", "pisagor"),
+                "İkizkenar ve Eşkenar Üçgen" to listOf("ikizkenar üçgen", "eşkenar üçgen"),
+                "Üçgende Açıortay" to listOf("üçgende açıortay", "açıortay"),
+                "Üçgende Kenarortay" to listOf("üçgende kenarortay", "kenarortay"),
+                "Üçgende Eşlik ve Benzerlik" to listOf("üçgende benzerlik", "eşlik ve benzerlik"),
+                "Üçgende Alan" to listOf("üçgende alan"),
+                "Çokgenler" to listOf("çokgenler"),
+                "Genel Dörtgenler" to listOf("dörtgenler"),
+                "Yamuk" to listOf("yamuk"),
+                "Paralelkenar" to listOf("paralelkenar"),
+                "Dikdörtgen ve Kare" to listOf("dikdörtgen ve kare"),
+                "Çember ve Daire" to listOf("çember ve daire"),
+                "Prizmalar" to listOf("prizmalar"),
+                "Piramit, Koni ve Küre" to listOf("piramit koni küre")
+            ) else listOf(
+                "Çemberde Açı" to listOf("çemberde açı", "çemberde açılar"),
+                "Çemberde Uzunluk" to listOf("çemberde uzunluk", "çemberde uzunluklar"),
+                "Dairede Çevre ve Alan" to listOf("dairede alan", "dairenin çevresi ve alanı"),
+                "Noktanın Analitik İncelenmesi" to listOf("nokta analitiği", "noktanın analitiği"),
+                "Doğrunun Analitik İncelenmesi" to listOf("doğru analitiği", "doğrunun analitiği"),
+                "Dönüşüm Geometrisi" to listOf("dönüşüm geometrisi", "dönüşümler"),
+                "Çemberin Analitik İncelenmesi" to listOf("çember analitiği", "çemberin analitiği"),
+                "Silindir, Koni ve Küre" to listOf("silindir koni küre", "silindir ve koni")
+            )
             "biyoloji" -> listOf(
                 "Sinir Sistemi" to listOf("nöron", "noron", "impuls", "sinaps", "beyin"),
                 "Endokrin Sistem" to listOf("hormon", "hipofiz", "tiroit", "insülin", "insulin"),

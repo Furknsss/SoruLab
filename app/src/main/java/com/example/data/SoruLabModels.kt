@@ -853,10 +853,9 @@ object SoruLabCatalog {
             rawSubjectHint
         }
         val isBiologyContext = normalizedSubjectHint.equals("Biyoloji", ignoreCase = true)
-        val isMathContext = normalizedSubjectHint.contains("matematik", ignoreCase = true) ||
-            normalizedSubjectHint.contains("geometri", ignoreCase = true)
-        val hasDerivativeSymbol = normalizedText.contains("'") ||
-            normalizedText.contains("′") ||
+        val isMathContext = normalizedSubjectHint.equals("Matematik", ignoreCase = true) &&
+            examTypeHint.contains("AYT", ignoreCase = true)
+        val hasDerivativeSymbol =
             Regex("""\bd\s*/\s*dx\b""").containsMatchIn(normalizedText) ||
             Regex("""\b[fg]\s*['′]\s*\(\s*x\s*\)""").containsMatchIn(normalizedText)
 
@@ -867,7 +866,7 @@ object SoruLabCatalog {
             isMathContext && (
                 // 1. Polinom göstergeleri -> Polinomlar
                 Regex("""\b[qp]\s*\(\s*x\s*\)""", RegexOption.IGNORE_CASE).containsMatchIn(questionText) ||
-                    listOf("polinom", "derece", "bölümünden kalan", "bolumunden kalan", "başkatsayı", "baskatsayi", "katsayılar toplamı", "sabit terim").any(normalizedText::contains)
+                    listOf("polinom", "bölümünden kalan", "bolumunden kalan", "başkatsayı", "baskatsayi", "katsayılar toplamı", "polinomun derecesi", "kalan teoremi").any(normalizedText::contains)
                 ) -> "Polinomlar"
 
             isMathContext && (
@@ -883,7 +882,7 @@ object SoruLabCatalog {
             isMathContext && (
                 // Türev sinyali limit sinyalinden önce değerlendirilir.
                 hasDerivativeSymbol ||
-                    listOf("türev", "turev", "teğet", "teget", "ekstremum", "yerel maksimum", "yerel minimum", "artan", "azalan").any(normalizedText::contains)
+                    listOf("türev", "turev", "ekstremum", "yerel maksimum", "yerel minimum").any(normalizedText::contains)
                 ) -> "Türev Alma Kuralları"
 
             isMathContext && !hasDerivativeSymbol && (
@@ -900,26 +899,16 @@ object SoruLabCatalog {
         val preferredName = forcedTopicName.ifBlank {
             suggestedTopicName.trim().takeIf { trustSuggestedTopic }.orEmpty()
         }
-        val preferredExam = if (forcedTopicName.isNotBlank() || examTypeHint.contains("AYT", ignoreCase = true)) ExamType.AYT else ExamType.TYT
-        val preferredSubject = if (forcedTopicName.isNotBlank()) "Matematik" else normalizedSubjectHint
+        val preferredExam = if (examTypeHint.contains("AYT", ignoreCase = true)) ExamType.AYT else ExamType.TYT
+        val preferredSubject = normalizedSubjectHint
 
         val targetSubject = allSubjects.firstOrNull {
             it.examType == preferredExam && it.name.equals(preferredSubject, ignoreCase = true)
-        } ?: allSubjects.firstOrNull {
-            it.examType == preferredExam && it.name.equals(normalizedSubjectHint, ignoreCase = true)
-        } ?: allSubjects.firstOrNull { it.examType == preferredExam }
-            ?: return null
+        } ?: return null
 
         // Ders İzolasyonu: Matematik soruları asla Fizik havuzunda aranamaz;
         // Fizik soruları da Matematik havuzuna karışamaz.
-        val subjectSearchPool = if (preferredSubject.isNotBlank()) {
-            val matched = allSubjects.filter {
-                it.examType == preferredExam && it.name.equals(preferredSubject, ignoreCase = true)
-            }
-            if (matched.isNotEmpty()) matched else listOf(targetSubject)
-        } else {
-            allSubjects.filter { it.examType == preferredExam }
-        }
+        val subjectSearchPool = listOf(targetSubject)
 
         val resultPair: Pair<YksSubject, YksTopic> = if (preferredName.isBlank()) {
             val text = questionText.lowercase()
@@ -980,7 +969,7 @@ object SoruLabCatalog {
             }
         }
 
-        return resultPair.takeIf { !isMathContext || it.first.name.equals(preferredSubject, ignoreCase = true) }
+        return resultPair.takeIf { it.first.id == targetSubject.id }
     }
 
     private fun findCatalogTopicByExactName(
@@ -1019,7 +1008,7 @@ object SoruLabCatalog {
         "canlilar_ve_cevre" to listOf("adaptasyon", "çevre", "çevresel", "doğal seçilim"),
         // AYT Matematik
         "fonksiyonlar" to listOf("fonksiyonlarda uygulama", "fonksiyon", "f(x)", "g(x)", "fog", "gof", "ters fonksiyon", "bire bir", "örten", "grafik dönüşüm", "simetri", "öteleme"),
-        "polinomlar" to listOf("polinom", "p(x)", "q(x)", "derece", "başkatsayı", "kalan", "bölümünden"),
+        "polinomlar" to listOf("polinom", "p(x)", "q(x)", "polinomun derecesi", "başkatsayı", "kalan teoremi", "bölümünden kalan"),
         "ikinci_derece_denklemler" to listOf("2. dereceden denklem", "ikinci dereceden denklem", "kökler toplamı", "kökler çarpımı", "diskriminant", "delta"),
         "karmasik_sayilar" to listOf("karmaşık sayı", "karmasik sayi", "sanal", "eşlenik", "i^2"),
         "parabol" to listOf("parabol", "tepe noktası", "simetri ekseni"),
@@ -1152,10 +1141,6 @@ object SoruLabCatalog {
 
         val matchedSubject = allSubjects.find {
             it.examType == cleanExam && it.name.equals(cleanSubj, ignoreCase = true)
-        } ?: allSubjects.find {
-            it.name.equals(cleanSubj, ignoreCase = true)
-        } ?: allSubjects.find {
-            it.examType == cleanExam
         } ?: return null
 
         val combinedSearch = "$topicOrQuestionText $fallbackTopicName".trim()
@@ -1280,10 +1265,10 @@ object SoruLabCatalog {
             accentColorHex = 0xFFE06345,
             topics = listOf(
                 topicEntry("temel_kavramlar", "tyt_mat", "Temel Kavramlar", 0, 0xFFE06345, "math"),
-                topicEntry("bolme_bolunebilme", "tyt_mat", "Bölme Bölünebilme / EBOB - EKOK", 0, 0xFFE06345, "math"),
-                topicEntry("rasyonel_sayilar", "tyt_mat", "Rasyonel Sayılar", 0, 0xFFE06345, "math"),
                 topicEntry("sayi_basamaklari", "tyt_mat", "Sayı Basamakları", 0, 0xFFE06345, "math"),
+                topicEntry("bolme_bolunebilme", "tyt_mat", "Bölme ve Bölünebilme", 0, 0xFFE06345, "math"),
                 topicEntry("ebob_ekok", "tyt_mat", "EBOB - EKOK", 0, 0xFFE06345, "math"),
+                topicEntry("rasyonel_sayilar", "tyt_mat", "Rasyonel Sayılar", 0, 0xFFE06345, "math"),
                 topicEntry("ondalik_sayilar", "tyt_mat", "Ondalık Sayılar", 0, 0xFFE05A47, "math"),
                 topicEntry("birinci_dereceden_denklemler", "tyt_mat", "1. Dereceden Denklemler", 0, 0xFFE05A47, "math"),
                 topicEntry("basit_esitsizlikler", "tyt_mat", "Basit Eşitsizlikler", 0, 0xFFE05A47, "math"),
@@ -1463,12 +1448,6 @@ object SoruLabCatalog {
             name = "Matematik",
             accentColorHex = 0xFFE05A47,
             topics = listOf(
-                topicEntry("ayt_temel_kavramlar", "ayt_mat", "Temel Kavramlar ve Sayılar", 0, 0xFF356CF3, "book"),
-                topicEntry("ayt_esitsizlikler", "ayt_mat", "Temel Eşitsizlikler ve Mutlak Değer", 0, 0xFF356CF3, "book"),
-                topicEntry("ayt_uslu_koklu", "ayt_mat", "Üslü ve Köklü İfadeler", 0, 0xFF356CF3, "book"),
-                topicEntry("ayt_mantik", "ayt_mat", "Mantık", 0, 0xFF356CF3, "book"),
-                topicEntry("ayt_kumeler", "ayt_mat", "Kümeler", 0, 0xFF356CF3, "book"),
-                topicEntry("ayt_sayma_olasilik", "ayt_mat", "Sayma ve Olasılık", 0, 0xFF356CF3, "book"),
                 topicEntry("fonksiyonlar", "ayt_mat", "Fonksiyonlarda Uygulamalar", 0, 0xFFE05A47, "math"),
                 topicEntry("polinomlar", "ayt_mat", "Polinomlar", 0, 0xFFE05A47, "math"),
                 topicEntry("ikinci_derece_denklemler", "ayt_mat", "2. Dereceden Denklemler", 0, 0xFFE05A47, "math"),
@@ -1491,8 +1470,6 @@ object SoruLabCatalog {
             name = "Geometri",
             accentColorHex = 0xFF0EA5E9,
             topics = listOf(
-                topicEntry("ayt_prizmalar", "ayt_geo", "Prizmalar", 0, 0xFF356CF3, "book"),
-                topicEntry("ayt_ucgen_dortgen", "ayt_geo", "Üçgenler ve Dörtgenler", 0, 0xFF356CF3, "book"),
                 topicEntry("cemberde_aci", "ayt_geo", "Çemberde Açı", 0, 0xFF0EA5E9, "angle"),
                 topicEntry("cemberde_uzunluk", "ayt_geo", "Çemberde Uzunluk", 0, 0xFF0EA5E9, "angle"),
                 topicEntry("dairede_alan", "ayt_geo", "Dairede Çevre ve Alan", 0, 0xFF0EA5E9, "angle"),
@@ -1509,8 +1486,6 @@ object SoruLabCatalog {
             name = "Fizik",
             accentColorHex = 0xFF10B981,
             topics = listOf(
-                topicEntry("kutle_cekimi_kepler", "ayt_fizik", "Kütle Çekimi ve Kepler Yasaları", 0, 0xFF356CF3, "book"),
-                topicEntry("modern_fizik_uygulamalari", "ayt_fizik", "Modern Fiziğin Teknolojideki Uygulamaları", 0, 0xFF356CF3, "book"),
                 topicEntry("vektorler", "ayt_fizik", "Vektörler", 0, 0xFF10B981, "vector"),
                 topicEntry("bagil_hareket", "ayt_fizik", "Bağıl Hareket", 0, 0xFF10B981, "vector"),
                 topicEntry("newton_hareket_yasalari", "ayt_fizik", "Newton'un Hareket Yasaları", 0, 0xFF10B981, "vector"),
@@ -1524,10 +1499,12 @@ object SoruLabCatalog {
                 topicEntry("manyetizma_induksiyon", "ayt_fizik", "Manyetizma ve Elektromanyetik İndüksiyon", 0, 0xFF10B981, "vector"),
                 topicEntry("alternatif_akim_transformator", "ayt_fizik", "Alternatif Akım ve Transformatörler", 0, 0xFF10B981, "vector"),
                 topicEntry("cembersel_hareket", "ayt_fizik", "Düzgün Çembersel Hareket", 0, 0xFF10B981, "vector"),
+                topicEntry("kutle_cekimi_kepler", "ayt_fizik", "Kütle Çekimi ve Kepler Yasaları", 0, 0xFF356CF3, "book"),
                 topicEntry("basit_harmonik_hareket", "ayt_fizik", "Basit Harmonik Hareket", 0, 0xFF10B981, "vector"),
                 topicEntry("dalga_mekanigi", "ayt_fizik", "Dalga Mekaniği", 0, 0xFF10B981, "vector"),
                 topicEntry("atom_fizigi_radyoaktivite", "ayt_fizik", "Atom Fiziğine Giriş ve Radyoaktivite", 0, 0xFF10B981, "vector"),
-                topicEntry("modern_fizik", "ayt_fizik", "Modern Fizik", 0, 0xFF10B981, "vector")
+                topicEntry("modern_fizik", "ayt_fizik", "Modern Fizik", 0, 0xFF10B981, "vector"),
+                topicEntry("modern_fizik_uygulamalari", "ayt_fizik", "Modern Fiziğin Teknolojideki Uygulamaları", 0, 0xFF356CF3, "book")
             )
         ),
         YksSubject(
@@ -1652,22 +1629,69 @@ object SoruLabCatalog {
         allTopicsFlat.associateBy { it.id }
     }
 
+    // Labels shared by two exams, such as "Polinomlar", cannot be resolved globally.
     val topicByNormalizedNameMap: Map<String, YksTopic> by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        allTopicsFlat.associateBy { it.name.trim().lowercase() }
+        allTopicsFlat.groupBy { it.name.trim().lowercase() }
+            .filterValues { it.size == 1 }.mapValues { it.value.single() }
+    }
+    private val legacyTopicAliases: Map<String, Set<String>> = mapOf(
+        "temel_kavramlar" to setOf("Temel Kavramlar ve Sayılar"),
+        "basit_esitsizlikler" to setOf("Temel Eşitsizlikler ve Mutlak Değer"),
+        "mantik" to setOf("Mantık"),
+        "kumeler" to setOf("Kümeler"),
+        "prizmalar_tyt" to setOf("Prizmalar"),
+        "dairede_alan" to setOf("Dairede Alan"),
+        "noktanin_analitigi" to setOf("Nokta Analitiği"),
+        "dogrunun_analitigi" to setOf("Doğru Analitiği"),
+        "donusum_geometrisi" to setOf("Dönüşümler"),
+        "cemberin_analitigi" to setOf("Çember Analitiği"),
+        "kati_cisimler_ayt" to setOf("Katı Cisimler"),
+        "fonksiyonlar" to setOf("Fonksiyon Uygulamaları"),
+        "dortgenler" to setOf("Dörtgenler"),
+        "ucgende_eslik_benzerlik" to setOf("Üçgende Benzerlik", "Üçgende Eşlik")
+    )
+
+    private fun exactTopicName(topic: YksTopic, name: String): Boolean =
+        name.isNotBlank() && (
+            topic.name.equals(name.trim(), ignoreCase = true) ||
+                legacyTopicAliases[topic.id].orEmpty().any {
+                    it.equals(name.trim(), ignoreCase = true)
+                }
+            )
+
+    /** Resolves topic within a selected subject; never guesses another exam. */
+    fun resolveTopicInSubject(subjectId: String, topicId: String, topicName: String): YksTopic? {
+        val subject = allSubjects.firstOrNull { it.id.equals(subjectId, ignoreCase = true) } ?: return null
+        return subject.topics.firstOrNull { it.id.equals(topicId, ignoreCase = true) }
+            ?: subject.topics.firstOrNull { exactTopicName(it, topicName) }
+    }
+
+    /**
+     * Read legacy records containing the wrong exam but a unique curriculum name
+     * without changing or destroying the original saved record.
+     */
+    fun resolveTopicForRecord(subjectId: String, topicId: String, topicName: String): YksTopic? {
+        val declared = allSubjects.firstOrNull { it.id.equals(subjectId, ignoreCase = true) }
+        val currentTopic = topicByIdMap[topicId]
+        val disciplineName = declared?.name ?:
+            allSubjects.firstOrNull { it.topics.any { topic -> topic.id == topicId } }?.name
+            ?: when {
+                subjectId.endsWith("_mat") -> "Matematik"
+                subjectId.endsWith("_geo") -> "Geometri"
+                else -> return null
+            }
+        val candidates = allSubjects.filter { it.name.equals(disciplineName, ignoreCase = true) }
+            .flatMap { it.topics }.filter { exactTopicName(it, topicName) }
+        candidates.singleOrNull()?.let { return it }
+        if (currentTopic != null && currentTopic.subjectId.substringAfter('_') == subjectId.substringAfter('_')) {
+            return currentTopic
+        }
+        return candidates.firstOrNull { it.subjectId == subjectId }
     }
 
     fun resolveTopicFast(topicId: String, topicName: String): YksTopic? {
-        if (topicId.isNotBlank()) {
-            topicByIdMap[topicId]?.let { return it }
-        }
-        val norm = topicName.trim().lowercase()
-        if (norm.isNotBlank()) {
-            topicByNormalizedNameMap[norm]?.let { return it }
-            allTopicsFlat.firstOrNull {
-                norm.contains(it.name.lowercase()) || it.name.lowercase().contains(norm)
-            }?.let { return it }
-        }
-        return null
+        if (topicId.isNotBlank()) topicByIdMap[topicId]?.let { return it }
+        return topicByNormalizedNameMap[topicName.trim().lowercase()]
     }
 
     fun subjectNameForTopic(topicName: String): String? {

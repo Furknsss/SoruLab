@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "turev_alma_kurallari",
+      "phrases": [],
+      "video": {
+        "reviewedOn": "2026-11-16",
+        "teacher": "Rehber Matematik",
+        "title": "Türev Alma Kuralları 1",
+        "videoId": "WICamyMziqQ",
+        "startSeconds": 0,
+        "endSeconds": null,
+        "detail": "Genel anlatım",
+        "sourceOfTimestamp": "Video başı; özel bölüm zamanı iddia edilmez",
+        "sourceUrl": "https://www.youtube.com/watch?v=WICamyMziqQ",
+        "outcomeId": ""
+      }
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "turev_alma_kurallari",
+      "phrases": [
+        "zincir kuralı",
+        "bileşke fonksiyon"
+      ],
+      "video": {
+        "reviewedOn": "2026-11-16",
+        "teacher": "Bıyıklı Matematik",
+        "title": "Türev 10 | Zincir kuralı",
+        "videoId": "EImXqB-nEqo",
+        "startSeconds": 0,
+        "endSeconds": null,
+        "detail": "Zincir kuralı",
+        "sourceOfTimestamp": "Video başı; özel bölüm zamanı iddia edilmez",
+        "sourceUrl": "https://www.youtube.com/watch?v=EImXqB-nEqo",
+        "outcomeId": "chain-rule"
+      }
+    },
+    {
+      "subjectId": "ayt_mat",
+      "topicId": "turev_alma_kurallari",
+      "phrases": [],
+      "video": {
+        "reviewedOn": "2026-11-16",
+        "teacher": "Eyüp B",
+        "title": "AYT Tekrar Türev-1",
+        "videoId": "4gpHnUOCWEQ",
+        "startSeconds": 0,
+        "endSeconds": null,
+        "detail": "Genel tekrar",
+        "sourceOfTimestamp": "Video başı; özel bölüm zamanı iddia edilmez",
+        "sourceUrl": "https://www.youtube.com/watch?v=4gpHnUOCWEQ",
+        "outcomeId": ""
+      }
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "hareket_tyt",
+      "phrases": [],
+      "video": {
+        "reviewedOn": "2026-11-16",
+        "teacher": "VIP FİZİK",
+        "title": "Hareket - 1",
+        "videoId": "2i9_HZErHMU",
+        "startSeconds": 0,
+        "endSeconds": null,
+        "detail": "Hareket kavramları",
+        "sourceOfTimestamp": "Video başı; özel bölüm zamanı iddia edilmez",
+        "sourceUrl": "https://www.youtube.com/watch?v=2i9_HZErHMU",
+        "outcomeId": ""
+      }
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "hareket_tyt",
+      "phrases": [
+        "konum"
+      ],
+      "video": {
+        "reviewedOn": "2026-11-16",
+        "teacher": "VIP FİZİK",
+        "title": "Hareket - 1: Konum",
+        "videoId": "2i9_HZErHMU",
+        "startSeconds": 368,
+        "endSeconds": 486,
+        "detail": "Konum",
+        "sourceOfTimestamp": "Yayıncı açıklamasındaki bölüm başlangıcı",
+        "sourceUrl": "https://www.youtube.com/watch?v=2i9_HZErHMU",
+        "outcomeId": "position"
+      }
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "hareket_tyt",
+      "phrases": [
+        "yer değiştirme"
+      ],
+      "video": {
+        "reviewedOn": "2026-11-16",
+        "teacher": "VIP FİZİK",
+        "title": "Hareket - 1: Yer değiştirme",
+        "videoId": "2i9_HZErHMU",
+        "startSeconds": 662,
+        "endSeconds": 831,
+        "detail": "Yer değiştirme",
+        "sourceOfTimestamp": "Yayıncı açıklamasındaki bölüm başlangıcı",
+        "sourceUrl": "https://www.youtube.com/watch?v=2i9_HZErHMU",
+        "outcomeId": "displacement"
+      }
+    },
+    {
+      "subjectId": "tyt_fizik",
+      "topicId": "hareket_tyt",
+      "phrases": [
+        "sürat"
+      ],
+      "video": {
+        "reviewedOn": "2026-11-16",
+        "teacher": "VIP FİZİK",
+        "title": "Hareket - 1: Sürat",
+        "videoId": "2i9_HZErHMU",
+        "startSeconds": 1306,
+        "endSeconds": 1391,
+        "detail": "Sürat",
+        "sourceOfTimestamp": "Yayıncı açıklamasındaki bölüm başlangıcı",
+        "sourceUrl": "https://www.youtube.com/watch?v=2i9_HZErHMU",
+        "outcomeId": "speed"
+      }
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "kimya_bilimi",
+      "phrases": [],
+      "video": {
+        "reviewedOn": "2026-11-16",
+        "teacher": "Sinan İhtiyaroğlu",
+        "title": "Kimya Bilimi",
+        "videoId": "ytxYAiyYltc",
+        "startSeconds": 0,
+        "endSeconds": null,
+        "detail": "Genel anlatım",
+        "sourceOfTimestamp": "Video başı; özel bölüm zamanı iddia edilmez",
+        "sourceUrl": "https://www.youtube.com/watch?v=ytxYAiyYltc",
+        "outcomeId": ""
+      }
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "kimya_bilimi",
+      "phrases": [
+        "sembol",
+        "sembolik dil"
+      ],
+      "video": {
+        "reviewedOn": "2026-11-16",
+        "teacher": "Sinan İhtiyaroğlu",
+        "title": "Kimya Bilimi: Sembolik dil",
+        "videoId": "ytxYAiyYltc",
+        "startSeconds": 2743,
+        "endSeconds": 6395,
+        "detail": "Kimyanın sembolik dili",
+        "sourceOfTimestamp": "Yayıncı açıklamasındaki bölüm başlangıcı",
+        "sourceUrl": "https://www.youtube.com/watch?v=ytxYAiyYltc",
+        "outcomeId": "symbolic-language"
+      }
+    },
+    {
+      "subjectId": "tyt_kimya",
+      "topicId": "kimya_bilimi",
+      "phrases": [
+        "uyarı işaretleri",
+        "güvenlik işaretleri"
+      ],
+      "video": {
+        "reviewedOn": "2026-11-16",
+        "teacher": "Sinan İhtiyaroğlu",
+        "title": "Kimya Bilimi: Uyarı işaretleri",
+        "videoId": "ytxYAiyYltc",
+        "startSeconds": 6395,
+        "endSeconds": null,
+        "detail": "Temel uyarı işaretleri",
+        "sourceOfTimestamp": "Yayıncı açıklamasındaki bölüm başlangıcı",
+        "sourceUrl": "https://www.youtube.com/watch?v=ytxYAiyYltc",
+        "outcomeId": "hazard-signs"
+      }
+    }
+  ]
+}

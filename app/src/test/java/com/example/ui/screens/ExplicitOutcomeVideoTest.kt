@@ -27,9 +27,15 @@ class ExplicitOutcomeVideoTest {
     }
 
     @Test fun latestDenemeContextUsesQuestionSubjectAndPublisherOutcomeLabel() {
-        val source = question("").copy(subject = "Biyoloji", learningOutcome = "Enzimler")
+        val source = question("").copy(subject = "Biyoloji", learningOutcome = "Enzimler",
+            learningOutcomeSource = "", learningOutcomeConfidence = 0.0)
         val selected = SmartLessonCatalog.find(source, "TYT", "TYT Deneme", "").single()
         assertEquals("tyt_biyoloji-enzymes", selected.outcomeId)
         assertEquals(8407, selected.startSeconds)
+    }
+
+    @Test fun explicitManualClearStillOverridesAnExistingPublisherLabel() {
+        val cleared = question("").copy(subject = "Biyoloji", learningOutcome = "Enzimler")
+        assertTrue(SmartLessonCatalog.find(cleared, "TYT", "TYT Deneme", "").isEmpty())
     }
 }

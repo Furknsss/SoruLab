@@ -684,8 +684,9 @@ class LiveSolvingBoardScreenTest {
         // Test question has no curated video; this verifies the real callback
         // and the safe fallback rather than launching arbitrary YouTube content.
         compose.onNodeWithText("Konu Anlatımı").performClick()
-        compose.onNodeWithText("Bu konu için doğrulanmış bir video henüz eklenmemiş.")
+        compose.onNodeWithText("Bu alt kazanım için doğrulanmış video bölümü bulunamadı. Alt kazanımı seç veya düzelt.")
             .assertExists()
+        compose.onNodeWithText("Kazanımın başlangıcına dön").assertDoesNotExist()
         compose.onNodeWithText("Kapat").performClick()
         compose.onNodeWithTag("book_question_1").assertExists()
         compose.onNodeWithTag("three_dot_popover_1").assertDoesNotExist()

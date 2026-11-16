@@ -39,9 +39,11 @@ class LearningProgressScreenTest {
         }
         compose.onNodeWithTag("stats_recent_30").performClick()
         compose.waitUntil(5_000) {
-            compose.onAllNodesWithText("Canlıların Temel Bileşenleri").fetchSemanticsNodes().isNotEmpty()
+            compose.onAllNodesWithTag("istatistiklerim_list").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithText("Canlıların Temel Bileşenleri").performScrollTo().performClick()
+        compose.onNodeWithTag("istatistiklerim_list")
+            .performScrollToNode(hasText("Canlıların Temel Bileşenleri"))
+        compose.onNodeWithText("Canlıların Temel Bileşenleri").performClick()
         compose.onNodeWithTag("stats_outcome_tyt_biyoloji-enzymes").assertExists()
         compose.onNodeWithText("Enzimler").assertExists()
         compose.onNodeWithTag("stats_result_card_result-one").performScrollTo().performClick()

@@ -1080,6 +1080,9 @@ private fun LiveSolvingBoardContent(
 
     BackHandler {
         when {
+            activeTopicLectureQuestion != null -> {
+                activeTopicLectureQuestion = null
+            }
             activeTwinScreenQuestion != null -> {
                 activeTwinScreenQuestion = null
                 activeTwinScreenData = null
@@ -2140,125 +2143,18 @@ private fun LiveSolvingBoardContent(
         }
     }
 
-    // =========================================================================
-    // MODAL 2: "KONU ANLATIMI" ÖZET FORMÜL & KAZANIM KARTI
-    // =========================================================================
-    val lectureQ = activeTopicLectureQuestion
-    if (lectureQ != null) {
-        Dialog(onDismissRequest = { activeTopicLectureQuestion = null }) {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = Color.White,
-                shadowElevation = 12.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(min = 380.dp, max = 560.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = Color(0xFFDBEAFE),
-                                modifier = Modifier.size(38.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                                        contentDescription = null,
-                                        tint = Color(0xFF3475F5),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-                            Column {
-                                Text(
-                                    text = "${lectureQ.topicHeader} • Konu Özeti",
-                                    color = Color(0xFF25215D),
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 16.5.sp
-                                )
-                                Text(
-                                    text = "${session.examType.name} ${session.subjectName} Kritik Kazanım Notları",
-                                    color = Color(0xFF3475F5),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                )
-                            }
-                        }
-                        IconButton(onClick = { activeTopicLectureQuestion = null }) {
-                            Icon(Icons.Default.Close, contentDescription = "Kapat", tint = Color(0xFF64748B))
-                        }
-                    }
-
-                    HorizontalDivider(color = Color(0xFFE2E8F0))
-
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFFF5F4FA),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "1. Temel Kural & Bağıntı",
-                                color = Color(0xFF1E3A8A),
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 13.5.sp
-                            )
-                            Text(
-                                text = "${lectureQ.topicHeader} sorularında verilen referans sistemine ve başlangıç koşullarına dikkat edilmelidir. İfadeler sadeleştirilirken tanım kümesi ve birim dönüşümleri korunur.",
-                                color = Color(0xFF334155),
-                                fontSize = 13.sp,
-                                lineHeight = 19.sp
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "2. ÖSYM Soru Yaklaşımı (${lectureQ.difficulty.label} Seviye)",
-                                color = Color(0xFF1E3A8A),
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 13.5.sp
-                            )
-                            Text(
-                                text = "Öncüllü ve grafikli sorularda sınır değerleri (t = 0 anı, uç noktalar ve işaret değişimleri) mutlaka ayrı ayrı kontrol edilmelidir.",
-                                color = Color(0xFF334155),
-                                fontSize = 13.sp,
-                                lineHeight = 19.sp
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        Button(
-                            onClick = { activeTopicLectureQuestion = null },
-                            shape = RoundedCornerShape(50),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3475F5))
-                        ) {
-                            Text("Kapat", fontWeight = FontWeight.ExtraBold)
-                        }
-                    }
-                }
-            }
-        }
+    // v1.4.8: The old placeholder summary is replaced by an embedded, verified
+    // teacher lesson. The pager state stays in place while the dialog is open.
+    activeTopicLectureQuestion?.let { lectureQuestion ->
+        SmartTopicLectureDialog(
+            question = lectureQuestion,
+            examType = session.examType.name,
+            subjectName = session.subjectName,
+            fallbackTopic = session.topicName,
+            onDismiss = { activeTopicLectureQuestion = null }
+        )
     }
+
 }
 
 /**

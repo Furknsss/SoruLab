@@ -71,14 +71,15 @@ internal fun SmartTopicLectureDialog(
     fallbackTopic: String,
     onDismiss: () -> Unit
 ) {
+    val effectiveSubjectName = SmartLessonCatalog.subject(examType, question.subject)?.name ?: subjectName
     val context = LocalContext.current
     val prefs = remember(context) {
         context.getSharedPreferences("sorulab_smart_lesson_teachers", Context.MODE_PRIVATE)
     }
     val topicName = question.topicHeader.ifBlank { fallbackTopic }
-    val subjectKey = SmartLessonCatalog.preferenceKey(examType, subjectName, "")
-    val topicKey = SmartLessonCatalog.preferenceKey(examType, subjectName, topicName)
-    val scopeSubject = SmartLessonCatalog.subject(examType, subjectName.ifBlank { question.subject })
+    val subjectKey = SmartLessonCatalog.preferenceKey(examType, effectiveSubjectName, "")
+    val topicKey = SmartLessonCatalog.preferenceKey(examType, effectiveSubjectName, topicName)
+    val scopeSubject = SmartLessonCatalog.subject(examType, effectiveSubjectName.ifBlank { question.subject })
     val scopeTopic = scopeSubject?.let {
         com.example.data.SoruLabCatalog.resolveTopicInSubject(it.id, "", topicName)
     }
@@ -94,8 +95,8 @@ internal fun SmartTopicLectureDialog(
     val effectiveQuestion = if (selectedOutcome != question.learningOutcomeId)
         question.copy(learningOutcomeId = selectedOutcome, learningOutcomeName = selectedOutcomeName,
             learningOutcomeSource = "manual", learningOutcomeConfidence = 1.0) else question
-    val lessonOptions = remember(effectiveQuestion, examType, subjectName, topicName) {
-        SmartLessonCatalog.find(effectiveQuestion, examType, subjectName, fallbackTopic)
+    val lessonOptions = remember(effectiveQuestion, examType, effectiveSubjectName, topicName) {
+        SmartLessonCatalog.find(effectiveQuestion, examType, effectiveSubjectName, fallbackTopic)
     }
     var teacher by rememberSaveable(question.id, subjectKey, topicKey) {
         mutableStateOf(
@@ -158,7 +159,7 @@ internal fun SmartTopicLectureDialog(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Konu Anlatımı", fontWeight = FontWeight.Bold, fontSize = 20.sp)
                         Text(
-                            text = examType + " " + subjectName + " • " + topicName,
+                            text = examType + " " + effectiveSubjectName + " • " + topicName,
                             fontSize = 12.sp, color = Color(0xFF64748B)
                         )
                     }
@@ -277,7 +278,7 @@ internal fun SmartTopicLectureDialog(
                     )
                     TextButton(
                         onClick = {
-                            openExternal(SmartLessonCatalog.searchUrl(examType, subjectName,
+                            openExternal(SmartLessonCatalog.searchUrl(examType, effectiveSubjectName,
                                 (topicName + " " + selectedOutcomeName).trim(), teacher))
                         }
                     ) { Text("YouTube'da konu ara") }
@@ -345,7 +346,7 @@ internal fun SmartTopicLectureDialog(
                 }
                 if (active != null) {
                     TextButton(onClick = {
-                        openExternal(SmartLessonCatalog.searchUrl(examType, subjectName, (topicName + " " + selectedOutcomeName).trim(), teacher))
+                        openExternal(SmartLessonCatalog.searchUrl(examType, effectiveSubjectName, (topicName + " " + selectedOutcomeName).trim(), teacher))
                     }) { Text("Başka anlatım ara") }
                 }
                 if (externalError) Text("Bağlantıyı açacak uygulama bulunamadı.",

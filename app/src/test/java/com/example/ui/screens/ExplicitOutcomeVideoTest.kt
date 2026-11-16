@@ -25,4 +25,11 @@ class ExplicitOutcomeVideoTest {
             assertTrue(SmartLessonCatalog.find(q, "TYT", "Biyoloji", "").isEmpty())
         }
     }
+
+    @Test fun latestDenemeContextUsesQuestionSubjectAndPublisherOutcomeLabel() {
+        val source = question("").copy(subject = "Biyoloji", learningOutcome = "Enzimler")
+        val selected = SmartLessonCatalog.find(source, "TYT", "TYT Deneme", "").single()
+        assertEquals("tyt_biyoloji-enzymes", selected.outcomeId)
+        assertEquals(8407, selected.startSeconds)
+    }
 }

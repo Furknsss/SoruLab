@@ -51,7 +51,8 @@ internal object SmartLessonCatalog {
 
     fun find(question: YksQuestion, examType: String, subjectName: String,
              fallbackTopic: String): List<LessonVideo> {
-        val subject = subject(examType, subjectName.ifBlank { question.subject }) ?: return emptyList()
+        val subject = subject(examType, question.subject)
+            ?: subject(examType, subjectName) ?: return emptyList()
         val topicName = question.topicHeader.ifBlank { fallbackTopic }
         val topic = SoruLabCatalog.resolveTopicInSubject(subject.id, "", topicName) ?: return emptyList()
         val stored = LearningOutcomeCatalog.validated(subject.id, topic.id,

@@ -185,7 +185,7 @@ internal fun SmartTopicLectureDialog(
 
                 if (active != null) {
                     if (teacher != "Otomatik" && teacher != active.teacher) {
-                        Text("Kaydedilen hoca bu konuda yok; uygun anlatım seçildi.", fontSize = 12.sp)
+                        Text("Tercih ettiğin hocanın bu kazanıma uygun bölümü yok; eşleşen anlatım seçildi.", fontSize = 12.sp)
                     }
                     Text(active.title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                     // key causes a new player to load when a different instructor is chosen.

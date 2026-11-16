@@ -121,4 +121,13 @@ class SmartLessonCatalogTest {
         assertEquals(0, videos.first().startSeconds)
         assertTrue(videos.first().outcomeId.isBlank())
     }
+
+    @Test fun exactSkillWinsOverPreferredTeachersGeneralVideo() {
+        val videos = SmartLessonCatalog.find(
+            question("Türev Alma Kuralları", "zincir kuralı"),
+            "AYT", "Matematik", "")
+        val selected = SmartLessonCatalog.select(videos, "Rehber Matematik")
+        assertEquals("chain-rule", selected?.outcomeId)
+        assertEquals("Bıyıklı Matematik", selected?.teacher)
+    }
 }

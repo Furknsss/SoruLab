@@ -69,8 +69,11 @@ internal object SmartLessonCatalog {
             .map { it.video }.distinctBy { it.teacher }
     }
 
-    fun select(videos: List<LessonVideo>, preferred: String): LessonVideo? =
-        videos.firstOrNull { it.teacher == preferred } ?: videos.firstOrNull()
+    fun select(videos: List<LessonVideo>, preferred: String): LessonVideo? {
+        val exact = videos.filter { it.outcomeId.isNotBlank() }
+        val eligible = exact.ifEmpty { videos }
+        return eligible.firstOrNull { it.teacher == preferred } ?: eligible.firstOrNull()
+    }
 
     fun preferenceKey(examType: String, subjectName: String, topicName: String): String {
         val subject = subject(examType, subjectName)

@@ -17,7 +17,7 @@ function fixture(start, acceptsSeek = true) {
     YT: { PlayerState: { PLAYING: 1 }, Player: function(id, settings) { options = settings; return player; } } };
   vm.createContext(context);
   vm.runInContext(script.replaceAll('$startSeconds', String(start)).replaceAll('$videoId', '35lqUJGwj3Y')
-    .replaceAll('$end', ',end:10477'), context);
+    .replaceAll('$endBoundary', '10477').replaceAll('$end', ',end:10477'), context);
   context.onYouTubeIframeAPIReady();
   options.events.onReady({ target: player });
   return { options, seeks, messages, tick: () => timers.forEach(cb => cb()),
@@ -48,6 +48,8 @@ const resumed = fixture(8500);
 resumed.playing(); resumed.tick();
 assert.deepEqual(resumed.seeks, [[8500, true]]);
 assert.ok(resumed.messages.includes('SORULAB_TIME:8500'));
+const finished = fixture(8407); finished.playing(); finished.setTime(10477); finished.tick();
+assert.ok(finished.paused(), 'Chapter end survives the explicit YouTube seek call');
 const beginning = fixture(0); beginning.playing(); beginning.tick();
 assert.ok(beginning.messages.includes('SORULAB_TIME:0'));
 console.log('Player startup checks passed: exact chapter, retry/error, wrong chapter, rewind, resume, zero start.');

@@ -371,6 +371,7 @@ internal fun buildYoutubeEmbedHtml(videoId: String, startSeconds: Int, endSecond
     require(Regex("[A-Za-z0-9_-]{11}").matches(videoId))
     require(startSeconds >= 0 && (endSeconds == null || endSeconds > startSeconds))
     val end = endSeconds?.let { ",end:$it" }.orEmpty()
+    val endBoundary = endSeconds?.toString() ?: "null"
     return """
         <!doctype html><html lang="tr"><head>
         <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -380,7 +381,7 @@ internal fun buildYoutubeEmbedHtml(videoId: String, startSeconds: Int, endSecond
         <script src="https://www.youtube.com/iframe_api"></script>
         <script>
         var player, positionConfirmed=false, seekAttempts=0;
-        var requestedStart=$startSeconds;
+        var requestedStart=$startSeconds, segmentEnd=$endBoundary;
         function checkInitialPosition(){
           if(positionConfirmed) return true;
           var current=player.getCurrentTime();
@@ -408,9 +409,13 @@ internal fun buildYoutubeEmbedHtml(videoId: String, startSeconds: Int, endSecond
                 console.log('SORULAB_READY');
                 seekAttempts=1;e.target.seekTo(requestedStart,true);e.target.playVideo();
                 setInterval(function(){
-                  if(player && player.getPlayerState()===YT.PlayerState.PLAYING &&
-                      checkInitialPosition())
-                    console.log('SORULAB_TIME:'+player.getCurrentTime());
+                  if(player && player.getPlayerState()===YT.PlayerState.PLAYING){
+                    if(segmentEnd!==null && player.getCurrentTime()>=segmentEnd){
+                      player.pauseVideo();
+                    }else if(checkInitialPosition()){
+                      console.log('SORULAB_TIME:'+player.getCurrentTime());
+                    }
+                  }
                 },3000);
               },
               onStateChange:function(e){

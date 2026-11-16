@@ -201,7 +201,7 @@ class SoruLabQuestionClassificationTest {
     }
 
     @Test
-    fun biologyNeverGetsAnUnrelatedMathTopicAndDefaultsToNervousSystem() {
+    fun biologyWithUnknownTopicNeverFabricatesNervousSystem() {
         val result = SoruLabCatalog.classifyQuestionTopicFromText(
             examTypeHint = "AYT",
             subjectNameHint = "Biyoloji",
@@ -209,9 +209,9 @@ class SoruLabQuestionClassificationTest {
             suggestedTopicName = "Türev Alma Kuralları"
         )
 
-        assertNotNull(result)
-        assertEquals("Biyoloji", result?.first?.name)
-        assertEquals("Sinir Sistemi", result?.second?.name)
+        // No biology indicator exists. Returning "Sinir Sistemi" was a harmful
+        // first-topic fallback and silently mislabeled questions in the library.
+        assertEquals(null, result)
     }
 
     @Test

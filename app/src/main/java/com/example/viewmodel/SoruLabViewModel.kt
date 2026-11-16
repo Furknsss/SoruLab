@@ -1680,13 +1680,20 @@ class SoruLabViewModel(
             showBanner("Kitaptaki sorular doğrulanmış bir konuyla eşleşmedi. Konular kontrol edilmeli.")
             return
         }
-        val matchedTopic = resolvedRecords.first().second
+        // Prefer the user's currently selected TYT/AYT section when a book
+        // contains both. If the book contains only one exam, allow that book.
+        val examScopedRecords = resolvedRecords.filter { (_, topic) ->
+            SoruLabCatalog.allSubjects.firstOrNull { it.id == topic.subjectId }
+                ?.examType == _selectedExamType.value
+        }
+        val scopedRecords = examScopedRecords.ifEmpty { resolvedRecords }
+        val matchedTopic = scopedRecords.first().second
         val selectedDiscipline = SoruLabCatalog.allSubjects.firstOrNull {
             it.id == matchedTopic.subjectId
         }?.name.orEmpty()
         // A book can include many chapters; never silently merge a different subject
         // into this exam/test or label every question with the first chapter name.
-        val subjectRecords = resolvedRecords.filter { (_, topic) ->
+        val subjectRecords = scopedRecords.filter { (_, topic) ->
             SoruLabCatalog.allSubjects.firstOrNull { it.id == topic.subjectId }
                 ?.name == selectedDiscipline &&
                 topic.subjectId.substringBefore('_') == matchedTopic.subjectId.substringBefore('_')

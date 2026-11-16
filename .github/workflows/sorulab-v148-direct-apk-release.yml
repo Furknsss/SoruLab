@@ -1,0 +1,54 @@
+name: Publish direct v1.4.8 preview APK
+
+on:
+  push:
+    branches: [feature/v148-smart-lessons-upgrade-20261116]
+    paths: ['.github/workflows/sorulab-v148-direct-apk-release.yml']
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  direct-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: actions/download-artifact@v4
+        with:
+          name: SoruLab-v1.4.8-Signed-APK
+          run-id: 43852116165
+          github-token: ${{ github.token }}
+          path: signed
+      - name: Only distribute the APK verified by the Android 16 in-place upgrade test
+        run: |
+          set -euo pipefail
+          APK="$(find signed -name '*.apk' -type f -print -quit)"
+          test -s "$APK"
+          echo "dbd191b3fa2de8ca09f29fe1188f34380c747c61e67cb1d35ac39903aab88495  $APK" | sha256sum -c
+          unzip -t "$APK" | tail -1
+          sdkmanager "build-tools;36.0.0"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" > /tmp/certs.txt
+          grep -F 'Signer #1 certificate SHA-256 digest: b4b9161c09ee38a9600b264efc366ae88f007ba89bf150651eb23e8fe53d6b62' /tmp/certs.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -1 | grep -F "versionName='1.4.8'"
+      - name: Publish APK as direct GitHub release asset, not a ZIP artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK="$(find signed -name '*.apk' -type f -print -quit)"
+          TAG="v1.4.8-preview-20261116"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" "$APK" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "SoruLab v1.4.8 — Güncelleme Önizlemesi" \
+              --notes "v1.4.7 kod tabanında Konu Anlatımı ve konu düzeni. Android 16 emülatöründe 1.4.7 üzerine 1.4.8 güncellemesi başarıyla test edildi. İndirilen dosya doğrudan APK'dır, ZIP değildir. Mevcut uygulamayı kaldırmayın. Gerçek Samsung cihazı ayrıca doğrulanmalıdır." \
+              --prerelease --target "$GITHUB_SHA"
+          fi
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,assets \
+            --jq '{url:.url,assets:[.assets[]|{name,url,size}]}'

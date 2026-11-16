@@ -55,7 +55,15 @@ jobs:
       - name: Install Android 36.1 SDK
         run: |
           yes | sdkmanager --licenses > /dev/null
-          sdkmanager "platforms;android-36.1" "build-tools;36.0.0"
+          sdkmanager "platforms;android-36.1" "build-tools;36.0.0" "emulator"
+      - name: Enable KVM access on the ephemeral Linux runner
+        run: |
+          test -c /dev/kvm || { echo "::error::KVM device is unavailable"; exit 1; }
+          sudo chown "$(id -u):$(id -g)" /dev/kvm
+          sudo chmod 0600 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -accel-check
+
       - name: Compile Android application and exercise the twin regression tests
         run: >-
           bash ./gradlew :app:testDebugUnitTest
@@ -82,14 +90,6 @@ jobs:
 
       - name: Compile debug app including shape-preview activity
         run: bash ./gradlew :app:assembleDebug --no-daemon --no-configuration-cache --max-workers=2
-
-      - name: Enable KVM access on the ephemeral Linux runner
-        run: |
-          test -c /dev/kvm || { echo "::error::KVM device is unavailable"; exit 1; }
-          sudo chown "$(id -u):$(id -g)" /dev/kvm
-          sudo chmod 0600 /dev/kvm
-          test -r /dev/kvm && test -w /dev/kvm
-          "$ANDROID_HOME/emulator/emulator" -accel-check
 
       - name: Capture real Android triangle twin preview
         uses: reactivecircus/android-emulator-runner@v2

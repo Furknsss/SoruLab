@@ -52,6 +52,7 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.*
 import com.example.util.StudioImageAndPdfEngine
 import com.example.viewmodel.BatchPdfCropState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.heightIn
 import com.example.data.LearningOutcome
 import com.example.data.LearningOutcomeCatalog

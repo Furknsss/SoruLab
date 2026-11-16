@@ -104,9 +104,9 @@ class SmartLessonCatalogTest {
         }
     }
 
-    @Test fun embedDisablesAutoplayAndRejectsInjectionAndInvalidSegments() {
+    @Test fun embedRequestsAutoplayWithBlockedFallbackAndRejectsInvalidSegments() {
         val html = buildYoutubeEmbedHtml("2i9_HZErHMU", 662, 831)
-        assertTrue(html.contains("autoplay:0"))
+        assertTrue(html.contains("autoplay:1") && html.contains("onAutoplayBlocked"))
         assertTrue(html.contains("end:831"))
         assertTrue(html.contains("onError"))
         for (invalid in listOf("bad", "'<script>")) {

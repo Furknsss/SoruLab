@@ -473,6 +473,328 @@
       "id": "tyt_turkce-punctuation",
       "name": "Noktalama işaretleri",
       "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sinir_sistemi",
+      "id": "ayt_biyoloji-neuron-structure",
+      "name": "Sinir dokusu",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sinir_sistemi",
+      "id": "ayt_biyoloji-impulse",
+      "name": "İmpuls iletimi",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sinir_sistemi",
+      "id": "ayt_biyoloji-brain",
+      "name": "Beyin",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sinir_sistemi",
+      "id": "ayt_biyoloji-spinal-cord",
+      "name": "Omurilik",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "endokrin_sistem",
+      "id": "ayt_biyoloji-pituitary",
+      "name": "Hipotalamus hipofiz",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "endokrin_sistem",
+      "id": "ayt_biyoloji-thyroid-pancreas",
+      "name": "Tiroit paratiroit pankreas",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "endokrin_sistem",
+      "id": "ayt_biyoloji-adrenal-gonads",
+      "name": "Böbrek üstü ve eşeysel bezler",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "duyu_organlari",
+      "id": "ayt_biyoloji-eye",
+      "name": "Göz",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "duyu_organlari",
+      "id": "ayt_biyoloji-ear",
+      "name": "Kulak",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "duyu_organlari",
+      "id": "ayt_biyoloji-nose-skin-tongue",
+      "name": "Burun deri dil",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "destek_ve_hareket",
+      "id": "ayt_biyoloji-skeleton",
+      "name": "Kemik kıkırdak eklem",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "destek_ve_hareket",
+      "id": "ayt_biyoloji-muscle",
+      "name": "Kas yapısı",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "destek_ve_hareket",
+      "id": "ayt_biyoloji-muscle-contraction",
+      "name": "Kasların çalışması",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sindirim_sistemi",
+      "id": "ayt_biyoloji-digestive-organs",
+      "name": "Sindirim organları",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "sindirim_sistemi",
+      "id": "ayt_biyoloji-absorption",
+      "name": "Sindirim ve emilim",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "id": "ayt_biyoloji-heart",
+      "name": "Kalp",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "id": "ayt_biyoloji-vessels",
+      "name": "Kan damarları",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "id": "ayt_biyoloji-starling",
+      "name": "Starling hipotezi",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "id": "ayt_biyoloji-blood",
+      "name": "Kan",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "id": "ayt_biyoloji-lymph",
+      "name": "Lenf dolaşımı",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "dolasim_ve_bagisiklik",
+      "id": "ayt_biyoloji-immunity",
+      "name": "Bağışıklık",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "solunum_sistemi",
+      "id": "ayt_biyoloji-respiratory-system",
+      "name": "Solunum sistemi",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "uriner_sistem",
+      "id": "ayt_biyoloji-urinary-system",
+      "name": "Üriner sistem",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "uriner_sistem",
+      "id": "ayt_biyoloji-nephron",
+      "name": "Nefron",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "ureme_sistemi_embriyonik",
+      "id": "ayt_biyoloji-human-reproduction",
+      "name": "İnsanda üreme",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "ureme_sistemi_embriyonik",
+      "id": "ayt_biyoloji-embryonic",
+      "name": "Menstrüal döngü ve embriyo",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "komunite_ve_populasyon",
+      "id": "ayt_biyoloji-community",
+      "name": "Komünite",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "komunite_ve_populasyon",
+      "id": "ayt_biyoloji-population",
+      "name": "Popülasyon",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "genden_proteine",
+      "id": "ayt_biyoloji-nucleic-structure",
+      "name": "Nükleik asit yapısı",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "genden_proteine",
+      "id": "ayt_biyoloji-replication",
+      "name": "Replikasyon",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "genden_proteine",
+      "id": "ayt_biyoloji-protein-synthesis",
+      "name": "Protein sentezi",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "genden_proteine",
+      "id": "ayt_biyoloji-biotechnology",
+      "name": "Biyoteknoloji",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "id": "ayt_biyoloji-phosphorylation",
+      "name": "Fosforilasyon",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "id": "ayt_biyoloji-photosynthesis",
+      "name": "Fotosentez",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "id": "ayt_biyoloji-photosynthesis-reactions",
+      "name": "Fotosentez tepkimeleri",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "id": "ayt_biyoloji-chemosynthesis",
+      "name": "Kemosentez",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "id": "ayt_biyoloji-aerobic-respiration",
+      "name": "Oksijenli solunum",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilarda_enerji_donusumleri",
+      "id": "ayt_biyoloji-fermentation",
+      "name": "Fermantasyon",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "id": "ayt_biyoloji-plant-tissues",
+      "name": "Bitkisel dokular",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "id": "ayt_biyoloji-plant-structure",
+      "name": "Bitki yapısı",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "id": "ayt_biyoloji-plant-growth",
+      "name": "Bitkilerde büyüme",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "id": "ayt_biyoloji-plant-hormones",
+      "name": "Bitki hormonları",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "id": "ayt_biyoloji-plant-movement",
+      "name": "Bitki hareketleri",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "id": "ayt_biyoloji-plant-transport",
+      "name": "Bitkilerde taşıma",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "bitki_biyolojisi",
+      "id": "ayt_biyoloji-plant-reproduction",
+      "name": "Bitkilerde üreme",
+      "phrases": []
+    },
+    {
+      "subjectId": "ayt_biyoloji",
+      "topicId": "canlilar_ve_cevre",
+      "id": "ayt_biyoloji-organisms-environment",
+      "name": "Canlılar ve çevre",
+      "phrases": []
     }
   ]
 }

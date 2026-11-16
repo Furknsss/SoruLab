@@ -27,13 +27,14 @@ python3 tools/generate_lesson_catalog.py: iki Kotlin kataloğu ve content/covera
 
 coverage.json tüm müfredat konularını içerir ve eksik kapsamı açıkça gösterir.
 complete=false bilinçlidir: tüm derslerin bütün alt kazanımları ve videoları tamamlanmış değildir.
-Şu an 65 kazanım etiketi, 67 video/bölüm kaydı,
-32/218 konuda video referansı vardır.
+Şu an 111 kazanım etiketi, 113 video/bölüm kaydı,
+46/218 konuda video referansı vardır.
 Bu oran soru tipi kapsama oranı değildir; bazı bölümler geniş bir kazanım grubunu kapsar.
 
 ## 2026-11-16 kaynak incelemesi
 
 Yeni kaynaklar yayıncıların YouTube başlık/açıklama bölüm listelerinden:
+- https://www.youtube.com/watch?v=faBQSFqspi0 (Selin Hoca, AYT biyoloji)
 - https://www.youtube.com/watch?v=35lqUJGwj3Y (Selin Hoca, TYT biyoloji)
 - https://www.youtube.com/watch?v=TFIuAo7auAU (Yusuf Mert Arslan, TYT coğrafya)
 - https://www.youtube.com/watch?v=_qgXvwb1Czo (Türkçe Saati, dil bilgisi)
@@ -55,4 +56,4 @@ Arama geri dönüşü sınav/ders/konu/alt kazanım/hoca adını kullanır; soru
 Görsel alt kazanım sınıflandırması Firebase AI'ya kırpılmış görseli ve OCR metnini gönderir.
 Çok sayıda belirsiz soru içeren büyük PDF'lerde ağ isteği sayısı ve süre artabilir.
 Gerçek cihazda model erişimi, sınıflandırma doğruluğu, oynatıcı/referrer hataları,
-çevrimdışı akış ve ekran dönüşü ayrıca sınanmalıdır. Video konumu dönüşte korunmaz.
+çevrimdışı akış ve ekran dönüşü ayrıca sınanmalıdır. İzleme konumu ekran dönüşü için yaklaşık 3 saniye aralıkla saklanır; uygulamanın tamamen kapatılmasından sonra devam etme yoktur. Otomatik oynatma denenir; cihaz/YouTube engellerse kullanıcı oynat düğmesine dokunur.

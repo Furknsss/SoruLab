@@ -23,6 +23,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -86,6 +87,7 @@ internal fun SmartTopicLectureDialog(
                 ?: "Otomatik"
         )
     }
+    var customTeacher by rememberSaveable(subjectKey, topicKey) { mutableStateOf("") }
     val active = SmartLessonCatalog.select(lessonOptions, teacher)
     var retry by remember { mutableStateOf(0) }
     var playerStatus by remember(active?.videoId, active?.startSeconds, retry) { mutableStateOf("loading") }
@@ -207,9 +209,12 @@ internal fun SmartTopicLectureDialog(
                         active.teacher + " • " + active.detail,
                         fontSize = 13.sp, fontWeight = FontWeight.SemiBold
                     )
+                    Text(if (active.outcomeId.isBlank()) "Konu düzeyinde anlatım"
+                        else "Soru metnindeki ipucuna göre bölüm; gerekirse başka anlatım ara.",
+                        fontSize = 11.sp, color = Color(0xFF64748B))
                     Text(active.sourceOfTimestamp, fontSize = 11.sp, color = Color(0xFF64748B))
                     Text(
-                        "Otomatik oynatma cihazda engellenirse oynatıcının ▶ düğmesine dokun.",
+                        "İzlemek için oynatıcının ▶ düğmesine dokun.",
                         fontSize = 11.sp, color = Color(0xFF64748B)
                     )
                     TextButton(
@@ -233,7 +238,7 @@ internal fun SmartTopicLectureDialog(
                     ) { Text("YouTube'da konu ara") }
                 }
 
-                if (lessonOptions.isNotEmpty()) {
+                run {
                     Text("Hoca seç", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -248,7 +253,19 @@ internal fun SmartTopicLectureDialog(
                             )
                         }
                     }
-                    if (teacher != "Otomatik" && active != null) {
+                    OutlinedTextField(
+                        value = customTeacher,
+                        onValueChange = { customTeacher = it.take(80) },
+                        label = { Text("Arama için hoca adı (isteğe bağlı)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (customTeacher.isNotBlank()) {
+                        TextButton(onClick = { teacher = customTeacher.trim(); customTeacher = "" }) {
+                            Text("Bu hocayı kullan")
+                        }
+                    }
+                    if (teacher != "Otomatik") {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()

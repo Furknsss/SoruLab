@@ -114,4 +114,11 @@ class SmartLessonCatalogTest {
         }
         assertTrue(runCatching { buildYoutubeEmbedHtml("2i9_HZErHMU", 10, 5) }.isFailure)
     }
+
+    @Test fun ambiguousSkillsFallBackToGeneralLesson() {
+        val videos = SmartLessonCatalog.find(question("Doğrusal Hareket", "konum ve yer değiştirme"),
+            "TYT", "Fizik", "")
+        assertEquals(0, videos.first().startSeconds)
+        assertTrue(videos.first().outcomeId.isBlank())
+    }
 }

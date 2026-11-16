@@ -61,9 +61,12 @@ internal object SmartLessonCatalog {
                         .containsMatchIn(stem)
                 })
         }
-        // Skill matches precede general lessons; keep one best entry per teacher.
-        return entries.sortedByDescending { it.phrases.isNotEmpty() }
-            .map { it.video }.distinctBy { it.teacher }
+        // Multiple skill hints for one teacher are ambiguous. Prefer the general lesson.
+        return entries.groupBy { it.video.teacher }.values.mapNotNull { teacherEntries ->
+            val specific = teacherEntries.filter { it.phrases.isNotEmpty() }
+            if (specific.map { it.video.outcomeId }.distinct().size == 1) specific.first().video
+            else teacherEntries.firstOrNull { it.phrases.isEmpty() }?.video
+        }.sortedByDescending { it.outcomeId.isNotBlank() }
     }
 
     fun select(videos: List<LessonVideo>, preferred: String): LessonVideo? =

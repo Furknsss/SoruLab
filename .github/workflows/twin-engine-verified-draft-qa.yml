@@ -83,6 +83,14 @@ jobs:
       - name: Compile debug app including shape-preview activity
         run: bash ./gradlew :app:assembleDebug --no-daemon --no-configuration-cache --max-workers=2
 
+      - name: Enable KVM access on the ephemeral Linux runner
+        run: |
+          test -c /dev/kvm || { echo "::error::KVM device is unavailable"; exit 1; }
+          sudo chown "$(id -u):$(id -g)" /dev/kvm
+          sudo chmod 0600 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -accel-check
+
       - name: Capture real Android triangle twin preview
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -90,6 +98,7 @@ jobs:
           target: google_apis
           arch: x86_64
           disable-animations: true
+          disable-linux-hw-accel: false
           emulator-options: '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none'
           emulator-boot-timeout: 600
           script: |

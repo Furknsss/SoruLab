@@ -1743,24 +1743,26 @@ fun SoruHavuzuAndPdfStudioView(
                 if (it.questionNumberInBook > 0) it.questionNumberInBook else Int.MAX_VALUE
             }
         }
-        val topicsInBook = remember(sortedBookQuestions) {
-            sortedBookQuestions
-                .groupBy { it.topicName.ifBlank { "Konu belirlenmedi" } }
-                .map { (tName, list) -> tName to list.size }
-                .sortedByDescending { it.second }
-        }
-        val filteredQuestionsForChunks = remember(sortedBookQuestions, selectedTopicInBookModal) {
-            if (selectedTopicInBookModal == null) {
-                sortedBookQuestions
-            } else {
-                sortedBookQuestions.filter {
-                    if (selectedTopicInBookModal == "Konu belirlenmedi") {
-                        it.topicName.isBlank()
-                    } else {
-                        it.topicName == selectedTopicInBookModal
-                    }
-                }
+        // Canonical topic IDs avoid false duplicate labels from historical PDF imports.
+        val topicIdsByQuestion = remember(sortedBookQuestions) {
+            sortedBookQuestions.associate { record ->
+                record.id to SoruLabCatalog.resolveTopicForRecord(
+                    record.subjectId, record.topicId, record.topicName
+                )?.id.orEmpty()
             }
+        }
+        val topicsInBook = remember(topicIdsByQuestion) {
+            val curricularOrder = SoruLabCatalog.allTopicsFlat
+                .mapIndexed { i, topic -> topic.id to i }.toMap()
+            topicIdsByQuestion.values.groupingBy { it }.eachCount()
+                .map { (id, count) ->
+                    Triple(id, SoruLabCatalog.topicByIdMap[id]?.name ?: "Konu belirlenmedi", count)
+                }
+                .sortedBy { curricularOrder[it.first] ?: Int.MAX_VALUE }
+        }
+        val filteredQuestionsForChunks = remember(sortedBookQuestions, topicIdsByQuestion, selectedTopicInBookModal) {
+            if (selectedTopicInBookModal == null) sortedBookQuestions
+            else sortedBookQuestions.filter { topicIdsByQuestion[it.id].orEmpty() == selectedTopicInBookModal }
         }
         val testChunks = remember(filteredQuestionsForChunks, selectedTestLevel) {
             automaticBookTestChunks(filteredQuestionsForChunks, selectedTestLevel)
@@ -1896,10 +1898,10 @@ fun SoruHavuzuAndPdfStudioView(
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
                                     )
                                 }
-                                topicsInBook.forEach { (topicName, count) ->
-                                    val isTopicSel = selectedTopicInBookModal == topicName
+                                topicsInBook.forEach { (topicId, topicName, count) ->
+                                    val isTopicSel = selectedTopicInBookModal == topicId
                                     Surface(
-                                        onClick = { selectedTopicInBookModal = topicName },
+                                        onClick = { selectedTopicInBookModal = topicId },
                                         shape = RoundedCornerShape(50),
                                         color = if (isTopicSel) Color(0xFF1D4ED8) else Color(0xFFF1F5F9),
                                         border = BorderStroke(1.dp, if (isTopicSel) Color(0xFF1D4ED8) else Color(0xFFCBD5E1))
@@ -1948,7 +1950,13 @@ fun SoruHavuzuAndPdfStudioView(
                             val firstInChunk = chunkQuestions.first()
                             val verifiedAnswerCount = chunkQuestions.count { it.answerKeyVerified }
                             val previewBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(firstInChunk.croppedImagePath)
-                            val topicTitle = firstInChunk.topicName.ifBlank { "Konu belirlenmedi" }
+                            val chunkTopicIds = chunkQuestions.map {
+                                topicIdsByQuestion[it.id].orEmpty()
+                            }.distinct()
+                            val topicTitle = if (chunkTopicIds.size == 1) {
+                                SoruLabCatalog.topicByIdMap[chunkTopicIds.first()]?.name
+                                    ?: "Konu belirlenmedi"
+                            } else "Karma Konular"
                             val cleanTestName = "$topicTitle - Test ${chunkIdx + 1}"
 
                             Surface(

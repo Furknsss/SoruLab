@@ -220,8 +220,9 @@ data class CustomQuestionRecord(
             val publisher = LearningOutcomeCatalog.fromLabel(subjectId, topicId, learningOutcome)
                 .takeIf { it.id.isNotBlank() }
                 ?: LearningOutcomeCatalog.fromLabel(subjectId, topicId, questionType)
-            return publisher.takeIf { it.id.isNotBlank() }
-                ?: LearningOutcomeCatalog.infer(subjectId, topicId, questionText)
+            if (publisher.id.isNotBlank() || learningOutcome.isNotBlank() || questionType.isNotBlank())
+                return publisher
+            return LearningOutcomeCatalog.infer(subjectId, topicId, questionText)
         }
 
     @get:Exclude val imagePath: String get() = croppedImagePath

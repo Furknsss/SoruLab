@@ -62,8 +62,8 @@ internal object SmartLessonCatalog {
             .takeIf { it.id.isNotBlank() }
             ?: LearningOutcomeCatalog.fromLabel(subject.id, topic.id, question.questionType)
         val outcome = if (question.learningOutcomeId.isNotBlank() || question.learningOutcomeSource == "manual") stored
-            else publisher.takeIf { it.id.isNotBlank() }
-                ?: LearningOutcomeCatalog.infer(subject.id, topic.id,
+            else if (question.learningOutcome.isNotBlank() || question.questionType.isNotBlank()) publisher
+            else LearningOutcomeCatalog.infer(subject.id, topic.id,
                     listOf(question.stemTop, question.stemBottom, question.analyticsText,
                         question.bulletsOrSteps.joinToString(" ")).joinToString(" "))
         val exact = if (outcome.confidence >= 0.9) outcome.id else ""

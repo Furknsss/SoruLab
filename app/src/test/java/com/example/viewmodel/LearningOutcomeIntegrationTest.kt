@@ -32,4 +32,10 @@ class LearningOutcomeIntegrationTest {
         assertEquals("Bileşke fonksiyon", merged.questionType)
         assertEquals(assignment, merged.learningOutcomeAssignment)
     }
+
+    @Test fun unmappedPublisherOutcomeDoesNotBecomeAnUnrelatedTextGuess() {
+        val record = CustomQuestionRecord(subjectId = "ayt_mat", topicId = "turev_alma_kurallari",
+            learningOutcome = "Çarpımın türevi", questionText = "zincir kuralı")
+        assertEquals("", record.resolvedLearningOutcome.id)
+    }
 }

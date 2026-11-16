@@ -45,6 +45,9 @@ import com.example.data.SoruLabCatalog
 import com.example.data.TestResultRecord
 import com.example.data.YksQuestion
 import com.example.ui.theme.*
+import com.example.util.LearningProgressAnalytics
+import com.example.util.LearningProgressBucket
+import com.example.util.ProgressEvidence
 import com.example.viewmodel.AiChatMessage
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -59,63 +62,41 @@ fun IstatistiklerimScreen(
     var selectedExam by remember { mutableStateOf(ExamType.TYT) }
     var selectedSubjectId by remember { mutableStateOf<String?>(null) }
     var expandedTopicId by remember(selectedExam, selectedSubjectId) { mutableStateOf<String?>(null) }
-    val solvedResults = remember(testResults) { testResults.filter { it.isSolvedAttempt } }
-    val examResults = remember(solvedResults, selectedExam) {
-        solvedResults.filter { it.examType.equals(selectedExam.name, ignoreCase = true) }
-            .sortedByDescending { it.createdAt?.toDate()?.time ?: Long.MIN_VALUE }
+    var recentOnly by remember { mutableStateOf(false) }
+    val openedAt = remember { System.currentTimeMillis() }
+    val progress = remember(testResults, selectedExam, recentOnly) {
+        LearningProgressAnalytics.calculate(testResults, selectedExam,
+            if (recentOnly) openedAt - 30L * 24 * 60 * 60 * 1000 else null)
     }
+    val examResults = progress.recentResults
     val subjects = remember(selectedExam) {
         SoruLabCatalog.allSubjects.filter { it.examType == selectedExam }
     }
-    val selectedSubject = subjects.firstOrNull { it.id == selectedSubjectId } ?: subjects.firstOrNull()
-    val subjectStats = remember(examResults, subjects) {
-        subjects.map { subject ->
-            val attempts = examResults.filter { result ->
-                result.subjectId == subject.id ||
-                    (result.subjectId.isBlank() && result.subjectName.equals(subject.name, ignoreCase = true))
-            }
-            SubjectRealStat(
-                subject = subject,
-                solvedTestsCount = attempts.size,
-                correctCount = attempts.sumOf { it.correctCount },
-                wrongCount = attempts.sumOf { it.wrongCount },
-                emptyCount = attempts.sumOf { it.emptyCount },
-                ungradedCount = attempts.sumOf { it.ungradedCount }
-            )
-        }
+    val selectedSubject = subjects.firstOrNull { it.id == selectedSubjectId }
+        ?: subjects.firstOrNull { subject -> progress.subjects.any { it.id == subject.id } }
+        ?: subjects.firstOrNull()
+    val subjectStats = subjects.map { subject ->
+        val bucket = progress.subjects.firstOrNull { it.id == subject.id }
+        SubjectRealStat(subject, bucket?.attemptCount ?: 0,
+            bucket?.counts?.correct ?: 0, bucket?.counts?.wrong ?: 0,
+            bucket?.counts?.blank ?: 0, bucket?.counts?.ungraded ?: 0,
+            bucket?.uniqueQuestionCount ?: 0, bucket?.evidence ?: ProgressEvidence.INSUFFICIENT)
     }
     val selectedSubjectStat = subjectStats.firstOrNull { it.subject.id == selectedSubject?.id }
-    val topicStats = remember(examResults, selectedSubject?.id) {
-        val topicResults = examResults.filter { result ->
-            selectedSubject != null &&
-                (result.subjectId == selectedSubject.id ||
-                    (result.subjectId.isBlank() && result.subjectName.equals(selectedSubject.name, ignoreCase = true))) &&
-                result.topicName.isNotBlank()
-        }
-        topicResults
-            .groupBy { it.topicId.ifBlank { it.topicName } }
-            .map { (topicId, attempts) ->
-                TopicRealStat(
-                    id = topicId,
-                    topicName = attempts.first().topicName,
-                    solvedTestsCount = attempts.size,
-                    correctCount = attempts.sumOf { it.correctCount },
-                    wrongCount = attempts.sumOf { it.wrongCount },
-                    emptyCount = attempts.sumOf { it.emptyCount },
-                    ungradedCount = attempts.sumOf { it.ungradedCount }
-                )
-            }
-            .sortedWith(compareByDescending<TopicRealStat> { it.questionCount }.thenBy { it.topicName })
+    val selectedProgress = progress.subjects.firstOrNull { it.id == selectedSubject?.id }
+    val topicStats = selectedProgress?.children.orEmpty().map { bucket ->
+        TopicRealStat(bucket.id, bucket.label, bucket.attemptCount, bucket.counts.correct,
+            bucket.counts.wrong, bucket.counts.blank, bucket.counts.ungraded,
+            bucket.uniqueQuestionCount, bucket.evidence, bucket.children)
     }
-    val totalCorrect = examResults.sumOf { it.correctCount }
-    val totalWrong = examResults.sumOf { it.wrongCount }
-    val totalEmpty = examResults.sumOf { it.emptyCount }
-    val totalUngraded = examResults.sumOf { it.ungradedCount }
-    val totalQuestions = totalCorrect + totalWrong + totalEmpty + totalUngraded
-    val totalGradedQuestions = totalCorrect + totalWrong + totalEmpty
-    val totalNet = (totalCorrect - totalWrong * 0.25)
-        .takeIf { totalGradedQuestions > 0 }
-    val totalAccuracy = accuracyRatio(totalCorrect, totalWrong, totalEmpty)
+    val totalCorrect = progress.counts.correct
+    val totalWrong = progress.counts.wrong
+    val totalEmpty = progress.counts.blank
+    val totalUngraded = progress.counts.ungraded
+    val totalQuestions = progress.counts.total
+    val totalGradedQuestions = progress.counts.graded
+    val totalNet = progress.counts.net
+    val totalAccuracy = progress.counts.accuracyPercent
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy • HH:mm", Locale.forLanguageTag("tr-TR")) }
 
     LazyColumn(
@@ -181,9 +162,18 @@ fun IstatistiklerimScreen(
         }
 
         item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = !recentOnly, onClick = { recentOnly = false },
+                    label = { Text("Tüm zamanlar") }, modifier = Modifier.testTag("stats_all_time"))
+                FilterChip(selected = recentOnly, onClick = { recentOnly = true },
+                    label = { Text("Son 30 gün") }, modifier = Modifier.testTag("stats_recent_30"))
+            }
+        }
+
+        item {
             StatsOverviewCard(
                 exam = selectedExam,
-                testCount = examResults.size,
+                testCount = progress.attemptCount,
                 questionCount = totalQuestions,
                 accuracy = totalAccuracy.takeIf { totalGradedQuestions > 0 },
                 correct = totalCorrect,
@@ -193,6 +183,32 @@ fun IstatistiklerimScreen(
                 net = totalNet,
                 questionPoolCount = customQuestionsCount
             )
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = SoruLabSurface),
+                shape = RoundedCornerShape(14.dp), modifier = Modifier.testTag("stats_evidence")) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Verinin kapsamı", fontWeight = FontWeight.Bold, color = SoruLabInkBlack)
+                    Text("${progress.counts.graded} değerlendirilen yanıt • ${progress.uniqueQuestionCount} farklı soru",
+                        color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
+                    Text("Başarı = doğru / (doğru + yanlış + boş). Anahtarı doğrulanmayan sorular oran ve nete katılmaz.",
+                        color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
+                    Text("Tekrar çözümler yanıt sayısına dahildir; farklı soru sayısını artırmaz. Güçlü/zayıf görünüm için en az 10 değerlendirilen yanıt ve 5 farklı soru gerekir.",
+                        color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
+                    if (progress.excludedAttemptCount > 0) Text(
+                        "${progress.excludedAttemptCount} testin soru/yanıt ayrıntısı eksik veya okunamıyor; başarı hesabına katılmadı. Son Testler'den açabilirsin.",
+                        color = SoruLabCoralRed, style = MaterialTheme.typography.bodySmall)
+                    if (progress.unscopedQuestionCount > 0) Text(
+                        "${progress.unscopedQuestionCount} sorunun dersi eşleşmedi; toplamda görünür, bir derse tahminen yazılmaz.",
+                        color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
+                    if (progress.unknownOutcomeCount > 0) Text(
+                        "${progress.unknownOutcomeCount} yanıtın alt kazanımı kesinleşmedi.",
+                        color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
+                    if (recentOnly) Text("Tarihi olmayan eski kayıtlar Son 30 gün filtresine katılmaz.",
+                        color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
+                }
+            }
         }
 
         item {
@@ -292,12 +308,12 @@ fun IstatistiklerimScreen(
                 }
 
                 Text(
-                    text = "Konu Başarıları",
+                    text = "Konu ve Alt Kazanım Başarıları",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = SoruLabInkBlack
                 )
                 if (topicStats.isEmpty()) {
-                    EmptyStatsMessage("Bu derste henüz tamamlanmış test bulunmuyor.")
+                    EmptyStatsMessage("Bu derste analiz edilebilir soru kaydı bulunmuyor.")
                 } else {
                     topicStats.forEach { stat ->
                         TopicAccordionCard(
@@ -327,6 +343,9 @@ fun IstatistiklerimScreen(
         } else {
             items(examResults, key = { "stats_result_card_${it.id}" }) { res ->
                 val dateStr = res.createdAt?.toDate()?.let { dateFormat.format(it) } ?: "Tarih bilgisi yok"
+                val detail = remember(res, selectedExam) {
+                    LearningProgressAnalytics.calculate(listOf(res), selectedExam)
+                }
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -369,7 +388,10 @@ fun IstatistiklerimScreen(
                                 color = SoruLabInkBlack
                             )
                             Text(
-                                text = "$dateStr\n${res.correctCount} doğru  •  ${res.wrongCount} yanlış  •  ${String.format(Locale.forLanguageTag("tr-TR"), "%.2f", res.netScore)} net",
+                                text = run {
+                                    if (detail.excludedAttemptCount > 0) "$dateStr\nSoru/yanıt ayrıntısı eksik"
+                                    else "$dateStr\n${detail.counts.correct} doğru • ${detail.counts.wrong} yanlış • ${detail.counts.blank} boş"
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = SoruLabSlateMuted,
                                 maxLines = 2
@@ -393,7 +415,9 @@ private data class SubjectRealStat(
     val correctCount: Int,
     val wrongCount: Int,
     val emptyCount: Int,
-    val ungradedCount: Int
+    val ungradedCount: Int,
+    val uniqueQuestionCount: Int,
+    val evidence: ProgressEvidence
 ) {
     val questionCount: Int
         get() = correctCount + wrongCount + emptyCount + ungradedCount
@@ -413,7 +437,10 @@ private data class TopicRealStat(
     val correctCount: Int,
     val wrongCount: Int,
     val emptyCount: Int,
-    val ungradedCount: Int
+    val ungradedCount: Int,
+    val uniqueQuestionCount: Int,
+    val evidence: ProgressEvidence,
+    val outcomes: List<LearningProgressBucket>
 ) {
     val questionCount: Int
         get() = correctCount + wrongCount + emptyCount + ungradedCount
@@ -530,7 +557,7 @@ private fun SubjectPerformanceCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(142.dp)
+                .heightIn(min = 168.dp)
                 .border(
                     width = if (selected) 1.5.dp else 1.dp,
                     color = if (selected) accent.copy(alpha = 0.72f) else SoruLabBorderLight,
@@ -602,6 +629,8 @@ private fun SubjectPerformanceCard(
                     )
                 }
             }
+            Text("${stat.evidence.label} • ${stat.uniqueQuestionCount} farklı soru",
+                style = MaterialTheme.typography.labelSmall, color = SoruLabSlateMuted)
         }
     }
 }
@@ -692,6 +721,8 @@ private fun TopicAccordionCard(
                     modifier = Modifier.padding(start = 4.dp)
                 )
             }
+            Text("${stat.evidence.label} • ${stat.gradedQuestionCount} değerlendirilen yanıt • ${stat.uniqueQuestionCount} farklı soru",
+                style = MaterialTheme.typography.labelSmall, color = SoruLabSlateMuted)
             Spacer(modifier = Modifier.height(8.dp))
             LinearProgressIndicator(
                 progress = { (stat.accuracyPercent ?: 0) / 100f },
@@ -721,9 +752,35 @@ private fun TopicAccordionCard(
                             SoruLabCobaltBlue
                         )
                     }
+                    if (stat.ungradedCount > 0) Text(
+                        "${stat.ungradedCount} yanıt değerlendirilmedi (anahtar doğrulanmadı).",
+                        style = MaterialTheme.typography.bodySmall, color = SoruLabSlateMuted)
+                    Spacer(Modifier.height(12.dp))
+                    Text("Alt kazanımlar", fontWeight = FontWeight.Bold, color = SoruLabInkBlack)
+                    stat.outcomes.forEach { outcome ->
+                        OutcomeProgressRow(outcome)
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun OutcomeProgressRow(outcome: LearningProgressBucket) {
+    val counts = outcome.counts
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)
+        .testTag("stats_outcome_${outcome.id}"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(outcome.label, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold,
+                color = SoruLabInkBlack, style = MaterialTheme.typography.bodyMedium)
+            Text(counts.accuracyPercent?.let { "%$it" } ?: "—", color = SoruLabCobaltBlue)
+        }
+        Text("${counts.correct} doğru • ${counts.wrong} yanlış • ${counts.blank} boş • ${counts.ungraded} değerlendirilmedi",
+            style = MaterialTheme.typography.bodySmall, color = SoruLabSlateMuted)
+        Text("${outcome.evidence.label} • ${outcome.uniqueQuestionCount} farklı soru • ${outcome.attemptCount} test",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (outcome.evidence == ProgressEvidence.NEEDS_PRACTICE) SoruLabCoralRed else SoruLabSlateMuted)
     }
 }
 

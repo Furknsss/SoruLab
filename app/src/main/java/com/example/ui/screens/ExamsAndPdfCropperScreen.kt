@@ -55,6 +55,7 @@ import com.example.data.*
 import com.example.util.StudioImageAndPdfEngine
 import com.example.util.SoruLabQuestionZipImporter
 import com.example.viewmodel.BatchPdfCropState
+import com.example.data.LearningOutcomeCatalog
 import com.example.viewmodel.ExtractedPdfQuestionItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -2448,6 +2449,15 @@ private fun PdfCropReviewDialog(
     val current = answerOverrides[currentIndex]?.let { answer ->
         original.copy(correctOption = answer, answerKeyMatched = answer.isNotBlank(), solutionSummary = original.solutionSummary + " • Kullanıcı tarafından doğrulandı")
     } ?: original
+    var showOutcomeChoices by remember(currentIndex) { mutableStateOf(false) }
+    val outcomeSubject = SoruLabCatalog.allSubjects.firstOrNull {
+        it.examType.name == current.examType && it.name == current.subjectName
+    }
+    val outcomeTopic = outcomeSubject?.let {
+        SoruLabCatalog.resolveTopicInSubject(it.id, "", current.topicName)
+    }
+    val outcomeChoices = if (outcomeSubject != null && outcomeTopic != null)
+        LearningOutcomeCatalog.candidates(outcomeSubject.id, outcomeTopic.id) else emptyList()
     val preview = StudioImageAndPdfEngine.rememberCachedBitmap(current.croppedImagePath)
     val included = currentIndex !in excludedIndices
     val selectedCount = review.items.size - excludedIndices.size
@@ -2503,6 +2513,32 @@ private fun PdfCropReviewDialog(
                     Text("${currentIndex + 1} / ${review.items.size}", color = Color(0xFF25205E), fontWeight = FontWeight.SemiBold)
                     IconButton(onClick = { currentIndex++ }, enabled = currentIndex < review.items.lastIndex, modifier = Modifier.testTag("crop_review_next")) {
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Sonraki kırpma")
+                    }
+                }
+                Text("Alt kazanım: " + current.learningOutcomeName.ifBlank { current.learningOutcome }
+                    .ifBlank { "Belirlenemedi" }, fontSize = 12.sp, color = Color(0xFF77738F))
+                if (outcomeChoices.isNotEmpty()) {
+                    TextButton(onClick = { showOutcomeChoices = !showOutcomeChoices }) {
+                        Text("Alt kazanımı düzelt")
+                    }
+                    if (showOutcomeChoices) {
+                        Column(Modifier.heightIn(max = 120.dp).verticalScroll(rememberScrollState())) {
+                            TextButton(onClick = {
+                                cropOverrides = cropOverrides + (currentIndex to current.copy(
+                                    learningOutcome = "", learningOutcomeId = "", learningOutcomeName = "",
+                                    learningOutcomeSource = "manual", learningOutcomeConfidence = 0.0))
+                                showOutcomeChoices = false
+                            }) { Text("Kesin değil / eşleşmeyi kaldır") }
+                            outcomeChoices.forEach { outcome ->
+                                TextButton(onClick = {
+                                    cropOverrides = cropOverrides + (currentIndex to current.copy(
+                                        learningOutcome = outcome.name, learningOutcomeId = outcome.id,
+                                        learningOutcomeName = outcome.name, learningOutcomeSource = "manual",
+                                        learningOutcomeConfidence = 1.0))
+                                    showOutcomeChoices = false
+                                }) { Text(outcome.name) }
+                            }
+                        }
                     }
                 }
                 TextButton(onClick = { correctingCrop = true }, enabled = current.pdfFilePath.isNotBlank()) {

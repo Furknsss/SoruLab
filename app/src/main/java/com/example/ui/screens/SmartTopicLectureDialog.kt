@@ -45,6 +45,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.YksQuestion
+import com.example.data.LearningOutcomeCatalog
 import android.webkit.ConsoleMessage
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -77,8 +78,24 @@ internal fun SmartTopicLectureDialog(
     val topicName = question.topicHeader.ifBlank { fallbackTopic }
     val subjectKey = SmartLessonCatalog.preferenceKey(examType, subjectName, "")
     val topicKey = SmartLessonCatalog.preferenceKey(examType, subjectName, topicName)
-    val lessonOptions = remember(question.id, examType, subjectName, topicName) {
-        SmartLessonCatalog.find(question, examType, subjectName, fallbackTopic)
+    val scopeSubject = SmartLessonCatalog.subject(examType, subjectName.ifBlank { question.subject })
+    val scopeTopic = scopeSubject?.let {
+        com.example.data.SoruLabCatalog.resolveTopicInSubject(it.id, "", topicName)
+    }
+    val outcomeCandidates = if (scopeSubject != null && scopeTopic != null)
+        LearningOutcomeCatalog.candidates(scopeSubject.id, scopeTopic.id) else emptyList()
+    var selectedOutcome by rememberSaveable(question.id, topicKey) {
+        mutableStateOf(prefs.getString("outcome:" + topicKey + ":" + question.id, null)
+            ?: question.learningOutcomeId)
+    }
+    var showOutcomes by rememberSaveable(question.id) { mutableStateOf(false) }
+    val selectedOutcomeName = outcomeCandidates.firstOrNull { it.id == selectedOutcome }?.name
+        ?: question.learningOutcome
+    val effectiveQuestion = if (selectedOutcome != question.learningOutcomeId)
+        question.copy(learningOutcomeId = selectedOutcome, learningOutcomeName = selectedOutcomeName,
+            learningOutcomeSource = "manual", learningOutcomeConfidence = 1.0) else question
+    val lessonOptions = remember(effectiveQuestion, examType, subjectName, topicName) {
+        SmartLessonCatalog.find(effectiveQuestion, examType, subjectName, fallbackTopic)
     }
     var teacher by rememberSaveable(question.id, subjectKey, topicKey) {
         mutableStateOf(
@@ -90,6 +107,9 @@ internal fun SmartTopicLectureDialog(
     var customTeacher by rememberSaveable(subjectKey, topicKey) { mutableStateOf("") }
     val active = SmartLessonCatalog.select(lessonOptions, teacher)
     var retry by remember { mutableStateOf(0) }
+    var resumeSecond by rememberSaveable(question.id, active?.videoId, active?.startSeconds) {
+        mutableStateOf(active?.startSeconds ?: 0)
+    }
     var playerStatus by remember(active?.videoId, active?.startSeconds, retry) { mutableStateOf("loading") }
     var externalError by remember { mutableStateOf(false) }
     var savedPreference by remember { mutableStateOf(prefs.contains("topic:" + topicKey) ||
@@ -146,10 +166,27 @@ internal fun SmartTopicLectureDialog(
                 }
 
                 HorizontalDivider(color = Color(0xFFE2E8F0))
+                Text(if (selectedOutcomeName.isNotBlank()) "Alt kazanım: " + selectedOutcomeName
+                    else "Alt kazanım kesinleşmedi; özel video dakikası seçilmez.", fontSize = 12.sp)
+                if (outcomeCandidates.isNotEmpty()) {
+                    TextButton(onClick = { showOutcomes = !showOutcomes }) { Text("Alt kazanımı seç / düzelt") }
+                    if (showOutcomes) {
+                        Column(modifier = Modifier.heightIn(max = 180.dp)
+                            .verticalScroll(rememberScrollState())) {
+                            outcomeCandidates.forEach { outcome ->
+                                TextButton(onClick = {
+                                    selectedOutcome = outcome.id
+                                    prefs.edit().putString("outcome:" + topicKey + ":" + question.id, outcome.id).apply()
+                                    showOutcomes = false
+                                }) { Text(outcome.name) }
+                            }
+                        }
+                    }
+                }
 
                 if (active != null) {
                     if (teacher != "Otomatik" && teacher != active.teacher) {
-                        Text("Kaydedilen hoca bu konuda yok; uygun anlatım seçildi.", fontSize = 12.sp)
+                        Text("Tercih ettiğin hocanın bu kazanıma uygun bölümü yok; eşleşen anlatım seçildi.", fontSize = 12.sp)
                     }
                     Text(active.title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                     // key causes a new player to load when a different instructor is chosen.
@@ -160,7 +197,7 @@ internal fun SmartTopicLectureDialog(
                                 WebView(ctx).apply {
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
-                                    settings.mediaPlaybackRequiresUserGesture = true
+                                    settings.mediaPlaybackRequiresUserGesture = false
                                     settings.allowFileAccess = false
                                     settings.allowContentAccess = false
                                     webView = this
@@ -169,6 +206,14 @@ internal fun SmartTopicLectureDialog(
                                             val value = message.message()
                                             if (value == "SORULAB_READY") playerStatus = "ready"
                                             if (value.startsWith("SORULAB_ERROR:")) playerStatus = value
+                                            if (value == "SORULAB_BLOCKED") playerStatus = "blocked"
+                                            if (value.startsWith("SORULAB_TIME:")) {
+                                                val seconds = value.substringAfter(':').toDoubleOrNull()
+                                                if (seconds != null && seconds.isFinite()) {
+                                                    resumeSecond = seconds.toInt().coerceIn(active.startSeconds,
+                                                        active.endSeconds?.minus(1) ?: 86400)
+                                                }
+                                            }
                                             return true
                                         }
                                     }
@@ -187,7 +232,7 @@ internal fun SmartTopicLectureDialog(
                                     }
                                     setBackgroundColor(android.graphics.Color.BLACK)
                                     val html = buildYoutubeEmbedHtml(
-                                        active.videoId, active.startSeconds, active.endSeconds
+                                        active.videoId, resumeSecond, active.endSeconds
                                     )
                                     // HTTPS base URL establishes a non-file origin and referrer.
                                     loadDataWithBaseURL(
@@ -200,7 +245,7 @@ internal fun SmartTopicLectureDialog(
                         )
                     }
                     if (playerStatus == "loading") Text("Oynatıcı yükleniyor…", fontSize = 12.sp)
-                    if (playerStatus != "loading" && playerStatus != "ready") {
+                    if (playerStatus != "loading" && playerStatus != "ready" && playerStatus != "blocked") {
                         Text("Video yüklenemedi veya yerleştirmeye kapalı. Tekrar dene ya da YouTube'da aç.",
                             color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                         TextButton(onClick = { retry++ }) { Text("Tekrar dene") }
@@ -210,11 +255,11 @@ internal fun SmartTopicLectureDialog(
                         fontSize = 13.sp, fontWeight = FontWeight.SemiBold
                     )
                     Text(if (active.outcomeId.isBlank()) "Konu düzeyinde anlatım"
-                        else "Soru metnindeki ipucuna göre bölüm; gerekirse başka anlatım ara.",
+                        else "Alt kazanımla eşleşen bölüm; gerekirse alt kazanımı düzelt.",
                         fontSize = 11.sp, color = Color(0xFF64748B))
                     Text(active.sourceOfTimestamp, fontSize = 11.sp, color = Color(0xFF64748B))
                     Text(
-                        "İzlemek için oynatıcının ▶ düğmesine dokun.",
+                        "Otomatik oynatma engellenirse oynatıcının ▶ düğmesine dokun.",
                         fontSize = 11.sp, color = Color(0xFF64748B)
                     )
                     TextButton(
@@ -233,7 +278,7 @@ internal fun SmartTopicLectureDialog(
                     TextButton(
                         onClick = {
                             openExternal(SmartLessonCatalog.searchUrl(examType, subjectName,
-                                topicName, teacher))
+                                (topicName + " " + selectedOutcomeName).trim(), teacher))
                         }
                     ) { Text("YouTube'da konu ara") }
                 }
@@ -300,7 +345,7 @@ internal fun SmartTopicLectureDialog(
                 }
                 if (active != null) {
                     TextButton(onClick = {
-                        openExternal(SmartLessonCatalog.searchUrl(examType, subjectName, topicName, teacher))
+                        openExternal(SmartLessonCatalog.searchUrl(examType, subjectName, (topicName + " " + selectedOutcomeName).trim(), teacher))
                     }) { Text("Başka anlatım ara") }
                 }
                 if (externalError) Text("Bağlantıyı açacak uygulama bulunamadı.",
@@ -332,10 +377,17 @@ internal fun buildYoutubeEmbedHtml(videoId: String, startSeconds: Int, endSecond
         function onYouTubeIframeAPIReady(){
           player=new YT.Player('player',{
             width:'100%',height:'100%',videoId:'$videoId',
-            playerVars:{playsinline:1,autoplay:0,start:$startSeconds$end,
+            playerVars:{playsinline:1,autoplay:1,start:$startSeconds$end,
               origin:'https://github.com',rel:0},
             events:{
-              onReady:function(){console.log('SORULAB_READY');},
+              onReady:function(e){
+                console.log('SORULAB_READY');e.target.playVideo();
+                setInterval(function(){
+                  if(player && player.getCurrentTime)
+                    console.log('SORULAB_TIME:'+player.getCurrentTime());
+                },3000);
+              },
+              onAutoplayBlocked:function(){console.log('SORULAB_BLOCKED');},
               onError:function(e){console.log('SORULAB_ERROR:'+e.data);}
             }
           });

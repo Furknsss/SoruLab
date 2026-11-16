@@ -104,9 +104,9 @@ class SmartLessonCatalogTest {
         }
     }
 
-    @Test fun embedDisablesAutoplayAndRejectsInjectionAndInvalidSegments() {
+    @Test fun embedRequestsAutoplayWithBlockedFallbackAndRejectsInvalidSegments() {
         val html = buildYoutubeEmbedHtml("2i9_HZErHMU", 662, 831)
-        assertTrue(html.contains("autoplay:0"))
+        assertTrue(html.contains("autoplay:1") && html.contains("onAutoplayBlocked"))
         assertTrue(html.contains("end:831"))
         assertTrue(html.contains("onError"))
         for (invalid in listOf("bad", "'<script>")) {
@@ -120,5 +120,14 @@ class SmartLessonCatalogTest {
             "TYT", "Fizik", "")
         assertEquals(0, videos.first().startSeconds)
         assertTrue(videos.first().outcomeId.isBlank())
+    }
+
+    @Test fun exactSkillWinsOverPreferredTeachersGeneralVideo() {
+        val videos = SmartLessonCatalog.find(
+            question("Türev Alma Kuralları", "zincir kuralı"),
+            "AYT", "Matematik", "")
+        val selected = SmartLessonCatalog.select(videos, "Rehber Matematik")
+        assertEquals("chain-rule", selected?.outcomeId)
+        assertEquals("Bıyıklı Matematik", selected?.teacher)
     }
 }

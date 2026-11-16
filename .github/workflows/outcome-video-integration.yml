@@ -65,10 +65,13 @@ jobs:
       - name: Check actual WebView player startup JavaScript
         run: node tools/test_lesson_player_start.cjs
 
+      - name: Check reviewed chapter import pipeline
+        run: python3 -m unittest discover -s tools -p test_import_lesson_chapters.py -v
+
       - name: Check generated lesson metadata
         run: python3 tools/generate_lesson_catalog.py --check
 
-      - name: Run Deneme blueprint, UI, paper and optical regression tests
+      - name: Run study flow, learning statistics, Deneme and reader regression tests
         run: >-
           bash ./gradlew :app:testDebugUnitTest
           --tests 'com.example.ui.LiveSolvingBoardScreenTest'
@@ -85,6 +88,10 @@ jobs:
           --tests 'com.example.data.CurriculumTopicIsolationTest'
           --tests 'com.example.data.LearningOutcomeCatalogTest'
           --tests 'com.example.ui.screens.ExplicitOutcomeVideoTest'
+          --tests 'com.example.ui.screens.StoredQuestionSolutionTest'
+          --tests 'com.example.ui.screens.QuestionSolutionDialogTest'
+          --tests 'com.example.util.LearningProgressAnalyticsTest'
+          --tests 'com.example.ui.screens.LearningProgressScreenTest'
           --tests 'com.example.viewmodel.LearningOutcomeIntegrationTest'
           --tests 'com.example.viewmodel.OfflineAiPolicyTest'
           --tests 'com.example.viewmodel.QuestionCloudMergeTest'

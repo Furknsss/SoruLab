@@ -693,6 +693,18 @@ class LiveSolvingBoardScreenTest {
     }
 
     @Test
+    fun storedSolutionOpensImmediatelyWithoutInventedSectionsAndReturnsToQuestion() {
+        showBoard(review = true)
+        compose.onNodeWithTag("three_dot_btn_1").performClick()
+        compose.onNodeWithText("Soru Çözümü").performClick()
+        compose.onNodeWithText("x yerine 2 yazılır.").assertIsDisplayed()
+        compose.onNodeWithTag("stored_solution_loading").assertDoesNotExist()
+        compose.onNodeWithText("Temel YKS kazanım ve muhakeme ilkesi.").assertDoesNotExist()
+        compose.onNodeWithText("Soruma dön").performClick()
+        compose.onNodeWithTag("book_question_1").assertExists()
+    }
+
+    @Test
     fun twinScreenUsesProductionCallbackAndAllowsRetryAfterFailure() {
         var calls = 0
         showBoard(review = true, onTwinRequested = { _, callback ->

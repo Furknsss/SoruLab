@@ -47,9 +47,12 @@ import com.example.data.YksQuestion
 import com.example.ui.theme.*
 import com.example.util.LearningProgressAnalytics
 import com.example.util.LearningProgressBucket
+import com.example.util.LearningProgressReport
 import com.example.util.ProgressEvidence
 import com.example.viewmodel.AiChatMessage
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -64,11 +67,26 @@ fun IstatistiklerimScreen(
     var expandedTopicId by remember(selectedExam, selectedSubjectId) { mutableStateOf<String?>(null) }
     var recentOnly by remember { mutableStateOf(false) }
     val openedAt = remember { System.currentTimeMillis() }
-    val progress = remember(testResults, selectedExam, recentOnly) {
-        LearningProgressAnalytics.calculate(testResults, selectedExam,
-            if (recentOnly) openedAt - 30L * 24 * 60 * 60 * 1000 else null)
+    val calculatedProgress by key(testResults, selectedExam, recentOnly) {
+        produceState<LearningProgressReport?>(null) {
+            value = withContext(Dispatchers.Default) {
+                LearningProgressAnalytics.calculate(testResults, selectedExam,
+                    if (recentOnly) openedAt - 30L * 24 * 60 * 60 * 1000 else null)
+            }
+        }
     }
-    val examResults = progress.recentResults
+    val progress = calculatedProgress
+    if (progress == null) {
+        Box(Modifier.fillMaxSize().background(SoruLabBackground), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                CircularProgressIndicator()
+                Text("İstatistikler hesaplanıyor", color = SoruLabSlateMuted)
+            }
+        }
+        return
+    }
+    val examResults = progress.recentAttempts
     val subjects = remember(selectedExam) {
         SoruLabCatalog.allSubjects.filter { it.examType == selectedExam }
     }
@@ -192,9 +210,9 @@ fun IstatistiklerimScreen(
                     Text("Verinin kapsamı", fontWeight = FontWeight.Bold, color = SoruLabInkBlack)
                     Text("${progress.counts.graded} değerlendirilen yanıt • ${progress.uniqueQuestionCount} farklı soru",
                         color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
-                    Text("Başarı = doğru / (doğru + yanlış + boş). Anahtarı doğrulanmayan sorular oran ve nete katılmaz.",
+                    Text("Başarı = doğru / (doğru + yanlış + boş). Anahtarı veya yanıt verisi doğrulanmayan sorular oran ve nete katılmaz.",
                         color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
-                    Text("Tekrar çözümler yanıt sayısına dahildir; farklı soru sayısını artırmaz. Güçlü/zayıf görünüm için en az 10 değerlendirilen yanıt ve 5 farklı soru gerekir.",
+                    Text("Tekrar çözümler yanıt sayısına dahildir; farklı soru sayısını artırmaz. Güçlü/zayıf görünüm için en az 10 değerlendirilen yanıt ve 5 farklı değerlendirilebilir soru gerekir.",
                         color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
                     if (progress.excludedAttemptCount > 0) Text(
                         "${progress.excludedAttemptCount} testin soru/yanıt ayrıntısı eksik veya okunamıyor; başarı hesabına katılmadı. Son Testler'den açabilirsin.",
@@ -341,11 +359,10 @@ fun IstatistiklerimScreen(
                 EmptyStatsMessage("${selectedExam.name} için henüz tamamlanmış test yok.")
             }
         } else {
-            items(examResults, key = { "stats_result_card_${it.id}" }) { res ->
+            items(examResults, key = { "stats_result_card_${it.id}" }) { attempt ->
+                val res = attempt.record
+                val detail = attempt.counts
                 val dateStr = res.createdAt?.toDate()?.let { dateFormat.format(it) } ?: "Tarih bilgisi yok"
-                val detail = remember(res, selectedExam) {
-                    LearningProgressAnalytics.calculate(listOf(res), selectedExam)
-                }
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -389,8 +406,8 @@ fun IstatistiklerimScreen(
                             )
                             Text(
                                 text = run {
-                                    if (detail.excludedAttemptCount > 0) "$dateStr\nSoru/yanıt ayrıntısı eksik"
-                                    else "$dateStr\n${detail.counts.correct} doğru • ${detail.counts.wrong} yanlış • ${detail.counts.blank} boş"
+                                    if (detail == null) "$dateStr\nSoru/yanıt ayrıntısı eksik"
+                                    else "$dateStr\n${detail.correct} doğru • ${detail.wrong} yanlış • ${detail.blank} boş"
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = SoruLabSlateMuted,
@@ -753,7 +770,7 @@ private fun TopicAccordionCard(
                         )
                     }
                     if (stat.ungradedCount > 0) Text(
-                        "${stat.ungradedCount} yanıt değerlendirilmedi (anahtar doğrulanmadı).",
+                        "${stat.ungradedCount} yanıt değerlendirilmedi (anahtar veya yanıt verisi doğrulanmadı).",
                         style = MaterialTheme.typography.bodySmall, color = SoruLabSlateMuted)
                     Spacer(Modifier.height(12.dp))
                     Text("Alt kazanımlar", fontWeight = FontWeight.Bold, color = SoruLabInkBlack)

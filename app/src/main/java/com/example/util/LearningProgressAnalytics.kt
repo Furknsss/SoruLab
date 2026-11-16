@@ -28,18 +28,22 @@ internal enum class ProgressEvidence(val label: String) {
 
 internal data class LearningProgressBucket(
     val id: String, val label: String, val counts: ProgressCounts,
-    val attemptCount: Int, val uniqueQuestionCount: Int,
+    val attemptCount: Int, val uniqueQuestionCount: Int, val uniqueGradedQuestionCount: Int,
     val children: List<LearningProgressBucket> = emptyList(),
     val classified: Boolean = true
 ) {
     // Repeated answers to one question are practice, not evidence of broad mastery.
     val evidence: ProgressEvidence get() = when {
-        !classified || counts.graded < 10 || uniqueQuestionCount < 5 -> ProgressEvidence.INSUFFICIENT
+        !classified || counts.graded < 10 || uniqueGradedQuestionCount < 5 -> ProgressEvidence.INSUFFICIENT
         (counts.accuracyPercent ?: 0) >= 80 -> ProgressEvidence.STRONG
         (counts.accuracyPercent ?: 0) <= 50 -> ProgressEvidence.NEEDS_PRACTICE
         else -> ProgressEvidence.DEVELOPING
     }
 }
+
+internal data class LearningProgressAttempt(
+    val id: String, val record: TestResultRecord, val counts: ProgressCounts?
+)
 
 internal data class LearningProgressReport(
     val counts: ProgressCounts,
@@ -47,6 +51,7 @@ internal data class LearningProgressReport(
     val uniqueQuestionCount: Int,
     val subjects: List<LearningProgressBucket>,
     val recentResults: List<TestResultRecord>,
+    val recentAttempts: List<LearningProgressAttempt>,
     val excludedAttemptCount: Int,
     val unscopedQuestionCount: Int,
     val unknownOutcomeCount: Int,
@@ -86,7 +91,9 @@ internal object LearningProgressAnalytics {
         val items = mutableListOf<Item>()
         var excluded = 0
         var included = 0
+        val recentAttempts = mutableListOf<LearningProgressAttempt>()
         for ((index, result) in solved.withIndex()) {
+            val attempt = result.id.ifBlank { "legacy-attempt-$index" }
             val snapshot = TestSnapshotCodec.decode(result.testSnapshotJson)
             val answers = runCatching { JSONObject(result.answersMapJson) }.getOrNull()
             if (snapshot == null || snapshot.questions.isEmpty() || answers == null ||
@@ -94,10 +101,11 @@ internal object LearningProgressAnalytics {
                     numbers.any { it <= 0 } || numbers.distinct().size != numbers.size
                 }) {
                 excluded++
+                recentAttempts += LearningProgressAttempt(attempt, result, null)
                 continue
             }
             included++
-            val attempt = result.id.ifBlank { "legacy-attempt-$index" }
+            val startIndex = items.size
             val headerSubject = subjects.firstOrNull { it.id == result.subjectId }
                 ?: subjects.firstOrNull { result.subjectId.isBlank() && normalize(it.name) == normalize(result.subjectName) }
             for (q in snapshot.questions) {
@@ -116,16 +124,20 @@ internal object LearningProgressAnalytics {
                     when {
                         q.learningOutcomeId.isNotBlank() -> typed.takeIf { it.confidence >= 0.9 }
                         q.learningOutcomeSource == "manual" -> null // explicit clearing remains cleared
-                        q.learningOutcome.isNotBlank() ->
-                            LearningOutcomeCatalog.fromLabel(subject.id, topic.id, q.learningOutcome)
-                        else -> LearningOutcomeCatalog.fromLabel(subject.id, topic.id, q.questionType)
+                        else -> LearningOutcomeCatalog.fromLabel(subject.id, topic.id, q.learningOutcome)
+                            .takeIf { it.id.isNotBlank() }
+                            ?: LearningOutcomeCatalog.fromLabel(subject.id, topic.id, q.questionType)
                     }?.takeIf { it.id.isNotBlank() }
                 } else null
                 val correct = q.correctOption.trim().uppercase(Locale.ROOT)
-                val answer = answers.optString(q.number.toString()).trim().uppercase(Locale.ROOT)
+                val rawAnswer = answers.opt(q.number.toString())
+                val absent = rawAnswer == null || rawAnswer === JSONObject.NULL
+                val answer = (rawAnswer as? String)?.trim()?.uppercase(Locale.ROOT)
+                val malformedAnswer = !absent && (rawAnswer !is String ||
+                    (!answer.isNullOrEmpty() && answer !in options))
                 val status = when {
-                    !q.answerKeyVerified || correct !in options -> AnswerOutcome.UNGRADED
-                    answer !in options -> AnswerOutcome.BLANK
+                    !q.answerKeyVerified || correct !in options || malformedAnswer -> AnswerOutcome.UNGRADED
+                    absent || answer.isNullOrEmpty() -> AnswerOutcome.BLANK
                     answer == correct -> AnswerOutcome.CORRECT
                     else -> AnswerOutcome.WRONG
                 }
@@ -137,6 +149,7 @@ internal object LearningProgressAnalytics {
                     topic?.id ?: "__unknown_topic__", topic?.name ?: "Konu belirlenmedi",
                     assignment?.id ?: "__unknown_outcome__", assignment?.name ?: "Alt kazanım belirlenmedi")
             }
+            recentAttempts += LearningProgressAttempt(attempt, result, counts(items.subList(startIndex, items.size)))
         }
         val buckets = subjects.mapNotNull { subject ->
             val scoped = items.filter { it.subjectId == subject.id }
@@ -153,7 +166,7 @@ internal object LearningProgressAnalytics {
         }
         return LearningProgressReport(
             counts(items), included, items.mapNotNull { it.identity }.distinct().size, buckets,
-            solved, excluded, items.count { it.subjectId == null },
+            solved, recentAttempts, excluded, items.count { it.subjectId == null },
             items.count { it.outcomeId == "__unknown_outcome__" },
             matching.size - deduplicated.size
         )
@@ -163,7 +176,9 @@ internal object LearningProgressAnalytics {
         id: String, label: String, items: List<Item>,
         children: List<LearningProgressBucket> = emptyList(), classified: Boolean = true
     ) = LearningProgressBucket(id, label, counts(items), items.map { it.attempt }.distinct().size,
-        items.mapNotNull { it.identity }.distinct().size, children, classified)
+        items.mapNotNull { it.identity }.distinct().size,
+        items.filter { it.status != AnswerOutcome.UNGRADED }.mapNotNull { it.identity }.distinct().size,
+        children, classified)
 
     private fun counts(items: List<Item>) = ProgressCounts(
         items.count { it.status == AnswerOutcome.CORRECT },

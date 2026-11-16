@@ -68,7 +68,7 @@ class LearningProgressAnalyticsTest {
             learningOutcomeSource = "manual", learningOutcomeConfidence = 1.0,
             analyticsText = "enzim")
         val cleared = q(2).copy(learningOutcomeSource = "manual")
-        val unknown = q(3).copy(learningOutcome = "Publisher unmapped label", questionType = "Enzimler")
+        val unknown = q(3).copy(learningOutcome = "Publisher unmapped label", questionType = "")
         val report = LearningProgressAnalytics.calculate(
             listOf(record("a", listOf(invalid, cleared, unknown))), ExamType.TYT)
         assertEquals(3, report.unknownOutcomeCount)
@@ -131,6 +131,31 @@ class LearningProgressAnalyticsTest {
         assertEquals(1, report.counts.correct)
         assertEquals(1, report.unscopedQuestionCount)
         assertTrue(report.subjects.isEmpty())
+    }
+
+    @Test fun unmappedPublisherOutcomeCanUseScopedQuestionTypeWithoutInventingLabel() {
+        val question = q(1).copy(learningOutcome = "Unmapped publisher label", questionType = "Enzimler")
+        val report = LearningProgressAnalytics.calculate(
+            listOf(record("a", listOf(question), """{"1":"A"}""")), ExamType.TYT)
+        assertEquals("tyt_biyoloji-enzymes", report.subjects.single().children.single().children.single().id)
+    }
+
+    @Test fun nonemptyMalformedChoicesAreUngradedWhileMissingNullAndEmptyAreBlank() {
+        val report = LearningProgressAnalytics.calculate(listOf(record("a",
+            (1..7).map { q(it) },
+            """{"1":"Z","2":3,"3":{},"4":null,"5":"","6":" A "}""")), ExamType.TYT)
+        assertEquals(ProgressCounts(1, 0, 3, 3), report.counts)
+        assertEquals(25, report.counts.accuracyPercent)
+    }
+
+    @Test fun ungradedDistinctQuestionsCannotInflateEvidenceThreshold() {
+        val attempts = (1..10).map { record("attempt-$it", listOf(q(1)), """{"1":"A"}""") }
+        val extra = record("ungraded", (2..5).map { q(it, verified = false) })
+        val report = LearningProgressAnalytics.calculate(attempts + extra, ExamType.TYT)
+        val subject = report.subjects.single()
+        assertEquals(5, subject.uniqueQuestionCount)
+        assertEquals(1, subject.uniqueGradedQuestionCount)
+        assertEquals(ProgressEvidence.INSUFFICIENT, subject.evidence)
     }
 
     @Test fun dateWindowIsInclusiveAndUndatedAttemptsStayOnlyInAllTime() {

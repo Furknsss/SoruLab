@@ -34,7 +34,13 @@ class LearningProgressScreenTest {
                 IstatistiklerimScreen(listOf(result), 1, onInspectResult = { inspected = it.id })
             }
         }
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("stats_recent_30").fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithTag("stats_recent_30").performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("Canlıların Temel Bileşenleri").fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText("Canlıların Temel Bileşenleri").performScrollTo().performClick()
         compose.onNodeWithTag("stats_outcome_tyt_biyoloji-enzymes").assertExists()
         compose.onNodeWithText("Enzimler").assertExists()

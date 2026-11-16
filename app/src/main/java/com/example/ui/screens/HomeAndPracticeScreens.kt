@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -1939,7 +1940,16 @@ fun SoruPratigiScreen(
                                 )
                             }
 
+                            // Subject rows always begin with the first curriculum topic,
+                            // even after switching TYT <-> AYT on a shared tablet screen.
+                            val topicRowState = key(selectedExamType, subject.id) {
+                                rememberLazyListState()
+                            }
+                            LaunchedEffect(selectedExamType, subject.id) {
+                                topicRowState.scrollToItem(0)
+                            }
                             LazyRow(
+                                state = topicRowState,
                                 contentPadding = PaddingValues(horizontal = 24.dp),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {

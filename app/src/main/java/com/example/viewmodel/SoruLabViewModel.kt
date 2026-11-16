@@ -624,7 +624,7 @@ class SoruLabViewModel(
             // Pre-index counts by topicId & normalized topicName in O(N) instead of O(Topics * Questions)
             val poolCountByTopicId = HashMap<String, Int>(128)
             for (cq in pool) {
-                val resolvedId = SoruLabCatalog.resolveTopicFast(cq.topicId, cq.topicName)?.id ?: cq.topicId
+                val resolvedId = SoruLabCatalog.resolveTopicForRecord(cq.subjectId, cq.topicId, cq.topicName)?.id.orEmpty()
                 if (resolvedId.isNotBlank()) {
                     poolCountByTopicId[resolvedId] = (poolCountByTopicId[resolvedId] ?: 0) + 1
                 }
@@ -632,7 +632,7 @@ class SoruLabViewModel(
 
             val solvedByTopicId = HashMap<String, MutableList<TestResultRecord>>(64)
             for (res in solvedResults) {
-                val resolvedId = SoruLabCatalog.resolveTopicFast(res.topicId, res.topicName)?.id ?: res.topicId
+                val resolvedId = SoruLabCatalog.resolveTopicForRecord(res.subjectId, res.topicId, res.topicName)?.id.orEmpty()
                 if (resolvedId.isNotBlank()) {
                     solvedByTopicId.getOrPut(resolvedId) { ArrayList() }.add(res)
                 }
@@ -851,10 +851,9 @@ class SoruLabViewModel(
         recordTopicName: String,
         topic: YksTopic
     ): Boolean {
-        val sameSubject = recordSubjectId.equals(topic.subjectId, ignoreCase = true)
-        val sameTopic = recordTopicId.equals(topic.id, ignoreCase = true) ||
-            (recordTopicId.isBlank() && recordTopicName.equals(topic.name, ignoreCase = true))
-        return sameSubject && sameTopic
+        return SoruLabCatalog.resolveTopicForRecord(
+            recordSubjectId, recordTopicId, recordTopicName
+        )?.id == topic.id
     }
 
     private fun hydrateSnapshotQuestionImages(test: YksTestItem): YksTestItem {
@@ -1813,12 +1812,12 @@ class SoruLabViewModel(
 
     fun solveCustomQuestionInPractice(record: CustomQuestionRecord) {
         syncPdfPoolToPracticeTests(_userCustomQuestions.value)
-        val matchedSubject = SoruLabCatalog.allSubjects.find { it.id == record.subjectId }
-            ?: SoruLabCatalog.allSubjects.find { it.name.equals(record.subjectName, ignoreCase = true) }
-            ?: SoruLabCatalog.allSubjects.first()
-        val matchedTopic = matchedSubject.topics.find { it.id == record.topicId }
-            ?: matchedSubject.topics.find { it.name.equals(record.topicName, ignoreCase = true) }
-            ?: matchedSubject.topics.first()
+        val matchedTopic = SoruLabCatalog.resolveTopicForRecord(
+            record.subjectId, record.topicId, record.topicName
+        ) ?: run {
+            showBanner("Sorunun konusu doğrulanamadı, yanlış konu yerine veri korunuyor.")
+            return
+        }
 
         val allTopicTests = _generatedTopicTests.value.entries
             .filter { (key, _) -> key.startsWith("${matchedTopic.id}_") || key == matchedTopic.id }
@@ -2117,10 +2116,12 @@ class SoruLabViewModel(
     }
 
     fun openRecentResultForReview(record: TestResultRecord) {
-        val matchingSubject = SoruLabCatalog.allSubjects.find { it.id == record.subjectId }
-            ?: SoruLabCatalog.allSubjects.first { it.id == "tyt_mat" }
-        val matchingTopic = matchingSubject.topics.find { it.id == record.topicId }
-            ?: matchingSubject.topics.first()
+        val matchingTopic = SoruLabCatalog.resolveTopicForRecord(
+            record.subjectId, record.topicId, record.topicName
+        ) ?: run {
+            showBanner("Bu eski testin konusu doğrulanamadı, veri korunuyor.")
+            return
+        }
         val savedTest = TestSnapshotCodec.decode(record.testSnapshotJson)
             ?.takeIf { it.id == record.testId }
             ?.let(::hydrateSnapshotQuestionImages)
@@ -2625,14 +2626,10 @@ class SoruLabViewModel(
             suggestedTopicName = topicName,
             trustSuggestedTopic = true
         )
-        val matchedSubject = classifiedTopic?.first ?: requestedSubject
-        val matchedTopic = classifiedTopic?.second ?: matchedSubject?.topics?.firstOrNull {
-            topicName.isNotBlank() && (
-                it.name.equals(topicName, ignoreCase = true) ||
-                topicName.contains(it.name, ignoreCase = true) ||
-                it.name.contains(topicName, ignoreCase = true)
-            )
-        }
+        val matchedTopic = classifiedTopic?.second ?: SoruLabCatalog.resolveTopicInSubject(
+            requestedSubject.id, "", topicName
+        )
+        val matchedSubject = requestedSubject
         if (matchedSubject == null || matchedTopic == null) {
             showBanner("Soru konusu müfredatla eşleştirilemedi; soru kaydedilmedi.")
             return
@@ -2833,19 +2830,11 @@ class SoruLabViewModel(
                         questionText = item.questionText
                     )
                 }
-                val subKey = "${item.examType}|${item.subjectName}"
-                val matchedSubject = classifiedTopic?.first ?: subjectMemo[subKey] ?: requestedSubject
-                if (matchedSubject != null) {
-                    subjectMemo[subKey] = matchedSubject
+                val canonicalName = requestedSubject?.let {
+                    SoruLabCatalog.resolveTopicInSubject(it.id, "", item.topicName)
                 }
-
-                val matchedTopic = classifiedTopic?.second ?: matchedSubject?.topics?.firstOrNull {
-                    item.topicName.isNotBlank() && (
-                        it.name.equals(item.topicName, ignoreCase = true) ||
-                        item.topicName.contains(it.name, ignoreCase = true) ||
-                        it.name.contains(item.topicName, ignoreCase = true)
-                    )
-                }
+                val matchedTopic = classifiedTopic?.second ?: canonicalName
+                val matchedSubject = requestedSubject
 
                 val resolvedExamType = matchedSubject?.examType?.name ?: item.examType
                 val subjectId = matchedSubject?.id.orEmpty()

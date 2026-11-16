@@ -1,4 +1,4 @@
-name: SoruLab v1.4.8 Outcome Video Integration QA
+name: SoruLab v1.4.9 Outcome Video Integration QA
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
 
 # Single source of truth. NEVER repeat hardcoded APK filenames in later steps.
 env:
-  APK_FILE: out/SoruLab-v1.4.8.apk
+  APK_FILE: out/SoruLab-v1.4.9.apk
   BASELINE_RELEASE: v1.4.5
 
 jobs:
@@ -122,7 +122,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: SoruLab-v1.4.8-Test-And-Visual-QA
+          name: SoruLab-v1.4.9-Test-And-Visual-QA
           path: |
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
@@ -132,7 +132,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SoruLab-v1.4.8-Signed-APK
+          name: SoruLab-v1.4.9-Signed-APK
           path: ${{ env.APK_FILE }}
           if-no-files-found: error
           retention-days: 30

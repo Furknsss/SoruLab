@@ -19,7 +19,7 @@ on:
 # Cancel stale PR runs while code changes, so only the newest exact commit
 # receives the expensive Android emulator visual review.
 concurrency:
-  group: sorulab-twin-qa
+  group: sorulab-twin-qa-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:

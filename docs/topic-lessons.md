@@ -1,16 +1,17 @@
-# v1.4.8 tabanına alt kazanım / video entegrasyonu
+# v1.4.9 tabanına alt kazanım / video entegrasyonu
 
-Taban: c37ae398a8134f7b1aec928dca5dd2c5fbc1f1fa
+Taban: 48cebd9cbfb0e53b559d6a3ccd7b94bfd61240da
 Dal: feature/v148-smart-lessons-upgrade-20261116
 Yayımlanan v1.4.5: 92a20fe25885e5472842e00aa8ea7d9239f04312
 
 GitHub karşılaştırması, tabanın v1.4.5'i ve v1.4.7 deneme dalını eksiksiz
 ataları arasında içerdiğini doğruladı (her ikisine göre behind_by=0).
-Bu entegrasyon doğrudan v1.4.8 tabanının çocuğudur.
+Bu entegrasyon güncel v1.4.9 tabanını ikinci ebeveyn olarak birleştirir.
+Üç eylemli menü ve güncel sürüm yapılandırması aynen korunmuştur.
 Eski main tabanlı PR #51'in bütün dosyaları bu dala kopyalanmadı.
 
 Korunan güncel özellikler:
-- v1.4.8 sürüm adı, dinamik yükselen versionCode ve mevcut imzalama.
+- v1.4.9 sürüm adı, dinamik yükselen versionCode ve mevcut imzalama.
 - v1.4.6 okuyucu / S Pen / sayfa yerleşimi ve v1.4.7 Deneme Studio.
 - Yeni PDF OCR havuzu, cevap anahtarı, kırpma düzeltme ve kayıt kurtarma.
 - Yayınevi/ZIP learningOutcome, questionType, analyticsText ve ÖSYM metadata alanları.

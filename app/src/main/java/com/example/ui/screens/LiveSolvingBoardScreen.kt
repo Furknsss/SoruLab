@@ -2965,7 +2965,7 @@ private fun ThreeDotQuestionPopoverCard345(
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -3090,9 +3090,11 @@ private fun ThreeDotQuestionPopoverCard345(
                 )
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
+            // All three study actions must be visible in the question menu.
+            // They are routed to the already-wired question-specific callbacks.
             PopoverPillButton345(
-                label = "Çözüm İzle",
+                label = "Soru Çözümü",
                 backgroundColor = Color(0xFF3475F5),
                 textColor = Color.White,
                 onClick = onOpenSolutionModal
@@ -3103,8 +3105,12 @@ private fun ThreeDotQuestionPopoverCard345(
                 textColor = Color(0xFF3475F5),
                 onClick = onOpenTwinScreen
             )
-            // Existing lecture and question-bank callbacks remain in the
-            // caller for compatibility with other reader actions.
+            PopoverPillButton345(
+                label = "Konu Anlatımı",
+                backgroundColor = Color(0xFFEAF3FF),
+                textColor = Color(0xFF2563EB),
+                onClick = onOpenTopicLecture
+            )
         }
     }
 }

@@ -96,3 +96,11 @@ internal object SmartLessonCatalog {
         return "https://www.youtube.com/results?search_query=" + URLEncoder.encode(query, "UTF-8")
     }
 }
+
+/** null means no user override; an empty ID is an explicit manual clear. */
+internal fun lessonQuestionWithOverride(
+    question: YksQuestion, overrideId: String?, overrideName: String
+): YksQuestion = if (overrideId == null) question else question.copy(
+    learningOutcomeId = overrideId, learningOutcomeName = overrideName,
+    learningOutcomeSource = "manual", learningOutcomeConfidence = 1.0
+)

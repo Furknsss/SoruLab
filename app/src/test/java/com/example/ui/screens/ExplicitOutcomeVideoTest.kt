@@ -45,6 +45,21 @@ class ExplicitOutcomeVideoTest {
         assertEquals(8407, selected.startSeconds)
     }
 
+    @Test fun clearingPublisherOnlyOutcomeCannotFallBackToItsOriginalLabel() {
+        val publisher = question("").copy(subject = "Biyoloji", learningOutcome = "Enzimler",
+            learningOutcomeSource = "", learningOutcomeConfidence = 0.0)
+        val cleared = lessonQuestionWithOverride(publisher, "", "")
+        assertEquals("manual", cleared.learningOutcomeSource)
+        assertTrue(SmartLessonCatalog.find(cleared, "TYT", "Biyoloji", "").isEmpty())
+        assertEquals(publisher, lessonQuestionWithOverride(publisher, null, ""))
+    }
+
+    @Test fun reselectingAnExistingTypedOutcomeOverridesLowConfidence() {
+        val existing = question("tyt_biyoloji-enzymes", 0.4)
+        val selected = lessonQuestionWithOverride(existing, existing.learningOutcomeId, "Enzimler")
+        assertEquals(8407, SmartLessonCatalog.find(selected, "TYT", "Biyoloji", "").single().startSeconds)
+    }
+
     @Test fun explicitManualClearStillOverridesAnExistingPublisherLabel() {
         val cleared = question("").copy(subject = "Biyoloji", learningOutcome = "Enzimler")
         assertTrue(SmartLessonCatalog.find(cleared, "TYT", "TYT Deneme", "").isEmpty())

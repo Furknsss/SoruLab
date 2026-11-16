@@ -85,16 +85,15 @@ internal fun SmartTopicLectureDialog(
     }
     val outcomeCandidates = if (scopeSubject != null && scopeTopic != null)
         LearningOutcomeCatalog.candidates(scopeSubject.id, scopeTopic.id) else emptyList()
-    var selectedOutcome by rememberSaveable(question.id, topicKey) {
-        mutableStateOf(prefs.getString("outcome:" + topicKey + ":" + question.id, null)
-            ?: question.learningOutcomeId)
+    var outcomeOverride by rememberSaveable(question.id, topicKey) {
+        mutableStateOf(prefs.getString("outcome:" + topicKey + ":" + question.id, null))
     }
+    val selectedOutcome = outcomeOverride ?: question.learningOutcomeId
     var showOutcomes by rememberSaveable(question.id) { mutableStateOf(false) }
-    val selectedOutcomeName = outcomeCandidates.firstOrNull { it.id == selectedOutcome }?.name
-        ?: question.learningOutcome
-    val effectiveQuestion = if (selectedOutcome != question.learningOutcomeId)
-        question.copy(learningOutcomeId = selectedOutcome, learningOutcomeName = selectedOutcomeName,
-            learningOutcomeSource = "manual", learningOutcomeConfidence = 1.0) else question
+    val selectedOutcomeName = if (outcomeOverride == "") "" else
+        outcomeCandidates.firstOrNull { it.id == selectedOutcome }?.name
+            ?: question.learningOutcomeName.ifBlank { question.learningOutcome }
+    val effectiveQuestion = lessonQuestionWithOverride(question, outcomeOverride, selectedOutcomeName)
     val lessonOptions = remember(effectiveQuestion, examType, effectiveSubjectName, topicName) {
         SmartLessonCatalog.find(effectiveQuestion, examType, effectiveSubjectName, fallbackTopic)
     }
@@ -174,9 +173,21 @@ internal fun SmartTopicLectureDialog(
                     if (showOutcomes) {
                         Column(modifier = Modifier.heightIn(max = 180.dp)
                             .verticalScroll(rememberScrollState())) {
+                            TextButton(onClick = {
+                                outcomeOverride = ""
+                                prefs.edit().putString("outcome:" + topicKey + ":" + question.id, "").apply()
+                                showOutcomes = false
+                            }) { Text("Kazanım seçimini temizle") }
+                            if (outcomeOverride != null) {
+                                TextButton(onClick = {
+                                    outcomeOverride = null
+                                    prefs.edit().remove("outcome:" + topicKey + ":" + question.id).apply()
+                                    showOutcomes = false
+                                }) { Text("Sorudaki kayıtlı kazanımı kullan") }
+                            }
                             outcomeCandidates.forEach { outcome ->
                                 TextButton(onClick = {
-                                    selectedOutcome = outcome.id
+                                    outcomeOverride = outcome.id
                                     prefs.edit().putString("outcome:" + topicKey + ":" + question.id, outcome.id).apply()
                                     showOutcomes = false
                                 }) { Text(outcome.name) }

@@ -105,20 +105,20 @@ object DenemeTopicProfiles {
             q("Ahlak",1,"ahlak_felsefesi"),q("Varlık ve diğer alanlar",1,"varlik_felsefesi","bilim_felsefesi",
                 "din_felsefesi","siyaset_felsefesi","sanat_felsefesi")),
         "tyt_din" to listOf(q("Bilgi ve inanç",1,"bilgi_ve_inanc"),q("Din, ibadet ve ahlak",4,"din_ve_islam")),
+        // Only AYT-level chapters. TYT temel kavramlar, sayma and basic
+        // triangles are intentionally excluded; these are editorial practice
+        // quotas summing to 31 Math + 9 Geometry, not ÖSYM topic guarantees.
         "ayt_mat" to listOf(
-            q("Temel kavramlar ve cebir",5,"ayt_temel_kavramlar","ayt_esitsizlikler","ayt_uslu_koklu"),
-            q("Mantık ve kümeler",2,"ayt_mantik","ayt_kumeler"),
-            q("Sayma ve olasılık",3,"ayt_sayma_olasilik"),
-            q("Fonksiyonlar",2,"fonksiyonlar"),q("Polinomlar",1,"polinomlar"),
-            q("Denklem, parabol ve eşitsizlik",3,"ikinci_derece_denklemler","karmasik_sayilar","parabol","ikinci_derece_esitsizlikler"),
-            q("Trigonometri",5,"trigonometri_ayt_mat"),q("Logaritma",2,"logaritma"),q("Diziler",1,"diziler"),
-            q("Limit",2,"limit_ve_sureklilik"),q("Türev",2,"turev_alma_kurallari","turev_uygulamalari"),
+            q("Fonksiyonlar",4,"fonksiyonlar"),q("Polinomlar",2,"polinomlar"),
+            q("Denklem, parabol ve eşitsizlik",5,"ikinci_derece_denklemler","karmasik_sayilar","parabol","ikinci_derece_esitsizlikler"),
+            q("Trigonometri",6,"trigonometri_ayt_mat"),q("Logaritma",3,"logaritma"),q("Diziler",2,"diziler"),
+            q("Limit",3,"limit_ve_sureklilik"),q("Türev",3,"turev_alma_kurallari","turev_uygulamalari"),
             q("İntegral",3,"belirsiz_integral","belirli_integral_alan")),
         "ayt_geo" to listOf(
             q("Çember ve daire",2,"cemberde_aci","cemberde_uzunluk","dairede_alan"),
             q("Doğru ve nokta analitiği",3,"noktanin_analitigi","dogrunun_analitigi"),
             q("Çember analitiği ve dönüşüm",2,"cemberin_analitigi","donusum_geometrisi"),
-            q("Katı cisimler",1,"kati_cisimler_ayt","ayt_prizmalar"),q("Üçgenler ve dörtgenler",1,"ayt_ucgen_dortgen")),
+            q("Katı cisimler",2,"kati_cisimler_ayt")),
         "ayt_fizik" to listOf(
             q("Hareket, kuvvet ve enerji",2,"vektorler","bagil_hareket","newton_hareket_yasalari","bir_boyutta_sabit_ivmeli","atislar","enerji_ve_hareket"),
             q("Momentum ve denge",1,"itme_momentum","tork_ve_denge","kutle_merkezi_basit_makine"),

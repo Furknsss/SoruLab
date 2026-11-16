@@ -1098,6 +1098,7 @@ private fun LiveSolvingBoardContent(
             }
         }.onFailure {
             if (solutionRequestGate.accepts(token, question.id)) {
+                solutionRequestGate.cancel()
                 isGeneratingSolution = false
                 solutionLoadFailed = true
             }

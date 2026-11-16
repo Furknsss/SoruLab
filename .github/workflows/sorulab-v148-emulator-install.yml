@@ -1,0 +1,73 @@
+name: SoruLab v1.4.8 Android install and upgrade smoke
+
+on:
+  push:
+    branches:
+      - feature/v148-smart-lessons-upgrade-20261116
+    paths:
+      - '.github/workflows/sorulab-v148-emulator-install.yml'
+      - 'scripts/verify_v148_inplace_install.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify-real-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Fetch original, successfully distributed v1.4.7 build
+        uses: actions/download-artifact@v4
+        with:
+          name: SoruLab-v1.4.7-Signed-APK
+          run-id: 43649899156
+          github-token: ${{ github.token }}
+          path: baseline
+      - name: Fetch signed v1.4.8 build
+        uses: actions/download-artifact@v4
+        with:
+          name: SoruLab-v1.4.8-Signed-APK
+          run-id: 43852116165
+          github-token: ${{ github.token }}
+          path: update
+      - name: Confirm artifact integrity and Android signing
+        run: |
+          set -euo pipefail
+          OLD="$(find baseline -name '*.apk' -type f -print -quit)"
+          NEW="$(find update -name '*.apk' -type f -print -quit)"
+          test -s "$OLD" && test -s "$NEW"
+          unzip -t "$OLD" | tail -1
+          unzip -t "$NEW" | tail -1
+          sdkmanager "build-tools;36.0.0"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$OLD" > /tmp/oldcert.txt
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$NEW" > /tmp/newcert.txt
+          grep 'Signer #1 certificate SHA-256 digest' /tmp/{old,new}cert.txt
+          test "$(grep 'Signer #1 certificate SHA-256 digest' /tmp/oldcert.txt)" = "$(grep 'Signer #1 certificate SHA-256 digest' /tmp/newcert.txt)"
+      - run: sudo chmod a+rw /dev/kvm
+      - name: Install v1.4.7 then update in-place to 1.4.8 on Android 16
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash scripts/verify_v148_inplace_install.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SoruLab-v148-Android-install-log
+          path: out/install-smoke/
+          if-no-files-found: ignore
+          retention-days: 7

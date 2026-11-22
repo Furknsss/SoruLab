@@ -183,6 +183,24 @@ class TopicLectureVideoCatalogTest {
         )
         assertTrue(trigoRec.hasDirectEmbedVideo)
 
+        // 5b. AYT Matematik — Trigonometrik Sıralama Sorusu -> Eyüp B. 09:15 (555s)
+        val trigoSiralamaRec = TopicLectureResolver.resolveForQuestion(
+            question = buildQuestion(
+                id = "q_trigo_siralama",
+                subject = "Matematik",
+                topicHeader = "Trigonometri",
+                stemTop = "x in (pi/4, pi/2) olmak üzere a = sinx, b = cosx, c = tanx değerlerinin küçükten büyüğe doğru sıralanışı aşağıdakilerden hangisidir?",
+                questionType = OsymQuestionType.MANTIK_MUHAKEME
+            ),
+            examType = ExamType.AYT,
+            subjectName = "Matematik",
+            topicName = "Trigonometri"
+        )
+        assertEquals("Eyüp B.", trigoSiralamaRec.primaryVideo.teacherName)
+        assertEquals("eyupb_trigo_siralama", trigoSiralamaRec.primaryChapter.id)
+        assertEquals(555, trigoSiralamaRec.primaryChapter.startSeconds)
+        assertEquals("09:15", trigoSiralamaRec.formattedTimestamp)
+
         // 6. TYT Matematik — Problemler -> Mert Hoca veya Rehber Matematik
         val problemRec = TopicLectureResolver.resolveForQuestion(
             question = buildQuestion(

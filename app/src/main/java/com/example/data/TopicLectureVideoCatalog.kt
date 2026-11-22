@@ -843,13 +843,25 @@ object TopicLectureVideoCatalog {
                     id = "eyupb_trigo_birim_ozdeslik",
                     chapterTitle = "Birim Çember, İndirgeme ve Trigonometrik Özdeşlikler",
                     startSeconds = 280,
-                    endSeconds = 1070,
+                    endSeconds = 545,
                     kazanimIds = setOf("KAZ_AYT_MAT_TRIGO"),
                     kazanimCodes = setOf("MAT.12.3.1.1"),
                     questionTypes = setOf(OsymQuestionType.ANALITIK_CEBIRSEL, OsymQuestionType.GORSEL_GEOMETRIK),
-                    subTopicKeywords = listOf("birim çember", "özdeşlik", "indirgeme", "sec", "csc", "sin²+cos²", "sıralama"),
+                    subTopicKeywords = listOf("birim çember", "özdeşlik", "indirgeme", "sec", "csc", "sin²+cos²"),
                     keyFormulaSummary = "sin²x + cos²x = 1, tanx·cotx = 1, secx = 1/cosx, cscx = 1/sinx. π/2 ve 3π/2'de isim değişir.",
                     osymTip = "Birim çemberde uzunluk ve alan sorularında noktanın koordinatları (cosα, sinα), teğet kesimi tanα ve cotα'dır."
+                ),
+                LectureChapterSegment(
+                    id = "eyupb_trigo_siralama",
+                    chapterTitle = "Trigonometrik Fonksiyonlarda Sıralama ve Değer Kıyaslama",
+                    startSeconds = 555,
+                    endSeconds = 1080,
+                    kazanimIds = setOf("KAZ_AYT_MAT_TRIGO"),
+                    kazanimCodes = setOf("MAT.12.3.1.1"),
+                    questionTypes = setOf(OsymQuestionType.MANTIK_MUHAKEME, OsymQuestionType.ANALITIK_CEBIRSEL),
+                    subTopicKeywords = listOf("sıralama", "küçükten büyüğe", "büyükten küçüğe", "karşılaştırma", "bölgeye taşıma", "sin > cos", "tan > sin", "sıralayınız", "hangisi büyüktür", "sıralanışı"),
+                    keyFormulaSummary = "1. bölgede açı büyüdükçe sinüs ve tanjant artar, kosinüs ve kotanjant azalır. tanx > sinx daima geçerlidir. Farklı bölgelerdeki açılar önce 1. bölgeye indirgenir, sonra sıralanır.",
+                    osymTip = "Kosinüsleri sinüse, kotanjantları tanjanta çevirip 1. bölgede sadece sinüs ve tanjantları kıyaslamak hata riskini sıfıra indirir!"
                 ),
                 LectureChapterSegment(
                     id = "eyupb_trigo_toplam_yarim",

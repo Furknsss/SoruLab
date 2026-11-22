@@ -4,6 +4,9 @@ import com.example.data.CustomQuestionRecord
 import com.example.data.DifficultyLevel
 import com.example.data.ExamType
 import com.example.data.MockExamItem
+import com.example.data.OsymExamAuditEngine
+import com.example.data.OsymExamAuditReport
+import com.example.data.OsymQuestionType
 import com.example.data.QuestionVisualType
 import com.example.data.SoruLabCatalog
 import com.example.data.TestResultRecord
@@ -59,7 +62,8 @@ sealed class DenemePlan {
     data class Ready(
         val test: YksTestItem,
         val minutes: Int,
-        val sectionSummary: List<Pair<String, Int>>
+        val sectionSummary: List<Pair<String, Int>>,
+        val auditReport: OsymExamAuditReport? = null
     ) : DenemePlan()
 }
 
@@ -192,6 +196,8 @@ object DenemePlanner {
         val topicCounts = mutableMapOf<String, Int>()
         val sourceCounts = alreadySelected.groupingBy { it.publisherTag + "/" + it.bookOrTestName }.eachCount().toMutableMap()
         val difficultyCounts = alreadySelected.groupingBy { it.difficultyLevel5 }.eachCount().toMutableMap()
+        val questionTypeCounts = alreadySelected.groupingBy { OsymQuestionType.classifyCustomQuestion(it) }.eachCount().toMutableMap()
+        val outcomeCounts = alreadySelected.groupingBy { outcomeKeyFor(it) }.eachCount().toMutableMap()
         val difficultyShares = mapOf(DifficultyLevel.KOLAY to 1.0, DifficultyLevel.ORTA to 2.0,
             DifficultyLevel.ZOR to 1.0, DifficultyLevel.COK_ZOR to 0.5)
         repeat(count) {
@@ -207,6 +213,8 @@ object DenemePlanner {
                 compareBy<CustomQuestionRecord>(
                     { if (it.id in priorIds) 8 else 0 },
                     { -((difficultyShares[it.difficultyLevel5] ?: 1.0) / ((difficultyCounts[it.difficultyLevel5] ?: 0) + 1)) },
+                    { (outcomeCounts[outcomeKeyFor(it)] ?: 0) * 2 },
+                    { (questionTypeCounts[OsymQuestionType.classifyCustomQuestion(it)] ?: 0) * 2 },
                     { (sourceCounts[it.publisherTag + "/" + it.bookOrTestName] ?: 0) * 3 },
                     { it.sourceTestId },
                     { it.questionNumberInBook },
@@ -219,8 +227,25 @@ object DenemePlanner {
             val source = next.publisherTag + "/" + next.bookOrTestName
             sourceCounts[source] = (sourceCounts[source] ?: 0) + 1
             difficultyCounts[next.difficultyLevel5] = (difficultyCounts[next.difficultyLevel5] ?: 0) + 1
+            val qType = OsymQuestionType.classifyCustomQuestion(next)
+            questionTypeCounts[qType] = (questionTypeCounts[qType] ?: 0) + 1
+            val oKey = outcomeKeyFor(next)
+            outcomeCounts[oKey] = (outcomeCounts[oKey] ?: 0) + 1
         }
         return selected
+    }
+
+    private fun outcomeKeyFor(record: CustomQuestionRecord): String =
+        record.resolvedLearningOutcome.id.ifBlank {
+            record.learningOutcome.ifBlank { record.topicId }
+        }
+
+    fun auditTest(test: YksTestItem): OsymExamAuditReport = OsymExamAuditEngine.auditTest(test)
+
+    fun questionTypeDiversityScore(questions: List<YksQuestion>): Int {
+        if (questions.isEmpty()) return 0
+        val distinctTypes = questions.map { OsymQuestionType.fromRawLabel(it.questionType) ?: OsymQuestionType.classifyQuestion(it) }.distinct().size
+        return ((distinctTypes.toDouble() / OsymQuestionType.entries.size.toDouble()) * 100.0).toInt().coerceIn(0, 100)
     }
 
     fun build(
@@ -298,7 +323,11 @@ object DenemePlanner {
                 sourcePageIndex = record.pageIndex,
                 sourcePrintedQuestionNumber = record.questionNumberInBook,
                 learningOutcome = record.learningOutcome,
-                questionType = record.questionType,
+                questionType = record.questionType.ifBlank { OsymQuestionType.classifyCustomQuestion(record).name },
+                learningOutcomeId = record.resolvedLearningOutcome.id,
+                learningOutcomeName = record.resolvedLearningOutcome.name,
+                learningOutcomeSource = record.resolvedLearningOutcome.source,
+                learningOutcomeConfidence = record.resolvedLearningOutcome.confidence,
                 analyticsText = record.questionText,
                 isOsymType = record.isOsymType,
                 imageBase64 = record.imageBase64,
@@ -315,20 +344,23 @@ object DenemePlanner {
             avgWeight > .6f -> DifficultyLevel.ZOR
             else -> DifficultyLevel.ORTA
         }
+        val builtTest = YksTestItem(id,selected.first().topicId,title + " • " + expected + " Soru",
+            title + " • " + expected + " Soru",difficulty,avgWeight.coerceIn(.1f,.95f),
+            false,0,TopicTestLevel.SEVIYE_TESPIT,questions,
+            denemeProfileVersion = DenemeTopicProfiles.VERSION,
+            denemeDifficultyLabel = request.difficulty.label,
+            denemeReusedQuestionCount = selected.count { it.id in previousIds },
+            denemeDistributionSummary = slices.joinToString("\n") { section ->
+                section.label + ": " + if (request.kind == DenemeKind.BRANS)
+                    DenemeTopicProfiles.forSection(section).joinToString(" • ") { it.label + " " + it.count }
+                else section.count.toString() + " soru"
+            })
+        val auditReport = OsymExamAuditEngine.auditTest(builtTest)
         return DenemePlan.Ready(
-            test = YksTestItem(id,selected.first().topicId,title + " • " + expected + " Soru",
-                title + " • " + expected + " Soru",difficulty,avgWeight.coerceIn(.1f,.95f),
-                false,0,TopicTestLevel.SEVIYE_TESPIT,questions,
-                denemeProfileVersion = DenemeTopicProfiles.VERSION,
-                denemeDifficultyLabel = request.difficulty.label,
-                denemeReusedQuestionCount = selected.count { it.id in previousIds },
-                denemeDistributionSummary = slices.joinToString("\n") { section ->
-                    section.label + ": " + if (request.kind == DenemeKind.BRANS)
-                        DenemeTopicProfiles.forSection(section).joinToString(" • ") { it.label + " " + it.count }
-                    else section.count.toString() + " soru"
-                }),
+            test = builtTest,
             minutes = minutes,
-            sectionSummary = slices.map { it.label to it.count }
+            sectionSummary = slices.map { it.label to it.count },
+            auditReport = auditReport
         )
     }
 }

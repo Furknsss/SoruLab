@@ -98,6 +98,12 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.example.data.*
+import com.example.ui.drawing.PenSizePopoverCard
+import com.example.ui.drawing.buildSmoothInkPath
+import com.example.ui.drawing.drawNaturalInkStroke
+import com.example.ui.drawing.hasStylusPressureVariation
+import com.example.ui.drawing.penThicknessToPx
+import com.example.ui.drawing.strokeSizeIndexToThickness
 import com.example.util.StudioImageAndPdfEngine
 import com.example.util.StylusInputPolicy
 import com.example.util.BoardInkCoordinates
@@ -827,11 +833,13 @@ fun LiveSolvingBoardScreen(
     currentCanvasKey: String,
     activeTool: DrawingTool,
     selectedStrokeSizeIndex: Int,
+    penThickness: Float = 35f,
     selectedPenColorHex: Long,
     onExitSession: () -> Unit,
     onToggleViewMode: () -> Unit,
     onSelectTool: (DrawingTool) -> Unit,
     onSelectStrokeSize: (Int) -> Unit,
+    onSelectPenThickness: (Float) -> Unit = {},
     onSelectPenColor: (Long) -> Unit,
     onAddStroke: (String, List<Offset>, List<Float>, DrawingTool) -> Unit,
     onBookPageChanged: (Int) -> Unit,
@@ -861,11 +869,13 @@ fun LiveSolvingBoardScreen(
                 currentCanvasKey = currentCanvasKey,
                 activeTool = activeTool,
                 selectedStrokeSizeIndex = selectedStrokeSizeIndex,
+                penThickness = penThickness,
                 selectedPenColorHex = selectedPenColorHex,
                 onExitSession = onExitSession,
                 onToggleViewMode = onToggleViewMode,
                 onSelectTool = onSelectTool,
                 onSelectStrokeSize = onSelectStrokeSize,
+                onSelectPenThickness = onSelectPenThickness,
                 onSelectPenColor = onSelectPenColor,
                 onAddStroke = onAddStroke,
                 onBookPageChanged = onBookPageChanged,
@@ -898,11 +908,13 @@ private fun LiveSolvingBoardContent(
     currentCanvasKey: String,
     activeTool: DrawingTool,
     selectedStrokeSizeIndex: Int,
+    penThickness: Float = 35f,
     selectedPenColorHex: Long,
     onExitSession: () -> Unit,
     onToggleViewMode: () -> Unit,
     onSelectTool: (DrawingTool) -> Unit,
     onSelectStrokeSize: (Int) -> Unit,
+    onSelectPenThickness: (Float) -> Unit = {},
     onSelectPenColor: (Long) -> Unit,
     onAddStroke: (String, List<Offset>, List<Float>, DrawingTool) -> Unit,
     onBookPageChanged: (Int) -> Unit,
@@ -1184,9 +1196,11 @@ private fun LiveSolvingBoardContent(
             studentAnswer = session.selectedAnswers[twinTargetQ.number],
             activeTool = activeTool,
             selectedStrokeSizeIndex = selectedStrokeSizeIndex,
+            penThickness = penThickness,
             selectedPenColorHex = selectedPenColorHex,
             onSelectTool = onSelectTool,
             onSelectStrokeSize = onSelectStrokeSize,
+            onSelectPenThickness = onSelectPenThickness,
             onSelectPenColor = onSelectPenColor,
             onBackToBookReview = {
                 activeTwinScreenQuestion = null
@@ -1308,6 +1322,7 @@ private fun LiveSolvingBoardContent(
                 fingerDrawingEnabled = fingerDrawingEnabled,
                 onChangeFingerDrawing = { fingerDrawingEnabled = it },
                 selectedStrokeSizeIndex = selectedStrokeSizeIndex,
+                penThickness = penThickness,
                 selectedPenColorHex = selectedPenColorHex,
                 elapsedSeconds = session.elapsedSeconds,
                 onToggleViewMode = onToggleViewMode,
@@ -1325,6 +1340,7 @@ private fun LiveSolvingBoardContent(
                     }
                 },
                 onSelectStrokeSize = onSelectStrokeSize,
+                onSelectPenThickness = onSelectPenThickness,
                 onSelectPenColor = onSelectPenColor,
                 onClearCanvas = { onClearCanvas(displayedCanvasKey) },
                 isImmersive = isImmersive,
@@ -1339,8 +1355,7 @@ private fun LiveSolvingBoardContent(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            val strokeWidths = listOf(4.5f, 8.0f, 13.0f)
-            val currentStrokePx = strokeWidths.getOrElse(selectedStrokeSizeIndex) { 8.0f }
+            val currentStrokePx = penThicknessToPx(penThickness)
             val eraserStrokePx = listOf(18f, 38f, 68f)
                 .getOrElse(selectedStrokeSizeIndex) { 38f }
 
@@ -1452,6 +1467,7 @@ private fun LiveSolvingBoardContent(
                                 openThreeDotQuestionNumber == null) {
                         Modifier.pointerInput(
                             activeTool,
+                            penThickness,
                             selectedStrokeSizeIndex,
                             selectedPenColorHex,
                             fingerDrawingEnabled,
@@ -1805,28 +1821,46 @@ private fun LiveSolvingBoardContent(
                     ) {
                         displayedStrokes.forEach { stroke -> drawSmoothStroke(stroke) }
                     }
-                    if (tick >= 0 && liveRawPoints.size >= 2) {
+                    if (tick >= 0 && liveRawPoints.isNotEmpty()) {
                         val isEraser = liveTool == DrawingTool.ERASER
                         val isHigh = liveTool == DrawingTool.HIGHLIGHTER
                         if (isEraser) {
-                            drawPath(
-                                path = liveRawPath,
-                                color = Color.Transparent,
-                                style = Stroke(
-                                    width = eraserStrokePx,
-                                    cap = StrokeCap.Round,
-                                    join = StrokeJoin.Round
-                                ),
-                                blendMode = BlendMode.Clear
-                            )
+                            if (liveRawPoints.size >= 2) {
+                                drawPath(
+                                    path = liveRawPath,
+                                    color = Color.Transparent,
+                                    style = Stroke(
+                                        width = eraserStrokePx,
+                                        cap = StrokeCap.Round,
+                                        join = StrokeJoin.Round
+                                    ),
+                                    blendMode = BlendMode.Clear
+                                )
+                            } else {
+                                drawCircle(
+                                    color = Color.Transparent,
+                                    radius = eraserStrokePx / 2f,
+                                    center = liveRawPoints.first(),
+                                    blendMode = BlendMode.Clear
+                                )
+                            }
                             drawCircle(
                                 color = Color(0xFF3475F5).copy(alpha = 0.8f),
                                 radius = eraserStrokePx / 2f,
                                 center = liveRawPoints.last(),
                                 style = Stroke(width = 1.dp.toPx())
                             )
+                        } else if (liveRawPoints.size == 1) {
+                            drawCircle(
+                                color = if (isHigh) Color(selectedPenColorHex).copy(alpha = 0.36f)
+                                    else Color(selectedPenColorHex),
+                                radius = penThicknessToPx(penThickness, isHigh) / 2f,
+                                center = liveRawPoints.first()
+                            )
                         } else if (!isHigh &&
-                            liveRawPressures.size == liveRawPoints.size
+                            liveTool != DrawingTool.SMART_SHAPE &&
+                            liveRawPressures.size == liveRawPoints.size &&
+                            hasStylusPressureVariation(liveRawPressures)
                         ) {
                             drawPressureInkSegments(
                                 liveRawPoints,
@@ -1835,12 +1869,16 @@ private fun LiveSolvingBoardContent(
                                 currentStrokePx
                             )
                         } else {
+                            val smoothPath = buildSmoothInkPath(
+                                liveRawPoints,
+                                liveTool == DrawingTool.SMART_SHAPE
+                            )
                             drawPath(
-                                path = liveRawPath,
+                                path = smoothPath,
                                 color = if (isHigh) Color(selectedPenColorHex).copy(alpha = 0.36f)
                                     else Color(selectedPenColorHex),
                                 style = Stroke(
-                                    width = if (isHigh) currentStrokePx * 2.6f else currentStrokePx,
+                                    width = penThicknessToPx(penThickness, isHigh),
                                     cap = StrokeCap.Round,
                                     join = StrokeJoin.Round
                                 )
@@ -3435,12 +3473,14 @@ private fun BottomDarkNavyDrawingBar345(
     fingerDrawingEnabled: Boolean = false,
     onChangeFingerDrawing: (Boolean) -> Unit = {},
     selectedStrokeSizeIndex: Int,
+    penThickness: Float = 35f,
     selectedPenColorHex: Long,
     elapsedSeconds: Int,
     onToggleViewMode: () -> Unit,
     onSelectTool: (DrawingTool) -> Unit,
     onToggleZoom: () -> Unit,
     onSelectStrokeSize: (Int) -> Unit,
+    onSelectPenThickness: (Float) -> Unit = {},
     onSelectPenColor: (Long) -> Unit,
     onClearCanvas: () -> Unit,
     isImmersive: Boolean = false,
@@ -3448,6 +3488,7 @@ private fun BottomDarkNavyDrawingBar345(
     onToggleImmersive: () -> Unit = {}
 ) {
     var showColorPalettePopup by remember { mutableStateOf(false) }
+    var showPenSizePopover by remember { mutableStateOf(false) }
     val penColors = listOf(
         0xFF111111L to "Siyah",
         0xFF1D4ED8L to "Mavi",
@@ -3501,6 +3542,7 @@ private fun BottomDarkNavyDrawingBar345(
                     Surface(
                         onClick = {
                             showColorPalettePopup = false
+                            showPenSizePopover = false
                             onChangeFingerDrawing(false)
                             onSelectTool(DrawingTool.PEN)
                         },
@@ -3524,6 +3566,7 @@ private fun BottomDarkNavyDrawingBar345(
                     Surface(
                         onClick = {
                             showColorPalettePopup = false
+                            showPenSizePopover = false
                             onSelectTool(DrawingTool.ERASER)
                         },
                         shape = CircleShape,
@@ -3542,6 +3585,7 @@ private fun BottomDarkNavyDrawingBar345(
                     Surface(
                         onClick = {
                             showColorPalettePopup = false
+                            showPenSizePopover = false
                             onSelectTool(DrawingTool.HAND_PAN)
                         },
                         shape = CircleShape,
@@ -3564,6 +3608,7 @@ private fun BottomDarkNavyDrawingBar345(
                     Surface(
                         onClick = {
                             showColorPalettePopup = false
+                            showPenSizePopover = false
                             onToggleZoom()
                         },
                         shape = CircleShape,
@@ -3586,6 +3631,7 @@ private fun BottomDarkNavyDrawingBar345(
                     Surface(
                         onClick = {
                             showColorPalettePopup = false
+                            showPenSizePopover = false
                             onSelectTool(DrawingTool.SMART_SHAPE)
                         },
                         shape = CircleShape,
@@ -3615,6 +3661,61 @@ private fun BottomDarkNavyDrawingBar345(
                     // The same three buttons control real eraser radius in
                     // eraser mode, and pen thickness in smart S Pen mode.
                     val isSizingEraser = activeTool == DrawingTool.ERASER
+                    if (!isSizingEraser) {
+                        // Şık Kalem Boyutu Tuşu (0 - 100 Slider & Canlı Önizleme Popover'ını Açar)
+                        val isHighTool = activeTool == DrawingTool.HIGHLIGHTER
+                        val currentDisplayPx = penThicknessToPx(penThickness, isHighTool)
+                        Surface(
+                            onClick = {
+                                showPenSizePopover = !showPenSizePopover
+                                if (showPenSizePopover) showColorPalettePopup = false
+                            },
+                            shape = RoundedCornerShape(50),
+                            color = if (showPenSizePopover) Color(0xFF2563EB) else Color.White.copy(alpha = 0.12f),
+                            border = BorderStroke(
+                                1.5.dp,
+                                if (showPenSizePopover) Color(0xFF38BDF8) else Color.White.copy(alpha = 0.28f)
+                            ),
+                            modifier = Modifier
+                                .height(36.dp)
+                                .testTag("tool_pen_size_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.LineWeight,
+                                    contentDescription = "Kalem Kalınlığı Ayarı",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF0F172A))
+                                        .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(((penThickness / 100f) * 9f + 3.5f).dp)
+                                            .clip(CircleShape)
+                                            .background(Color(selectedPenColorHex))
+                                    )
+                                }
+                                Text(
+                                    text = "${"%.1f".format(currentDisplayPx)} px",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+
                     val dotSizes = if (isSizingEraser)
                         listOf(9.dp, 15.dp, 21.dp) else listOf(6.dp, 10.dp, 14.dp)
                     dotSizes.forEachIndexed { idx, dotDp ->
@@ -3623,7 +3724,12 @@ private fun BottomDarkNavyDrawingBar345(
                             modifier = Modifier
                                 .size(39.dp)
                                 .clip(CircleShape)
-                                .clickable { onSelectStrokeSize(idx) }
+                                .clickable {
+                                    onSelectStrokeSize(idx)
+                                    if (!isSizingEraser) {
+                                        onSelectPenThickness(strokeSizeIndexToThickness(idx))
+                                    }
+                                }
                                 .semantics {
                                     contentDescription = if (isSizingEraser)
                                         "Silgi boyutu ${idx + 1}" else "Kalem kalınlığı ${idx + 1}"
@@ -3647,7 +3753,10 @@ private fun BottomDarkNavyDrawingBar345(
                     if (activeTool != DrawingTool.ERASER) {
                     // Renk Seçici Daire (Kalem butonuna basınca da aynı menü açılır)
                     Surface(
-                        onClick = { showColorPalettePopup = !showColorPalettePopup },
+                        onClick = {
+                            showColorPalettePopup = !showColorPalettePopup
+                            if (showColorPalettePopup) showPenSizePopover = false
+                        },
                         shape = CircleShape,
                         color = Color(selectedPenColorHex),
                         border = BorderStroke(2.dp, Color.White),
@@ -3766,6 +3875,27 @@ private fun BottomDarkNavyDrawingBar345(
                 }
             }
         }
+
+        // Açılır Kalem Kalınlığı Popover Kartı (0 - 100 Slider & Canlı Önizleme)
+        if (showPenSizePopover && activeTool != DrawingTool.ERASER) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(y = 54.dp)
+                    .zIndex(75f)
+                    .testTag("pen_size_popover")
+            ) {
+                PenSizePopoverCard(
+                    thicknessValue = penThickness,
+                    selectedPenColorHex = selectedPenColorHex,
+                    isHighlighter = activeTool == DrawingTool.HIGHLIGHTER,
+                    onThicknessChange = { newThickness: Float ->
+                        onSelectPenThickness(newThickness)
+                    },
+                    onDismiss = { showPenSizePopover = false }
+                )
+            }
+        }
     }
 }
 
@@ -3783,9 +3913,11 @@ private fun FullScreenTwinQuestionComparisonView(
     studentAnswer: String?,
     activeTool: DrawingTool,
     selectedStrokeSizeIndex: Int,
+    penThickness: Float = 35f,
     selectedPenColorHex: Long,
     onSelectTool: (DrawingTool) -> Unit,
     onSelectStrokeSize: (Int) -> Unit,
+    onSelectPenThickness: (Float) -> Unit = {},
     onSelectPenColor: (Long) -> Unit,
     onBackToBookReview: () -> Unit,
     onOpenReportCard: () -> Unit,
@@ -3847,12 +3979,14 @@ private fun FullScreenTwinQuestionComparisonView(
                 activeTool = activeTool,
                 isZoomMagnifierEnabled = false,
                 selectedStrokeSizeIndex = selectedStrokeSizeIndex,
+                penThickness = penThickness,
                 selectedPenColorHex = selectedPenColorHex,
                 elapsedSeconds = session.elapsedSeconds,
                 onToggleViewMode = onBackToBookReview,
                 onSelectTool = onSelectTool,
                 onToggleZoom = {},
                 onSelectStrokeSize = onSelectStrokeSize,
+                onSelectPenThickness = onSelectPenThickness,
                 onSelectPenColor = onSelectPenColor,
                 onClearCanvas = {
                     originalTwinStrokes = emptyList()
@@ -4177,6 +4311,7 @@ private fun FullScreenTwinQuestionComparisonView(
                             onStrokesChange = { twinStrokes = it },
                             activeTool = activeTool,
                             selectedStrokeSizeIndex = selectedStrokeSizeIndex,
+                            penThickness = penThickness,
                             selectedPenColorHex = selectedPenColorHex
                         )
                     }
@@ -4333,6 +4468,7 @@ private fun FullScreenTwinQuestionComparisonView(
                             onStrokesChange = { originalTwinStrokes = it },
                             activeTool = activeTool,
                             selectedStrokeSizeIndex = selectedStrokeSizeIndex,
+                            penThickness = penThickness,
                             selectedPenColorHex = selectedPenColorHex
                         )
                             }
@@ -5026,63 +5162,11 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPressureInkSegm
 }
 
 /**
- * Vektörel çizim motoru (Kalem, Akıllı Şekil ve `BlendMode.Clear` / `destination-out` Silgi)
+ * Vektörel çizim motoru: Catmull-Rom Cubic Bézier doğal mürekkep motoruna delege eder.
+ * (Kalem, S-Pen basınç hassasiyeti, Akıllı Şekil, Fosforlu Kalem ve `BlendMode.Clear` Silgi)
  */
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSmoothStroke(stroke: DrawStroke) {
-    val pts = stroke.points
-    if (pts.size < 2) return
-    val isEraser = stroke.isEraser || stroke.colorHex == 0x00000000L
-    val strokeColor = when {
-        isEraser -> Color.Transparent
-        stroke.isHighlighter -> Color(stroke.colorHex).copy(alpha = 0.36f)
-        else -> Color(stroke.colorHex)
-    }
-    val blendMode = if (isEraser) BlendMode.Clear else BlendMode.SrcOver
-
-    if (!isEraser && !stroke.isSmartShape &&
-        stroke.pressureSamples.size == pts.size && !stroke.isHighlighter
-    ) {
-        drawPressureInkSegments(pts, stroke.pressureSamples, strokeColor, stroke.strokeWidthPx)
-        return
-    }
-
-    if (!isEraser && stroke.isSmartShape && pts.size >= 4) {
-        val first = pts.first()
-        val last = pts.last()
-        val dist = sqrt((last.x - first.x) * (last.x - first.x) + (last.y - first.y) * (last.y - first.y))
-        if (dist > 36f) {
-            drawLine(
-                color = strokeColor,
-                start = first,
-                end = last,
-                strokeWidth = stroke.strokeWidthPx,
-                cap = StrokeCap.Round
-            )
-            return
-        }
-    }
-
-    val path = Path().apply {
-        moveTo(pts.first().x, pts.first().y)
-        for (i in 1 until pts.size) {
-            val prev = pts[i - 1]
-            val cur = pts[i]
-            val midX = (prev.x + cur.x) / 2f
-            val midY = (prev.y + cur.y) / 2f
-            quadraticTo(prev.x, prev.y, midX, midY)
-        }
-        lineTo(pts.last().x, pts.last().y)
-    }
-    drawPath(
-        path = path,
-        color = strokeColor,
-        style = Stroke(
-            width = stroke.strokeWidthPx,
-            cap = StrokeCap.Round,
-            join = StrokeJoin.Round
-        ),
-        blendMode = blendMode
-    )
+    drawNaturalInkStroke(stroke)
 }
 
 @Composable
@@ -5091,13 +5175,15 @@ private fun TwinQuestionInkCanvas(
     onStrokesChange: (List<DrawStroke>) -> Unit,
     activeTool: DrawingTool,
     selectedStrokeSizeIndex: Int,
+    penThickness: Float = 35f,
     selectedPenColorHex: Long
 ) {
     val livePath = remember { Path() }
     val livePoints = remember { mutableListOf<Offset>() }
     val drawTick = remember { mutableIntStateOf(0) }
     val latestStrokes by rememberUpdatedState(strokes)
-    val strokeWidth = listOf(4.5f, 8.0f, 13.0f).getOrElse(selectedStrokeSizeIndex) { 8.0f }
+    val strokeWidth = penThicknessToPx(penThickness)
+    val highlighterWidth = penThicknessToPx(penThickness, isHighlighter = true)
     val eraserWidth = listOf(18f, 38f, 68f).getOrElse(selectedStrokeSizeIndex) { 38f }
     val canDraw = activeTool == DrawingTool.PEN ||
         activeTool == DrawingTool.HIGHLIGHTER ||
@@ -5110,7 +5196,7 @@ private fun TwinQuestionInkCanvas(
             .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
             .then(
                 if (canDraw) {
-                    Modifier.pointerInput(activeTool, selectedStrokeSizeIndex, selectedPenColorHex) {
+                    Modifier.pointerInput(activeTool, penThickness, selectedStrokeSizeIndex, selectedPenColorHex) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val isStylus = down.type == PointerType.Stylus
@@ -5136,7 +5222,7 @@ private fun TwinQuestionInkCanvas(
                                 drawTick.intValue++
                             }
 
-                            if (livePoints.size >= 2) {
+                            if (livePoints.isNotEmpty()) {
                                 val isEraser = activeTool == DrawingTool.ERASER
                                 val isHighlighter = activeTool == DrawingTool.HIGHLIGHTER
                                 onStrokesChange(
@@ -5145,7 +5231,7 @@ private fun TwinQuestionInkCanvas(
                                         colorHex = if (isEraser) 0x00000000L else selectedPenColorHex,
                                         strokeWidthPx = when {
                                             isEraser -> eraserWidth
-                                            isHighlighter -> strokeWidth * 2.6f
+                                            isHighlighter -> highlighterWidth
                                             else -> strokeWidth
                                         },
                                         isSmartShape = activeTool == DrawingTool.SMART_SHAPE,
@@ -5167,27 +5253,40 @@ private fun TwinQuestionInkCanvas(
     ) {
         val tick = drawTick.intValue
         strokes.forEach { drawSmoothStroke(it) }
-        if (tick >= 0 && livePoints.size >= 2) {
+        if (tick >= 0 && livePoints.isNotEmpty()) {
             val isEraser = activeTool == DrawingTool.ERASER
             val isHighlighter = activeTool == DrawingTool.HIGHLIGHTER
-            drawPath(
-                path = livePath,
-                color = when {
-                    isEraser -> Color.Transparent
-                    isHighlighter -> Color(selectedPenColorHex).copy(alpha = 0.36f)
-                    else -> Color(selectedPenColorHex)
-                },
-                style = Stroke(
-                    width = when {
-                        isEraser -> eraserWidth
-                        isHighlighter -> strokeWidth * 2.6f
-                        else -> strokeWidth
-                    },
-                    cap = StrokeCap.Round,
-                    join = StrokeJoin.Round
-                ),
-                blendMode = if (isEraser) BlendMode.Clear else BlendMode.SrcOver
-            )
+            val liveWidth = when {
+                isEraser -> eraserWidth
+                isHighlighter -> highlighterWidth
+                else -> strokeWidth
+            }
+            val liveColor = when {
+                isEraser -> Color.Transparent
+                isHighlighter -> Color(selectedPenColorHex).copy(alpha = 0.36f)
+                else -> Color(selectedPenColorHex)
+            }
+            val liveBlend = if (isEraser) BlendMode.Clear else BlendMode.SrcOver
+            if (livePoints.size == 1) {
+                drawCircle(
+                    color = liveColor,
+                    radius = liveWidth / 2f,
+                    center = livePoints.first(),
+                    blendMode = liveBlend
+                )
+            } else {
+                val smoothPath = buildSmoothInkPath(livePoints, activeTool == DrawingTool.SMART_SHAPE)
+                drawPath(
+                    path = smoothPath,
+                    color = liveColor,
+                    style = Stroke(
+                        width = liveWidth,
+                        cap = StrokeCap.Round,
+                        join = StrokeJoin.Round
+                    ),
+                    blendMode = liveBlend
+                )
+            }
         }
     }
 }

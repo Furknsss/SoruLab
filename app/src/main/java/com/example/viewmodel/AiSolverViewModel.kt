@@ -28,6 +28,12 @@ import com.example.util.StudioImageAndPdfEngine
 import com.example.util.PdfPaddleMobileOcr
 import com.example.util.PdfPrintedKeyCoverageAudit
 import com.example.util.PdfAnswerId
+import com.google.firebase.Firebase
+import com.google.firebase.ai.ai
+import com.google.firebase.ai.type.GenerativeBackend
+import com.google.firebase.ai.type.Schema
+import com.google.firebase.ai.type.content
+import com.google.firebase.ai.type.generationConfig
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.TextRecognition
@@ -184,6 +190,221 @@ private data class PdfLocalProcessingStatus(
 )
 
 class AiSolverViewModel : ViewModel() {
+
+    private val generativeModel by lazy {
+        Firebase.ai(backend = GenerativeBackend.googleAI()).generativeModel("gemini-3.8-flash")
+    }
+
+    private val interactiveStepSchema = Schema.obj(
+        properties = mapOf(
+            "stepNumber" to Schema.integer("Adım numarası (1, 2, 3...)"),
+            "title" to Schema.string("Adımın kısa, akılda kalıcı başlığı"),
+            "explanation" to Schema.string("Öğretmenin samimi, net ve adım adım anlatımı"),
+            "mathExpression" to Schema.string("Bu adımdaki ana matematik/fen formülü veya işlem satırı (LaTeX, $ işareti olmadan; sözel soruysa boş string)"),
+            "whyThisStep" to Schema.string("Neden bu adımı attık? Öğrenciye mantığını açıklayan kısa gerekçe"),
+            "trapWarning" to Schema.string("Bu adımda öğrencilerin sık düştüğü tuzak veya dikkat noktası")
+        ),
+        optionalProperties = listOf("mathExpression", "trapWarning")
+    )
+
+    private val wrongOptionEntrySchema = Schema.obj(
+        properties = mapOf(
+            "option" to Schema.enumeration(listOf("A", "B", "C", "D", "E"), "Şık harfi"),
+            "reason" to Schema.string("Bu şıkkın neden yanlış veya çeldirici olduğunun net açıklaması")
+        )
+    )
+
+    private val interactiveSolutionSchema = Schema.obj(
+        properties = mapOf(
+            "coreConcept" to Schema.string("Sorunun ölçtüğü temel YKS kazanımı ve kilit formül/kural"),
+            "firstGlanceStrategy" to Schema.string("Soruya İlk Bakış: Öğrenci bu soruyu sınavda görünce ilk 5 saniyede aklına ne gelmeli?"),
+            "steps" to Schema.array(interactiveStepSchema, "Adım adım interaktif çözüm kartları (2-6 adım)"),
+            "wrongOptionsAnalysis" to Schema.array(wrongOptionEntrySchema, "Doğru şık dışındaki diğer şıkların neden yanlış olduğu"),
+            "osymShortcut" to Schema.string("15 Saniyelik ÖSYM Pratik Yolu veya hızlı eleme taktiği"),
+            "finalAnswer" to Schema.string("Doğru şık ve kısa nihai sonuç (örn. C şıkkı • x = 4)"),
+            "verificationCheck" to Schema.string("Bulunan sonucun hızlı sağlaması ve kontrolü")
+        )
+    )
+
+    private val interactiveSolutionModel by lazy {
+        Firebase.ai(backend = GenerativeBackend.googleAI()).generativeModel(
+            modelName = "gemini-3.8-flash",
+            generationConfig = generationConfig {
+                responseMimeType = "application/json"
+                responseSchema = interactiveSolutionSchema
+            }
+        )
+    }
+
+    private val interactivePlanCache = mutableMapOf<String, InteractiveSolutionPlan>()
+
+    private val _interactivePlan = MutableStateFlow<InteractiveSolutionPlan?>(null)
+    val interactivePlan: StateFlow<InteractiveSolutionPlan?> = _interactivePlan.asStateFlow()
+
+    private val _isInteractivePlanLoading = MutableStateFlow(false)
+    val isInteractivePlanLoading: StateFlow<Boolean> = _isInteractivePlanLoading.asStateFlow()
+
+    private val _interactivePlanError = MutableStateFlow<String?>(null)
+    val interactivePlanError: StateFlow<String?> = _interactivePlanError.asStateFlow()
+
+    private val _simplerStepExplanations = MutableStateFlow<Map<Int, String>>(emptyMap())
+    val simplerStepExplanations: StateFlow<Map<Int, String>> = _simplerStepExplanations.asStateFlow()
+
+    private val _loadingSimplerStepNumber = MutableStateFlow<Int?>(null)
+    val loadingSimplerStepNumber: StateFlow<Int?> = _loadingSimplerStepNumber.asStateFlow()
+
+    fun parseFallbackPlanFromQuestion(question: YksQuestion): InteractiveSolutionPlan =
+        SorulabAiQuality.parseFallbackPlanFromQuestion(question)
+
+    fun solveQuestionInteractively(
+        question: YksQuestion,
+        context: Context,
+        forceRefresh: Boolean = false
+    ) {
+        if (!forceRefresh) {
+            val cached = interactivePlanCache[question.id]
+            if (cached != null && !cached.isFromFallback) {
+                _interactivePlan.value = cached
+                _interactivePlanError.value = null
+                _isInteractivePlanLoading.value = false
+                return
+            }
+        }
+
+        if (_interactivePlan.value?.questionId != question.id) {
+            _simplerStepExplanations.value = emptyMap()
+            _loadingSimplerStepNumber.value = null
+        }
+        _interactivePlanError.value = null
+        _isInteractivePlanLoading.value = true
+
+        viewModelScope.launch {
+            var questionBmp: Bitmap? = null
+            var shouldRecycleBmp = false
+            try {
+                questionBmp = withContext(Dispatchers.IO) {
+                    val guaranteed = StudioImageAndPdfEngine.loadGuaranteedQuestionBitmap(
+                        context = context,
+                        questionId = question.id,
+                        imagePath = question.imagePath,
+                        imageBase64 = question.imageBase64,
+                        pdfFilePath = question.pdfFilePath,
+                        pageIndex = question.pageIndex,
+                        normLeft = question.normLeft,
+                        normTop = question.normTop,
+                        normRight = question.normRight,
+                        normBottom = question.normBottom
+                    )?.copy(Bitmap.Config.ARGB_8888, false)
+                    if (guaranteed != null) {
+                        shouldRecycleBmp = true
+                        guaranteed
+                    } else {
+                        StudioImageAndPdfEngine.getCachedBitmap(
+                            context = context,
+                            path = question.imagePath,
+                            maxDimension = 1600
+                        )
+                    }
+                }
+
+                val prompt = buildString {
+                    appendLine(SorulabAiQuality.INTERACTIVE_SOLUTION_INSTRUCTION)
+                    appendLine()
+                    appendLine(SorulabAiQuality.questionContext(question))
+                    appendLine("JSON şemasındaki tüm alanları eksiksiz, öğrenci dostu Türkçe ile doldur.")
+                }
+
+                val response = withTimeout(50_000L) {
+                    if (questionBmp != null) {
+                        interactiveSolutionModel.generateContent(
+                            content {
+                                image(questionBmp)
+                                text(prompt)
+                            }
+                        )
+                    } else {
+                        interactiveSolutionModel.generateContent(prompt)
+                    }
+                }
+
+                val parsedPlan = parseInteractiveSolutionJson(
+                    rawText = response.text.orEmpty(),
+                    question = question
+                )
+                if (parsedPlan != null && parsedPlan.steps.isNotEmpty()) {
+                    interactivePlanCache[question.id] = parsedPlan
+                    _interactivePlan.value = parsedPlan
+                    _interactivePlanError.value = null
+                } else {
+                    val fallback = parseFallbackPlanFromQuestion(question)
+                    _interactivePlan.value = fallback
+                    _interactivePlanError.value = "Yapılandırılmış AI yanıtı ayrıştırılamadı; referans adım adım plan gösteriliyor."
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException && e !is TimeoutCancellationException) throw e
+                val fallback = parseFallbackPlanFromQuestion(question)
+                _interactivePlan.value = fallback
+                _interactivePlanError.value = "Çevrimdışı / hızlı referans çözüm gösteriliyor. İnternet bağlantısıyla yenileyebilirsin."
+            } finally {
+                if (shouldRecycleBmp) {
+                    questionBmp?.recycle()
+                }
+                _isInteractivePlanLoading.value = false
+            }
+        }
+    }
+
+    fun explainStepSimpler(
+        step: InteractiveSolutionStep,
+        question: YksQuestion
+    ) {
+        if (_loadingSimplerStepNumber.value == step.stepNumber) return
+        _loadingSimplerStepNumber.value = step.stepNumber
+
+        viewModelScope.launch {
+            try {
+                val prompt = SorulabAiQuality.simplerStepPrompt(step, question)
+                val response = withTimeout(35_000L) {
+                    generativeModel.generateContent(prompt)
+                }
+                val reply = response.text?.trim().orEmpty()
+                val finalText = if (reply.isNotBlank()) {
+                    reply
+                } else {
+                    buildLocalSimplerStepFallback(step)
+                }
+                _simplerStepExplanations.value = _simplerStepExplanations.value + (step.stepNumber to finalText)
+            } catch (e: Exception) {
+                if (e is CancellationException && e !is TimeoutCancellationException) throw e
+                _simplerStepExplanations.value = _simplerStepExplanations.value + (
+                    step.stepNumber to buildLocalSimplerStepFallback(step)
+                )
+            } finally {
+                if (_loadingSimplerStepNumber.value == step.stepNumber) {
+                    _loadingSimplerStepNumber.value = null
+                }
+            }
+        }
+    }
+
+    private fun buildLocalSimplerStepFallback(step: InteractiveSolutionStep): String = buildString {
+        append("Daha sade özetle: ")
+        append(step.explanation)
+        if (step.whyThisStep.isNotBlank()) {
+            append("\n\nBunu yapma sebebimiz: ${step.whyThisStep}")
+        }
+        if (step.mathExpression.isNotBlank()) {
+            append("\n\nİşlemi sesli okursak: ${SorulabAiQuality.latexToSpokenTurkish(step.mathExpression)}.")
+        }
+    }
+
+    internal fun parseInteractiveSolutionJson(
+        rawText: String,
+        question: YksQuestion
+    ): InteractiveSolutionPlan? = SorulabAiQuality.parseInteractiveSolutionJson(
+        rawText = cleanJsonResponse(rawText),
+        question = question
+    )
 
     private val initialWelcomeMessage = AiChatMessage(
         id = "welcome",

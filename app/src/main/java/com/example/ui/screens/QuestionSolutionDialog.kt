@@ -2,28 +2,46 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.YksQuestion
+import com.example.ui.theme.SoruLabBorderLight
+import com.example.ui.theme.SoruLabInkBlack
+import com.example.ui.theme.SoruLabRoyalBlue
 import com.example.util.StudioImageAndPdfEngine
+import com.example.viewmodel.AiSolverViewModel
+import com.example.viewmodel.SorulabAiQuality
 
 @Composable
 internal fun QuestionSolutionDialog(
@@ -34,11 +52,26 @@ internal fun QuestionSolutionDialog(
     onRetry: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val solution = remember(question, returnedText) { StoredQuestionSolution.from(question, returnedText) }
     val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.9f).dp
+    var showInteractiveBoard by remember(question.id) { mutableStateOf(false) }
+
+    val viewModelStoreOwner = LocalViewModelStoreOwner.current
+    val aiViewModel: AiSolverViewModel? = if (viewModelStoreOwner != null) viewModel() else null
+
+    LaunchedEffect(showInteractiveBoard, question.id) {
+        if (showInteractiveBoard && aiViewModel != null) {
+            aiViewModel.solveQuestionInteractively(
+                question = question,
+                context = context.applicationContext
+            )
+        }
+    }
+
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
-            modifier = Modifier.widthIn(max = 720.dp).fillMaxWidth(0.94f)
+            modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth(0.94f)
                 .heightIn(max = maxHeight).testTag("stored_solution_dialog"),
             shape = RoundedCornerShape(22.dp),
             color = Color.White,
@@ -53,55 +86,177 @@ internal fun QuestionSolutionDialog(
                     }
                     TextButton(onClick = onDismiss) { Text("Kapat") }
                 }
-                HorizontalDivider()
-                Column(
-                    Modifier.weight(1f, fill = false).fillMaxWidth()
-                        .verticalScroll(rememberScrollState()).testTag("stored_solution_content"),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(solution.answerNotice, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                        color = if (solution.verifiedAnswer != null) Color(0xFF15803D) else Color(0xFFB45309))
-                    when {
-                        isLoading -> {
-                            Column(Modifier.fillMaxWidth().padding(vertical = 20.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                CircularProgressIndicator(Modifier.testTag("stored_solution_loading"))
-                                Text("Kayıtlı çözüm açılıyor…", fontSize = 14.sp)
-                            }
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (!showInteractiveBoard) SoruLabRoyalBlue else Color.White,
+                        modifier = Modifier
+                            .weight(1f)
+                            .border(
+                                width = 1.dp,
+                                color = if (!showInteractiveBoard) SoruLabRoyalBlue else SoruLabBorderLight,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .clickable { showInteractiveBoard = false }
+                            .testTag("solution_mode_stored")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Description,
+                                contentDescription = null,
+                                tint = if (!showInteractiveBoard) Color.White else SoruLabRoyalBlue,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Kayıtlı Çözüm",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                color = if (!showInteractiveBoard) Color.White else SoruLabInkBlack,
+                                maxLines = 1
+                            )
                         }
-                        loadFailed -> {
-                            Text("Kayıtlı çözüm okunamadı. Tekrar deneyebilirsin.",
-                                Modifier.testTag("stored_solution_error"), color = MaterialTheme.colorScheme.error)
-                            OutlinedButton(onClick = onRetry) { Text("Tekrar dene") }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (showInteractiveBoard) SoruLabRoyalBlue else Color.White,
+                        modifier = Modifier
+                            .weight(1f)
+                            .border(
+                                width = 1.dp,
+                                color = if (showInteractiveBoard) SoruLabRoyalBlue else SoruLabBorderLight,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .clickable { showInteractiveBoard = true }
+                            .testTag("solution_mode_interactive")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.AutoAwesome,
+                                contentDescription = null,
+                                tint = if (showInteractiveBoard) Color.White else SoruLabRoyalBlue,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "İnteraktif Tahta",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                color = if (showInteractiveBoard) Color.White else SoruLabInkBlack,
+                                maxLines = 1
+                            )
                         }
-                        else -> {
-                            val bitmap = StudioImageAndPdfEngine.rememberGuaranteedQuestionBitmap(question)
-                            if (bitmap != null) {
-                                Image(bitmap.asImageBitmap(), contentDescription = "Sorunun kaynak görseli",
-                                    contentScale = ContentScale.Fit,
-                                    modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp))
-                            }
-                            if (!solution.hasSolution) {
-                                Surface(color = Color(0xFFF8FAFC), shape = RoundedCornerShape(14.dp),
-                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))) {
-                                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("Bu soru için kayıtlı çözüm bulunmuyor.",
-                                            Modifier.testTag("stored_solution_empty"), fontWeight = FontWeight.Bold)
-                                        Text("Cevap anahtarı, adım adım açıklama yerine geçmez. " +
-                                            "Bu ekranda yeni bir çözüm üretilmez.", fontSize = 14.sp)
-                                    }
+                    }
+                }
+
+                HorizontalDivider()
+
+                if (showInteractiveBoard) {
+                    if (aiViewModel != null) {
+                        val interactivePlan by aiViewModel.interactivePlan.collectAsStateWithLifecycle()
+                        val isInteractiveLoading by aiViewModel.isInteractivePlanLoading.collectAsStateWithLifecycle()
+                        val interactiveError by aiViewModel.interactivePlanError.collectAsStateWithLifecycle()
+                        val simplerStepExplanations by aiViewModel.simplerStepExplanations.collectAsStateWithLifecycle()
+                        val loadingSimplerStepNumber by aiViewModel.loadingSimplerStepNumber.collectAsStateWithLifecycle()
+
+                        val matchingPlan = interactivePlan?.takeIf { it.questionId == question.id }
+                        InteractiveSolutionBoard(
+                            question = question,
+                            plan = matchingPlan,
+                            isLoading = isInteractiveLoading,
+                            errorMessage = interactiveError,
+                            simplerStepExplanations = simplerStepExplanations,
+                            loadingSimplerStepNumber = loadingSimplerStepNumber,
+                            onRefreshPlan = {
+                                aiViewModel.solveQuestionInteractively(
+                                    question = question,
+                                    context = context.applicationContext,
+                                    forceRefresh = true
+                                )
+                            },
+                            onExplainStepSimpler = { step ->
+                                aiViewModel.explainStepSimpler(step, question)
+                            },
+                            modifier = Modifier.weight(1f, fill = false).fillMaxWidth()
+                        )
+                    } else {
+                        val localFallbackPlan = remember(question) {
+                            SorulabAiQuality.parseFallbackPlanFromQuestion(question)
+                        }
+                        InteractiveSolutionBoard(
+                            question = question,
+                            plan = localFallbackPlan,
+                            isLoading = false,
+                            errorMessage = null,
+                            simplerStepExplanations = emptyMap(),
+                            loadingSimplerStepNumber = null,
+                            onRefreshPlan = {},
+                            onExplainStepSimpler = {},
+                            modifier = Modifier.weight(1f, fill = false).fillMaxWidth()
+                        )
+                    }
+                } else {
+                    Column(
+                        Modifier.weight(1f, fill = false).fillMaxWidth()
+                            .verticalScroll(rememberScrollState()).testTag("stored_solution_content"),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(solution.answerNotice, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                            color = if (solution.verifiedAnswer != null) Color(0xFF15803D) else Color(0xFFB45309))
+                        when {
+                            isLoading -> {
+                                Column(Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    CircularProgressIndicator(Modifier.testTag("stored_solution_loading"))
+                                    Text("Kayıtlı çözüm açılıyor…", fontSize = 14.sp)
                                 }
-                            } else {
-                                Text("Soruda kayıtlı açıklama", fontSize = 12.sp, color = Color(0xFF64748B))
-                                solution.sections.forEach { section ->
-                                    Surface(color = Color(0xFFEFF6FF), shape = RoundedCornerShape(14.dp),
-                                        border = BorderStroke(1.dp, Color(0xFFBFDBFE)), modifier = Modifier.fillMaxWidth()) {
-                                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text(section.title, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8))
-                                            SelectionContainer {
-                                                Text(section.body, fontSize = 15.sp, lineHeight = 23.sp,
-                                                    color = Color(0xFF1E293B))
+                            }
+                            loadFailed -> {
+                                Text("Kayıtlı çözüm okunamadı. Tekrar deneyebilirsin.",
+                                    Modifier.testTag("stored_solution_error"), color = MaterialTheme.colorScheme.error)
+                                OutlinedButton(onClick = onRetry) { Text("Tekrar dene") }
+                            }
+                            else -> {
+                                val bitmap = StudioImageAndPdfEngine.rememberGuaranteedQuestionBitmap(question)
+                                if (bitmap != null) {
+                                    Image(bitmap.asImageBitmap(), contentDescription = "Sorunun kaynak görseli",
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp))
+                                }
+                                if (!solution.hasSolution) {
+                                    Surface(color = Color(0xFFF8FAFC), shape = RoundedCornerShape(14.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))) {
+                                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("Bu soru için kayıtlı çözüm bulunmuyor.",
+                                                Modifier.testTag("stored_solution_empty"), fontWeight = FontWeight.Bold)
+                                            Text("Cevap anahtarı, adım adım açıklama yerine geçmez. " +
+                                                "Yukarıdaki 'İnteraktif Tahta' sekmesinden adım adım sesli ve KaTeX çözüme geçebilirsin.",
+                                                fontSize = 14.sp)
+                                        }
+                                    }
+                                } else {
+                                    Text("Soruda kayıtlı açıklama", fontSize = 12.sp, color = Color(0xFF64748B))
+                                    solution.sections.forEach { section ->
+                                        Surface(color = Color(0xFFEFF6FF), shape = RoundedCornerShape(14.dp),
+                                            border = BorderStroke(1.dp, Color(0xFFBFDBFE)), modifier = Modifier.fillMaxWidth()) {
+                                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Text(section.title, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8))
+                                                SelectionContainer {
+                                                    Text(section.body, fontSize = 15.sp, lineHeight = 23.sp,
+                                                        color = Color(0xFF1E293B))
+                                                }
                                             }
                                         }
                                     }

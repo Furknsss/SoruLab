@@ -242,6 +242,7 @@ private fun ActiveSolvingSessionHost(
     val currentBookPageIndex by mainViewModel.currentBookPageIndex.collectAsStateWithLifecycle()
     val activeTool by mainViewModel.activeTool.collectAsStateWithLifecycle()
     val selectedStrokeSizeIndex by mainViewModel.selectedStrokeSizeIndex.collectAsStateWithLifecycle()
+    val penThickness by mainViewModel.penThickness.collectAsStateWithLifecycle()
     val selectedPenColorHex by mainViewModel.selectedPenColorHex.collectAsStateWithLifecycle()
     val customPublishers by mainViewModel.customPublishers.collectAsStateWithLifecycle()
 
@@ -266,11 +267,13 @@ private fun ActiveSolvingSessionHost(
             currentCanvasKey = canvasKey,
             activeTool = activeTool,
             selectedStrokeSizeIndex = selectedStrokeSizeIndex,
+            penThickness = penThickness,
             selectedPenColorHex = selectedPenColorHex,
             onExitSession = { mainViewModel.exitSolvingSession() },
             onToggleViewMode = { mainViewModel.toggleBoardViewMode() },
             onSelectTool = { mainViewModel.selectDrawingTool(it) },
             onSelectStrokeSize = { mainViewModel.selectStrokeSize(it) },
+            onSelectPenThickness = { mainViewModel.selectPenThickness(it) },
             onSelectPenColor = { mainViewModel.selectPenColor(it) },
             onAddStroke = { canvas, points, pressures, tool ->
                 mainViewModel.addStrokeToCanvas(canvas, points, pressures, tool)

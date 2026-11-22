@@ -256,6 +256,10 @@ class SoruLabViewModel(
     private var penStrokeSizeIndex = 1
     private var eraserStrokeSizeIndex = 1
 
+    // 0 - 100 pürüzsüz kalem kalınlığı (varsayılan 35 -> ~10.8px doğal not kalemi)
+    private val _penThickness = MutableStateFlow(35f)
+    val penThickness: StateFlow<Float> = _penThickness.asStateFlow()
+
     private val _selectedPenColorHex = MutableStateFlow(0xFF111111L)
     val selectedPenColorHex: StateFlow<Long> = _selectedPenColorHex.asStateFlow()
 
@@ -2351,8 +2355,22 @@ class SoruLabViewModel(
     fun selectStrokeSize(index: Int) {
         val safe = index.coerceIn(0, 2)
         _selectedStrokeSizeIndex.value = safe
-        if (_activeTool.value == DrawingTool.ERASER) eraserStrokeSizeIndex = safe
-        else penStrokeSizeIndex = safe
+        if (_activeTool.value == DrawingTool.ERASER) {
+            eraserStrokeSizeIndex = safe
+        } else {
+            penStrokeSizeIndex = safe
+            _penThickness.value = com.example.ui.drawing.strokeSizeIndexToThickness(safe)
+        }
+    }
+
+    fun selectPenThickness(value: Float) {
+        val clamped = value.coerceIn(0f, 100f)
+        _penThickness.value = clamped
+        val mappedIndex = com.example.ui.drawing.thicknessToStrokeSizeIndex(clamped)
+        penStrokeSizeIndex = mappedIndex
+        if (_activeTool.value != DrawingTool.ERASER) {
+            _selectedStrokeSizeIndex.value = mappedIndex
+        }
     }
 
     fun selectPenColor(colorHex: Long) {
@@ -2385,14 +2403,19 @@ class SoruLabViewModel(
         pressureSamples: List<Float> = emptyList(),
         strokeTool: DrawingTool = _activeTool.value
     ) {
-        if (points.size < 2 || canvasKey.isBlank()) return
+        if (points.isEmpty() || canvasKey.isBlank()) return
         val key = canvasKey
         val tool = strokeTool
         val currentList = _boardStrokes.value[key].orEmpty()
 
         if (tool == DrawingTool.ERASER) {
+            val eraserIdx = if (_activeTool.value == DrawingTool.ERASER) {
+                _selectedStrokeSizeIndex.value
+            } else {
+                eraserStrokeSizeIndex
+            }
             val eraserWidthPx = listOf(18f, 38f, 68f)
-                .getOrElse(_selectedStrokeSizeIndex.value) { 38f }
+                .getOrElse(eraserIdx) { 38f }
             val remaining = currentList
             val finalStrokes = if (remaining.any { !it.isEraser }) {
                 val eraserStroke = DrawStroke(
@@ -2412,13 +2435,8 @@ class SoruLabViewModel(
             return
         }
 
-        val baseWidthPx = when (_selectedStrokeSizeIndex.value) {
-            0 -> 4.5f
-            1 -> 8.0f
-            else -> 13.0f
-        }
         val isHighlighterTool = tool == DrawingTool.HIGHLIGHTER
-        val widthPx = if (isHighlighterTool) baseWidthPx * 2.6f else baseWidthPx
+        val widthPx = com.example.ui.drawing.penThicknessToPx(_penThickness.value, isHighlighterTool)
 
         val finalPoints = if (tool == DrawingTool.SMART_SHAPE && points.size >= 3) {
             val first = points.first()

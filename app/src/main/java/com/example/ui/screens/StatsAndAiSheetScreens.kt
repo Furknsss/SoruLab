@@ -36,10 +36,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.ExamType
 import com.example.data.SoruLabCatalog
 import com.example.data.TestResultRecord
@@ -50,6 +53,7 @@ import com.example.util.LearningProgressBucket
 import com.example.util.LearningProgressReport
 import com.example.util.ProgressEvidence
 import com.example.viewmodel.AiChatMessage
+import com.example.viewmodel.AiSolverViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -814,10 +818,19 @@ fun SoruLabAiAssistantDialog(
     onDismiss: () -> Unit,
     onAskQuestionSolution: (YksQuestion, String) -> Unit,
     onSendFreeMessage: (String) -> Unit,
-    onClearHistory: () -> Unit = {}
+    onClearHistory: () -> Unit = {},
+    aiViewModel: AiSolverViewModel = viewModel()
 ) {
+    val context = LocalContext.current
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    var showInteractiveBoard by remember(focusedQuestion?.id) { mutableStateOf(focusedQuestion != null) }
+
+    val interactivePlan by aiViewModel.interactivePlan.collectAsStateWithLifecycle()
+    val isInteractivePlanLoading by aiViewModel.isInteractivePlanLoading.collectAsStateWithLifecycle()
+    val interactivePlanError by aiViewModel.interactivePlanError.collectAsStateWithLifecycle()
+    val simplerStepExplanations by aiViewModel.simplerStepExplanations.collectAsStateWithLifecycle()
+    val loadingSimplerStepNumber by aiViewModel.loadingSimplerStepNumber.collectAsStateWithLifecycle()
 
     // Trigger entry animation smoothly on mount
     var animateIn by remember { mutableStateOf(false) }
@@ -829,14 +842,20 @@ fun SoruLabAiAssistantDialog(
         }
     }
 
-    LaunchedEffect(focusedQuestion, visible) {
+    LaunchedEffect(focusedQuestion?.id, visible) {
         if (visible && focusedQuestion != null) {
-            onAskQuestionSolution(focusedQuestion, "")
+            showInteractiveBoard = true
+            aiViewModel.solveQuestionInteractively(
+                question = focusedQuestion,
+                context = context.applicationContext
+            )
+        } else if (focusedQuestion == null) {
+            showInteractiveBoard = false
         }
     }
 
-    LaunchedEffect(messages.size, isLoading) {
-        if (messages.isNotEmpty()) {
+    LaunchedEffect(messages.size, isLoading, showInteractiveBoard) {
+        if (!showInteractiveBoard && messages.isNotEmpty()) {
             delay(60L)
             listState.animateScrollToItem(messages.lastIndex)
         }
@@ -994,6 +1013,112 @@ fun SoruLabAiAssistantDialog(
                         }
                     }
 
+                    // Mode Switcher when a specific question is focused
+                    if (focusedQuestion != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFF8FAFC))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (showInteractiveBoard) SoruLabRoyalBlue else Color.White,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (showInteractiveBoard) SoruLabRoyalBlue else SoruLabBorderLight,
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable { showInteractiveBoard = true }
+                                    .testTag("mode_interactive_board_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.School,
+                                        contentDescription = null,
+                                        tint = if (showInteractiveBoard) Color.White else SoruLabRoyalBlue,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "İnteraktif Çözüm",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                        color = if (showInteractiveBoard) Color.White else SoruLabInkBlack,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (!showInteractiveBoard) SoruLabRoyalBlue else Color.White,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (!showInteractiveBoard) SoruLabRoyalBlue else SoruLabBorderLight,
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable {
+                                        showInteractiveBoard = false
+                                        if (messages.size <= 1) {
+                                            onAskQuestionSolution(focusedQuestion, "")
+                                        }
+                                    }
+                                    .testTag("mode_ai_chat_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Forum,
+                                        contentDescription = null,
+                                        tint = if (!showInteractiveBoard) Color.White else SoruLabRoyalBlue,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "AI Öğretmen Sohbeti",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                        color = if (!showInteractiveBoard) Color.White else SoruLabInkBlack,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                        HorizontalDivider(color = SoruLabBorderLight)
+                    }
+
+                    if (focusedQuestion != null && showInteractiveBoard) {
+                        val matchingPlan = interactivePlan?.takeIf { it.questionId == focusedQuestion.id }
+                        InteractiveSolutionBoard(
+                            question = focusedQuestion,
+                            plan = matchingPlan,
+                            isLoading = isInteractivePlanLoading,
+                            errorMessage = interactivePlanError,
+                            simplerStepExplanations = simplerStepExplanations,
+                            loadingSimplerStepNumber = loadingSimplerStepNumber,
+                            onRefreshPlan = {
+                                aiViewModel.solveQuestionInteractively(
+                                    question = focusedQuestion,
+                                    context = context.applicationContext,
+                                    forceRefresh = true
+                                )
+                            },
+                            onExplainStepSimpler = { step ->
+                                aiViewModel.explainStepSimpler(step, focusedQuestion)
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
                     // Horizontal Scrollable Quick Assistant Chips
                     Row(
                         modifier = Modifier
@@ -1175,6 +1300,8 @@ fun SoruLabAiAssistantDialog(
                         }
                     }
 
+                    }
+
                     // Bottom Chat Input Bar
                     Surface(
                         color = Color.White,
@@ -1192,7 +1319,11 @@ fun SoruLabAiAssistantDialog(
                                 onValueChange = { inputText = it },
                                 placeholder = {
                                     Text(
-                                        "SoruLab AI'ya sorunuzu yazın...",
+                                        text = if (focusedQuestion != null) {
+                                            "Bu soruyla ilgili aklına takılanı sor..."
+                                        } else {
+                                            "SoruLab AI'ya sorunuzu yazın..."
+                                        },
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = SoruLabSlateMuted
                                     )
@@ -1205,8 +1336,14 @@ fun SoruLabAiAssistantDialog(
                             )
                             FloatingActionButton(
                                 onClick = {
-                                    if (inputText.isNotBlank() && !isLoading) {
-                                        onSendFreeMessage(inputText)
+                                    val trimmed = inputText.trim()
+                                    if (trimmed.isNotBlank() && !isLoading) {
+                                        if (focusedQuestion != null) {
+                                            showInteractiveBoard = false
+                                            onAskQuestionSolution(focusedQuestion, trimmed)
+                                        } else {
+                                            onSendFreeMessage(trimmed)
+                                        }
                                         inputText = ""
                                     }
                                 },

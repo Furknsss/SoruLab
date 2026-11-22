@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,9 +36,12 @@ import kotlinx.coroutines.withContext
 import com.example.data.CustomQuestionRecord
 import com.example.data.ExamType
 import com.example.data.MockExamItem
+import com.example.data.OsymExamAuditEngine
+import com.example.data.OsymExamAuditReport
 import com.example.data.SoruLabCatalog
 import com.example.data.TestResultRecord
 import com.example.data.TestSnapshotCodec
+import com.example.util.TestPageLayoutConfig
 import com.example.viewmodel.DenemeBlueprints
 import com.example.viewmodel.DenemeDifficulty
 import com.example.viewmodel.DenemeKind
@@ -69,6 +73,8 @@ fun DenemeStudioScreen(
 ) {
     var isCreating by remember { mutableStateOf(false) }
     var selectedRecord by remember { mutableStateOf<TestResultRecord?>(null) }
+    var layoutConfig by remember { mutableStateOf(TestPageLayoutConfig()) }
+    var showLayoutSheet by remember { mutableStateOf(false) }
     val histories = remember(solvedRecords) {
         solvedRecords.filter { it.isSolvedAttempt && it.testId.startsWith("deneme_v147_") }
             .sortedByDescending { it.createdAt?.seconds ?: 0L }
@@ -122,7 +128,29 @@ fun DenemeStudioScreen(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Denemelerim",fontSize = 20.sp,fontWeight = FontWeight.ExtraBold,color = navy)
-                TextButton(onClick = onOpenPdfStudio) { Text("Soru kitaplığım",color = cobalt,fontSize = 12.sp) }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Surface(
+                        onClick = { showLayoutSheet = true },
+                        shape = RoundedCornerShape(10.dp),
+                        color = pale,
+                        modifier = Modifier.testTag("deneme_page_layout_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Default.Tune, contentDescription = "Sayfa Düzeni", tint = cobalt, modifier = Modifier.size(14.dp))
+                            Text(
+                                "${layoutConfig.columnMode.shortLabel} • %${layoutConfig.scaleConfig.clampedScalePercent}",
+                                color = navy,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                    TextButton(onClick = onOpenPdfStudio) { Text("Soru kitaplığım",color = cobalt,fontSize = 12.sp) }
+                }
             }
         }
         item {
@@ -154,6 +182,9 @@ fun DenemeStudioScreen(
                 val attempts = histories.filter { it.testId == exam.linkedTest.id }
                 val createdAt = exam.id.substringAfterLast("_").toLongOrNull()?.takeIf { it > 1_000_000_000_000L }
                 val last = attempts.firstOrNull()
+                val audit = remember(exam.linkedTest) {
+                    if (exam.linkedTest.questions.isNotEmpty()) OsymExamAuditEngine.auditMockExam(exam) else null
+                }
                 Surface(
                     color = Color.White, shape = RoundedCornerShape(19.dp),
                     border = BorderStroke(1.dp,Color(0xFFE1E7F2)),
@@ -165,11 +196,25 @@ fun DenemeStudioScreen(
                                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                     ColorTag(exam.examType.name,cobalt)
                                     ColorTag(exam.difficulty.label,Color(0xFF8A5CF6))
+                                    audit?.let { report ->
+                                        ColorTag(
+                                            "ÖSYM ${report.complianceScore}/100",
+                                            if (report.isOsymCompliant) success else Color(0xFFD97706)
+                                        )
+                                    }
                                 }
                                 Text(exam.title,color = navy,fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp,maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Text(exam.questionCount.toString() + " soru • " + exam.durationMinutes +
                                     " dk • " + exam.tag,fontSize = 11.sp,color = grey)
+                                audit?.let { report ->
+                                    Text(
+                                        "${report.distinctKazanimCount} kazanım • ${report.distinctQuestionTypeCount}/6 ÖSYM soru tipi",
+                                        fontSize = 11.sp,
+                                        color = cobalt,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
                             }
                             if (last != null) {
                                 Text(String.format(Locale.forLanguageTag("tr-TR"),"%.2f net",last.netScore),
@@ -231,8 +276,17 @@ fun DenemeStudioScreen(
     if(isCreating) {
         DenemeCreatorSheet(
             questions = customQuestions,
+            layoutConfig = layoutConfig,
+            onOpenLayoutSettings = { showLayoutSheet = true },
             onDismiss = { isCreating=false },
             onCreate = { request -> isCreating=false;onCreateDeneme(request) }
+        )
+    }
+    if (showLayoutSheet) {
+        TestPageLayoutSettingsBottomSheet(
+            config = layoutConfig,
+            onConfigChange = { layoutConfig = it },
+            onDismiss = { showLayoutSheet = false }
         )
     }
     selectedRecord?.let { record ->
@@ -274,6 +328,8 @@ private fun ChoiceChip(text:String,selected:Boolean,onClick:()->Unit) {
 @Composable
 private fun DenemeCreatorSheet(
     questions: List<CustomQuestionRecord>,
+    layoutConfig: TestPageLayoutConfig,
+    onOpenLayoutSettings: () -> Unit,
     onDismiss:()->Unit,
     onCreate:(DenemeRequest)->Unit
 ) {
@@ -312,7 +368,22 @@ private fun DenemeCreatorSheet(
                     Text("Deneme Oluştur",color=navy,fontWeight=FontWeight.ExtraBold,fontSize=22.sp)
                     Text("Konu planıyla • Kişisel soru kitaplığından",color=grey,fontSize=12.sp)
                 }
-                IconButton(onClick=onDismiss) { Icon(Icons.Default.Close,contentDescription="Kapat") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = onOpenLayoutSettings,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Tune, contentDescription = "Sayfa Düzeni", tint = cobalt, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "${layoutConfig.columnMode.shortLabel} • ${layoutConfig.bookletType.code}",
+                            color = cobalt,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    IconButton(onClick=onDismiss) { Icon(Icons.Default.Close,contentDescription="Kapat") }
+                }
             }
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(
                 androidx.compose.foundation.rememberScrollState()),
@@ -447,6 +518,9 @@ private fun DenemeCreatorSheet(
                             color=success,fontWeight=FontWeight.Bold,fontSize=13.sp)
                         Text(current.sectionSummary.joinToString(" • "){ it.first+": "+it.second },
                             color=grey,fontSize=11.sp)
+                        current.auditReport?.let { audit ->
+                            OsymAuditCompactRow(audit)
+                        }
                     } else if(current is DenemePlan.Missing) {
                         Text("Soru havuzunda eksikler var",color=Color(0xFFAE5F12),
                             fontSize=13.sp,fontWeight=FontWeight.Bold)
@@ -530,8 +604,10 @@ private fun DenemeResultSheet(
             Column(Modifier.weight(1f).verticalScroll(androidx.compose.foundation.rememberScrollState()),
                 verticalArrangement=Arrangement.spacedBy(11.dp)) {
                 snapshot?.takeIf { it.denemeProfileVersion.isNotBlank() }?.let { saved ->
+                    val audit = remember(saved) { OsymExamAuditEngine.auditTest(saved) }
                     Text(saved.denemeDifficultyLabel + " • Plan " + saved.denemeProfileVersion,
                         color = cobalt, fontSize = 11.sp)
+                    OsymAuditCompactRow(audit)
                     Text(if (saved.denemeReusedQuestionCount > 0)
                         saved.denemeReusedQuestionCount.toString() + " soru son 6 denemende de vardı."
                         else "Son 6 denemenden tekrar soru kullanılmadı.", color = grey, fontSize = 11.sp)
@@ -576,6 +652,34 @@ private fun DenemeResultSheet(
                 Text("Sorularımı İncele",fontWeight=FontWeight.Bold)
             }
             Spacer(Modifier.height(6.dp))
+        }
+    }
+}
+
+@Composable
+private fun OsymAuditCompactRow(audit: OsymExamAuditReport) {
+    val activeTypes = remember(audit.questionTypeCounts) {
+        audit.questionTypeCounts.entries
+            .filter { it.value > 0 }
+            .sortedByDescending { it.value }
+            .take(4)
+            .joinToString(" • ") { "${it.key.shortTag} ${it.value}" }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = "ÖSYM Denetim: ${audit.complianceScore}/100 • ${audit.distinctKazanimCount} kazanım • ${audit.distinctQuestionTypeCount}/6 soru tipi",
+            color = if (audit.isOsymCompliant) success else cobalt,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        if (activeTypes.isNotBlank()) {
+            Text(
+                text = activeTypes,
+                color = grey,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

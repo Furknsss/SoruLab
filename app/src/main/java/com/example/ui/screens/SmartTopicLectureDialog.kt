@@ -5,10 +5,11 @@ import com.example.data.ExamType
 import com.example.data.YksQuestion
 
 /**
- * Akıllı Konu Anlatımı Diyaloğu (v1.5.0):
- * v1.4.9 public imzasını koruyarak 38/38 doğrulanmış gerçek YouTube ID + 101/101 gerçek chapter
- * dakikası içeren `TopicLectureVideoCatalog` çözümleyicisini, sıfır-reload `seekTo` YouTube IFrame
- * JS API oynatıcısını, bölüm atlama çiplerini ve alternatif hoca değiştiricisini açar.
+ * Akıllı Konu Anlatımı Diyaloğu (v1.5.1):
+ * v1.4.9 public imzasını ve test yardımcılarını (`buildYoutubeEmbedHtml`, `formatLessonTimestamp`)
+ * koruyarak `com.pierfrancescosoffritti.androidyoutubeplayer:core:12.1.1` tabanlı yerleşik native
+ * `YouTubePlayerView` oynatıcısını, sıfır-reload `seekTo` bölüm atlama çiplerini, hız/sar/döngü
+ * kontrollerini ve alternatif hoca değiştiricisini açar.
  */
 @Composable
 internal fun SmartTopicLectureDialog(

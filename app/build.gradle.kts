@@ -72,7 +72,7 @@ android {
           Instant.parse("2026-01-01T00:00:00Z").epochSecond / 60L
       )
     ).coerceIn(35L, 2_100_000_000L).toInt()
-    versionName = "1.5.0"
+    versionName = "1.5.1"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     // Optional self-hosted Qwen+SymPy endpoint. Public URL is compiled into APK,
@@ -282,6 +282,7 @@ dependencies {
   // implementation(libs.logging.interceptor)
   // implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
+  implementation("com.pierfrancescosoffritti.androidyoutubeplayer:core:12.1.1")
   // implementation(libs.play.services.location)
   // implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)

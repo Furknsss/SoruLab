@@ -1,16 +1,9 @@
 package com.example.ui.screens
 
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
+import android.os.SystemClock
 import android.view.ViewGroup
-import android.webkit.JavascriptInterface
-import android.webkit.WebChromeClient
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -24,7 +17,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -42,10 +34,14 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.TipsAndUpdates
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -57,9 +53,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,12 +77,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.ExamType
 import com.example.data.LectureChapterSegment
 import com.example.data.ResolvedLectureOption
 import com.example.data.ResolvedLectureRecommendation
 import com.example.data.TopicLectureResolver
 import com.example.data.YksQuestion
+import com.example.data.formatLectureTimestamp
 import com.example.ui.theme.SoruLabAmber
 import com.example.ui.theme.SoruLabAmberLight
 import com.example.ui.theme.SoruLabBorderLight
@@ -95,12 +98,18 @@ import com.example.ui.theme.SoruLabSlateDark
 import com.example.ui.theme.SoruLabSlateMuted
 import com.example.ui.theme.SoruLabViolet
 import com.example.ui.theme.SoruLabVioletLight
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFramePlayerOptions
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 
 /**
- * Akıllı Konu Anlatım Modalı & Gömülü YouTube Oynatıcı:
+ * Akıllı Konu Anlatım Modalı & Yerleşik Native YouTube Oynatıcı (v1.5.1):
  * - Sorunun kazanımına (`OsymKazanim`) ve soru tipine (`OsymQuestionType`) göre en popüler YKS hocasını seçer.
- * - Videoyu baştan değil, doğrudan ilgili alt başlığın/kazanımın saniyesinden (`startSeconds`) başlatır.
- * - İnteraktif bölüm (dakika) atlama çipleri, alternatif hoca değiştirici ve kazanım özeti + ÖSYM ipucu kartı sunar.
+ * - `com.pierfrancescosoffritti.androidyoutubeplayer:core:12.1.1` (`YouTubePlayerView`) ile yerleşik native
+ *   oynatım, `LifecycleOwner` entegrasyonu, sıfır-reload `seekTo` dakika atlama, hız/sar/döngü kontrolleri
+ *   ve otomatik embed hata kurtarma kartı sunar.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -122,6 +131,23 @@ fun TopicLecturePlayerModal(
             )
         )
     }
+    var seekRequestNonce by remember(question.id) { mutableIntStateOf(0) }
+
+    // Bölüm döngüsü için etkin bitiş saniyesi (tanımlı endSeconds yoksa sonraki bölümün başlangıcı veya +180 sn)
+    val effectiveLoopEndSeconds = remember(recommendation.primaryChapter, recommendation.relatedChapters) {
+        val start = recommendation.primaryChapter.startSeconds.coerceAtLeast(0)
+        val explicitEnd = recommendation.primaryChapter.endSeconds
+        when {
+            explicitEnd != null && explicitEnd > start -> explicitEnd
+            else -> {
+                val nextChapterStart = recommendation.relatedChapters
+                    .map { it.startSeconds }
+                    .filter { it > start }
+                    .minOrNull()
+                nextChapterStart ?: (start + 180)
+            }
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -134,7 +160,7 @@ fun TopicLecturePlayerModal(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .widthIn(min = 340.dp, max = 760.dp)
-                .heightIn(max = 840.dp)
+                .heightIn(max = 860.dp)
                 .testTag("topic_lecture_player_modal")
         ) {
             Column(
@@ -152,7 +178,14 @@ fun TopicLecturePlayerModal(
                     onDismiss = onDismiss
                 )
 
-                // Kazanım Rozeti + Soru Tipi Rozeti + Parlak "Direkt MM:SS'tan Başlıyor" Etiketi
+                // "Bu Soru Tipi Öğretiliyor" Net Üst Rozeti (detectedQuestionType.label + chapterTitle + MM:SS)
+                TeachingQuestionTypeBadge(
+                    questionTypeLabel = recommendation.detectedQuestionType.label,
+                    chapterTitle = recommendation.primaryChapter.chapterTitle,
+                    formattedTimestamp = recommendation.formattedTimestamp
+                )
+
+                // Kazanım Rozeti + Parlak "Direkt MM:SS'tan Başlıyor" Etiketi
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -213,28 +246,14 @@ fun TopicLecturePlayerModal(
                             )
                         }
                     }
-
-                    // Soru Tipi Rozeti (örn. Grafik / Tablo Yorumu)
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = SoruLabVioletLight,
-                        border = BorderStroke(1.dp, Color(0xFFDDD6FE))
-                    ) {
-                        Text(
-                            text = recommendation.detectedQuestionType.label,
-                            color = SoruLabViolet,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.5.sp,
-                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
-                        )
-                    }
                 }
 
-                // 2. GÖMÜLÜ YOUTUBE OYNATICI (Resmi YouTube IFrame Player JS API) + TEK TIKLA YOUTUBE'DA AÇ BUTONU
-                EmbeddedYouTubeLecturePlayer(
+                // 2. YERLEŞİK NATIVE YOUTUBE OYNATICI (YouTubePlayerView) + ÖĞRENME KONTROLLERİ + YOUTUBE'DA AÇ
+                NativeYouTubeLecturePlayer(
                     videoId = recommendation.primaryVideo.videoId.trim(),
                     startSeconds = recommendation.primaryChapter.startSeconds.coerceAtLeast(0),
-                    embedUrl = recommendation.youtubeEmbedUrlWithTimestamp,
+                    loopEndSeconds = effectiveLoopEndSeconds,
+                    seekRequestNonce = seekRequestNonce,
                     formattedTimestamp = recommendation.formattedTimestamp,
                     hasDirectEmbedVideo = recommendation.hasDirectEmbedVideo,
                     onOpenExternalYoutube = {
@@ -260,6 +279,7 @@ fun TopicLecturePlayerModal(
                         activeChapterId = recommendation.primaryChapter.id,
                         onSelectChapter = { chapter ->
                             recommendation = recommendation.selectChapter(chapter)
+                            seekRequestNonce += 1
                         }
                     )
                 }
@@ -270,6 +290,7 @@ fun TopicLecturePlayerModal(
                         recommendation = recommendation,
                         onSelectTeacher = { option ->
                             recommendation = recommendation.selectTeacher(option)
+                            seekRequestNonce += 1
                         }
                     )
                 }
@@ -310,6 +331,64 @@ fun TopicLecturePlayerModal(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TeachingQuestionTypeBadge(
+    questionTypeLabel: String,
+    chapterTitle: String,
+    formattedTimestamp: String
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = SoruLabVioletLight,
+        border = BorderStroke(1.dp, Color(0xFFDDD6FE)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("lecture_question_type_badge")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = SoruLabViolet
+            ) {
+                Text(
+                    text = "Bu Soru Tipi Öğretiliyor",
+                    color = Color.White,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 10.5.sp,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                Text(
+                    text = questionTypeLabel,
+                    color = SoruLabViolet,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 12.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "$chapterTitle • $formattedTimestamp",
+                    color = SoruLabSlateDark,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 11.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }
@@ -396,252 +475,121 @@ private fun LectureModalHeader(
     }
 }
 
-private const val YOUTUBE_IFRAME_BASE_URL = "https://www.youtube.com"
-private const val YOUTUBE_JS_BRIDGE_NAME = "SoruLabPlayerBridge"
-
-private enum class PlayerRenderMode {
-    IFRAME_API,
-    SEARCH_FALLBACK
-}
-
-private data class PlayerWebViewState(
-    val mode: PlayerRenderMode,
-    val videoId: String,
-    val startSeconds: Int,
-    val fallbackUrl: String
+private data class PlaybackSpeedOption(
+    val label: String,
+    val rate: PlayerConstants.PlaybackRate
 )
 
-private class YouTubePlayerJsBridge(
-    private val mainHandler: Handler,
-    private val isActive: () -> Boolean,
-    private val onReady: () -> Unit,
-    private val onError: (Int) -> Unit
-) {
-    @JavascriptInterface
-    fun onPlayerReady() {
-        mainHandler.post {
-            if (isActive()) {
-                onReady()
-            }
-        }
-    }
+private val LECTURE_PLAYBACK_SPEEDS = listOf(
+    PlaybackSpeedOption("1x", PlayerConstants.PlaybackRate.RATE_1),
+    PlaybackSpeedOption("1.25x", PlayerConstants.PlaybackRate.RATE_1_25),
+    PlaybackSpeedOption("1.5x", PlayerConstants.PlaybackRate.RATE_1_5),
+    PlaybackSpeedOption("2x", PlayerConstants.PlaybackRate.RATE_2)
+)
 
-    @JavascriptInterface
-    fun onPlayerError(errorCode: Int) {
-        mainHandler.post {
-            if (isActive()) {
-                onError(errorCode)
-            }
-        }
-    }
-}
-
-private fun sanitizeVideoIdForJs(rawVideoId: String): String =
+private fun sanitizeYoutubeVideoId(rawVideoId: String): String =
     rawVideoId.trim().filter { it.isLetterOrDigit() || it == '_' || it == '-' }
 
-private fun buildYouTubeIFrameHtml(
-    initialVideoId: String,
-    initialStartSeconds: Int
-): String {
-    val safeVideoId = sanitizeVideoIdForJs(initialVideoId)
-    val safeStart = initialStartSeconds.coerceAtLeast(0)
-    return """
-        <!DOCTYPE html>
-        <html lang="tr">
-        <head>
-            <meta charset="UTF-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-            <style>
-                html, body, #player {
-                    margin: 0;
-                    padding: 0;
-                    width: 100%;
-                    height: 100%;
-                    overflow: hidden;
-                    background-color: #0F172A;
-                }
-                iframe {
-                    width: 100%;
-                    height: 100%;
-                    border: 0;
-                }
-            </style>
-        </head>
-        <body>
-            <div id="player"></div>
-            <script>
-                var player = null;
-                var isPlayerReady = false;
-                var pendingVideoId = '$safeVideoId';
-                var pendingStartSeconds = $safeStart;
-                var hasPendingLoad = false;
-                var hasPendingSeek = false;
-                var readyNotified = false;
-
-                function notifyReady() {
-                    if (readyNotified) return;
-                    readyNotified = true;
-                    if (window.$YOUTUBE_JS_BRIDGE_NAME && window.$YOUTUBE_JS_BRIDGE_NAME.onPlayerReady) {
-                        window.$YOUTUBE_JS_BRIDGE_NAME.onPlayerReady();
-                    }
-                }
-
-                function notifyError(code) {
-                    if (window.$YOUTUBE_JS_BRIDGE_NAME && window.$YOUTUBE_JS_BRIDGE_NAME.onPlayerError) {
-                        window.$YOUTUBE_JS_BRIDGE_NAME.onPlayerError(code);
-                    }
-                }
-
-                window.sorulabSeekTo = function(seconds) {
-                    var target = Math.max(0, parseInt(seconds, 10) || 0);
-                    pendingStartSeconds = target;
-                    if (player && isPlayerReady && typeof player.seekTo === 'function') {
-                        try {
-                            player.seekTo(target, true);
-                            if (typeof player.playVideo === 'function') {
-                                player.playVideo();
-                            }
-                        } catch (e) {
-                            hasPendingSeek = true;
-                        }
-                    } else {
-                        hasPendingSeek = true;
-                    }
-                };
-
-                window.sorulabLoadVideo = function(videoId, startSeconds) {
-                    var target = Math.max(0, parseInt(startSeconds, 10) || 0);
-                    pendingVideoId = String(videoId || '').trim();
-                    pendingStartSeconds = target;
-                    if (player && typeof player.loadVideoById === 'function') {
-                        try {
-                            player.loadVideoById({
-                                videoId: pendingVideoId,
-                                startSeconds: target
-                            });
-                            hasPendingLoad = false;
-                            hasPendingSeek = false;
-                        } catch (e) {
-                            hasPendingLoad = true;
-                        }
-                    } else {
-                        hasPendingLoad = true;
-                    }
-                };
-
-                window.onYouTubeIframeAPIReady = function() {
-                    try {
-                        player = new YT.Player('player', {
-                            width: '100%',
-                            height: '100%',
-                            videoId: pendingVideoId,
-                            playerVars: {
-                                autoplay: 1,
-                                playsinline: 1,
-                                rel: 0,
-                                start: pendingStartSeconds,
-                                origin: '$YOUTUBE_IFRAME_BASE_URL',
-                                enablejsapi: 1,
-                                modestbranding: 1,
-                                fs: 1
-                            },
-                            events: {
-                                onReady: function(event) {
-                                    isPlayerReady = true;
-                                    notifyReady();
-                                    if (hasPendingLoad) {
-                                        hasPendingLoad = false;
-                                        hasPendingSeek = false;
-                                        event.target.loadVideoById({
-                                            videoId: pendingVideoId,
-                                            startSeconds: pendingStartSeconds
-                                        });
-                                    } else if (hasPendingSeek) {
-                                        hasPendingSeek = false;
-                                        event.target.seekTo(pendingStartSeconds, true);
-                                        event.target.playVideo();
-                                    } else {
-                                        event.target.playVideo();
-                                    }
-                                },
-                                onError: function(event) {
-                                    var code = (event && typeof event.data === 'number') ? event.data : 150;
-                                    notifyReady();
-                                    notifyError(code);
-                                }
-                            }
-                        });
-                    } catch (e) {
-                        notifyReady();
-                        notifyError(153);
-                    }
-                };
-
-                // Yükleme göstergesinin sonsuza dek asılı kalmaması için güvenlik zamanlayıcısı
-                setTimeout(function() {
-                    if (!readyNotified) {
-                        notifyReady();
-                    }
-                }, 8000);
-
-                var apiScript = document.createElement('script');
-                apiScript.src = 'https://www.youtube.com/iframe_api';
-                apiScript.async = true;
-                apiScript.onerror = function() {
-                    notifyReady();
-                    notifyError(153);
-                };
-                document.head.appendChild(apiScript);
-            </script>
-        </body>
-        </html>
-    """.trimIndent()
+private fun describePlayerError(error: PlayerConstants.PlayerError): String = when (error) {
+    PlayerConstants.PlayerError.VIDEO_NOT_PLAYABLE_IN_EMBEDDED_PLAYER ->
+        "Yayıncı gömülü oynatmayı kısıtlamış"
+    PlayerConstants.PlayerError.VIDEO_NOT_FOUND ->
+        "Video gömülü oynatıcıda bulunamadı"
+    PlayerConstants.PlayerError.HTML_5_PLAYER ->
+        "HTML5 oynatıcı kısıtı algılandı"
+    PlayerConstants.PlayerError.INVALID_PARAMETER_IN_REQUEST ->
+        "Video parametresi doğrulanamadı"
+    else ->
+        "Gömülü oynatma kısıtı algılandı (${error.name})"
 }
 
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun EmbeddedYouTubeLecturePlayer(
+private fun NativeYouTubeLecturePlayer(
     videoId: String,
     startSeconds: Int,
-    embedUrl: String,
+    loopEndSeconds: Int,
+    seekRequestNonce: Int,
     formattedTimestamp: String,
     hasDirectEmbedVideo: Boolean,
     onOpenExternalYoutube: () -> Unit
 ) {
-    var isPageLoading by remember { mutableStateOf(true) }
-    var embedErrorCode by remember { mutableStateOf<Int?>(null) }
-    var webViewRef by remember { mutableStateOf<WebView?>(null) }
-    var isActive by remember { mutableStateOf(true) }
-    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val safeVideoId = remember(videoId) { sanitizeYoutubeVideoId(videoId) }
+    val safeStartSeconds = startSeconds.coerceAtLeast(0)
+    val safeLoopEndSeconds = loopEndSeconds.coerceAtLeast(safeStartSeconds + 5)
+    val canEmbedNatively = hasDirectEmbedVideo && safeVideoId.isNotBlank()
 
-    DisposableEffect(Unit) {
-        isActive = true
+    var isPlayerLoading by remember { mutableStateOf(canEmbedNatively) }
+    var embedError by remember { mutableStateOf<PlayerConstants.PlayerError?>(null) }
+    var youTubePlayerRef by remember { mutableStateOf<YouTubePlayer?>(null) }
+    var playerViewRef by remember { mutableStateOf<YouTubePlayerView?>(null) }
+    var loadedVideoId by remember { mutableStateOf<String?>(null) }
+    var loadedStartSeconds by remember { mutableIntStateOf(-1) }
+    var currentSecond by remember { mutableFloatStateOf(safeStartSeconds.toFloat()) }
+    var selectedPlaybackRate by remember { mutableStateOf(PlayerConstants.PlaybackRate.RATE_1) }
+    var isLoopEnabled by remember { mutableStateOf(false) }
+    var lastLoopSeekElapsedMs by remember { mutableLongStateOf(0L) }
+
+    val latestVideoId by rememberUpdatedState(safeVideoId)
+    val latestStartSeconds by rememberUpdatedState(safeStartSeconds)
+    val latestLoopEndSeconds by rememberUpdatedState(safeLoopEndSeconds)
+    val latestIsLoopEnabled by rememberUpdatedState(isLoopEnabled)
+    val latestPlaybackRate by rememberUpdatedState(selectedPlaybackRate)
+
+    // LifecycleOwner ile güvenli bağlama
+    DisposableEffect(lifecycleOwner, playerViewRef) {
+        val view = playerViewRef
+        if (view != null) {
+            lifecycleOwner.lifecycle.addObserver(view)
+        }
         onDispose {
-            isActive = false
-            mainHandler.removeCallbacksAndMessages(null)
-            webViewRef?.apply {
-                removeJavascriptInterface(YOUTUBE_JS_BRIDGE_NAME)
-                stopLoading()
-                loadUrl("about:blank")
-                destroy()
+            if (view != null) {
+                lifecycleOwner.lifecycle.removeObserver(view)
             }
-            webViewRef = null
         }
     }
 
-    val safeVideoId = remember(videoId) { sanitizeVideoIdForJs(videoId) }
-    val safeStartSeconds = startSeconds.coerceAtLeast(0)
-    val desiredMode = if (hasDirectEmbedVideo && safeVideoId.isNotBlank()) {
-        PlayerRenderMode.IFRAME_API
-    } else {
-        PlayerRenderMode.SEARCH_FALLBACK
+    // Modal kapandığında playerView.release() ile tam bellek temizliği
+    DisposableEffect(Unit) {
+        onDispose {
+            playerViewRef?.release()
+            playerViewRef = null
+            youTubePlayerRef = null
+        }
+    }
+
+    // Sıfır-Reload anında saniye atlama (seekTo) & farklı hocaya geçişte loadVideo
+    LaunchedEffect(safeVideoId, safeStartSeconds, seekRequestNonce, youTubePlayerRef, canEmbedNatively) {
+        val player = youTubePlayerRef ?: return@LaunchedEffect
+        if (!canEmbedNatively) return@LaunchedEffect
+
+        when {
+            loadedVideoId != safeVideoId -> {
+                embedError = null
+                loadedVideoId = safeVideoId
+                loadedStartSeconds = safeStartSeconds
+                currentSecond = safeStartSeconds.toFloat()
+                player.loadVideo(safeVideoId, safeStartSeconds.toFloat())
+                if (selectedPlaybackRate != PlayerConstants.PlaybackRate.RATE_1) {
+                    player.setPlaybackRate(selectedPlaybackRate)
+                }
+            }
+            loadedStartSeconds != safeStartSeconds || seekRequestNonce > 0 -> {
+                loadedStartSeconds = safeStartSeconds
+                currentSecond = safeStartSeconds.toFloat()
+                if (embedError == null) {
+                    player.seekTo(safeStartSeconds.toFloat())
+                    player.play()
+                }
+            }
+        }
     }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // 16:9 Gömülü YouTube IFrame API WebView Çerçevesi
+        // 16:9 Yerleşik Native YouTubePlayerView Çerçevesi
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = Color(0xFF0F172A),
@@ -652,146 +600,79 @@ private fun EmbeddedYouTubeLecturePlayer(
                 .testTag("lecture_embedded_player")
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { ctx ->
-                        val bridge = YouTubePlayerJsBridge(
-                            mainHandler = mainHandler,
-                            isActive = { isActive },
-                            onReady = {
-                                isPageLoading = false
-                            },
-                            onError = { code ->
-                                isPageLoading = false
-                                embedErrorCode = code
-                            }
-                        )
-                        WebView(ctx).apply {
-                            layoutParams = ViewGroup.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT
-                            )
-                            setBackgroundColor(android.graphics.Color.parseColor("#0F172A"))
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.mediaPlaybackRequiresUserGesture = false
-                            settings.loadWithOverviewMode = true
-                            settings.useWideViewPort = true
-                            settings.javaScriptCanOpenWindowsAutomatically = true
-                            settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                            addJavascriptInterface(bridge, YOUTUBE_JS_BRIDGE_NAME)
-                            webChromeClient = WebChromeClient()
-                            webViewClient = object : WebViewClient() {
-                                override fun onPageFinished(view: WebView?, url: String?) {
-                                    val state = view?.tag as? PlayerWebViewState
-                                    if (state?.mode == PlayerRenderMode.SEARCH_FALLBACK) {
-                                        isPageLoading = false
-                                    }
-                                }
-                            }
-                            if (desiredMode == PlayerRenderMode.IFRAME_API) {
-                                tag = PlayerWebViewState(
-                                    mode = PlayerRenderMode.IFRAME_API,
-                                    videoId = safeVideoId,
-                                    startSeconds = safeStartSeconds,
-                                    fallbackUrl = embedUrl
-                                )
-                                loadDataWithBaseURL(
-                                    YOUTUBE_IFRAME_BASE_URL,
-                                    buildYouTubeIFrameHtml(safeVideoId, safeStartSeconds),
-                                    "text/html",
-                                    "UTF-8",
-                                    null
-                                )
-                            } else {
-                                tag = PlayerWebViewState(
-                                    mode = PlayerRenderMode.SEARCH_FALLBACK,
-                                    videoId = "",
-                                    startSeconds = safeStartSeconds,
-                                    fallbackUrl = embedUrl
-                                )
-                                loadUrl(embedUrl, mapOf("Referer" to "$YOUTUBE_IFRAME_BASE_URL/"))
-                            }
-                            webViewRef = this
-                        }
-                    },
-                    update = { webView ->
-                        val previous = webView.tag as? PlayerWebViewState
-                        val nextState = PlayerWebViewState(
-                            mode = desiredMode,
-                            videoId = if (desiredMode == PlayerRenderMode.IFRAME_API) safeVideoId else "",
-                            startSeconds = safeStartSeconds,
-                            fallbackUrl = embedUrl
-                        )
+                if (canEmbedNatively) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { ctx ->
+                            val options = IFramePlayerOptions.Builder()
+                                .controls(1)
+                                .rel(0)
+                                .ivLoadPolicy(3)
+                                .ccLoadPolicy(0)
+                                .build()
 
-                        if (previous == null || previous.mode != nextState.mode) {
-                            embedErrorCode = null
-                            isPageLoading = true
-                            webView.tag = nextState
-                            if (nextState.mode == PlayerRenderMode.IFRAME_API) {
-                                webView.loadDataWithBaseURL(
-                                    YOUTUBE_IFRAME_BASE_URL,
-                                    buildYouTubeIFrameHtml(nextState.videoId, nextState.startSeconds),
-                                    "text/html",
-                                    "UTF-8",
-                                    null
+                            YouTubePlayerView(ctx).apply {
+                                layoutParams = ViewGroup.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.MATCH_PARENT
                                 )
-                            } else {
-                                webView.loadUrl(
-                                    nextState.fallbackUrl,
-                                    mapOf("Referer" to "$YOUTUBE_IFRAME_BASE_URL/")
-                                )
-                            }
-                        } else if (nextState.mode == PlayerRenderMode.IFRAME_API) {
-                            when {
-                                // Farklı hoca / farklı video -> Sayfayı yenilemeden akıcı geçiş
-                                previous.videoId != nextState.videoId -> {
-                                    val needsFullReload = embedErrorCode == 153
-                                    embedErrorCode = null
-                                    webView.tag = nextState
-                                    if (needsFullReload) {
-                                        isPageLoading = true
-                                        webView.loadDataWithBaseURL(
-                                            YOUTUBE_IFRAME_BASE_URL,
-                                            buildYouTubeIFrameHtml(nextState.videoId, nextState.startSeconds),
-                                            "text/html",
-                                            "UTF-8",
-                                            null
-                                        )
-                                    } else {
-                                        webView.evaluateJavascript(
-                                            "window.sorulabLoadVideo('${nextState.videoId}', ${nextState.startSeconds});",
-                                            null
-                                        )
-                                    }
-                                }
-                                // Aynı video, farklı bölüm çipi -> Sıfır-reload anında dakika atlama
-                                previous.startSeconds != nextState.startSeconds -> {
-                                    webView.tag = nextState
-                                    if (embedErrorCode == null) {
-                                        webView.evaluateJavascript(
-                                            "window.sorulabSeekTo(${nextState.startSeconds});",
-                                            null
-                                        )
-                                    }
-                                }
-                            }
-                        } else if (previous.fallbackUrl != nextState.fallbackUrl) {
-                            // Doğrulanmış videoId olmayan nadir arama fallback'i
-                            embedErrorCode = null
-                            isPageLoading = true
-                            webView.tag = nextState
-                            webView.loadUrl(
-                                nextState.fallbackUrl,
-                                mapOf("Referer" to "$YOUTUBE_IFRAME_BASE_URL/")
-                            )
-                        }
-                    }
-                )
+                                enableAutomaticInitialization = false
+                                initialize(
+                                    object : AbstractYouTubePlayerListener() {
+                                        override fun onReady(youTubePlayer: YouTubePlayer) {
+                                            youTubePlayerRef = youTubePlayer
+                                            isPlayerLoading = false
+                                            embedError = null
+                                            val targetVideoId = latestVideoId
+                                            val targetStart = latestStartSeconds
+                                            loadedVideoId = targetVideoId
+                                            loadedStartSeconds = targetStart
+                                            currentSecond = targetStart.toFloat()
+                                            youTubePlayer.loadVideo(targetVideoId, targetStart.toFloat())
+                                            if (latestPlaybackRate != PlayerConstants.PlaybackRate.RATE_1) {
+                                                youTubePlayer.setPlaybackRate(latestPlaybackRate)
+                                            }
+                                        }
 
-                // Embed Hatası (100/101/150/153 vb.) Otomatik Kurtarma Kartı
-                val activeErrorCode = embedErrorCode
-                if (desiredMode == PlayerRenderMode.IFRAME_API && activeErrorCode != null) {
+                                        override fun onCurrentSecond(youTubePlayer: YouTubePlayer, second: Float) {
+                                            currentSecond = second
+                                            if (latestIsLoopEnabled && second >= latestLoopEndSeconds.toFloat()) {
+                                                val now = SystemClock.elapsedRealtime()
+                                                if (now - lastLoopSeekElapsedMs > 1500L) {
+                                                    lastLoopSeekElapsedMs = now
+                                                    youTubePlayer.seekTo(latestStartSeconds.toFloat())
+                                                }
+                                            }
+                                        }
+
+                                        override fun onPlaybackRateChange(
+                                            youTubePlayer: YouTubePlayer,
+                                            playbackRate: PlayerConstants.PlaybackRate
+                                        ) {
+                                            if (LECTURE_PLAYBACK_SPEEDS.any { it.rate == playbackRate }) {
+                                                selectedPlaybackRate = playbackRate
+                                            }
+                                        }
+
+                                        override fun onError(
+                                            youTubePlayer: YouTubePlayer,
+                                            error: PlayerConstants.PlayerError
+                                        ) {
+                                            isPlayerLoading = false
+                                            embedError = error
+                                        }
+                                    },
+                                    options
+                                )
+                                playerViewRef = this
+                            }
+                        }
+                    )
+                }
+
+                // Embed Hatası veya Doğrulanmamış Video Otomatik Kurtarma Kartı
+                val activeError = embedError
+                if (!canEmbedNatively || activeError != null) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -824,22 +705,26 @@ private fun EmbeddedYouTubeLecturePlayer(
                                 }
                             }
                             Text(
-                                text = "Bu video gömülü oynatmaya kapalı — YouTube'da Tam Dakikadan ($formattedTimestamp) Aç",
+                                text = "YouTube Uygulamasında Tam Saniyeden Aç ($formattedTimestamp)",
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 12.5.sp,
-                                lineHeight = 17.sp,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
                                 textAlign = TextAlign.Center,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "YouTube embed kısıtı algılandı (Kod $activeErrorCode) • Video tam seçili saniyeden açılır",
+                                text = if (activeError != null) {
+                                    "${describePlayerError(activeError)} • Video tam seçili saniyeden açılır"
+                                } else {
+                                    "Bu konu için doğrudan YouTube anlatımına geçin"
+                                },
                                 color = Color(0xFF94A3B8),
                                 fontWeight = FontWeight.Medium,
                                 fontSize = 10.5.sp,
                                 textAlign = TextAlign.Center,
-                                maxLines = 1,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Button(
@@ -856,10 +741,12 @@ private fun EmbeddedYouTubeLecturePlayer(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "YouTube'da Aç ($formattedTimestamp)",
+                                    text = "YouTube Uygulamasında Tam Saniyeden Aç ($formattedTimestamp)",
                                     color = Color.White,
                                     fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 12.sp
+                                    fontSize = 11.5.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Spacer(modifier = Modifier.width(5.dp))
                                 Icon(
@@ -871,7 +758,7 @@ private fun EmbeddedYouTubeLecturePlayer(
                             }
                         }
                     }
-                } else if (isPageLoading) {
+                } else if (isPlayerLoading) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -888,11 +775,7 @@ private fun EmbeddedYouTubeLecturePlayer(
                                 modifier = Modifier.size(30.dp)
                             )
                             Text(
-                                text = if (hasDirectEmbedVideo) {
-                                    "Video $formattedTimestamp dakikasından hazırlanıyor..."
-                                } else {
-                                    "YouTube konu anlatımı yükleniyor..."
-                                },
+                                text = "Video $formattedTimestamp dakikasından hazırlanıyor...",
                                 color = Color(0xFFE2E8F0),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -901,6 +784,37 @@ private fun EmbeddedYouTubeLecturePlayer(
                     }
                 }
             }
+        }
+
+        // Öğrenme Odaklı Player Altı Şık Kontrol Çubuğu (Hız, -10sn/+10sn, Soru Tipi Döngü)
+        if (canEmbedNatively && embedError == null) {
+            LearningPlayerControlBar(
+                currentSecond = currentSecond.toInt(),
+                startSeconds = safeStartSeconds,
+                loopEndSeconds = safeLoopEndSeconds,
+                selectedRate = selectedPlaybackRate,
+                isLoopEnabled = isLoopEnabled,
+                onRewind10 = {
+                    val target = (currentSecond - 10f).coerceAtLeast(0f)
+                    currentSecond = target
+                    youTubePlayerRef?.seekTo(target)
+                },
+                onForward10 = {
+                    val target = currentSecond + 10f
+                    currentSecond = target
+                    youTubePlayerRef?.seekTo(target)
+                },
+                onSelectRate = { rate ->
+                    selectedPlaybackRate = rate
+                    youTubePlayerRef?.setPlaybackRate(rate)
+                },
+                onToggleLoop = {
+                    isLoopEnabled = !isLoopEnabled
+                    if (isLoopEnabled && currentSecond >= safeLoopEndSeconds.toFloat()) {
+                        youTubePlayerRef?.seekTo(safeStartSeconds.toFloat())
+                    }
+                }
+            )
         }
 
         // Tek Tıkla YouTube Uygulamasında / Tarayıcıda Tam Dakikadan Aç Butonu
@@ -946,6 +860,195 @@ private fun EmbeddedYouTubeLecturePlayer(
                     tint = Color.White.copy(alpha = 0.9f),
                     modifier = Modifier.size(16.dp)
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LearningPlayerControlBar(
+    currentSecond: Int,
+    startSeconds: Int,
+    loopEndSeconds: Int,
+    selectedRate: PlayerConstants.PlaybackRate,
+    isLoopEnabled: Boolean,
+    onRewind10: () -> Unit,
+    onForward10: () -> Unit,
+    onSelectRate: (PlayerConstants.PlaybackRate) -> Unit,
+    onToggleLoop: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFFF8FAFC),
+        border = BorderStroke(1.dp, SoruLabBorderLight),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("lecture_learning_controls_bar")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
+            // Üst Satır: -10 sn / +10 sn + Oynatma Hızı (1x, 1.25x, 1.5x, 2x)
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // -10 sn Geri Sar
+                Surface(
+                    onClick = onRewind10,
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, SoruLabBorderLight)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Replay10,
+                            contentDescription = "10 saniye geri sar",
+                            tint = SoruLabRoyalBlue,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "-10 sn",
+                            color = SoruLabInkBlack,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.5.sp
+                        )
+                    }
+                }
+
+                // +10 sn İleri Sar
+                Surface(
+                    onClick = onForward10,
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, SoruLabBorderLight)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Forward10,
+                            contentDescription = "10 saniye ileri sar",
+                            tint = SoruLabRoyalBlue,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "+10 sn",
+                            color = SoruLabInkBlack,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.5.sp
+                        )
+                    }
+                }
+
+                // Hız Seçici Pill'leri
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, SoruLabBorderLight)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Speed,
+                            contentDescription = "Oynatma hızı",
+                            tint = SoruLabSlateMuted,
+                            modifier = Modifier
+                                .padding(start = 3.dp, end = 2.dp)
+                                .size(15.dp)
+                        )
+                        LECTURE_PLAYBACK_SPEEDS.forEach { option ->
+                            val isActive = selectedRate == option.rate
+                            Surface(
+                                onClick = { onSelectRate(option.rate) },
+                                shape = RoundedCornerShape(7.dp),
+                                color = if (isActive) SoruLabCobaltBlue else Color.Transparent
+                            ) {
+                                Text(
+                                    text = option.label,
+                                    color = if (isActive) Color.White else SoruLabSlateDark,
+                                    fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Alt Satır: "Bu Soru Tipini Tekrarla (Döngü)" Butonu + Anlık Zaman Göstergesi
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    onClick = onToggleLoop,
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isLoopEnabled) SoruLabEmeraldLight else Color.White,
+                    border = BorderStroke(
+                        width = if (isLoopEnabled) 1.5.dp else 1.dp,
+                        color = if (isLoopEnabled) SoruLabEmerald else SoruLabBorderLight
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("lecture_loop_toggle_btn")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Repeat,
+                            contentDescription = "Bu soru tipini tekrarla",
+                            tint = if (isLoopEnabled) Color(0xFF047857) else SoruLabViolet,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = if (isLoopEnabled) {
+                                "Döngü Aktif (${formatLectureTimestamp(startSeconds)} – ${formatLectureTimestamp(loopEndSeconds)})"
+                            } else {
+                                "Bu Soru Tipini Tekrarla (Döngü)"
+                            },
+                            color = if (isLoopEnabled) Color(0xFF047857) else SoruLabSlateDark,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.5.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = SoruLabSkyTint
+                ) {
+                    Text(
+                        text = formatLectureTimestamp(currentSecond),
+                        color = SoruLabRoyalBlue,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                    )
+                }
             }
         }
     }

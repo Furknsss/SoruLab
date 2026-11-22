@@ -226,12 +226,17 @@ private fun buildMatchReason(
     video: TopicLectureVideo,
     chapter: LectureChapterSegment
 ): String {
+    val questionTypeHighlight = if (questionType in chapter.questionTypes) {
+        "${questionType.label} soru tipi bu dakikada doğrudan öğretiliyor"
+    } else {
+        "${questionType.label} soru tipi için ilgili alt kazanım anlatımı seçildi"
+    }
     val actionNote = if (video.hasVerifiedVideoId) {
         "Videonun ${chapter.formattedTimestamp} dakikasındaki \"${chapter.chapterTitle}\" bölümünden başlatıldı."
     } else {
         "${video.teacherName} anlatımında \"${chapter.chapterTitle}\" (${chapter.formattedTimestamp}) bölümü için odaklanıldı."
     }
-    return "Bu soru ${kazanim.title} (${kazanim.code}) & ${questionType.label} odaklıdır → $actionNote"
+    return "Soru Tipi: ${questionType.label} • ${kazanim.title} (${kazanim.code}) — $questionTypeHighlight → $actionNote"
 }
 
 /**
@@ -2292,7 +2297,7 @@ object TopicLectureVideoCatalog {
                 )
             )
         )
-    )
+    ) + TopicLectureVideoCatalogPart2.videos + TopicLectureVideoCatalogPart3.videos
 }
 
 /**
@@ -2456,29 +2461,81 @@ object TopicLectureResolver {
         topicName: String,
         question: YksQuestion
     ): String {
+        val explicitSubject = normalizeTurkish("$subjectName ${question.subject}")
+        when {
+            explicitSubject.contains("fizik") -> return "fizik"
+            explicitSubject.contains("kimya") -> return "kimya"
+            explicitSubject.contains("biyoloji") -> return "biyoloji"
+            explicitSubject.contains("geometri") -> return "geometri"
+            explicitSubject.contains("edebiyat") -> return "edebiyat"
+            explicitSubject.contains("turkce") -> return "turkce"
+            explicitSubject.contains("felsefe") -> return "felsefe"
+            explicitSubject.contains("din") -> return "din"
+            explicitSubject.contains("tarih") && !explicitSubject.contains("cografya") -> return "tarih"
+            explicitSubject.contains("cografya") && !explicitSubject.contains("tarih") -> return "cografya"
+            explicitSubject.contains("matematik") -> return "matematik"
+        }
+
         val combined = normalizeTurkish("$subjectName $topicName ${question.subject} ${question.topicHeader}")
         return when {
+            combined.contains("kimya") || combined.contains("mol") || combined.contains("asit") ||
+                combined.contains("organik") || combined.contains("le chatelier") ||
+                combined.contains("titrasyon") || combined.contains("tampon") ||
+                combined.contains("kcc") || combined.contains("elektrokimya") ||
+                combined.contains("elektroliz") || combined.contains("nernst") ||
+                combined.contains("tepkime hiz") || combined.contains("aktivasyon") ||
+                combined.contains("kimyasal denge") -> "kimya"
+            combined.contains("fizik") || combined.contains("cembersel") || combined.contains("acisal") ||
+                combined.contains("harmonik") || combined.contains("sarkac") ||
+                combined.contains("induksiyon") || combined.contains("lenz") ||
+                combined.contains("alternatif akim") || combined.contains("transformator") ||
+                combined.contains("fotoelektrik") || combined.contains("compton") ||
+                combined.contains("bohr") || combined.contains("modern fizik") ||
+                combined.contains("atislar") || combined.contains("momentum") ||
+                combined.contains("optik") || combined.contains("elektrik") -> "fizik"
             combined.contains("geometri") || combined.contains("ucgen") || combined.contains("cember") ||
                 combined.contains("cokgen") || combined.contains("prizma") || combined.contains("analitik") -> "geometri"
             combined.contains("edebiyat") || combined.contains("divan") || combined.contains("tanzimat") ||
                 combined.contains("siir") -> "edebiyat"
             combined.contains("turkce") || combined.contains("paragraf") || combined.contains("yazim") ||
                 combined.contains("noktalama") || combined.contains("dil bilgisi") -> "turkce"
-            combined.contains("fizik") || combined.contains("atislar") || combined.contains("momentum") ||
-                combined.contains("optik") || combined.contains("elektrik") -> "fizik"
-            combined.contains("kimya") || combined.contains("mol") || combined.contains("asit") ||
-                combined.contains("organik") || combined.contains("denge") -> "kimya"
             combined.contains("biyoloji") || combined.contains("hucre") || combined.contains("kalitim") ||
                 combined.contains("sinir") || combined.contains("fotosentez") -> "biyoloji"
+            combined.contains("felsefe") || combined.contains("epistemoloji") || combined.contains("ontoloji") ||
+                combined.contains("psikoloji") || combined.contains("sosyoloji") || combined.contains("mantik") -> "felsefe"
+            combined.contains("din kulturu") || combined.contains("islam") || combined.contains("kuran") ||
+                combined.contains("tasavvuf") || combined.contains("peygamber") || combined.contains("ibadet") -> "din"
             combined.contains("tarih") || combined.contains("osmanli") || combined.contains("milli mucadele") ||
                 combined.contains("inkilap") -> "tarih"
             combined.contains("cografya") || combined.contains("iklim") || combined.contains("harita") ||
-                combined.contains("nufus") || combined.contains("felsefe") -> "cografya"
+                combined.contains("nufus") -> "cografya"
             combined.contains("matematik") || combined.contains("turev") || combined.contains("limit") ||
                 combined.contains("integral") || combined.contains("trigonometri") ||
                 combined.contains("fonksiyon") || combined.contains("problem") ||
-                combined.contains("polinom") || combined.contains("logaritma") -> "matematik"
+                combined.contains("polinom") || combined.contains("logaritma") ||
+                combined.contains("dizi") || combined.contains("parabol") ||
+                combined.contains("esitsizlik") || combined.contains("karmasik") ||
+                combined.contains("permutasyon") || combined.contains("kombinasyon") ||
+                combined.contains("olasilik") || combined.contains("binom") -> "matematik"
             else -> "matematik"
+        }
+    }
+
+    private fun normalizeVideoSubjectBucket(rawSubjectName: String): String {
+        val norm = normalizeTurkish(rawSubjectName)
+        return when {
+            norm.contains("fizik") -> "fizik"
+            norm.contains("kimya") -> "kimya"
+            norm.contains("biyoloji") -> "biyoloji"
+            norm.contains("geometri") -> "geometri"
+            norm.contains("edebiyat") -> "edebiyat"
+            norm.contains("turkce") -> "turkce"
+            norm.contains("felsefe") -> "felsefe"
+            norm.contains("din") -> "din"
+            norm.contains("tarih") -> "tarih"
+            norm.contains("cografya") -> "cografya"
+            norm.contains("matematik") -> "matematik"
+            else -> norm
         }
     }
 
@@ -2492,12 +2549,13 @@ object TopicLectureResolver {
         matchedKazanim: OsymKazanim
     ): Int {
         var score = 0
-        val videoBucket = normalizeTurkish(video.subjectName)
+        val videoBucket = normalizeVideoSubjectBucket(video.subjectName)
         if (videoBucket == normSubject) {
             score += 420
         } else if (
             (normSubject == "geometri" && videoBucket == "matematik") ||
-            (normSubject == "edebiyat" && videoBucket == "turkce")
+            (normSubject == "edebiyat" && videoBucket == "turkce") ||
+            ((normSubject == "felsefe" || normSubject == "din") && videoBucket == "cografya")
         ) {
             score += 40
         } else {
@@ -2510,11 +2568,17 @@ object TopicLectureResolver {
             score += 20
         }
 
-        if (resolvedTopicId.isNotBlank() && resolvedTopicId in video.topicIds) {
+        val matchesResolvedTopic = resolvedTopicId.isNotBlank() && resolvedTopicId in video.topicIds
+        val matchesKazanimTopic = matchedKazanim.topicId.isNotBlank() && matchedKazanim.topicId in video.topicIds
+        if (matchesResolvedTopic) {
             score += 240
         }
-        if (matchedKazanim.topicId.isNotBlank() && matchedKazanim.topicId in video.topicIds) {
+        if (matchesKazanimTopic) {
             score += 180
+        }
+        // Konu-özel (dar kapsamlı) videolar, genel çok-konulu kamp videolarından öncelikli olsun
+        if ((matchesResolvedTopic || matchesKazanimTopic) && video.topicIds.size <= 3) {
+            score += 140
         }
         if (matchedKazanim.code.isNotBlank() && matchedKazanim.code in video.kazanimCodes) {
             score += 150
@@ -2551,8 +2615,16 @@ object TopicLectureResolver {
         if (matchedKazanim.code.isNotBlank() && matchedKazanim.code in chapter.kazanimCodes) {
             score += 180
         }
-        if (detectedQuestionType in chapter.questionTypes) {
-            score += 80
+
+        // Soru Tipi Odaklı Önceliklendirme: öğrencinin kaçırdığı soru tipini doğrudan öğreten bölüme yüksek ağırlık
+        val questionTypeMatched = detectedQuestionType in chapter.questionTypes
+        if (questionTypeMatched) {
+            score += 220
+            if (chapter.questionTypes.size == 1) {
+                score += 50
+            } else if (chapter.questionTypes.firstOrNull() == detectedQuestionType) {
+                score += 35
+            }
         }
 
         var stemKeywordHits = 0
@@ -2565,13 +2637,18 @@ object TopicLectureResolver {
                 normTopic.contains(nkw) -> topicOnlyKeywordHits++
             }
         }
-        score += stemKeywordHits.coerceAtMost(10) * 60 + topicOnlyKeywordHits.coerceAtMost(4) * 15
+        score += stemKeywordHits.coerceAtMost(10) * 85 + topicOnlyKeywordHits.coerceAtMost(4) * 18
+
+        // Sinerji bonusu: hem soru tipi hem soru kökündeki alt kazanım anahtar kelimesi aynı bölümde buluştuysa
+        if (questionTypeMatched && stemKeywordHits >= 1) {
+            score += 95
+        }
 
         val chapterTitleWords = normalizeTurkish(chapter.chapterTitle)
             .split(Regex("[^a-z0-9]+"))
             .filter { it.length >= 4 && it !in setOf("konu", "soru", "veya", "icin", "olan", "ozel") }
         val titleHits = chapterTitleWords.count { w -> questionStemNorm.contains(w) || questionTextNorm.contains(w) }
-        score += titleHits.coerceAtMost(6) * 18
+        score += titleHits.coerceAtMost(6) * 26
 
         return score
     }

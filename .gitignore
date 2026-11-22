@@ -10,6 +10,8 @@
 /.idea/assetWizardSettings.xml
 .DS_Store
 /build
+ppocr-sdk/build/
+.gradle_home/
 /captures
 .externalNativeBuild
 .cxx

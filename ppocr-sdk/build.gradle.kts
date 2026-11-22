@@ -24,6 +24,9 @@ dependencies {
 val fetchPaddleModels by tasks.registering(Exec::class) {
     description = "Download public official PP-OCRv6_small ONNX assets before Android packaging"
     workingDir = rootProject.projectDir
-    commandLine("python3", "scripts/prepare_ppocrv6_models.py")
+    val isWindows = System.getProperty("os.name").lowercase().contains("windows")
+    val pythonCmd = if (isWindows) "python" else "python3"
+    commandLine(pythonCmd, "scripts/prepare_ppocrv6_models.py")
+    isIgnoreExitValue = true
 }
 tasks.named("preBuild") { dependsOn(fetchPaddleModels) }

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
@@ -43,14 +44,18 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.TipsAndUpdates
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -111,7 +116,7 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTube
  *   oynatım, `LifecycleOwner` entegrasyonu, sıfır-reload `seekTo` dakika atlama, hız/sar/döngü kontrolleri
  *   ve otomatik embed hata kurtarma kartı sunar.
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun TopicLecturePlayerModal(
     question: YksQuestion,
@@ -149,106 +154,115 @@ fun TopicLecturePlayerModal(
         }
     }
 
-    Dialog(
+    val currentPrimaryOption = remember(recommendation.primaryVideo, recommendation.primaryChapter) {
+        ResolvedLectureOption(
+            video = recommendation.primaryVideo,
+            chapter = recommendation.primaryChapter,
+            matchScore = 9999,
+            youtubeWatchUrlWithTimestamp = recommendation.youtubeWatchUrlWithTimestamp,
+            youtubeEmbedUrlWithTimestamp = recommendation.youtubeEmbedUrlWithTimestamp,
+            formattedTimestamp = recommendation.formattedTimestamp,
+            hasDirectEmbedVideo = recommendation.hasDirectEmbedVideo
+        )
+    }
+
+    val allTeacherOptions = remember(currentPrimaryOption, recommendation.alternativeTeachers) {
+        val list = mutableListOf<ResolvedLectureOption>()
+        list.add(currentPrimaryOption)
+        recommendation.alternativeTeachers.forEach { alt ->
+            if (list.none { it.video.teacherName == alt.video.teacherName }) {
+                list.add(alt)
+            }
+        }
+        list
+    }
+
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        dragHandle = {
+            BottomSheetDefaults.DragHandle(
+                color = Color(0xFFCBD5E1),
+                height = 4.dp,
+                width = 38.dp
+            )
+        },
+        modifier = Modifier.testTag("topic_lecture_player_modal")
     ) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = Color.White,
-            shadowElevation = 16.dp,
+        Column(
             modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .widthIn(min = 340.dp, max = 760.dp)
-                .heightIn(max = 860.dp)
-                .testTag("topic_lecture_player_modal")
+                .fillMaxWidth()
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Column(
+            // 1. Sade & Şık Üst Bar: Soru Numarası, Ders ve Kapat Butonu
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .padding(horizontal = 20.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // 1. HOCA & DAKİKA BAŞLIĞI
-                LectureModalHeader(
-                    recommendation = recommendation,
-                    examType = examType,
-                    subjectName = subjectName,
-                    onDismiss = onDismiss
-                )
-
-                // "Bu Soru Tipi Öğretiliyor" Net Üst Rozeti (detectedQuestionType.label + chapterTitle + MM:SS)
-                TeachingQuestionTypeBadge(
-                    questionTypeLabel = recommendation.detectedQuestionType.label,
-                    chapterTitle = recommendation.primaryChapter.chapterTitle,
-                    formattedTimestamp = recommendation.formattedTimestamp
-                )
-
-                // Kazanım Rozeti + Parlak "Direkt MM:SS'tan Başlıyor" Etiketi
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Parlak Dakika Başlangıç Etiketi
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = SoruLabEmerald,
-                        shadowElevation = 2.dp
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Schedule,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Text(
-                                text = if (recommendation.hasDirectEmbedVideo) {
-                                    "Direkt ${recommendation.formattedTimestamp}'tan Başlıyor"
-                                } else {
-                                    "Hedef Bölüm: ${recommendation.formattedTimestamp}"
-                                },
-                                color = Color.White,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-
-                    // Kazanım Kodu Rozeti (örn. MAT.12.5.2.3)
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = SoruLabSkyTint,
-                        border = BorderStroke(1.dp, Color(0xFFBFDBFE))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.School,
-                                contentDescription = null,
-                                tint = SoruLabRoyalBlue,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = recommendation.matchedKazanim.code.ifBlank { topicName },
-                                color = SoruLabRoyalBlue,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 11.5.sp
-                            )
-                        }
-                    }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Konu Anlatımı",
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 17.sp,
+                        color = SoruLabInkBlack
+                    )
+                    Text(
+                        text = "${question.number}. Soru • $subjectName • $topicName",
+                        fontSize = 12.sp,
+                        color = SoruLabSlateMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Kapat",
+                        tint = SoruLabSlateDark,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
 
-                // 2. YERLEŞİK NATIVE YOUTUBE OYNATICI (YouTubePlayerView) + ÖĞRENME KONTROLLERİ + YOUTUBE'DA AÇ
+            // 2. Üstte Hoca Seçici: Yatay Kaydırılabilir PP + Kanal İsmi Kapsülleri (Fotoğraftaki Tasarım)
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(allTeacherOptions) { opt ->
+                    val isSelected = opt.video.teacherName == recommendation.primaryVideo.teacherName
+                    TeacherSelectionPill(
+                        teacherName = opt.video.teacherName,
+                        channelName = opt.video.channelName,
+                        isSelected = isSelected,
+                        onClick = {
+                            if (!isSelected) {
+                                recommendation = recommendation.selectTeacher(opt)
+                                seekRequestNonce += 1
+                            }
+                        }
+                    )
+                }
+            }
+
+            // 3. Altta Player: Yerleşik Native YouTube Player (16:9)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            ) {
                 NativeYouTubeLecturePlayer(
                     videoId = recommendation.primaryVideo.videoId.trim(),
                     startSeconds = recommendation.primaryChapter.startSeconds.coerceAtLeast(0),
@@ -268,69 +282,152 @@ fun TopicLecturePlayerModal(
                         }
                     }
                 )
+            }
 
-                // 3. EŞLEŞME NEDENİ BANDI
-                LectureMatchReasonBanner(recommendation = recommendation)
-
-                // 4. İNTERAKTİF BÖLÜM (DAKİKA) ATLAMA ÇİPLERİ
-                if (recommendation.relatedChapters.isNotEmpty()) {
-                    LectureChapterChipsSection(
-                        chapters = recommendation.relatedChapters,
-                        activeChapterId = recommendation.primaryChapter.id,
-                        onSelectChapter = { chapter ->
-                            recommendation = recommendation.selectChapter(chapter)
-                            seekRequestNonce += 1
-                        }
-                    )
-                }
-
-                // 5. ALTERNATİF HOCA DEĞİŞTİRİCİ
-                if (recommendation.alternativeTeachers.isNotEmpty()) {
-                    LectureTeacherSwitcherSection(
-                        recommendation = recommendation,
-                        onSelectTeacher = { option ->
-                            recommendation = recommendation.selectTeacher(option)
-                            seekRequestNonce += 1
-                        }
-                    )
-                }
-
-                // 6. KAZANIM ÖZETİ & ÖSYM İPUCU KARTI
-                LectureKazanimSummaryAndTipCard(
-                    recommendation = recommendation,
-                    difficultyLabel = question.difficulty.label
-                )
-
-                HorizontalDivider(color = SoruLabBorderLight)
-
-                // ALT KAPATMA SATIRI
-                Row(
+            // 4. İlgili Soru Tipi / Bölüm Atlama Çipleri (Varsa sade tek satır)
+            if (recommendation.relatedChapters.size > 1) {
+                LazyRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = "${question.number}. Soru • ${recommendation.primaryVideo.teacherName}",
-                        color = SoruLabSlateMuted,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Button(
-                        onClick = onDismiss,
-                        shape = RoundedCornerShape(50),
-                        colors = ButtonDefaults.buttonColors(containerColor = SoruLabCobaltBlue)
-                    ) {
-                        Text(
-                            text = "Soruya Dön",
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 13.sp
-                        )
+                    items(recommendation.relatedChapters) { chapter ->
+                        val isSelected = chapter.id == recommendation.primaryChapter.id
+                        Surface(
+                            onClick = {
+                                if (!isSelected) {
+                                    recommendation = recommendation.selectChapter(chapter)
+                                    seekRequestNonce += 1
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) SoruLabSkyTint else Color(0xFFF8FAFC),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) SoruLabRoyalBlue.copy(alpha = 0.5f) else Color(0xFFE2E8F0)
+                            )
+                        ) {
+                            Text(
+                                text = "${chapter.formattedTimestamp} • ${chapter.chapterTitle}",
+                                color = if (isSelected) SoruLabRoyalBlue else SoruLabSlateDark,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Hoca Profil Fotoğrafı (PP) Avatarı:
+ * Renkli marka gradyanı, şık 2 harfli monogram ve dairesel çerçeve.
+ */
+@Composable
+private fun TeacherAvatar(
+    teacherName: String,
+    isSelected: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val initials = remember(teacherName) {
+        val parts = teacherName.trim().split(Regex("\\s+"))
+        when {
+            parts.size >= 2 -> "${parts[0].take(1)}${parts[1].take(1)}".uppercase()
+            parts.isNotEmpty() -> parts[0].take(2).uppercase()
+            else -> "YC"
+        }
+    }
+    val gradientColors = remember(teacherName) {
+        when {
+            teacherName.contains("Görkem", ignoreCase = true) -> listOf(Color(0xFFF97316), Color(0xFFEA580C))
+            teacherName.contains("Eyüp", ignoreCase = true) -> listOf(Color(0xFF3B82F6), Color(0xFF1D4ED8))
+            teacherName.contains("Kenan", ignoreCase = true) -> listOf(Color(0xFF10B981), Color(0xFF047857))
+            teacherName.contains("Özcan", ignoreCase = true) -> listOf(Color(0xFF8B5CF6), Color(0xFF6D28D9))
+            teacherName.contains("Mert", ignoreCase = true) -> listOf(Color(0xFFEF4444), Color(0xFFB91C1C))
+            teacherName.contains("Rehber", ignoreCase = true) -> listOf(Color(0xFFF59E0B), Color(0xFFD97706))
+            teacherName.contains("Dr.", ignoreCase = true) || teacherName.contains("Biyoloji", ignoreCase = true) ->
+                listOf(Color(0xFF14B8A6), Color(0xFF0F766E))
+            teacherName.contains("Rüştü", ignoreCase = true) -> listOf(Color(0xFFD97706), Color(0xFF92400E))
+            teacherName.contains("Ferrum", ignoreCase = true) -> listOf(Color(0xFF64748B), Color(0xFF334155))
+            teacherName.contains("Altuğ", ignoreCase = true) -> listOf(Color(0xFF6366F1), Color(0xFF4338CA))
+            teacherName.contains("VIP", ignoreCase = true) -> listOf(Color(0xFF06B6D4), Color(0xFF0E7490))
+            else -> listOf(Color(0xFF64748B), Color(0xFF475569))
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .background(Brush.linearGradient(gradientColors))
+            .border(
+                width = if (isSelected) 1.5.dp else 1.dp,
+                color = if (isSelected) Color.White else Color(0x33FFFFFF),
+                shape = CircleShape
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = initials,
+            color = Color.White,
+            fontWeight = FontWeight.Black,
+            fontSize = 11.5.sp,
+            letterSpacing = 0.5.sp
+        )
+    }
+}
+
+/**
+ * Fotoğraftaki Seçim Kapsülü:
+ * Solunda hoca PP'si, sağında hoca ve kanal ismi. Seçildiğinde koyu mavi kapsül ve beyaz yazı.
+ */
+@Composable
+private fun TeacherSelectionPill(
+    teacherName: String,
+    channelName: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val bgColor = if (isSelected) Color(0xFF1E3A8A) else Color(0xFFF8FAFC)
+    val borderColor = if (isSelected) Color(0xFF3B82F6) else Color(0xFFE2E8F0)
+    val titleColor = if (isSelected) Color.White else SoruLabSlateDark
+    val subtitleColor = if (isSelected) Color(0xFF93C5FD) else SoruLabSlateMuted
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(24.dp),
+        color = bgColor,
+        border = BorderStroke(1.dp, borderColor),
+        shadowElevation = if (isSelected) 2.dp else 0.dp,
+        modifier = modifier.testTag("teacher_pill_$teacherName")
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 5.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            TeacherAvatar(teacherName = teacherName, isSelected = isSelected)
+            Column(verticalArrangement = Arrangement.Center) {
+                Text(
+                    text = teacherName,
+                    color = titleColor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = channelName,
+                    color = subtitleColor,
+                    fontWeight = FontWeight.Normal,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

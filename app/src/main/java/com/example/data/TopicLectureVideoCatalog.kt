@@ -2407,7 +2407,7 @@ object TopicLectureResolver {
             .values
             .map { it.first() }
             .sortedWith(compareByDescending<ScoredCandidate> { it.score }.thenBy { it.video.popularityRank })
-            .take(4)
+            .take(8)
 
         val fallbackAlternatives = if (sameBucketCandidates.isNotEmpty()) {
             sameBucketCandidates
@@ -2417,7 +2417,7 @@ object TopicLectureResolver {
                 .groupBy { it.video.teacherName }
                 .values
                 .map { it.first() }
-                .take(3)
+                .take(6)
         }
 
         val alternativeOptions = fallbackAlternatives.map { cand ->

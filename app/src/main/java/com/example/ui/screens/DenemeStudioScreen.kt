@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
@@ -69,10 +70,12 @@ fun DenemeStudioScreen(
     onStartExam: (MockExamItem) -> Unit,
     onReviewExam: (TestResultRecord) -> Unit,
     onOpenPdfStudio: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onDeleteExam: (MockExamItem) -> Unit = {}
 ) {
     var isCreating by remember { mutableStateOf(false) }
     var selectedRecord by remember { mutableStateOf<TestResultRecord?>(null) }
+    var pendingDeleteExam by remember { mutableStateOf<MockExamItem?>(null) }
     var layoutConfig by remember { mutableStateOf(TestPageLayoutConfig()) }
     var showLayoutSheet by remember { mutableStateOf(false) }
     val histories = remember(solvedRecords) {
@@ -227,21 +230,34 @@ fun DenemeStudioScreen(
                                 .apply { timeZone=java.util.TimeZone.getTimeZone("Europe/Istanbul") }.format(java.util.Date(it)),
                                 color=grey,fontSize=11.sp)
                         }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End,
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically) {
-                            if(last != null) {
-                                TextButton(onClick = { selectedRecord = last }) {
-                                    Text("Karnem",color = cobalt,fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            Button(
-                                onClick = { onStartExam(exam) },
-                                colors = ButtonDefaults.buttonColors(containerColor = cobalt),
-                                shape = RoundedCornerShape(11.dp)
+                            IconButton(
+                                onClick = { pendingDeleteExam = exam },
+                                modifier = Modifier.size(36.dp).testTag("deneme_delete_" + exam.id)
                             ) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = null,modifier=Modifier.size(17.dp))
-                                Text(if(last != null) "Tekrar Çöz" else "Başla",fontWeight = FontWeight.Bold)
+                                Icon(
+                                    imageVector = Icons.Default.DeleteOutline,
+                                    contentDescription = "Denemeyi sil",
+                                    tint = Color(0xFFDC2626),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if(last != null) {
+                                    TextButton(onClick = { selectedRecord = last }) {
+                                        Text("Karnem",color = cobalt,fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Button(
+                                    onClick = { onStartExam(exam) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = cobalt),
+                                    shape = RoundedCornerShape(11.dp)
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, contentDescription = null,modifier=Modifier.size(17.dp))
+                                    Text(if(last != null) "Tekrar Çöz" else "Başla",fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -293,6 +309,27 @@ fun DenemeStudioScreen(
         DenemeResultSheet(record,
             onDismiss = { selectedRecord = null },
             onReview = { selectedRecord = null;onReviewExam(record) })
+    }
+    pendingDeleteExam?.let { examToDelete ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteExam = null },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(20.dp),
+            title = { Text("Denemeyi Sil", fontWeight = FontWeight.Bold, color = navy) },
+            text = { Text("\"${examToDelete.title}\" denemesi ve bu denemeye ait sonuç kayıtları silinecek. Devam edilsin mi?", color = grey) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingDeleteExam = null
+                        onDeleteExam(examToDelete)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) { Text("Sil", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteExam = null }) { Text("Vazgeç", color = navy) }
+            }
+        )
     }
 }
 

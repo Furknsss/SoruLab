@@ -741,6 +741,86 @@ class SoruLabViewModel(
         showBanner("Test başarıyla silindi.")
     }
 
+    /** Tek bir denemeyi (hem listeden hem önbellekten hem geçmişinden) siler. */
+    fun deleteMockExam(exam: MockExamItem) {
+        val uid = effectiveUserId() ?: "device_yks_student_tr"
+        _generatedMockExams.value = _generatedMockExams.value.filterNot { it.id == exam.id }
+        val updatedDeleted = _deletedTestIds.value + exam.id
+        _deletedTestIds.value = updatedDeleted
+        repository.saveCachedDeletedTestIds(uid, updatedDeleted)
+        repository.removeCachedGeneratedTestSnapshot(uid, exam.id)
+
+        val matchingResults = _userTestResults.value.filter { it.testId == exam.id }
+        if (matchingResults.isNotEmpty()) {
+            _userTestResults.value = _userTestResults.value.filterNot { it.testId == exam.id }
+        }
+        val cloudMatches = allCloudTestRecords.filter { it.testId == exam.id }
+        allCloudTestRecords = allCloudTestRecords.filterNot { it.testId == exam.id }
+        if (cloudMatches.isNotEmpty()) {
+            viewModelScope.launch {
+                cloudMatches.forEach { rec ->
+                    if (rec.id.isNotBlank()) runCatching { repository.deleteTestResult(rec.id) }
+                }
+            }
+        }
+        showBanner("Deneme silindi.")
+    }
+
+    /** Tüm denemeleri ve deneme geçmişlerini siler (konu testlerine dokunmaz). */
+    fun deleteAllMockExams() {
+        val uid = effectiveUserId() ?: "device_yks_student_tr"
+        val mockIds = (_generatedMockExams.value.map { it.id } +
+            _userTestResults.value.filter { it.testId.startsWith("deneme_v147_") }.map { it.testId } +
+            allCloudTestRecords.filter { it.testId.startsWith("deneme_v147_") }.map { it.testId }).toSet()
+
+        _generatedMockExams.value = emptyList()
+        val updatedDeleted = _deletedTestIds.value + mockIds
+        _deletedTestIds.value = updatedDeleted
+        repository.saveCachedDeletedTestIds(uid, updatedDeleted)
+        mockIds.forEach { id -> repository.removeCachedGeneratedTestSnapshot(uid, id) }
+
+        _userTestResults.value = _userTestResults.value.filterNot { it.testId.startsWith("deneme_v147_") }
+        val cloudMatches = allCloudTestRecords.filter { it.testId.startsWith("deneme_v147_") }
+        allCloudTestRecords = allCloudTestRecords.filterNot { it.testId.startsWith("deneme_v147_") }
+        if (cloudMatches.isNotEmpty()) {
+            viewModelScope.launch {
+                cloudMatches.forEach { rec ->
+                    if (rec.id.isNotBlank()) runCatching { repository.deleteTestResult(rec.id) }
+                }
+            }
+        }
+        showBanner("Tüm denemeler başarıyla silindi.")
+    }
+
+    /** Tüm konu testlerini ve konu testi geçmişlerini siler (denemelere dokunmaz). */
+    fun deleteAllTopicTests() {
+        val uid = effectiveUserId() ?: "device_yks_student_tr"
+        val generatedIds = _generatedTopicTests.value.values.flatten().map { it.id }
+        val resultIds = _userTestResults.value
+            .filterNot { it.testId.startsWith("deneme_v147_") }
+            .map { it.testId }
+        val allTopicTestIds = (generatedIds + resultIds).filter { it.isNotBlank() }.toSet()
+
+        _generatedTopicTests.value = emptyMap()
+        val updatedDeleted = _deletedTestIds.value + allTopicTestIds
+        _deletedTestIds.value = updatedDeleted
+        repository.saveCachedDeletedTestIds(uid, updatedDeleted)
+        repository.saveCachedGeneratedTestKeys(uid, emptyList())
+        allTopicTestIds.forEach { id -> repository.removeCachedGeneratedTestSnapshot(uid, id) }
+
+        _userTestResults.value = _userTestResults.value.filter { it.testId.startsWith("deneme_v147_") }
+        val cloudMatches = allCloudTestRecords.filterNot { it.testId.startsWith("deneme_v147_") }
+        allCloudTestRecords = allCloudTestRecords.filter { it.testId.startsWith("deneme_v147_") }
+        if (cloudMatches.isNotEmpty()) {
+            viewModelScope.launch {
+                cloudMatches.forEach { rec ->
+                    if (rec.id.isNotBlank()) runCatching { repository.deleteTestResult(rec.id) }
+                }
+            }
+        }
+        showBanner("Tüm konu testleri başarıyla silindi.")
+    }
+
     private fun parseGeneratedEntryFromRecord(rec: TestResultRecord): Triple<String, TopicTestLevel, Int>? {
         try {
             if (rec.answersMapJson.contains("\"level\"")) {

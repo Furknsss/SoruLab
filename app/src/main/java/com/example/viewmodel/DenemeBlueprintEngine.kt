@@ -178,7 +178,9 @@ object DenemePlanner {
         candidates: List<CustomQuestionRecord>,
         count: Int,
         priorIds: Set<String>,
-        alreadySelected: List<CustomQuestionRecord> = emptyList()
+        alreadySelected: List<CustomQuestionRecord> = emptyList(),
+        orderedTopicIds: List<String> = emptyList(),
+        sortPedagogically: Boolean = false
     ): List<CustomQuestionRecord> {
         val available = candidates.distinctBy { it.id }
             .groupBy { it.topicId }.mapValues { (_, items) ->
@@ -192,6 +194,7 @@ object DenemePlanner {
                     )
                 ).toMutableList()
             }.toMutableMap()
+        val topicOrderIndex = orderedTopicIds.withIndex().associate { (idx, id) -> id to idx }
         val selected = mutableListOf<CustomQuestionRecord>()
         val topicCounts = mutableMapOf<String, Int>()
         val sourceCounts = alreadySelected.groupingBy { it.publisherTag + "/" + it.bookOrTestName }.eachCount().toMutableMap()
@@ -203,17 +206,19 @@ object DenemePlanner {
         repeat(count) {
             val nonEmpty = available.filterValues { it.isNotEmpty() }
             if (nonEmpty.isEmpty()) return@repeat
-            // Distribute within this quota only. Prefer fresh subtopics first.
+            // Distribute across every subtopic in curriculum order. Prefer fresh subtopics first.
             val topic = nonEmpty.keys.sortedWith(
                 compareBy<String> { topic -> if (nonEmpty.getValue(topic).any { it.id !in priorIds }) 0 else 1 }
-                .thenByDescending { 1.0 / ((topicCounts[it] ?: 0) + 1) }.thenBy { it }
+                .thenByDescending { 1.0 / ((topicCounts[it] ?: 0) + 1) }
+                .thenBy { topicOrderIndex[it] ?: Int.MAX_VALUE }
+                .thenBy { it }
             ).first()
             val list = available.getValue(topic)
             val next = list.minWithOrNull(
                 compareBy<CustomQuestionRecord>(
                     { if (it.id in priorIds) 8 else 0 },
                     { -((difficultyShares[it.difficultyLevel5] ?: 1.0) / ((difficultyCounts[it.difficultyLevel5] ?: 0) + 1)) },
-                    { (outcomeCounts[outcomeKeyFor(it)] ?: 0) * 2 },
+                    { (outcomeCounts[outcomeKeyFor(it)] ?: 0) * 3 },
                     { (questionTypeCounts[OsymQuestionType.classifyCustomQuestion(it)] ?: 0) * 2 },
                     { (sourceCounts[it.publisherTag + "/" + it.bookOrTestName] ?: 0) * 3 },
                     { it.sourceTestId },
@@ -232,7 +237,15 @@ object DenemePlanner {
             val oKey = outcomeKeyFor(next)
             outcomeCounts[oKey] = (outcomeCounts[oKey] ?: 0) + 1
         }
-        return selected
+        // Gerçek ÖSYM kitapçık içi sıralama: alt konu sırası + pedagojik zorluk akışı (Kolay -> Orta -> Zor)
+        return selected.sortedWith(
+            compareBy<CustomQuestionRecord>(
+                { topicOrderIndex[it.topicId] ?: Int.MAX_VALUE },
+                { if (sortPedagogically) it.difficultyLevel5.ordinal else 0 },
+                { outcomeKeyFor(it) },
+                { it.id }
+            )
+        )
     }
 
     private fun outcomeKeyFor(record: CustomQuestionRecord): String =
@@ -274,7 +287,16 @@ object DenemePlanner {
                 if (candidates.size < quota.count) {
                     shortages.add(DenemeShortage(section.label + " • " + quota.label, quota.count, candidates.size))
                 } else {
-                    selected.addAll(pickSlice(candidates, quota.count, previousIds, selected))
+                    selected.addAll(
+                        pickSlice(
+                            candidates = candidates,
+                            count = quota.count,
+                            priorIds = previousIds,
+                            alreadySelected = selected,
+                            orderedTopicIds = quota.topicIds.toList(),
+                            sortPedagogically = true
+                        )
+                    )
                 }
             }
         }

@@ -2398,37 +2398,9 @@ private fun BookPageQuestionItem345(
             .zIndex(if (isThreeDotMenuOpen) 55f else 1f)
             .testTag("book_question_${question.number}")
     ) {
-        // A single focused question carries its publisher mark at upper right.
-        if (singleQuestionLayout) {
-            Text(
-                question.topicHeader.ifBlank { "Tek soru" },
-                color = Color(0xFF64748B),
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.align(Alignment.TopStart)
-                    .padding(end = 54.dp, top = 12.dp)
-            )
-            Box(
-                modifier = Modifier.align(Alignment.TopEnd)
-                    .size(42.dp).zIndex(5f)
-                    .testTag("single_question_top_right_logo")
-                    .clickable { sourceDetailsVisible = true },
-                contentAlignment = Alignment.Center
-            ) {
-                PublisherLogoEmblem(
-                    publisher = sourcePublisher,
-                    size = 38.dp,
-                    overrideLogoPath = question.publisherLogoUri
-                )
-            }
-        }
-
-        // 1. SORU İÇERİĞİ: Sol başta soru numarası, sağında saf soru görseli
+        // 1. SORU İÇERİĞİ: Tekli modda üstte konu/logo kalabalığı olmadan saf soru odağı
         Row(
-            modifier = Modifier.fillMaxWidth().padding(
-                top = if (singleQuestionLayout) 54.dp else 0.dp
-            ),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
@@ -2608,10 +2580,14 @@ private fun SingleQuestionFocusedPageSurface(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.White)
-            .padding(horizontal = 16.dp, vertical = 16.dp)
     ) {
-        // Give focused questions a full-height, book-like reading area.
-        val fitQuestionHeight = (maxHeight - 96.dp).coerceIn(140.dp, 900.dp)
+        val isLandscape = maxWidth > maxHeight && maxWidth >= 560.dp
+        val fitQuestionHeight = if (isLandscape) {
+            (maxHeight - 40.dp).coerceIn(180.dp, 860.dp)
+        } else {
+            (maxHeight * 0.58f).coerceIn(180.dp, 620.dp)
+        }
+
         if (openThreeDotQuestionNumber != null) {
             Box(
                 modifier = Modifier
@@ -2625,56 +2601,87 @@ private fun SingleQuestionFocusedPageSurface(
             )
         }
 
-        Column(
-            modifier = Modifier
-                .widthIn(max = 760.dp)
-                .fillMaxWidth()
-                .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
-                .align(Alignment.TopCenter)
-                .testTag("single_question_content_${question.id}")
-                .verticalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            BookPageQuestionItem345(
-                question = question,
-                maxImageHeight = fitQuestionHeight,
-                singleQuestionLayout = true,
-                isReviewMode = session.isReviewMode,
-                selectedOption = session.selectedAnswers[question.number],
-                isThreeDotMenuOpen = openThreeDotQuestionNumber == question.number,
-                customPublishers = customPublishers,
-                onToggleThreeDotMenu = { onToggleThreeDotMenu(question.number) },
-                onSelectOption = onSelectOption,
-                onOpenTopicLecture = { onOpenTopicLecture(question) },
-                onOpenSolutionModal = { onOpenSolutionModal(question) },
-                onOpenTwinScreen = { onOpenTwinScreen(question) },
-                onAddToKumbara = { onAddToKumbara(question) }
-            )
-            if (!session.isReviewMode) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+        if (isLandscape) {
+            // YATAY ÇÖZÜM DENEYİMİ: Sol %48 saf soru, sağ %52 geniş beyaz çözüm defteri alanı
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
+                    .testTag("single_question_content_${question.id}")
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(0.48f)
+                        .fillMaxHeight()
+                        .verticalScroll(scrollState)
+                        .padding(start = 18.dp, end = 14.dp, top = 14.dp, bottom = 40.dp)
                 ) {
-                    listOf("A", "B", "C", "D", "E").forEach { option ->
-                        val chosen = session.selectedAnswers[question.number] == option
-                        Surface(
-                            onClick = { onSelectOption(option) },
-                            shape = CircleShape,
-                            color = if (chosen) Color(0xFF24205E) else Color(0xFFF1F5F9),
-                            contentColor = if (chosen) Color.White else Color(0xFF334155),
-                            modifier = Modifier.size(48.dp)
-                                .testTag("single_answer_${question.number}_$option")
-                                .semantics {
-                                    selected = chosen
-                                    contentDescription = "${question.number}. soru, $option şıkkı"
-                                }
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(option, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                    }
+                    BookPageQuestionItem345(
+                        question = question,
+                        maxImageHeight = fitQuestionHeight,
+                        singleQuestionLayout = true,
+                        isReviewMode = session.isReviewMode,
+                        selectedOption = session.selectedAnswers[question.number],
+                        isThreeDotMenuOpen = openThreeDotQuestionNumber == question.number,
+                        customPublishers = customPublishers,
+                        onToggleThreeDotMenu = { onToggleThreeDotMenu(question.number) },
+                        onSelectOption = onSelectOption,
+                        onOpenTopicLecture = { onOpenTopicLecture(question) },
+                        onOpenSolutionModal = { onOpenSolutionModal(question) },
+                        onOpenTwinScreen = { onOpenTwinScreen(question) },
+                        onAddToKumbara = { onAddToKumbara(question) }
+                    )
+                    Spacer(Modifier.height(120.dp))
                 }
+
+                // İnce kitapçık/defter ayracı
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .padding(vertical = 12.dp)
+                        .background(Color(0xFFE2E8F0))
+                )
+
+                // Sağ tarafta geniş, kesintisiz beyaz çözüm alanı (kalem/S-Pen için)
+                Box(
+                    modifier = Modifier
+                        .weight(0.52f)
+                        .fillMaxHeight()
+                        .background(Color.White)
+                        .testTag("single_question_landscape_scratchpad_${question.id}")
+                )
+            }
+        } else {
+            // DİKEY TEKLİ ODAK MODU: Altta optik ve üstte konu/logo olmadan saf soru + geniş çözüm boşluğu
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 680.dp)
+                    .fillMaxWidth()
+                    .zIndex(if (openThreeDotQuestionNumber != null) 30f else 1f)
+                    .align(Alignment.TopCenter)
+                    .testTag("single_question_content_${question.id}")
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                BookPageQuestionItem345(
+                    question = question,
+                    maxImageHeight = fitQuestionHeight,
+                    singleQuestionLayout = true,
+                    isReviewMode = session.isReviewMode,
+                    selectedOption = session.selectedAnswers[question.number],
+                    isThreeDotMenuOpen = openThreeDotQuestionNumber == question.number,
+                    customPublishers = customPublishers,
+                    onToggleThreeDotMenu = { onToggleThreeDotMenu(question.number) },
+                    onSelectOption = onSelectOption,
+                    onOpenTopicLecture = { onOpenTopicLecture(question) },
+                    onOpenSolutionModal = { onOpenSolutionModal(question) },
+                    onOpenTwinScreen = { onOpenTwinScreen(question) },
+                    onAddToKumbara = { onAddToKumbara(question) }
+                )
+                // Sorunun hemen altında kalemle rahat çözüm için temiz beyaz alan
+                Spacer(Modifier.height(340.dp))
             }
         }
     }

@@ -7,19 +7,19 @@ package com.example.viewmodel
 data class DenemeTopicQuota(val label: String, val count: Int, val topicIds: Set<String>)
 
 object DenemeTopicProfiles {
-    const val VERSION = "2026.11-v2"
-    const val NOTICE = "2018–2025 geçmiş sınavlarına dayalı SoruLab çalışma planıdır. Konu sayıları gelecek ÖSYM sınavı için garanti değildir. Süreler öneridir."
+    const val VERSION = "2026.11-v3-osym-order"
+    const val NOTICE = "2018–2025 ÖSYM kitapçık sırası ve konu dağılımlarına dayalı SoruLab çalışma planıdır. Konu sayıları gelecek ÖSYM sınavı için garanti değildir. Süreler öneridir."
     private fun q(label: String, count: Int, vararg topics: String) =
-        DenemeTopicQuota(label, count, topics.toSet())
+        DenemeTopicQuota(label, count, linkedSetOf(*topics))
 
     private val profiles = mapOf(
 
         "ayt_tarih_1" to listOf(
+            q("Tarih bilimi",1,"ayt_tarih_bilimi"),
             q("İlk çağ ve Türk devletleri",2,"ayt_ilk_cag_uygarliklari","ayt_ilk_turk_devletleri"),
             q("Türk İslam tarihi",1,"ayt_turk_islam"),
             q("Osmanlı tarihi",3,"ayt_osmanli_kultur_medeniyet","ayt_xx_yuzyil_osmanli","ayt_osmanli_siyaset"),
-            q("Millî Mücadele ve inkılap",3,"ayt_milli_mucadele","ayt_ataturk_ilkeleri"),
-            q("Tarih bilimi",1,"ayt_tarih_bilimi")),
+            q("Millî Mücadele ve inkılap",3,"ayt_milli_mucadele","ayt_ataturk_ilkeleri")),
         "ayt_tarih_2" to listOf(
             q("İlk çağ ve Türk devletleri",2,"ayt_ilk_cag_uygarliklari","ayt_ilk_turk_devletleri"),
             q("Türk İslam tarihi",1,"ayt_turk_islam"),
@@ -52,21 +52,21 @@ object DenemeTopicProfiles {
         "tyt_turkce" to listOf(
             q("Sözcükte anlam",4,"sozcukte_anlam","soz_obeginde_anlam"),
             q("Cümlede anlam",3,"cumlede_anlam"),
-            q("Paragraf",26,"paragrafta_anlam","paragrafta_yapi","anlatim_bicimleri"),
-            q("Yazım",2,"yazim_kurallari"), q("Noktalama",2,"noktalama_isaretleri"),
-            q("Cümlenin ögeleri",1,"cumlenin_ogeleri"),
             q("Dil bilgisi",2,"ses_bilgisi","sozcukte_yapi","isimler","sifatlar","zamirler","zarflar",
-                "edat_baglac_unlem","fiiller","fiilimsiler","fiilde_cati","cumle_turleri","anlatim_bozukluklari")),
+                "edat_baglac_unlem","fiiller","fiilimsiler","fiilde_cati","cumle_turleri","anlatim_bozukluklari"),
+            q("Cümlenin ögeleri",1,"cumlenin_ogeleri"),
+            q("Yazım",2,"yazim_kurallari"), q("Noktalama",2,"noktalama_isaretleri"),
+            q("Paragraf",26,"paragrafta_anlam","paragrafta_yapi","anlatim_bicimleri")),
         "tyt_mat" to listOf(
             q("Temel sayılar ve işlemler",7,"temel_kavramlar","sayi_basamaklari","rasyonel_sayilar",
                 "ondalik_sayilar","bolme_bolunebilme","ebob_ekok"),
             q("Denklem ve cebir",6,"birinci_dereceden_denklemler","basit_esitsizlikler","mutlak_deger",
                 "uslu_sayilar","koklu_sayilar","carpanlara_ayirma","oran_oranti"),
+            q("Mantık, kümeler, fonksiyon",2,"mantik","kumeler","kartezyen_carpim","tyt_fonksiyonlar"),
+            q("Veri ve istatistik",1,"veri_istatistik"),
             q("Problemler",12,"sayi_problemleri","kesir_problemleri","yas_problemleri","isci_problemleri",
                 "hareket_problemleri","yuzde_kar_zarar_problemleri","karisim_problemleri","grafik_problemleri","rutin_olmayan_problemler"),
-            q("Mantık, kümeler, fonksiyon",2,"mantik","kumeler","kartezyen_carpim","tyt_fonksiyonlar"),
-            q("Sayma ve olasılık",2,"permutasyon","kombinasyon","binom","olasilik"),
-            q("Veri ve istatistik",1,"veri_istatistik")),
+            q("Sayma ve olasılık",2,"permutasyon","kombinasyon","binom","olasilik")),
         "tyt_geo" to listOf(
             q("Açılar ve üçgenler",5,"dogruda_acilar","ucgende_acilar","dik_ucgen","ikizkenar_eskenar_ucgen",
                 "ucgende_aciortay","ucgende_kenarortay","ucgende_eslik_benzerlik","ucgende_alan","aci_kenar_bagintilari"),
@@ -101,19 +101,20 @@ object DenemeTopicProfiles {
             q("Yer şekilleri ve harita",1,"ic_ve_dis_kuvvetler","harita_bilgisi","su_toprak_bitki"),
             q("Bölgeler ve ekonomi",1,"ekonomik_faaliyetler")),
         "tyt_felsefe" to listOf(
-            q("Bilgi felsefesi",2,"bilgi_felsefesi"),q("Felsefeyi tanıma",1,"felsefeyi_tanima"),
+            q("Felsefeyi tanıma",1,"felsefeyi_tanima"),q("Bilgi felsefesi",2,"bilgi_felsefesi"),
             q("Ahlak",1,"ahlak_felsefesi"),q("Varlık ve diğer alanlar",1,"varlik_felsefesi","bilim_felsefesi",
                 "din_felsefesi","siyaset_felsefesi","sanat_felsefesi")),
         "tyt_din" to listOf(q("Bilgi ve inanç",1,"bilgi_ve_inanc"),q("Din, ibadet ve ahlak",4,"din_ve_islam")),
-        // Only AYT-level chapters. TYT temel kavramlar, sayma and basic
-        // triangles are intentionally excluded; these are editorial practice
-        // quotas summing to 31 Math + 9 Geometry, not ÖSYM topic guarantees.
+        // Gerçek ÖSYM AYT Matematik kitapçık sırası:
+        // Fonksiyon -> Polinom -> Denklem/Parabol/Eşitsizlik -> Logaritma -> Diziler
+        // -> Limit (2) -> Türev (4) -> İntegral (4) -> Trigonometri (5, Geometri'den hemen önce!)
         "ayt_mat" to listOf(
-            q("Fonksiyonlar",4,"fonksiyonlar"),q("Polinomlar",2,"polinomlar"),
-            q("Denklem, parabol ve eşitsizlik",5,"ikinci_derece_denklemler","karmasik_sayilar","parabol","ikinci_derece_esitsizlikler"),
-            q("Trigonometri",6,"trigonometri_ayt_mat"),q("Logaritma",3,"logaritma"),q("Diziler",2,"diziler"),
-            q("Limit",3,"limit_ve_sureklilik"),q("Türev",3,"turev_alma_kurallari","turev_uygulamalari"),
-            q("İntegral",3,"belirsiz_integral","belirli_integral_alan")),
+            q("Fonksiyonlar",3,"fonksiyonlar"),q("Polinomlar",2,"polinomlar"),
+            q("Denklem, parabol ve eşitsizlik",6,"ikinci_derece_denklemler","karmasik_sayilar","parabol","ikinci_derece_esitsizlikler"),
+            q("Logaritma",3,"logaritma"),q("Diziler",2,"diziler"),
+            q("Limit",2,"limit_ve_sureklilik"),q("Türev",4,"turev_alma_kurallari","turev_uygulamalari"),
+            q("İntegral",4,"belirsiz_integral","belirli_integral_alan"),
+            q("Trigonometri",5,"trigonometri_ayt_mat")),
         "ayt_geo" to listOf(
             q("Çember ve daire",2,"cemberde_aci","cemberde_uzunluk","dairede_alan"),
             q("Doğru ve nokta analitiği",3,"noktanin_analitigi","dogrunun_analitigi"),
@@ -127,10 +128,10 @@ object DenemeTopicProfiles {
             q("Harmonik hareket",1,"basit_harmonik_hareket"),q("Dalga mekaniği",1,"dalga_mekanigi"),
             q("Atom ve radyoaktivite",1,"atom_fizigi_radyoaktivite"),q("Modern fizik",3,"modern_fizik","modern_fizik_uygulamalari")),
         "ayt_kimya" to listOf(
-            q("Atom ve gazlar",2,"modern_atom_teorisi","gazlar"),q("Çözeltiler",2,"sivi_cozeltiler"),
+            q("Modern atom teorisi",1,"modern_atom_teorisi"),q("Gazlar",1,"gazlar"),q("Çözeltiler",2,"sivi_cozeltiler"),
             q("Tepkime enerjisi",1,"kimyasal_enerji"),q("Tepkime hızı",1,"kimyasal_hiz"),
-            q("Kimyasal denge",1,"kimyasal_denge"),q("Sulu çözelti dengeleri",1,"asit_baz_dengesi","cozunurluk_dengesi"),
-            q("Elektrokimya",2,"kimya_ve_elektrik"),q("Organik kimya",3,"karbon_kimyasina_giris","organik_bilesikler")),
+            q("Kimyasal denge",1,"kimyasal_denge"),q("Sulu çözelti dengeleri",2,"asit_baz_dengesi","cozunurluk_dengesi"),
+            q("Elektrokimya",1,"kimya_ve_elektrik"),q("Organik kimya",3,"karbon_kimyasina_giris","organik_bilesikler")),
         "ayt_biyoloji" to listOf(
             q("Denetleyici sistemler",2,"sinir_sistemi","endokrin_sistem","duyu_organlari"),
             q("İnsan fizyolojisi",3,"destek_ve_hareket","sindirim_sistemi","dolasim_ve_bagisiklik","solunum_sistemi","uriner_sistem","ureme_sistemi_embriyonik"),

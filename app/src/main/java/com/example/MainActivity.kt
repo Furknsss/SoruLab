@@ -352,7 +352,9 @@ private fun AnaSayfaTabHost(
             mainViewModel.openAiAssistant(null)
         },
         onSignOut = { mainViewModel.signOut() },
-        onResetAllUserData = { mainViewModel.clearAllUserData() }
+        onResetAllUserData = { mainViewModel.clearAllUserData() },
+        onDeleteAllTopicTests = { mainViewModel.deleteAllTopicTests() },
+        onDeleteAllMockExams = { mainViewModel.deleteAllMockExams() }
     )
 }
 
@@ -519,6 +521,7 @@ private fun DenemelerTabHost(
             onSelectFilter = { selectedExamFilter = it },
             onCreateDeneme = { request -> mainViewModel.createAndStartDeneme(request) },
             onStartExam = { mockExam -> mainViewModel.startMockExam(mockExam) },
+            onDeleteExam = { mockExam -> mainViewModel.deleteMockExam(mockExam) },
             onReviewExam = { record -> mainViewModel.openRecentResultForReview(record) },
             onOpenPdfStudio = { mainViewModel.openPdfCropperStudio() }
         )

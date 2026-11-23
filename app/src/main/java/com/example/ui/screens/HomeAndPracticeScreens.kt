@@ -392,7 +392,9 @@ fun AnaSayfaScreen(
     onOpenPdfCropper: () -> Unit,
     onOpenAiAssistant: () -> Unit,
     onSignOut: () -> Unit,
-    onResetAllUserData: () -> Unit = {}
+    onResetAllUserData: () -> Unit = {},
+    onDeleteAllTopicTests: () -> Unit = {},
+    onDeleteAllMockExams: () -> Unit = {}
 ) {
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy • HH:mm", Locale.forLanguageTag("tr-TR")) }
     var showProfileSheet by remember { mutableStateOf(false) }
@@ -1091,6 +1093,14 @@ fun AnaSayfaScreen(
                 showProfileSheet = false
                 onResetAllUserData()
             },
+            onDeleteAllTopicTests = {
+                showProfileSheet = false
+                onDeleteAllTopicTests()
+            },
+            onDeleteAllMockExams = {
+                showProfileSheet = false
+                onDeleteAllMockExams()
+            },
             onDismiss = { showProfileSheet = false },
             onSignOut = {
                 showProfileSheet = false
@@ -1219,6 +1229,8 @@ private fun ProfileCenterBottomSheet(
     allTestResults: List<TestResultRecord>,
     onOpenSoruHavuzu: () -> Unit,
     onResetAllUserData: () -> Unit = {},
+    onDeleteAllTopicTests: () -> Unit = {},
+    onDeleteAllMockExams: () -> Unit = {},
     onDismiss: () -> Unit,
     onSignOut: () -> Unit
 ) {
@@ -1227,6 +1239,7 @@ private fun ProfileCenterBottomSheet(
     var defaultFullPageMode by remember { mutableStateOf(true) }
     var autoOpenResultDrawer by remember { mutableStateOf(true) }
     var smartShapeEnabled by remember { mutableStateOf(true) }
+    var confirmBulkDeleteType by remember { mutableStateOf<String?>(null) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -1644,10 +1657,79 @@ private fun ProfileCenterBottomSheet(
                             checked = autoOpenResultDrawer,
                             onCheckedChange = { autoOpenResultDrawer = it }
                         )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "VERİ YÖNETİMİ",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                            color = Color(0xFF94A3B8)
+                        )
+                        OutlinedButton(
+                            onClick = { confirmBulkDeleteType = "TESTS" },
+                            shape = RoundedCornerShape(14.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFFCA5A5)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
+                            modifier = Modifier.fillMaxWidth().height(48.dp)
+                        ) {
+                            Icon(Icons.Filled.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Tüm Testleri Sil", fontWeight = FontWeight.Bold)
+                        }
+                        OutlinedButton(
+                            onClick = { confirmBulkDeleteType = "EXAMS" },
+                            shape = RoundedCornerShape(14.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFFCA5A5)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
+                            modifier = Modifier.fillMaxWidth().height(48.dp)
+                        ) {
+                            Icon(Icons.Filled.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Tüm Denemeleri Sil", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
         }
+    }
+
+    if (confirmBulkDeleteType != null) {
+        val isExams = confirmBulkDeleteType == "EXAMS"
+        AlertDialog(
+            onDismissRequest = { confirmBulkDeleteType = null },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(20.dp),
+            title = {
+                Text(
+                    text = if (isExams) "Tüm Denemeleri Sil" else "Tüm Testleri Sil",
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF0F172A)
+                )
+            },
+            text = {
+                Text(
+                    text = if (isExams) {
+                        "Oluşturulmuş tüm denemeler ve deneme sonuç kayıtları kalıcı olarak silinecek (konu testleriniz korunur). Emin misiniz?"
+                    } else {
+                        "Tüm konu testleri ve konu testi geçmişiniz kalıcı olarak silinecek (denemeleriniz korunur). Emin misiniz?"
+                    },
+                    color = Color(0xFF475569)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmBulkDeleteType = null
+                        if (isExams) onDeleteAllMockExams() else onDeleteAllTopicTests()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) { Text("Evet, Sil", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmBulkDeleteType = null }) {
+                    Text("Vazgeç", color = Color(0xFF334155))
+                }
+            }
+        )
     }
 }
 

@@ -83,7 +83,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.data.DynamicVideoTimestampGrounder
 import com.example.data.ExamType
+import com.example.data.GroundedTimestampResult
+import com.example.data.GroundingSource
 import com.example.data.LectureChapterSegment
 import com.example.data.ResolvedLectureOption
 import com.example.data.ResolvedLectureRecommendation
@@ -137,6 +140,50 @@ fun TopicLecturePlayerModal(
         )
     }
     var seekRequestNonce by remember(question.id) { mutableIntStateOf(0) }
+    var manualChapterOverride by remember(question.id, recommendation.primaryVideo.videoId) {
+        mutableStateOf(false)
+    }
+    var groundedResult by remember(
+        question.id,
+        recommendation.primaryVideo.videoId,
+        recommendation.primaryChapter.id
+    ) {
+        mutableStateOf<GroundedTimestampResult?>(null)
+    }
+    var isGroundingTimestamp by remember(
+        question.id,
+        recommendation.primaryVideo.videoId,
+        recommendation.primaryChapter.id
+    ) {
+        mutableStateOf(false)
+    }
+
+    // Dinamik Transkript + Semantik Saniye Motoru:
+    // Videonun genel konu başı yerine hocanın doğrudan bu sorunun alt kavramını anlattığı saniyeyi bulur.
+    LaunchedEffect(
+        question.id,
+        recommendation.primaryVideo.videoId,
+        recommendation.primaryChapter.id,
+        manualChapterOverride
+    ) {
+        if (manualChapterOverride || !recommendation.hasDirectEmbedVideo) {
+            isGroundingTimestamp = false
+            return@LaunchedEffect
+        }
+        isGroundingTimestamp = true
+        val result = DynamicVideoTimestampGrounder.groundTimestampForQuestion(
+            question = question,
+            video = recommendation.primaryVideo,
+            chapter = recommendation.primaryChapter
+        )
+        groundedResult = result
+        isGroundingTimestamp = false
+        if (result.source != GroundingSource.CATALOG_FALLBACK &&
+            result.startSeconds != recommendation.primaryChapter.startSeconds
+        ) {
+            seekRequestNonce += 1
+        }
+    }
 
     // Bölüm döngüsü için etkin bitiş saniyesi (tanımlı endSeconds yoksa sonraki bölümün başlangıcı veya +180 sn)
     val effectiveLoopEndSeconds = remember(recommendation.primaryChapter, recommendation.relatedChapters) {
@@ -153,6 +200,18 @@ fun TopicLecturePlayerModal(
             }
         }
     }
+
+    val activeGrounded = groundedResult?.takeIf {
+        !manualChapterOverride && it.source != GroundingSource.CATALOG_FALLBACK
+    }
+    val activeStartSeconds = activeGrounded?.startSeconds
+        ?: recommendation.primaryChapter.startSeconds.coerceAtLeast(0)
+    val activeLoopEndSeconds = activeGrounded?.endSeconds ?: effectiveLoopEndSeconds
+    val activeFormattedTimestamp = formatLectureTimestamp(activeStartSeconds)
+    val activeWatchUrl = recommendation.primaryVideo.watchUrlAt(
+        activeStartSeconds,
+        recommendation.primaryChapter.chapterTitle
+    )
 
     val currentPrimaryOption = remember(recommendation.primaryVideo, recommendation.primaryChapter) {
         ResolvedLectureOption(
@@ -215,9 +274,17 @@ fun TopicLecturePlayerModal(
                         color = SoruLabInkBlack
                     )
                     Text(
-                        text = "${question.number}. Soru • $subjectName • $topicName",
+                        text = when {
+                            isGroundingTimestamp ->
+                                "${question.number}. Soru • Tam saniye aranıyor..."
+                            activeGrounded != null ->
+                                "${question.number}. Soru • $activeFormattedTimestamp (Soru noktası)"
+                            else ->
+                                "${question.number}. Soru • $subjectName • $topicName"
+                        },
                         fontSize = 12.sp,
-                        color = SoruLabSlateMuted,
+                        color = if (activeGrounded != null) SoruLabCobaltBlue else SoruLabSlateMuted,
+                        fontWeight = if (activeGrounded != null) FontWeight.SemiBold else FontWeight.Normal,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -249,6 +316,7 @@ fun TopicLecturePlayerModal(
                         isSelected = isSelected,
                         onClick = {
                             if (!isSelected) {
+                                manualChapterOverride = false
                                 recommendation = recommendation.selectTeacher(opt)
                                 seekRequestNonce += 1
                             }
@@ -265,16 +333,16 @@ fun TopicLecturePlayerModal(
             ) {
                 NativeYouTubeLecturePlayer(
                     videoId = recommendation.primaryVideo.videoId.trim(),
-                    startSeconds = recommendation.primaryChapter.startSeconds.coerceAtLeast(0),
-                    loopEndSeconds = effectiveLoopEndSeconds,
+                    startSeconds = activeStartSeconds,
+                    loopEndSeconds = activeLoopEndSeconds,
                     seekRequestNonce = seekRequestNonce,
-                    formattedTimestamp = recommendation.formattedTimestamp,
+                    formattedTimestamp = activeFormattedTimestamp,
                     hasDirectEmbedVideo = recommendation.hasDirectEmbedVideo,
                     onOpenExternalYoutube = {
                         runCatching {
                             val intent = Intent(
                                 Intent.ACTION_VIEW,
-                                Uri.parse(recommendation.youtubeWatchUrlWithTimestamp)
+                                Uri.parse(activeWatchUrl)
                             ).apply {
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
@@ -296,6 +364,7 @@ fun TopicLecturePlayerModal(
                         Surface(
                             onClick = {
                                 if (!isSelected) {
+                                    manualChapterOverride = true
                                     recommendation = recommendation.selectChapter(chapter)
                                     seekRequestNonce += 1
                                 }

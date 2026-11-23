@@ -1827,14 +1827,38 @@ object TopicLectureVideoCatalog {
                     osymTip = "'1 mol atom içeren' ile '1 mol molekül' ifadelerine dikkat: 1 mol H₂O toplam 3 mol atom içerir!"
                 ),
                 LectureChapterSegment(
-                    id = "gorkem_tyt_karisim_asitbaz",
-                    chapterTitle = "Karışımlar, Ayırma Yöntemleri ve Asitler-Bazlar-Tuzlar",
+                    id = "gorkem_tyt_karisim_homojen",
+                    chapterTitle = "Karışımlara Giriş, Homojen Karışımlar (Çözeltiler) ve Derişim",
                     startSeconds = 26194,
+                    endSeconds = 26855,
+                    kazanimIds = setOf("KAZ_TYT_FEN_KIMYA"),
+                    kazanimCodes = setOf("KIM.TYT.01"),
+                    questionTypes = setOf(OsymQuestionType.ONCULLU, OsymQuestionType.ANALITIK_CEBIRSEL),
+                    subTopicKeywords = listOf("homojen", "çözelti", "çözünen", "çözücü", "alaşım", "kütlece yüzde", "koligatif"),
+                    keyFormulaSummary = "Homojen karışımlar tek fazlıdır (çözeltiler ve alaşımlar: çelik, lehim, bronz). Kütlece % = (m_çözünen / m_çözelti) × 100.",
+                    osymTip = "Çelik, bronz ve lehim katı-katı homojen karışımlardır (alaşım); heterojen değildir!"
+                ),
+                LectureChapterSegment(
+                    id = "gorkem_tyt_karisim_heterojen",
+                    chapterTitle = "Heterojen Karışımlar: Süspansiyon, Emülsiyon, Kolloit ve Aerosol",
+                    startSeconds = 26862,
+                    endSeconds = 30200,
+                    kazanimIds = setOf("KAZ_TYT_FEN_KIMYA"),
+                    kazanimCodes = setOf("KIM.TYT.01"),
+                    questionTypes = setOf(OsymQuestionType.ONCULLU, OsymQuestionType.YENI_NESIL_KURGULU),
+                    subTopicKeywords = listOf("heterojen", "katı-sıvı", "süspansiyon", "emülsiyon", "kolloit", "kolloid", "aerosol", "kan", "sis", "duman", "ayırma", "damıtma", "ayırma hunisi"),
+                    keyFormulaSummary = "Süspansiyon (katı-sıvı: çamurlu su, kan), Emülsiyon (sıvı-sıvı: yağ-su), Aerosol (katı/sıvı-gaz: sis, duman), Kolloit (kan, süt, boya).",
+                    osymTip = "Kan hem kolloidal hem katı-sıvı heterojen (süspansiyon) özellik gösterir; sis sıvı-gaz aerosoldür, çelik ise katı-katı homojendir!"
+                ),
+                LectureChapterSegment(
+                    id = "gorkem_tyt_karisim_asitbaz",
+                    chapterTitle = "Asitler, Bazlar, Tuzlar ve Kimya Her Yerde",
+                    startSeconds = 30207,
                     endSeconds = 32300,
                     kazanimIds = setOf("KAZ_TYT_FEN_KIMYA"),
                     kazanimCodes = setOf("KIM.TYT.01"),
                     questionTypes = setOf(OsymQuestionType.ONCULLU, OsymQuestionType.YENI_NESIL_KURGULU),
-                    subTopicKeywords = listOf("karışım", "damıtma", "ayırma hunisi", "asit", "baz", "tuz", "nötralleşme", "amfoter", "yarı soy"),
+                    subTopicKeywords = listOf("asit", "baz", "tuz", "nötralleşme", "amfoter", "yarı soy", "ph", "indikatör"),
                     keyFormulaSummary = "Yarı soy metaller (Cu, Hg, Ag) yalnızca oksijenli kuvvetli asitlerle (HNO₃, H₂SO₄) tepkime verir; H₂ gazı çıkarmazlar!",
                     osymTip = "Amfoter metaller (Al, Zn, Cr, Sn, Pb, Be) hem asitlerle hem kuvvetli bazlarla tepkimeye girip H₂ gazı açığa çıkarır."
                 )

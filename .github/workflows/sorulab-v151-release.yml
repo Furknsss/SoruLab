@@ -66,6 +66,7 @@ jobs:
       - name: Run verification unit tests
         run: >-
           bash ./gradlew :app:testDebugUnitTest
+          --tests 'com.example.data.DynamicVideoTimestampGrounderTest'
           --tests 'com.example.data.TopicLectureVideoCatalogTest'
           --tests 'com.example.viewmodel.InteractiveSolutionTest'
           --tests 'com.example.viewmodel.DenemeBlueprintEngineTest'

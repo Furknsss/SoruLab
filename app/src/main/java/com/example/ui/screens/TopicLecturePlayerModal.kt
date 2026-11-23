@@ -72,8 +72,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -92,6 +95,7 @@ import com.example.data.ResolvedLectureOption
 import com.example.data.ResolvedLectureRecommendation
 import com.example.data.TopicLectureResolver
 import com.example.data.YksQuestion
+import com.example.data.YouTubeChannelAvatarResolver
 import com.example.data.formatLectureTimestamp
 import com.example.ui.theme.SoruLabAmber
 import com.example.ui.theme.SoruLabAmberLight
@@ -313,6 +317,7 @@ fun TopicLecturePlayerModal(
                     TeacherSelectionPill(
                         teacherName = opt.video.teacherName,
                         channelName = opt.video.channelName,
+                        videoId = opt.video.videoId,
                         isSelected = isSelected,
                         onClick = {
                             if (!isSelected) {
@@ -393,14 +398,27 @@ fun TopicLecturePlayerModal(
 
 /**
  * Hoca Profil Fotoğrafı (PP) Avatarı:
- * Renkli marka gradyanı, şık 2 harfli monogram ve dairesel çerçeve.
+ * YouTube kanalının gerçek HD profil fotoğrafını Coil ile yükler;
+ * yüklenirken veya çevrimdışıyken renkli monogramı pürüzsüz yer tutucu olarak gösterir.
  */
 @Composable
 private fun TeacherAvatar(
     teacherName: String,
+    videoId: String,
     isSelected: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    var avatarUrl by remember(teacherName, videoId) {
+        mutableStateOf(YouTubeChannelAvatarResolver.instantAvatarUrl(teacherName, videoId))
+    }
+
+    LaunchedEffect(teacherName, videoId) {
+        if (avatarUrl.isNullOrBlank()) {
+            avatarUrl = YouTubeChannelAvatarResolver.resolveAvatarUrl(teacherName, videoId)
+        }
+    }
+
     val initials = remember(teacherName) {
         val parts = teacherName.trim().split(Regex("\\s+"))
         when {
@@ -434,7 +452,7 @@ private fun TeacherAvatar(
             .background(Brush.linearGradient(gradientColors))
             .border(
                 width = if (isSelected) 1.5.dp else 1.dp,
-                color = if (isSelected) Color.White else Color(0x33FFFFFF),
+                color = if (isSelected) Color.White else Color(0x33CBD5E1),
                 shape = CircleShape
             ),
         contentAlignment = Alignment.Center
@@ -446,17 +464,31 @@ private fun TeacherAvatar(
             fontSize = 11.5.sp,
             letterSpacing = 0.5.sp
         )
+        if (!avatarUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(avatarUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = "$teacherName YouTube profil fotoğrafı",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+            )
+        }
     }
 }
 
 /**
  * Fotoğraftaki Seçim Kapsülü:
- * Solunda hoca PP'si, sağında hoca ve kanal ismi. Seçildiğinde koyu mavi kapsül ve beyaz yazı.
+ * Solunda hocanın gerçek YouTube PP'si, sağında hoca ve kanal ismi. Seçildiğinde koyu mavi kapsül ve beyaz yazı.
  */
 @Composable
 private fun TeacherSelectionPill(
     teacherName: String,
     channelName: String,
+    videoId: String,
     isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -479,7 +511,11 @@ private fun TeacherSelectionPill(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            TeacherAvatar(teacherName = teacherName, isSelected = isSelected)
+            TeacherAvatar(
+                teacherName = teacherName,
+                videoId = videoId,
+                isSelected = isSelected
+            )
             Column(verticalArrangement = Arrangement.Center) {
                 Text(
                     text = teacherName,

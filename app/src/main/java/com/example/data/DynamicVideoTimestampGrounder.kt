@@ -1,9 +1,13 @@
 package com.example.data
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.compose.runtime.Immutable
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.GenerativeBackend
+import com.google.firebase.ai.type.content
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -78,6 +82,7 @@ object DynamicVideoTimestampGrounder {
 
     private val transcriptCache = ConcurrentHashMap<String, List<TranscriptSegment>>()
     private val resultCache = ConcurrentHashMap<String, GroundedTimestampResult>()
+    private val imageConceptCache = ConcurrentHashMap<String, String>()
 
     private val turkishStopwords = setOf(
         "ve", "veya", "ile", "icin", "gibi", "kadar", "gore", "olarak", "daha", "en",
@@ -93,10 +98,11 @@ object DynamicVideoTimestampGrounder {
     )
 
     /**
-     * YKS soru metnindeki ipuçlarını hocanın derste kullandığı Türkçe terimlerle genişletir.
-     * Örn: "heterojen katı-sıvı" -> "süspansiyon", "kolloit", "aerosol", "emülsiyon".
+     * Tüm TYT/AYT dersleri (11 branş) için YKS soru metnindeki ipuçlarını hocanın derste
+     * kullandığı Türkçe anlatım terimleriyle genişletir.
      */
     private val domainConceptExpansions: Map<String, List<String>> = mapOf(
+        // KIMYA (TYT + AYT)
         "heterojen" to listOf("heterojen", "suspansiyon", "emulsiyon", "kolloit", "kolloid", "aerosol", "adi karisim"),
         "kati sivi" to listOf("suspansiyon", "kati sivi", "kolloit", "kolloid"),
         "sivi sivi" to listOf("emulsiyon", "sivi sivi", "ayirma hunisi"),
@@ -106,20 +112,66 @@ object DynamicVideoTimestampGrounder {
         "celik" to listOf("alasim", "homojen", "celik"),
         "homojen" to listOf("homojen", "cozelti", "cozunen", "cozucu", "alasim"),
         "simya" to listOf("simya", "simyaci", "felsefe tasi", "olumsuzluk", "deneme yanilma", "sinama yanilma"),
+        "mol" to listOf("mol", "avogadro", "normal kosul", "akb", "sinirlayici"),
+        "asit" to listOf("asit", "baz", "notrallesme", "amfoter", "yari soy", "ph"),
+        "denge" to listOf("denge", "le chatelier", "kc", "kp", "denge sabiti"),
+        "tampon" to listOf("tampon", "titrasyon", "hidroliz", "esdegerlik"),
+        "elektroliz" to listOf("elektroliz", "anot", "katot", "faraday", "yukselgenme", "indirgenme"),
+        "organik" to listOf("alkan", "alken", "alkin", "alkol", "eter", "aldehit", "keton", "izomer", "hibritleşme"),
+        // MATEMATIK (TYT + AYT)
         "siralama" to listOf("siralama", "sirala", "buyuk", "kucuk", "birinci bolge", "artan", "azalan"),
         "teget" to listOf("teget", "egim", "geometrik yorum", "normal"),
         "ekstremum" to listOf("ekstremum", "maksimum", "minimum", "artan", "azalan", "isaret tablosu"),
         "belirsizlik" to listOf("belirsizlik", "sifir bolu sifir", "carpanlara ayirma", "l hospital"),
-        "viraj" to listOf("viraj", "surtunme", "egimli", "merkezcil"),
-        "sarkac" to listOf("sarkac", "basit harmonik", "periyot", "yay"),
-        "induksiyon" to listOf("induksiyon", "lenz", "faraday", "manyetik aki"),
+        "integral" to listOf("integral", "degisken degistirme", "alan", "belirli integral", "riemann"),
+        "parabol" to listOf("parabol", "tepe noktasi", "simetri ekseni", "diskriminant", "delta"),
+        "polinom" to listOf("polinom", "kalan", "bolunebilme", "baskatsayi", "derece", "carpan"),
+        "logaritma" to listOf("logaritma", "ustel", "taban degistirme", "ln", "esitsizlik"),
+        "dizi" to listOf("aritmetik dizi", "geometrik dizi", "genel terim", "indirgeme", "ortak fark"),
+        "olasilik" to listOf("olasilik", "permutasyon", "kombinasyon", "binom", "kosullu olasilik"),
+        "fonksiyon" to listOf("bire bir", "orten", "ters fonksiyon", "bileske", "oteleme", "simetri"),
+        "problem" to listOf("hiz", "hareket", "yuzde", "kar zarar", "yas", "isci", "karisim problemi"),
+        // GEOMETRI
+        "benzerlik" to listOf("benzerlik", "ales", "tales", "kelebek", "aci aci", "oran"),
+        "aciortay" to listOf("ic aciortay", "dis aciortay", "aciortay", "kollar"),
+        "kenarortay" to listOf("kenarortay", "agirlik merkezi", "muhtesem uclu"),
+        "cember" to listOf("cevre aci", "merkez aci", "teget", "kiris", "kuvvet", "daire alani"),
+        "analitik" to listOf("egim", "dogru denklemi", "iki nokta", "uzaklik", "simetri", "diklik"),
+        "prizma" to listOf("prizma", "silindir", "koni", "kure", "piramit", "hacim", "yuzey alani"),
+        // FIZIK (TYT + AYT)
+        "viraj" to listOf("viraj", "surtunme", "egimli", "merkezcil", "cembersel"),
+        "sarkac" to listOf("sarkac", "basit harmonik", "periyot", "yay", "geri cagirici"),
+        "induksiyon" to listOf("induksiyon", "lenz", "faraday", "manyetik aki", "ozinduksiyon"),
         "fotoelektrik" to listOf("fotoelektrik", "esik enerjisi", "baglanma enerjisi", "kesme potansiyeli"),
-        "denge" to listOf("denge", "le chatelier", "kc", "kp", "denge sabiti"),
-        "tampon" to listOf("tampon", "titrasyon", "hidroliz", "esdegerlik"),
-        "elektroliz" to listOf("elektroliz", "anot", "katot", "faraday", "yukselgenme", "indirgenme"),
+        "optik" to listOf("ayna", "mercek", "kirilma", "snell", "golge", "aydinlanma", "tam yansima"),
+        "elektrik" to listOf("ohm", "direnc", "seri", "paralel", "lamba parlakligi", "guc"),
+        "atis" to listOf("serbest dusme", "yatay atis", "egik atis", "ivme", "hiz zaman"),
+        "momentum" to listOf("itme", "momentum", "carpisma", "esnek", "enerji korunumu"),
+        "dalga" to listOf("dalga boyu", "frekans", "periyot", "girism", "kirinim", "doppler"),
+        // BIYOLOJI (TYT + AYT)
         "soyagaci" to listOf("soyagaci", "otozomal", "cekinik", "baskin", "hemofili", "renk korlugu"),
         "replikasyon" to listOf("replikasyon", "transkripsiyon", "translasyon", "mrna", "trna", "kodon"),
-        "solunum" to listOf("glikoliz", "krebs", "ets", "fermantasyon", "oksijenli solunum")
+        "solunum" to listOf("glikoliz", "krebs", "ets", "fermantasyon", "oksijenli solunum"),
+        "fotosentez" to listOf("fotosentez", "kloroplast", "isiga bagimli", "kalvin", "kemosentez"),
+        "mitoz" to listOf("mitoz", "mayoz", "krossing over", "profaz", "metafaz", "anafaz"),
+        "hucre" to listOf("organel", "ribozom", "mitokondri", "lizozom", "osmoz", "difuzyon", "aktif tasima"),
+        "sistem" to listOf("sinir", "endokrin", "hormon", "dolasim", "bosaltim", "nefron", "sindirim"),
+        // TURKCE & EDEBIYAT
+        "paragraf" to listOf("ana dusunce", "yardimci dusunce", "akisi bozan", "ikiye bolme", "bosluk doldurma"),
+        "ses" to listOf("unlu dusmesi", "unsuz yumusamasi", "benzesme", "ulama", "kaynastirma"),
+        "yazim" to listOf("yazim kurallari", "bitisik", "ayri", "buyuk harf", "de da", "ki"),
+        "noktalama" to listOf("virgul", "noktali virgul", "iki nokta", "kesme isareti", "tirnak"),
+        "oge" to listOf("ozne", "yuklem", "nesne", "dolayli tumlec", "zarf tumleci"),
+        "siir" to listOf("uyak", "redif", "olcu", "aruz", "hece", "soz sanati", "mecaz", "tesbih"),
+        "divan" to listOf("gazel", "kaside", "mesnevi", "rubai", "divan edebiyati", "fuzuli", "baki"),
+        "tanzimat" to listOf("tanzimat", "servetifunun", "fecriati", "milli edebiyat", "cumhuriyet"),
+        // TARIH, COGRAFYA, FELSEFE, DIN
+        "inkilap" to listOf("kurtulus savasi", "kongre", "lozan", "tbmm", "ataturk ilkeleri", "inkilap"),
+        "osmanli" to listOf("osmanli", "divan", "timar", "islahat", "tanzimat fermani", "mesrutiyet"),
+        "iklim" to listOf("iklim", "basinc", "ruzgar", "nem", "yagis", "izobar", "izohips"),
+        "nufus" to listOf("nufus piramidi", "goc", "yerlesme", "dogal afet", "ekonomik faaliyet"),
+        "felsefe" to listOf("ontoloji", "epistemoloji", "etik", "estetik", "rasyonalizm", "empirizm"),
+        "din" to listOf("inanc", "ibadet", "ahlak", "vahiy", "kelam", "fikih", "tasavvuf")
     )
 
     private val introCuePhrases = listOf(
@@ -152,8 +204,21 @@ object DynamicVideoTimestampGrounder {
             )
         }
 
-        val queryFingerprint = "${question.id}|${question.stemTop.hashCode()}|$videoId|${chapter.id}"
+        val queryFingerprint = "${question.id}|${question.stemTop.hashCode()}|${question.croppedImagePath.hashCode()}|$videoId|${chapter.id}"
         resultCache[queryFingerprint]?.let { return@withContext it }
+
+        // Layer 0: PDF kırpılmış / fotoğraflı sorularda metin eksikse Gemini Vision ile
+        // sorunun alt kavramını ve anahtar terimlerini doğrudan görselden oku
+        val visionKeywords = if (enableGeminiRefinement) {
+            extractConceptsFromCroppedImageIfNeeded(question)
+        } else {
+            ""
+        }
+        val effectiveQuestion = if (visionKeywords.isNotBlank()) {
+            question.copy(stemTop = "${question.stemTop} $visionKeywords".trim())
+        } else {
+            question
+        }
 
         val segments = fetchOrGetCachedTranscript(videoId)
         if (segments.isEmpty()) {
@@ -169,7 +234,7 @@ object DynamicVideoTimestampGrounder {
         // Katalogda tanımlı ünite/bölüm aralığını arama penceresi olarak belirle
         val chapterWindowEnd = resolveChapterWindowEnd(video, chapter)
         val localResult = findBestTimestampInTranscript(
-            question = question,
+            question = effectiveQuestion,
             segments = segments,
             windowStartSeconds = fallbackStart,
             windowEndSeconds = chapterWindowEnd,
@@ -189,7 +254,7 @@ object DynamicVideoTimestampGrounder {
         // İsteğe bağlı Layer 2: En iyi aday transkript kesitlerini Gemini Flash ile semantik doğrula
         val finalResult = if (enableGeminiRefinement) {
             refineWithGeminiIfAvailable(
-                question = question,
+                question = effectiveQuestion,
                 segments = segments,
                 windowStartSeconds = fallbackStart,
                 windowEndSeconds = chapterWindowEnd,
@@ -201,6 +266,63 @@ object DynamicVideoTimestampGrounder {
 
         resultCache[queryFingerprint] = finalResult
         finalResult
+    }
+
+    /**
+     * Layer 0: Kırpılmış PDF/fotoğraf sorusunda soru metni kısa veya boşsa
+     * Gemini 3.8 Flash Vision ile sorunun tam alt kavramını (6-10 anahtar kelime) çıkarır.
+     */
+    private suspend fun extractConceptsFromCroppedImageIfNeeded(question: YksQuestion): String {
+        val rawTextLen = question.stemTop.trim().length +
+            question.bulletsOrSteps.sumOf { it.trim().length } +
+            question.stemBottom.trim().length
+        if (rawTextLen >= 30) return ""
+
+        val imagePath = question.croppedImagePath.trim()
+        if (imagePath.isBlank()) return ""
+        imageConceptCache[imagePath]?.let { return it }
+
+        val file = File(imagePath)
+        if (!file.isFile || !file.canRead()) return ""
+
+        val extracted = withTimeoutOrNull(4000L) {
+            runCatching {
+                val bmp = decodeScaledBitmap(file.absolutePath, maxSidePx = 768) ?: return@runCatching ""
+                try {
+                    val model = Firebase.ai(backend = GenerativeBackend.googleAI())
+                        .generativeModel("gemini-3.8-flash")
+                    val prompt = "Bu YKS sorusundaki ana konuyu, alt kavramı ve temel terimleri " +
+                        "sadece virgülle ayrılmış 6-10 Türkçe anahtar kelime olarak yaz. Başka açıklama ekleme."
+                    val response = model.generateContent(
+                        content {
+                            image(bmp)
+                            text(prompt)
+                        }
+                    ).text.orEmpty().trim()
+                    response.take(240)
+                } finally {
+                    if (!bmp.isRecycled) bmp.recycle()
+                }
+            }.getOrDefault("")
+        }.orEmpty()
+
+        if (extracted.isNotBlank()) {
+            imageConceptCache[imagePath] = extracted
+        }
+        return extracted
+    }
+
+    private fun decodeScaledBitmap(path: String, maxSidePx: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sampleSize = 1
+        val maxDim = maxOf(bounds.outWidth, bounds.outHeight)
+        while (maxDim / sampleSize > maxSidePx) {
+            sampleSize *= 2
+        }
+        val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        return BitmapFactory.decodeFile(path, opts)
     }
 
     /**

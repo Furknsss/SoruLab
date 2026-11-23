@@ -41,16 +41,15 @@ class LiveSolvingBoardLayoutTest {
         assertTrue("Publisher must sit above the question number", logo.bottom <= number.top)
         val firstQuestion = compose.onNodeWithTag("book_question_1").fetchSemanticsNode().boundsInRoot
         val secondQuestion = compose.onNodeWithTag("book_question_2").fetchSemanticsNode().boundsInRoot
-        assertTrue("Spare viewport height must not become huge gaps between short questions",
-            secondQuestion.top - firstQuestion.bottom < 280f)
         val thirdQuestion = compose.onNodeWithTag("book_question_3").fetchSemanticsNode().boundsInRoot
         val gapOne = secondQuestion.top - firstQuestion.bottom
         val gapTwo = thirdQuestion.top - secondQuestion.bottom
-        assertTrue("Every question should receive a comparable comfortable writing area",
+        assertTrue("Questions must stack compactly from top without huge gaps: gapOne=$gapOne",
+            gapOne in 8f..20f)
+        assertTrue("Consecutive question gaps must stay consistent: gapOne=$gapOne gapTwo=$gapTwo",
             kotlin.math.abs(gapOne - gapTwo) < 3f)
-        val footerTop = compose.onAllNodesWithTag("test_page_footer").fetchSemanticsNodes().first().boundsInRoot.top
-        assertTrue("The bottom must not accumulate the unused writing area",
-            footerTop - thirdQuestion.bottom <= gapTwo + 30f)
+        assertTrue("Questions must stay above the fixed footer",
+            thirdQuestion.bottom <= footer.top + 1f)
         capture("test-tablet")
         compose.onNodeWithTag("optical_form_tab").performClick()
         compose.onNodeWithTag("optic_q1_A").assertIsDisplayed()
@@ -78,8 +77,24 @@ class LiveSolvingBoardLayoutTest {
         val second = compose.onNodeWithTag("book_question_2").fetchSemanticsNode().boundsInRoot
         assertTrue("Source print remains readable", first.width > 300f && first.height > 70f)
         assertTrue("Printed questions keep reading order without overlap", second.top >= first.bottom)
-        assertTrue("Actual image pages avoid artificial giant gaps", second.top - first.bottom < 280f)
+        assertTrue("Actual image pages avoid artificial giant gaps: gap=${second.top - first.bottom}",
+            second.top - first.bottom in 8f..20f)
         capture("test-tablet-printed")
+    }
+
+    @Test @Config(qualifiers = "w800dp-h1280dp-mdpi")
+    fun sparseTwoColumnPageStacksCompactlyFromTopWithoutDeadVoids() {
+        showBoard(useImages = true, questionCount = 4)
+        val q1 = compose.onNodeWithTag("book_question_1").fetchSemanticsNode().boundsInRoot
+        val q2 = compose.onNodeWithTag("book_question_2").fetchSemanticsNode().boundsInRoot
+        val q3 = compose.onNodeWithTag("book_question_3").fetchSemanticsNode().boundsInRoot
+        val q4 = compose.onNodeWithTag("book_question_4").fetchSemanticsNode().boundsInRoot
+        val leftGap = q2.top - q1.bottom
+        val rightGap = q4.top - q3.bottom
+        assertTrue("Left column must not stretch 2 questions apart: leftGap=$leftGap", leftGap in 8f..20f)
+        assertTrue("Right column must not stretch 2 questions apart: rightGap=$rightGap", rightGap in 8f..20f)
+        assertTrue("Both columns must align at the same top baseline", kotlin.math.abs(q1.top - q3.top) < 2f)
+        capture("test-tablet-sparse-compact")
     }
 
     @Test @Config(qualifiers = "w393dp-h851dp-mdpi")
@@ -114,8 +129,8 @@ class LiveSolvingBoardLayoutTest {
         capture("test-long-question-scrolled")
     }
 
-    private fun showBoard(useImages: Boolean = false, longQuestion: Boolean = false) {
-        val questions = (1..12).map { number ->
+    private fun showBoard(useImages: Boolean = false, longQuestion: Boolean = false, questionCount: Int = 12) {
+        val questions = (1..questionCount).map { number ->
             YksQuestion(
                 id = "layout_$number", number = number, publisherName = "SoruLab",
                 stemTop = when (number % 3) {

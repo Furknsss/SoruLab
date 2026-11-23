@@ -340,4 +340,53 @@ class TestPageLayoutEngineTest {
             assertFalse("No separator should be shown when style is NONE", slot.showBottomSeparator)
         }
     }
+
+    @Test
+    fun `cropped image questions without sub-page norm bounds pack naturally into 2-3 per column`() {
+        val croppedQuestions = (1..6).map { num ->
+            createSampleQuestion(
+                num = num,
+                stemLength = 0,
+                hasImage = true,
+                normLeft = 0f,
+                normTop = 0f,
+                normRight = 1f,
+                normBottom = 1f
+            ).copy(stemTop = "", stemBottom = "", bulletsOrSteps = emptyList())
+        }
+        val result = TestPageLayoutEngine.buildBookletLayout(
+            questions = croppedQuestions,
+            config = TestPageLayoutConfig(columnMode = PageColumnLayoutMode.TWO_COLUMN)
+        )
+
+        assertEquals("6 standard cropped questions should fit cleanly on 1 two-column page", 1, result.totalPages)
+        val page = result.pages.single()
+        assertEquals(3, page.leftColumn.size)
+        assertEquals(3, page.rightColumn.size)
+        assertFalse(result.hasAnyPageOverflow)
+    }
+
+    @Test
+    fun `odd count tall questions keep earlier pages full and put remainder on final page`() {
+        // 5 tall questions (each ~1.10 normalized height, maxColumnHeight = 1.60 -> 1 per column, max 2 per page)
+        val tallQuestions = (1..5).map { num ->
+            createSampleQuestion(
+                num = num,
+                stemLength = 260,
+                visualType = QuestionVisualType.FUNCTION_GRAPH
+            )
+        }
+        val result = TestPageLayoutEngine.buildBookletLayout(
+            questions = tallQuestions,
+            config = TestPageLayoutConfig(
+                columnMode = PageColumnLayoutMode.TWO_COLUMN,
+                maxNormalizedColumnHeight = 1.60f
+            )
+        )
+
+        assertEquals(3, result.totalPages)
+        assertEquals(listOf(2, 2, 1), result.pages.map { it.questions.size })
+        assertTrue("Page 1 must have both columns filled", result.pages[0].leftColumn.isNotEmpty() && result.pages[0].rightColumn.isNotEmpty())
+        assertTrue("Page 2 must have both columns filled", result.pages[1].leftColumn.isNotEmpty() && result.pages[1].rightColumn.isNotEmpty())
+    }
 }

@@ -464,8 +464,8 @@ object TestPageLayoutEngine {
         val rawW = (question.normRight - question.normLeft).coerceAtLeast(0.08f)
         val rawH = (question.normBottom - question.normTop).coerceAtLeast(0.04f)
 
-        return if (!hasImage && rawW >= 0.98f && rawH >= 0.98f) {
-            // Metin/vektör tabanlı katalog sorusu için içerik uzunluğuna göre doğal aspect ratio
+        return if (rawW >= 0.98f && rawH >= 0.98f) {
+            // Metin/vektör tabanlı veya alt-kutu koordinatı olmayan kırpılmış soru için doğal aspect ratio
             val baseHeight = estimateBaseQuestionHeight(question)
             (1.0f / baseHeight).coerceIn(0.65f, 3.50f)
         } else {
@@ -481,15 +481,24 @@ object TestPageLayoutEngine {
         val normalizedHeight = (question.normBottom - question.normTop).coerceAtLeast(0.04f)
         val hasImage = question.croppedImagePath.isNotBlank() || question.imageBase64.isNotBlank()
 
-        return if (!hasImage && normalizedWidth >= 0.98f && normalizedHeight >= 0.98f) {
+        return if (normalizedWidth >= 0.98f && normalizedHeight >= 0.98f) {
             val contentLength = question.stemTop.length +
                 question.stemBottom.length +
                 question.bulletsOrSteps.sumOf { it.length }
             val visualBonus = if (question.visualType != QuestionVisualType.NONE) 0.14f else 0f
             val bulletBonus = (question.bulletsOrSteps.size * 0.01f).coerceAtMost(0.06f)
-            (0.26f + contentLength / 450f + visualBonus + bulletBonus).coerceIn(0.26f, 1.15f)
+            if (!hasImage) {
+                (0.26f + contentLength / 450f + visualBonus + bulletBonus).coerceIn(0.26f, 1.15f)
+            } else if (contentLength > 0) {
+                // Alt-kutu koordinatı olmayan kırpılmış görsel soru: metin ipucu varsa dengeli tahmin
+                (0.34f + contentLength / 520f + visualBonus).coerceIn(0.42f, 0.95f)
+            } else {
+                // Standart tek kırpılmış soru görseli (sütun başına 2-3 soru sığacak gerçekçi oran)
+                0.58f
+            }
         } else {
-            (normalizedHeight / normalizedWidth * 1.45f).coerceIn(0.16f, 1.30f)
+            // Gerçek A4 en-boy oranı (1.414) ile PDF kırpma kutusundan sütun içi yükseklik tahmini
+            (normalizedHeight / normalizedWidth * 1.414f).coerceIn(0.16f, 1.25f)
         }
     }
 
@@ -778,151 +787,103 @@ object TestPageLayoutEngine {
         maxColumnHeight: Float,
         maxQuestionsPerColumn: Int
     ): MutableList<Pair<List<Int>, List<Int>>> {
-        val rawPageQuestionGroups = mutableListOf<List<Int>>()
-        var cursor = 0
+        val n = questionIndices.size
+        if (n == 0) return mutableListOf()
 
-        // 1. Aşama: Sayfa kapasitesini aşmayacak şekilde her sayfaya girebilecek maksimum soru kümesini belirle
-        while (cursor < questionIndices.size) {
-            val leftTemp = mutableListOf<Int>()
-            val rightTemp = mutableListOf<Int>()
+        val prefix = FloatArray(n + 1)
+        for (i in 0 until n) {
+            prefix[i + 1] = prefix[i] + heights[questionIndices[i]]
+        }
+        fun spanHeight(start: Int, end: Int): Float =
+            if (start >= end) 0f else prefix[end] - prefix[start] + (end - start - 1) * spacing
 
-            // Sol sütun doldur
-            var leftH = 0f
-            while (cursor < questionIndices.size && leftTemp.size < maxQuestionsPerColumn) {
-                val qIdx = questionIndices[cursor]
-                val qH = heights[qIdx]
-                val gap = if (leftTemp.isEmpty()) 0f else spacing
-                if (leftTemp.isNotEmpty() && leftH + gap + qH > maxColumnHeight) break
-                leftTemp += qIdx
-                leftH += gap + qH
-                cursor++
-            }
-
-            // Sağ sütun doldur
-            var rightH = 0f
-            while (cursor < questionIndices.size && rightTemp.size < maxQuestionsPerColumn) {
-                val qIdx = questionIndices[cursor]
-                val qH = heights[qIdx]
-                val gap = if (rightTemp.isEmpty()) 0f else spacing
-                if (rightTemp.isNotEmpty() && rightH + gap + qH > maxColumnHeight) break
-                rightTemp += qIdx
-                rightH += gap + qH
-                cursor++
-            }
-
-            rawPageQuestionGroups += (leftTemp + rightTemp)
+        fun columnFits(start: Int, end: Int): Boolean {
+            val count = end - start
+            if (count <= 0) return true
+            if (count > maxQuestionsPerColumn) return false
+            if (count == 1) return true
+            return spanHeight(start, end) <= maxColumnHeight + 0.001f
         }
 
-        // 2. Aşama: Son sayfada tek (orphan) soru kaldıysa önceki sayfayla dengele
-        if (rawPageQuestionGroups.size > 1 && rawPageQuestionGroups.last().size == 1) {
-            val prevGroup = rawPageQuestionGroups[rawPageQuestionGroups.lastIndex - 1]
-            val lastGroup = rawPageQuestionGroups.last()
-            if (prevGroup.size > 2) {
-                val moved = prevGroup.last()
-                rawPageQuestionGroups[rawPageQuestionGroups.lastIndex - 1] = prevGroup.dropLast(1)
-                rawPageQuestionGroups[rawPageQuestionGroups.lastIndex] = listOf(moved) + lastGroup
-            } else {
-                // Önceki sayfada <= 2 soru varsa ve son tek soru önceki sayfaya taşmadan sığıyorsa birleştir
-                val merged = prevGroup + lastGroup
-                val balancedMerge = findBestTwoColumnSplit(
-                    pageQuestions = merged,
-                    heights = heights,
-                    spacing = spacing,
-                    maxColumnHeight = maxColumnHeight,
-                    maxQuestionsPerColumn = maxQuestionsPerColumn
+        data class PagePlan(
+            val pages: List<Pair<List<Int>, List<Int>>>,
+            val penalty: Double
+        )
+
+        val plans = arrayOfNulls<PagePlan>(n + 1)
+        plans[n] = PagePlan(emptyList(), 0.0)
+
+        for (start in n - 1 downTo 0) {
+            var best: PagePlan? = null
+            val maxEnd = min(n, start + maxQuestionsPerColumn * 2)
+
+            for (end in start + 1..maxEnd) {
+                val isSoloPage = end - start == 1
+                val isLastPage = end == n
+                var bestSplitPair: Pair<List<Int>, List<Int>>? = null
+                var bestPenalty = Double.POSITIVE_INFINITY
+
+                val splits = if (isSoloPage) end..end else (start + 1) until end
+                for (split in splits) {
+                    if (!columnFits(start, split) || !columnFits(split, end)) continue
+
+                    val leftH = spanHeight(start, split)
+                    val rightH = spanHeight(split, end)
+                    val leftFill = (leftH / maxColumnHeight).coerceAtMost(1f).toDouble()
+                    val rightFill = (rightH / maxColumnHeight).coerceAtMost(1f).toDouble()
+
+                    val fillWeight = if (isLastPage) {
+                        0.85
+                    } else {
+                        1.0 + 0.02 * (n - end).toDouble() / n
+                    }
+                    val fillDeficit = fillWeight * (
+                        (1.0 - leftFill).let { it * it } +
+                            (1.0 - rightFill).let { it * it }
+                    )
+                    val imbalance = 1.2 * (leftFill - rightFill).let { it * it }
+                    val emptyRightPenalty = if (split == end) {
+                        if (isLastPage) 3.5 else 50.0
+                    } else {
+                        0.0
+                    }
+                    val sparseNonFinalPenalty = if (!isLastPage && leftFill < 0.45 && rightFill < 0.45) {
+                        8.0
+                    } else {
+                        0.0
+                    }
+
+                    val penalty = fillDeficit + imbalance + emptyRightPenalty + sparseNonFinalPenalty
+                    if (penalty < bestPenalty) {
+                        bestPenalty = penalty
+                        val leftList = questionIndices.subList(start, split).toList()
+                        val rightList = questionIndices.subList(split, end).toList()
+                        bestSplitPair = leftList to rightList
+                    }
+                }
+
+                if (bestSplitPair == null) break
+                val tail = plans[end] ?: continue
+                val candidate = PagePlan(
+                    pages = listOf(bestSplitPair) + tail.pages,
+                    penalty = bestPenalty + tail.penalty
                 )
-                if (balancedMerge != null) {
-                    rawPageQuestionGroups[rawPageQuestionGroups.lastIndex - 1] = merged
-                    rawPageQuestionGroups.removeAt(rawPageQuestionGroups.lastIndex)
+                val previous = best
+                if (previous == null ||
+                    candidate.pages.size < previous.pages.size ||
+                    (candidate.pages.size == previous.pages.size && candidate.penalty < previous.penalty)
+                ) {
+                    best = candidate
                 }
             }
-        }
 
-        // 3. Aşama: Her sayfa içindeki soruları okuma sırasını bozmadan sol ve sağ sütun arasında en dengeli şekilde böl
-        return rawPageQuestionGroups.map { pageGroup ->
-            findBestTwoColumnSplit(
-                pageQuestions = pageGroup,
-                heights = heights,
-                spacing = spacing,
-                maxColumnHeight = maxColumnHeight,
-                maxQuestionsPerColumn = maxQuestionsPerColumn
-            ) ?: fallbackSequentialSplit(
-                pageQuestions = pageGroup,
-                heights = heights,
-                spacing = spacing,
-                maxColumnHeight = maxColumnHeight,
-                maxQuestionsPerColumn = maxQuestionsPerColumn
+            plans[start] = best ?: PagePlan(
+                pages = listOf(listOf(questionIndices[start]) to emptyList<Int>()) + (plans[start + 1]?.pages ?: emptyList()),
+                penalty = 100.0 + (plans[start + 1]?.penalty ?: 0.0)
             )
-        }.toMutableList()
-    }
-
-    /**
-     * Bir sayfadaki soruları [0..split-1] (Sol Sütun) ve [split..n-1] (Sağ Sütun) olarak
-     * her iki sütunun da [maxColumnHeight] sınırını aşmadığı ve yükseklik farkının (`|leftH - rightH|`)
-     * minimum olduğu bölünme noktasını bulur.
-     */
-    private fun findBestTwoColumnSplit(
-        pageQuestions: List<Int>,
-        heights: List<Float>,
-        spacing: Float,
-        maxColumnHeight: Float,
-        maxQuestionsPerColumn: Int
-    ): Pair<List<Int>, List<Int>>? {
-        if (pageQuestions.isEmpty()) return emptyList<Int>() to emptyList()
-        if (pageQuestions.size == 1) return pageQuestions to emptyList()
-
-        var bestSplit: Pair<List<Int>, List<Int>>? = null
-        var bestScore = Float.MAX_VALUE
-
-        // Sol sütunda en az 1 soru olmalı; sağ sütunda da (toplam >= 2 olduğundan) en az 1 soru olmasını tercih et
-        for (splitIdx in 1..pageQuestions.size) {
-            val left = pageQuestions.subList(0, splitIdx)
-            val right = pageQuestions.subList(splitIdx, pageQuestions.size)
-
-            if (left.size > maxQuestionsPerColumn || right.size > maxQuestionsPerColumn) continue
-
-            val leftH = computeColumnTotalHeight(left, heights, spacing)
-            val rightH = computeColumnTotalHeight(right, heights, spacing)
-
-            val leftOverflow = left.size > 1 && leftH > maxColumnHeight + 0.001f
-            val rightOverflow = right.size > 1 && rightH > maxColumnHeight + 0.001f
-            if (leftOverflow || rightOverflow) continue
-
-            // Sağ sütunun tamamen boş kalmasına ceza puanı ver (2+ soru varken çift sütun dengeli görünsün)
-            val emptyRightPenalty = if (right.isEmpty() && pageQuestions.size >= 2) 10f else 0f
-            val heightDiff = abs(leftH - rightH) + emptyRightPenalty
-
-            if (heightDiff < bestScore) {
-                bestScore = heightDiff
-                bestSplit = left.toList() to right.toList()
-            }
         }
 
-        return bestSplit
-    }
-
-    private fun fallbackSequentialSplit(
-        pageQuestions: List<Int>,
-        heights: List<Float>,
-        spacing: Float,
-        maxColumnHeight: Float,
-        maxQuestionsPerColumn: Int
-    ): Pair<List<Int>, List<Int>> {
-        val left = mutableListOf<Int>()
-        val right = mutableListOf<Int>()
-        var leftH = 0f
-
-        for (qIdx in pageQuestions) {
-            val qH = heights[qIdx]
-            val gap = if (left.isEmpty()) 0f else spacing
-            if (left.size < maxQuestionsPerColumn && (left.isEmpty() || leftH + gap + qH <= maxColumnHeight)) {
-                left += qIdx
-                leftH += gap + qH
-            } else {
-                right += qIdx
-            }
-        }
-        return left to right
+        return (plans[0]?.pages ?: emptyList()).toMutableList()
     }
 
     private fun computeColumnTotalHeight(

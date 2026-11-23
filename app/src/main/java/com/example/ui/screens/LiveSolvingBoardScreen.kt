@@ -140,8 +140,7 @@ private object TestPageDimensions {
     val pageVertical = 10.dp
     val footerHeight = 40.dp
     val gutter = 20.dp
-    val minGap = 16.dp
-    val maxGap = 160.dp
+    val questionGap = 12.dp
 }
 
 private val LocalTestBitmaps = staticCompositionLocalOf<Map<String, Bitmap?>> { emptyMap() }
@@ -224,8 +223,12 @@ private fun MeasuredBookPages(
                     }.single().measure(Constraints(minWidth = columnWidthPx, maxWidth = columnWidthPx)).height
                 }
                 val packingHeight = available
-                val pages = packMeasuredTestPages(heights.map { it + (it * .18f).toInt().coerceIn(24.dp.roundToPx(), 64.dp.roundToPx()) }, packingHeight,
-                    TestPageDimensions.minGap.roundToPx(), columns).map { page ->
+                val pages = packMeasuredTestPages(
+                    heights = heights,
+                    availableHeight = packingHeight,
+                    gap = TestPageDimensions.questionGap.roundToPx(),
+                    columnCount = columns
+                ).map { page ->
                     TwoColumnQuestionPage(page.columns[0].map(questions::get),
                         page.columns.getOrNull(1).orEmpty().map(questions::get), columns)
                 }
@@ -2177,7 +2180,7 @@ private fun RealTwoColumnBookPageSurface(
                     .verticalScroll(scrollState)
                     .testTag("test_page_columns")
                     .drawBehind {
-                        if (columnCount == 2) drawLine(
+                        if (columnCount == 2 && pageQuestions.right.isNotEmpty()) drawLine(
                             Color(0xFFE2E8F0), Offset(size.width / 2, 0f),
                             Offset(size.width / 2, size.height), 1.dp.toPx()
                         )
@@ -2208,25 +2211,16 @@ private fun RealTwoColumnBookPageSurface(
                 val measured = measurables.map { it.measure(Constraints(minWidth = width, maxWidth = width)) }
                 val columns = if (columnCount == 2)
                     listOf(measured.take(leftCount), measured.drop(leftCount)) else listOf(measured)
-                val minGap = TestPageDimensions.minGap.roundToPx()
-                val minWork = 24.dp.roundToPx()
-                val maxWork = 64.dp.roundToPx()
-                fun work(height: Int) = (height * .18f).toInt().coerceIn(minWork, maxWork)
+                val gap = TestPageDimensions.questionGap.roundToPx()
                 fun occupied(items: List<androidx.compose.ui.layout.Placeable>) =
-                    items.sumOf { it.height + work(it.height) } + (items.size - 1).coerceAtLeast(0) * minGap
-                val height = maxOf(viewportHeight.roundToPx(), columns.maxOf(::occupied))
+                    items.sumOf { it.height } + (items.size - 1).coerceAtLeast(0) * gap
+                val height = (columns.maxOfOrNull(::occupied) ?: 0).coerceAtLeast(1)
                 layout(constraints.maxWidth, height) {
                     columns.forEachIndexed { column, items ->
-                        val gap = minGap
-                        // Share the available writing area across every question,
-                        // including the final one. Never collect it all below the page.
-                        val writingBudget = (height - items.sumOf { it.height } -
-                            (items.size - 1).coerceAtLeast(0) * gap).coerceAtLeast(0)
-                        val writingShare = if (items.isEmpty()) 0 else writingBudget / items.size
                         var y = 0
                         items.forEach { item ->
                             item.placeRelative(if (column == 0) 0 else constraints.maxWidth - width, y)
-                            y += item.height + writingShare + gap
+                            y += item.height + gap
                         }
                     }
                 }

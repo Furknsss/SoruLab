@@ -110,6 +110,7 @@ import com.example.ui.theme.SoruLabSlateDark
 import com.example.ui.theme.SoruLabSlateMuted
 import com.example.ui.theme.SoruLabViolet
 import com.example.ui.theme.SoruLabVioletLight
+import kotlinx.coroutines.delay
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
@@ -760,6 +761,16 @@ private fun NativeYouTubeLecturePlayer(
         }
     }
 
+    // Yükleme zaman aşımı koruması: 7 saniye içinde onReady gelmezse koyu perdeyi kaldır, oynatıcıyı serbest bırak
+    LaunchedEffect(safeVideoId, isPlayerLoading) {
+        if (isPlayerLoading) {
+            delay(7000L)
+            if (isPlayerLoading) {
+                isPlayerLoading = false
+            }
+        }
+    }
+
     // Sıfır-Reload anında saniye atlama (seekTo) & farklı hocaya geçişte loadVideo
     LaunchedEffect(safeVideoId, safeStartSeconds, seekRequestNonce, youTubePlayerRef, canEmbedNatively) {
         val player = youTubePlayerRef ?: return@LaunchedEffect
@@ -811,6 +822,7 @@ private fun NativeYouTubeLecturePlayer(
                                 .rel(0)
                                 .ivLoadPolicy(3)
                                 .ccLoadPolicy(0)
+                                .origin("https://www.youtube.com")
                                 .build()
 
                             YouTubePlayerView(ctx).apply {

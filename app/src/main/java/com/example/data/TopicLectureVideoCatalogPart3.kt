@@ -476,7 +476,7 @@ internal object TopicLectureVideoCatalogPart3 {
         ),
         TopicLectureVideo(
             id = "altuggunes_ayt_induksiyon_ac",
-            videoId = "kwLaNIhr0r0",
+            videoId = "CFwMHMYHqs4",
             searchQueryFallback = "Altuğ Güneş Manyetizma İndüksiyon Akımı Yönü Lenz Yasası",
             title = "Elektromanyetik İndüksiyon: Lenz Yasası ve Akı Değişimi Yorumları",
             teacherName = "Altuğ Güneş",
@@ -520,7 +520,7 @@ internal object TopicLectureVideoCatalogPart3 {
         ),
         TopicLectureVideo(
             id = "altuggunes_ayt_alternatif_akim",
-            videoId = "leg_ioqJYbc",
+            videoId = "MbfCp5F4hcg",
             searchQueryFallback = "Altuğ Güneş Alternatif Akım Devreleri Transformatörler",
             title = "Alternatif Akım Devreleri, Etkin Değer ve Transformatör Yorumları",
             teacherName = "Altuğ Güneş",
@@ -721,7 +721,7 @@ internal object TopicLectureVideoCatalogPart3 {
         ),
         TopicLectureVideo(
             id = "vipfizik_ayt_fotoelektrik_modern",
-            videoId = "AhfJKbnRZaY",
+            videoId = "b3ohLuJ2T28",
             searchQueryFallback = "VIP Fizik Fotoelektrik Olay Konu Anlatımı AYT Fizik Kampı",
             title = "Modern Fizik: Fotoelektrik Grafikler, Kesme Gerilimi, Bohr & Compton",
             teacherName = "VIP Fizik",

@@ -201,6 +201,28 @@ class TopicLectureVideoCatalogTest {
         assertEquals(555, trigoSiralamaRec.primaryChapter.startSeconds)
         assertEquals("09:15", trigoSiralamaRec.formattedTimestamp)
 
+        // 5c. AYT Kimya — Gazlar Regresyon Testi: Asla Organik'e atmamalı, üstte asla Matematik hocası çıkmamalı!
+        val aytGazlarRec = TopicLectureResolver.resolveForQuestion(
+            question = buildQuestion(
+                id = "q_ayt_gazlar_reg",
+                subject = "AYT Kimya",
+                topicHeader = "Gazlar",
+                stemTop = "İdeal pistonlu kapta bulunan X gazının sıcaklığı 27 °C'den 327 °C'ye çıkarıldığında hacmi ve kısmi basıncı nasıl değişir?",
+                questionType = OsymQuestionType.ANALITIK_CEBIRSEL
+            ),
+            examType = ExamType.AYT,
+            subjectName = "Kimya",
+            topicName = "Gazlar"
+        )
+        assertTrue(
+            "Gazlar sorusunda Gazlar videosu beklenirdi; gelen: ${aytGazlarRec.primaryVideo.id} (${aytGazlarRec.primaryVideo.title})",
+            aytGazlarRec.primaryVideo.id.contains("gaz") && !aytGazlarRec.primaryVideo.id.contains("organik")
+        )
+        assertTrue(
+            "AYT Kimya sorusunda tüm alternatif hocalar Kimya hocası olmalı! Gelenler: ${aytGazlarRec.alternativeTeachers.map { "${it.video.teacherName} (${it.video.subjectName})" }}",
+            aytGazlarRec.alternativeTeachers.all { it.video.subjectName.equals("Kimya", ignoreCase = true) }
+        )
+
         // 6. TYT Matematik — Problemler -> Mert Hoca veya Rehber Matematik
         val problemRec = TopicLectureResolver.resolveForQuestion(
             question = buildQuestion(

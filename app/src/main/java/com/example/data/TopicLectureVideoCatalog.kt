@@ -1418,7 +1418,7 @@ object TopicLectureVideoCatalog {
         // =====================================================================
         TopicLectureVideo(
             id = "rustuhoca_tyt_turkce_paragraf_dil",
-            videoId = "3QJl686CM_s",
+            videoId = "cWRsn6p5U94",
             searchQueryFallback = "Rüştü Hoca ile Türkçe Paragraf ve Dil Bilgisi Full Tekrar",
             title = "TYT Türkçe Full Tekrar | Paragraf Taktikleri ve Dil Bilgisi Kampı",
             teacherName = "Rüştü Hoca",
@@ -1865,10 +1865,10 @@ object TopicLectureVideoCatalog {
             )
         ),
         TopicLectureVideo(
-            id = "gorkemsahin_ayt_kimya",
-            videoId = "Sxi_dmFEF2o",
-            searchQueryFallback = "Görkem Şahin Benim Hocam AYT Kimya Gazlar Denge Elektrokimya Organik",
-            title = "AYT Kimya Konu Anlatımı | Gazlar, Hız, Denge, Elektrokimya ve Organik",
+            id = "gorkemsahin_ayt_gazlar",
+            videoId = "F948j85q60Y",
+            searchQueryFallback = "Görkem Şahin Benim Hocam AYT Kimya Gazların Genel Özellikleri",
+            title = "AYT Kimya: Gazlar | İdeal Gaz Denklemi, Kısmi Basınç ve Difüzyon",
             teacherName = "Görkem Şahin",
             channelName = "Benim Hocam / Görkem Şahin",
             teacherBadge = "AYT Kimya 1 Numara",
@@ -1876,52 +1876,207 @@ object TopicLectureVideoCatalog {
             examType = ExamType.AYT,
             subjectId = "ayt_kimya",
             subjectName = "Kimya",
-            topicIds = setOf(
-                "modern_atom_teorisi", "gazlar", "sivi_cozeltiler", "kimyasal_enerji", "kimyasal_hiz",
-                "kimyasal_denge", "asit_baz_dengesi", "cozunurluk_dengesi", "kimya_ve_elektrik",
-                "karbon_kimyasina_giris", "organik_bilesikler"
-            ),
-            topicKeywords = listOf(
-                "orbital", "kuantum", "gaz", "pv=nrt", "molarite", "entalpi", "hess", "tepkime hızı",
-                "denge", "kc", "kp", "ph", "kçç", "pil", "elektroliz", "organik", "alkan", "alken", "alkol"
-            ),
+            topicIds = setOf("gazlar"),
+            topicKeywords = listOf("gaz", "gazlar", "pv=nrt", "ideal gaz", "kısmi basınç", "difüzyon", "graham", "boyle", "charles", "piston", "manometre", "gerçek gaz"),
+            kazanimCodes = setOf("KIM.AYT.01", "KIM.11.2.1.1", "KIM.11.2.2.1"),
+            chapters = listOf(
+                LectureChapterSegment(
+                    id = "gorkem_ayt_gaz_genel_ideal",
+                    chapterTitle = "Gazların Genel Özellikleri, Gaz Yasaları ve PV=nRT",
+                    startSeconds = 120,
+                    endSeconds = 900,
+                    kazanimIds = setOf("KAZ_AYT_FEN_KIMYA"),
+                    kazanimCodes = setOf("KIM.AYT.01", "KIM.11.2.1.1"),
+                    questionTypes = setOf(OsymQuestionType.ANALITIK_CEBIRSEL, OsymQuestionType.GRAFIK_TABLO),
+                    subTopicKeywords = listOf("gaz", "gazlar", "pv=nrt", "basınç", "hacim", "kelvin", "boyle", "charles", "avogadro", "ideal gaz"),
+                    keyFormulaSummary = "P·V = n·R·T (T mutlaka Kelvin: t + 273!). P₁V₁/(n₁T₁) = P₂V₂/(n₂T₂).",
+                    osymTip = "Gaz sorularında sıcaklığı °C yerine Kelvin'e çevirmeyi ve sürtünmesiz pistonda iç basıncın dış basınca eşit olduğunu unutma!"
+                ),
+                LectureChapterSegment(
+                    id = "gorkem_ayt_gaz_difuzyon_karisim",
+                    chapterTitle = "Gaz Karışımları, Kısmi Basınç ve Graham Difüzyon Yasası",
+                    startSeconds = 920,
+                    endSeconds = 1800,
+                    kazanimIds = setOf("KAZ_AYT_FEN_KIMYA"),
+                    kazanimCodes = setOf("KIM.AYT.01", "KIM.11.2.2.1"),
+                    questionTypes = setOf(OsymQuestionType.ONCULLU, OsymQuestionType.YENI_NESIL_KURGULU),
+                    subTopicKeywords = listOf("kısmi basınç", "difüzyon", "efüzyon", "graham", "gaz karışımı", "musluk", "gerçek gaz", "joule thomson", "su üstünde toplanan"),
+                    keyFormulaSummary = "v₁/v₂ = √(M₂·T₁ / M₁·T₂). P_son·V_son = P₁V₁ + P₂V₂. Kısmi basınç: P_A = P_T · (n_A / n_T).",
+                    osymTip = "Difüzyon hızı mol kütlesinin kareköküyle ters, mutlak sıcaklığın kareköküyle doğru orantılıdır!"
+                )
+            )
+        ),
+        TopicLectureVideo(
+            id = "ferrum_ayt_gazlar",
+            videoId = "zk1WsGKZ3tg",
+            searchQueryFallback = "Ferrum AYT Kimya Gazlar Full Tekrar 13 Günde AYT",
+            title = "AYT Kimya: Gazlar Full Tekrar | 13 Günde AYT Kampı",
+            teacherName = "Ferrum",
+            channelName = "Ferrum",
+            teacherBadge = "Hızlı & Net AYT",
+            popularityRank = 2,
+            examType = ExamType.AYT,
+            subjectId = "ayt_kimya",
+            subjectName = "Kimya",
+            topicIds = setOf("gazlar"),
+            topicKeywords = listOf("gaz", "gazlar", "pv=nrt", "kısmi basınç", "difüzyon", "ideal gaz", "gerçek gaz", "piston"),
+            kazanimCodes = setOf("KIM.AYT.01", "KIM.11.2.1.1"),
+            chapters = listOf(
+                LectureChapterSegment(
+                    id = "ferrum_ayt_gaz_full",
+                    chapterTitle = "Gaz Yasaları, İdeal Gaz Denklemi, Difüzyon ve Kısmi Basınç",
+                    startSeconds = 90,
+                    endSeconds = 2400,
+                    kazanimIds = setOf("KAZ_AYT_FEN_KIMYA"),
+                    kazanimCodes = setOf("KIM.AYT.01", "KIM.11.2.1.1"),
+                    questionTypes = setOf(OsymQuestionType.ANALITIK_CEBIRSEL, OsymQuestionType.ONCULLU, OsymQuestionType.GRAFIK_TABLO),
+                    subTopicKeywords = listOf("gaz", "gazlar", "pv=nrt", "kısmi basınç", "difüzyon", "gerçek gaz", "piston"),
+                    keyFormulaSummary = "P·V = n·R·T ve P·MA = d·R·T. Gerçek gazlar yüksek sıcaklık ve düşük basınçta ideale yaklaşır.",
+                    osymTip = "Pistonlu kaplarda sıcaklık artarsa hacim artar, basınç sabit kalır; sabit hacimli kapta ise basınç artar!"
+                )
+            )
+        ),
+        TopicLectureVideo(
+            id = "kimyaadasi_ayt_gazlar",
+            videoId = "EKqvrnwRxhs",
+            searchQueryFallback = "Kimya Adası AYT Kimya Gazlar Full Tekrar",
+            title = "GAZLAR — AYT Kimya Full Tekrar | Kimya Adası",
+            teacherName = "Kimya Adası",
+            channelName = "Kimya Adası",
+            teacherBadge = "AYT Kimya Uzmanı",
+            popularityRank = 3,
+            examType = ExamType.AYT,
+            subjectId = "ayt_kimya",
+            subjectName = "Kimya",
+            topicIds = setOf("gazlar"),
+            topicKeywords = listOf("gaz", "gazlar", "pv=nrt", "kısmi basınç", "difüzyon", "ideal gaz", "gerçek gaz"),
+            kazanimCodes = setOf("KIM.AYT.01", "KIM.11.2.1.1"),
+            chapters = listOf(
+                LectureChapterSegment(
+                    id = "kimyaadasi_ayt_gaz_full",
+                    chapterTitle = "Gazların Özellikleri, PV=nRT, Difüzyon ve Gerçek Gazlar",
+                    startSeconds = 100,
+                    endSeconds = 2400,
+                    kazanimIds = setOf("KAZ_AYT_FEN_KIMYA"),
+                    kazanimCodes = setOf("KIM.AYT.01", "KIM.11.2.1.1"),
+                    questionTypes = setOf(OsymQuestionType.ANALITIK_CEBIRSEL, OsymQuestionType.ONCULLU),
+                    subTopicKeywords = listOf("gaz", "gazlar", "pv=nrt", "kısmi basınç", "difüzyon", "gerçek gaz"),
+                    keyFormulaSummary = "Basınç-hacim ters orantılıdır (Boyle); hacim-mutlak sıcaklık doğru orantılıdır (Charles).",
+                    osymTip = "Musluk açıldığında tepkime yoksa P₁V₁ + P₂V₂ = P_son·V_toplam bağıntısı doğrudan sonucu verir."
+                )
+            )
+        ),
+        TopicLectureVideo(
+            id = "gorkemsahin_ayt_modern_atom",
+            videoId = "UFSUD8zm_P4",
+            searchQueryFallback = "Görkem Şahin Benim Hocam AYT Kimya Modern Atom Teorisi",
+            title = "AYT Kimya: Modern Atom Teorisi ve Kuantum Sayıları",
+            teacherName = "Görkem Şahin",
+            channelName = "Benim Hocam / Görkem Şahin",
+            teacherBadge = "AYT Kimya 1 Numara",
+            popularityRank = 1,
+            examType = ExamType.AYT,
+            subjectId = "ayt_kimya",
+            subjectName = "Kimya",
+            topicIds = setOf("modern_atom_teorisi", "sivi_cozeltiler"),
+            topicKeywords = listOf("modern atom", "orbital", "kuantum", "elektron dizilimi", "hund", "pauli", "aufbau", "periyodik özellik", "sıvı çözelti", "molarite", "koligatif"),
             kazanimCodes = setOf("KIM.AYT.01"),
             chapters = listOf(
                 LectureChapterSegment(
-                    id = "gorkem_ayt_gaz_cozelti",
-                    chapterTitle = "Modern Atom, İdeal Gazlar ve Sıvı Çözeltiler",
-                    startSeconds = 310,
-                    endSeconds = 1140,
+                    id = "gorkem_ayt_modern_atom_ch",
+                    chapterTitle = "Atomun Kuantum Modeli ve Kuantum Sayıları (n, l, ml, ms)",
+                    startSeconds = 110,
+                    endSeconds = 850,
                     kazanimIds = setOf("KAZ_AYT_FEN_KIMYA"),
                     kazanimCodes = setOf("KIM.AYT.01"),
-                    questionTypes = setOf(OsymQuestionType.ANALITIK_CEBIRSEL, OsymQuestionType.GRAFIK_TABLO),
-                    subTopicKeywords = listOf("gaz", "pv=nrt", "kısmi basınç", "difüzyon", "çözünürlük", "molarite", "koligatif", "orbital"),
-                    keyFormulaSummary = "P·V = n·R·T (T mutlaka Kelvin!). Graham Difüzyon: v₁/v₂ = √(M₂·T₁ / M₁·T₂). ΔT_k = K_k·m·i.",
-                    osymTip = "Gaz sorularında sıcaklığı °C yerine Kelvin'e (T = t + 273) çevirmeyi asla unutma!"
+                    questionTypes = setOf(OsymQuestionType.ONCULLU, OsymQuestionType.ANALITIK_CEBIRSEL),
+                    subTopicKeywords = listOf("orbital", "kuantum", "baş kuantum", "elektron dizilimi", "hund", "pauli"),
+                    keyFormulaSummary = "n (baş), l (açısal momentum: s=0, p=1, d=2, f=3), ml (-l..+l), ms (±1/2).",
+                    osymTip = "Cr(24) ve Cu(29) istisnasını unutma: 4s¹3d⁵ ve 4s¹3d¹⁰ ile kendiliğinden küresel simetriktir!"
                 ),
                 LectureChapterSegment(
-                    id = "gorkem_ayt_hiz_denge",
-                    chapterTitle = "Enerji (Entalpi), Tepkime Hızı ve Kimyasal-Asit-Baz Dengesi",
-                    startSeconds = 1180,
-                    endSeconds = 2120,
+                    id = "gorkem_ayt_periyodik_cozelti_ch",
+                    chapterTitle = "Küresel Simetri, Periyodik Özellikler ve Sıvı Çözeltiler",
+                    startSeconds = 860,
+                    endSeconds = 1550,
                     kazanimIds = setOf("KAZ_AYT_FEN_KIMYA"),
                     kazanimCodes = setOf("KIM.AYT.01"),
-                    questionTypes = setOf(OsymQuestionType.ONCULLU, OsymQuestionType.GRAFIK_TABLO, OsymQuestionType.ANALITIK_CEBIRSEL),
-                    subTopicKeywords = listOf("entalpi", "tepkime hızı", "denge", "le chatelier", "kc", "kp", "ph", "kçç", "tampon"),
-                    keyFormulaSummary = "K_p = K_c·(RT)^Δn. Denge sabiti (Kc, Ka, Kb, Kçç) YALNIZCA sıcaklıkla değişir; katalizör ve derişim K'yı değiştirmez!",
-                    osymTip = "Mekanizmalı tepkimelerde hız bağıntısı daima YAVAŞ basamağın girenlerine göre yazılır."
+                    questionTypes = setOf(OsymQuestionType.GRAFIK_TABLO, OsymQuestionType.ONCULLU),
+                    subTopicKeywords = listOf("küresel simetri", "iyonlaşma enerjisi", "yükseltgenme basamağı", "sıvı çözelti", "molarite", "koligatif"),
+                    keyFormulaSummary = "İyonlaşma enerjisi soldan sağa genelde artar (3 aşağı 5 yukarı: 2A > 3A, 5A > 6A). M = n / V.",
+                    osymTip = "İzoelektronik taneciklerde proton sayısı büyük olanın yarıçapı küçüktür!"
+                )
+            )
+        ),
+        TopicLectureVideo(
+            id = "gorkemsahin_ayt_organik",
+            videoId = "NWpdR3PXml8",
+            searchQueryFallback = "Görkem Şahin Benim Hocam Organik Kimya Karbon Kimyasına Giriş",
+            title = "AYT Kimya: Organik Kimya | Karbon Kimyası, Hibritleşme ve Bileşikler",
+            teacherName = "Görkem Şahin",
+            channelName = "Benim Hocam / Görkem Şahin",
+            teacherBadge = "AYT Kimya 1 Numara",
+            popularityRank = 1,
+            examType = ExamType.AYT,
+            subjectId = "ayt_kimya",
+            subjectName = "Kimya",
+            topicIds = setOf("karbon_kimyasina_giris", "organik_bilesikler"),
+            topicKeywords = listOf("organik", "karbon", "hibritleşme", "vsepr", "alkan", "alken", "alkin", "alkol", "eter", "aldehit", "keton", "karboksilik", "ester", "izomer"),
+            kazanimCodes = setOf("KIM.AYT.01"),
+            chapters = listOf(
+                LectureChapterSegment(
+                    id = "gorkem_ayt_organik_ch",
+                    chapterTitle = "Karbon Kimyasına Giriş, Hibritleşme ve VSEPR",
+                    startSeconds = 120,
+                    endSeconds = 920,
+                    kazanimIds = setOf("KAZ_AYT_FEN_KIMYA"),
+                    kazanimCodes = setOf("KIM.AYT.01"),
+                    questionTypes = setOf(OsymQuestionType.ONCULLU, OsymQuestionType.GORSEL_GEOMETRIK),
+                    subTopicKeywords = listOf("organik", "karbon", "hibritleşme", "sp3", "sp2", "sp", "sigma", "pi bağı", "vsepr"),
+                    keyFormulaSummary = "Tekli bağ = 1σ; ikili bağ = 1σ+1π; üçlü bağ = 1σ+2π. Karbon 4 bağ yapar; sigma + ortaklanmamış çift = hibritleşme.",
+                    osymTip = "Merkez atomda ortaklanmamış elektron çifti yoksa molekül apolardır!"
                 ),
                 LectureChapterSegment(
-                    id = "gorkem_ayt_elektro_organik",
-                    chapterTitle = "Kimya ve Elektrik (Piller) ile Organik Kimya",
-                    startSeconds = 2160,
-                    endSeconds = 3240,
+                    id = "gorkem_ayt_organik_bilesik_ch",
+                    chapterTitle = "Hidrokarbonlar, Fonksiyonel Gruplar ve İzomeri",
+                    startSeconds = 940,
+                    endSeconds = 1750,
                     kazanimIds = setOf("KAZ_AYT_FEN_KIMYA"),
                     kazanimCodes = setOf("KIM.AYT.01"),
-                    questionTypes = setOf(OsymQuestionType.ONCULLU, OsymQuestionType.GORSEL_GEOMETRIK, OsymQuestionType.ANALITIK_CEBIRSEL),
-                    subTopicKeywords = listOf("elektrot", "pil", "anot", "katot", "elektroliz", "organik", "hibritleşme", "alkan", "alken", "alkin", "alkol", "aldehit", "keton", "ester"),
-                    keyFormulaSummary = "Kimya Pili: Anotta yükseltgenme (aşınma), Katotta indirgenme (kütle artışı). Elektronlar dış devrede Anot → Katot akar.",
-                    osymTip = "Organik adlandırmada en uzun karbon zinciri seçilir ve fonksiyonel gruba (veya çoklu bağa) en küçük numara verilir."
+                    questionTypes = setOf(OsymQuestionType.ONCULLU, OsymQuestionType.ANALITIK_CEBIRSEL),
+                    subTopicKeywords = listOf("alkan", "alken", "alkin", "alkol", "eter", "aldehit", "keton", "karboksilik", "ester", "izomer", "cis trans"),
+                    keyFormulaSummary = "Alkan CₙH₂ₙ₊₂, Alken CₙH₂ₙ, Alkin CₙH₂ₙ₋₂. Aynı kapalı formül, farklı yapı = yapı izomeri.",
+                    osymTip = "Cis-trans izomerisi için ikili bağ karbonlarının her birine iki farklı grup bağlı olmalıdır!"
+                )
+            )
+        ),
+        TopicLectureVideo(
+            id = "ferrum_ayt_organik",
+            videoId = "1A6R2WAXYGA",
+            searchQueryFallback = "Ferrum AYT Kimya Organik Bileşikler Full Tekrar",
+            title = "AYT Kimya: Organik Bileşikler Full Tekrar | Ferrum",
+            teacherName = "Ferrum",
+            channelName = "Ferrum",
+            teacherBadge = "Hızlı & Net AYT",
+            popularityRank = 2,
+            examType = ExamType.AYT,
+            subjectId = "ayt_kimya",
+            subjectName = "Kimya",
+            topicIds = setOf("karbon_kimyasina_giris", "organik_bilesikler"),
+            topicKeywords = listOf("organik", "alkan", "alken", "alkin", "alkol", "eter", "aldehit", "keton", "ester", "izomer"),
+            kazanimCodes = setOf("KIM.AYT.01"),
+            chapters = listOf(
+                LectureChapterSegment(
+                    id = "ferrum_ayt_organik_full",
+                    chapterTitle = "Hidrokarbonlar, Fonksiyonel Gruplar ve Organik Tepkimeler",
+                    startSeconds = 95,
+                    endSeconds = 2400,
+                    kazanimIds = setOf("KAZ_AYT_FEN_KIMYA"),
+                    kazanimCodes = setOf("KIM.AYT.01"),
+                    questionTypes = setOf(OsymQuestionType.ONCULLU, OsymQuestionType.ANALITIK_CEBIRSEL),
+                    subTopicKeywords = listOf("organik", "alkan", "alken", "alkin", "alkol", "eter", "aldehit", "keton", "ester"),
+                    keyFormulaSummary = "Primer alkol yükseltgenirse aldehit -> karboksilik asit; sekonder alkol -> keton; tersiyer alkol yükseltgenmez.",
+                    osymTip = "Tollens ve Fehling ayıracıyla gümüş aynası/kırmızı çökelek verenler aldehitler ve uç alkinlerdir!"
                 )
             )
         ),
@@ -1973,7 +2128,7 @@ object TopicLectureVideoCatalog {
         // =====================================================================
         TopicLectureVideo(
             id = "drbiyoloji_tyt_biyoloji",
-            videoId = "5xxh0ixnMmk",
+            videoId = "-6JQFO5HFLo",
             searchQueryFallback = "Dr Biyoloji TYT Biyoloji Hücre Organeller Bölünmeler Kalıtım",
             title = "TYT Biyoloji Kampı | Hücre, Madde Geçişleri, Bölünmeler ve Kalıtım",
             teacherName = "Dr. Biyoloji",
@@ -2034,7 +2189,7 @@ object TopicLectureVideoCatalog {
         ),
         TopicLectureVideo(
             id = "drbiyoloji_ayt_biyoloji",
-            videoId = "qGCkt4pSiT8",
+            videoId = "NDBm0tNR7WU",
             searchQueryFallback = "Dr Biyoloji AYT Biyoloji Sinir Sistemi Sistemler Genden Proteine Fotosentez",
             title = "AYT Biyoloji Kampı | İnsan Fizyolojisi (Sistemler), Genden Proteine ve Enerji",
             teacherName = "Dr. Biyoloji",
@@ -2234,7 +2389,7 @@ object TopicLectureVideoCatalog {
         ),
         TopicLectureVideo(
             id = "ramazanyetgin_tarih",
-            videoId = "Amk26bASq2s",
+            videoId = "ChdbSH51ImI",
             searchQueryFallback = "Ramazan Yetgin Benim Hocam TYT AYT Tarih Konu Anlatımı",
             title = "TYT-AYT Tarih Konu Anlatımı | Türk Tarihi, Osmanlı ve Milli Mücadele",
             teacherName = "Ramazan Yetgin",
@@ -2396,7 +2551,17 @@ object TopicLectureResolver {
             }
         )
 
-        val scoredCandidates = TopicLectureVideoCatalog.allVideos.flatMap { video ->
+        // SIKI DERS İZOLASYONU: Kimya sorusunda ASLA Matematik/Fizik/Türkçe hocası çıkmamalı!
+        val exactSubjectVideos = TopicLectureVideoCatalog.allVideos.filter { video ->
+            normalizeVideoSubjectBucket(video.subjectName) == normSubject
+        }
+        val candidatePool = if (exactSubjectVideos.isNotEmpty()) {
+            exactSubjectVideos
+        } else {
+            TopicLectureVideoCatalog.allVideos
+        }
+
+        val scoredCandidates = candidatePool.flatMap { video ->
             val videoBaseScore = scoreVideoMatch(
                 video = video,
                 examType = examType,
@@ -2431,13 +2596,13 @@ object TopicLectureResolver {
         val best = scoredCandidates.first()
         val primaryVideo = best.video
         val primaryChapter = best.chapter
+        val primaryBucket = normalizeVideoSubjectBucket(primaryVideo.subjectName)
 
-        // Aynı ders/konu için alternatif popüler hocaları (en iyi chapter ile) seç
-        val sameBucketCandidates = scoredCandidates
+        // SADECE AYNI DERSTEN alternatif popüler hocaları (en iyi chapter ile) seç — asla başka dersin hocasını ekleme!
+        val alternativeCandidates = scoredCandidates
             .filter {
                 it.video.teacherName != primaryVideo.teacherName &&
-                    normalizeSubjectBucket(it.video.subjectName, "", question) ==
-                    normalizeSubjectBucket(primaryVideo.subjectName, "", question)
+                    normalizeVideoSubjectBucket(it.video.subjectName) == primaryBucket
             }
             .groupBy { it.video.teacherName }
             .values
@@ -2445,18 +2610,7 @@ object TopicLectureResolver {
             .sortedWith(compareByDescending<ScoredCandidate> { it.score }.thenBy { it.video.popularityRank })
             .take(8)
 
-        val fallbackAlternatives = if (sameBucketCandidates.isNotEmpty()) {
-            sameBucketCandidates
-        } else {
-            scoredCandidates
-                .filter { it.video.teacherName != primaryVideo.teacherName }
-                .groupBy { it.video.teacherName }
-                .values
-                .map { it.first() }
-                .take(6)
-        }
-
-        val alternativeOptions = fallbackAlternatives.map { cand ->
+        val alternativeOptions = alternativeCandidates.map { cand ->
             ResolvedLectureOption(
                 video = cand.video,
                 chapter = cand.chapter,

@@ -417,7 +417,7 @@ internal object TopicLectureVideoCatalogPart2 {
         // =====================================================================
         TopicLectureVideo(
             id = "felsefeatolyesi_tyt_felsefe_full",
-            videoId = "NeyJBnh9XtI",
+            videoId = "Kc7udZBLFg4",
             searchQueryFallback = "Felsefe Atölyesi Erdal Aydemir TYT Felsefe Full Tekrar",
             title = "TYT Felsefe Full Tekrar (Bilgi, Varlık, Ahlak, Siyaset ve Paragraf Yorumu)",
             teacherName = "Erdal Aydemir",

@@ -541,7 +541,8 @@ private fun IstatistiklerimTabHost(
         customQuestionsCount = userCustomQuestions.size,
         onInspectResult = { record ->
             mainViewModel.openRecentResultForReview(record)
-        }
+        },
+        customQuestions = userCustomQuestions
     )
 }
 

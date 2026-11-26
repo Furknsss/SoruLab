@@ -412,7 +412,7 @@ class SoruLabViewModel(
             val cachedEntries = repository.loadCachedGeneratedTestKeys(uid)
             val cachedSnapshots = repository.loadCachedGeneratedTestSnapshots(uid)
             val cachedResults = repository.loadCachedSolvedTestResults(uid)
-                .filterNot { isLegacyDemoTestRecord(it) }
+                .filterNot { isLegacyDemoTestRecord(it) || it.testId in delIds }
             val cachedStrokes = repository.loadCachedBoardStrokes(uid)
 
             withContext(Dispatchers.Main) {
@@ -434,7 +434,10 @@ class SoruLabViewModel(
                 _generatedMockExams.value = cachedSnapshots.values
                     .mapNotNull { snapshot ->
                         TestSnapshotCodec.decode(snapshot)?.let(DenemeBlueprints::fromSnapshot)
-                    }.distinctBy { it.id }.sortedByDescending { it.id }
+                    }
+                    .filterNot { it.id in delIds }
+                    .distinctBy { it.id }
+                    .sortedByDescending { it.id }
                 if (cachedEntries.isNotEmpty()) {
                     mergeGeneratedEntriesIntoState(
                         uid,
@@ -522,7 +525,9 @@ class SoruLabViewModel(
             repository.observeUserTestResults(uid)
                 .catch { }
                 .collect { records ->
-                    val cleanRecords = records.filterNot { isLegacyDemoTestRecord(it) }
+                    val cleanRecords = records.filterNot {
+                        isLegacyDemoTestRecord(it) || it.testId in _deletedTestIds.value
+                    }
                     allCloudTestRecords = cleanRecords
                     val solvedOnly = cleanRecords.filter { it.isSolvedAttempt }
                     _userTestResults.value = solvedOnly
@@ -755,7 +760,10 @@ class SoruLabViewModel(
 
         val matchingResults = _userTestResults.value.filter { it.testId == exam.id }
         if (matchingResults.isNotEmpty()) {
-            _userTestResults.value = _userTestResults.value.filterNot { it.testId == exam.id }
+            val remaining = _userTestResults.value.filterNot { it.testId == exam.id }
+            _userTestResults.value = remaining
+            repository.saveCachedSolvedTestResults(uid, remaining)
+            refreshTopicProgressSummaries()
         }
         val cloudMatches = allCloudTestRecords.filter { it.testId == exam.id }
         allCloudTestRecords = allCloudTestRecords.filterNot { it.testId == exam.id }
@@ -782,7 +790,11 @@ class SoruLabViewModel(
         repository.saveCachedDeletedTestIds(uid, updatedDeleted)
         mockIds.forEach { id -> repository.removeCachedGeneratedTestSnapshot(uid, id) }
 
-        _userTestResults.value = _userTestResults.value.filterNot { it.testId.startsWith("deneme_v147_") }
+        val remaining = _userTestResults.value.filterNot { it.testId.startsWith("deneme_v147_") }
+        _userTestResults.value = remaining
+        repository.saveCachedSolvedTestResults(uid, remaining)
+        refreshTopicProgressSummaries()
+
         val cloudMatches = allCloudTestRecords.filter { it.testId.startsWith("deneme_v147_") }
         allCloudTestRecords = allCloudTestRecords.filterNot { it.testId.startsWith("deneme_v147_") }
         if (cloudMatches.isNotEmpty()) {
@@ -811,7 +823,10 @@ class SoruLabViewModel(
         repository.saveCachedGeneratedTestKeys(uid, emptyList())
         allTopicTestIds.forEach { id -> repository.removeCachedGeneratedTestSnapshot(uid, id) }
 
-        _userTestResults.value = _userTestResults.value.filter { it.testId.startsWith("deneme_v147_") }
+        val remaining = _userTestResults.value.filter { it.testId.startsWith("deneme_v147_") }
+        _userTestResults.value = remaining
+        repository.saveCachedSolvedTestResults(uid, remaining)
+        refreshTopicProgressSummaries()
         val cloudMatches = allCloudTestRecords.filterNot { it.testId.startsWith("deneme_v147_") }
         allCloudTestRecords = allCloudTestRecords.filter { it.testId.startsWith("deneme_v147_") }
         if (cloudMatches.isNotEmpty()) {

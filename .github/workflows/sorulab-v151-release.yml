@@ -70,6 +70,7 @@ jobs:
           --tests 'com.example.data.TopicLectureVideoCatalogTest'
           --tests 'com.example.viewmodel.InteractiveSolutionTest'
           --tests 'com.example.viewmodel.DenemeBlueprintEngineTest'
+          --tests 'com.example.data.CropQualityGateTest'
           --no-daemon --no-configuration-cache --max-workers=2
 
       - name: Build signed release APK

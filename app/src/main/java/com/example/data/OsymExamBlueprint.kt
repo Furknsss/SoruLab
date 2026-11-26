@@ -915,7 +915,7 @@ object OsymKazanimTaxonomy {
         }
         if (directMatches.size >= 3) return directMatches
 
-        // Her konu için en az 4 dengeli alt kazanım (Kavramsal Tanım, Analitik Uygulama, Grafik/Görsel Yorum, Yeni Nesil Muhakeme) sağla
+        // 2018–2026 ÖSYM müfredat istihbarat motorundan konuya ve ders disiplinine özgü kazanımları çöz
         val catalogTopic = SoruLabCatalog.resolveTopicFast(topicId, topicName)
         val resolvedTopicId = catalogTopic?.id ?: topicId.ifBlank { "genel_konu" }
         val resolvedTopicName = catalogTopic?.name ?: topicName.ifBlank { "Genel Konu" }
@@ -925,6 +925,28 @@ object OsymKazanimTaxonomy {
         val examType = resolvedSubject?.examType ?: ExamType.TYT
         val subjectId = resolvedSubject?.id ?: "tyt_mat"
         val codePrefix = resolvedTopicId.take(4).uppercase()
+
+        val intelProfile = Osym2018To2026Intelligence.profileForTopic(
+            subjectId = subjectId,
+            topicId = resolvedTopicId,
+            topicName = resolvedTopicName
+        )
+        if (intelProfile.outcomes.size >= 4) {
+            return intelProfile.outcomes.mapIndexed { idx, outcome ->
+                OsymKazanim(
+                    id = outcome.id,
+                    code = "${examType.name}.$codePrefix.${(idx + 1).toString().padStart(2, '0')}",
+                    examType = examType,
+                    subjectId = subjectId,
+                    topicId = resolvedTopicId,
+                    topicName = resolvedTopicName,
+                    title = outcome.title,
+                    description = outcome.whatOsymMeasures,
+                    recommendedQuestionTypes = outcome.preferredQuestionTypes,
+                    keywords = outcome.keywords
+                )
+            }
+        }
 
         return listOf(
             OsymKazanim(

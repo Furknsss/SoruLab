@@ -591,9 +591,17 @@ fun automaticBookTestChunks(
     // Direct book tests must not turn every chapter into an "İkiz" test.
     // Those are created exclusively from the student's recorded mistakes.
     if (level == TopicTestLevel.IKIZ) return emptyList()
-    val eligible = questions.filter {
-        it.isEligibleForLevel(level) &&
-            it.answerKeyVerified && it.correctOption in setOf("A", "B", "C", "D", "E")
+    val eligible = questions.filter { record ->
+        val hasContentOrBox = record.croppedImagePath.isNotBlank() ||
+            record.imageBase64.isNotBlank() ||
+            record.pdfFilePath.isNotBlank() ||
+            record.questionText.isNotBlank() ||
+            record.normLeft != 0f || record.normTop != 0f ||
+            record.normRight != 1f || record.normBottom != 1f
+        record.isEligibleForLevel(level) &&
+            record.answerKeyVerified &&
+            record.correctOption in setOf("A", "B", "C", "D", "E") &&
+            (!hasContentOrBox || CropQualityGate.isCleanQuestionCrop(record))
     }
     if (eligible.isEmpty()) return emptyList()
     // All books, including legacy ZIPs without page/test metadata, must use
@@ -759,7 +767,15 @@ data class MockExamItem(
     val isSolvedDefault: Boolean = false,
     val defaultNet: Double = 0.0,
     val linkedTest: YksTestItem
-)
+) {
+    @get:Exclude
+    val isStopwatchMode: Boolean
+        get() = durationMinutes <= 0
+
+    @get:Exclude
+    val targetDurationSeconds: Int
+        get() = if (durationMinutes > 0) durationMinutes * 60 else 0
+}
 
 object SoruLabCatalog {
 

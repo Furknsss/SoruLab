@@ -10,6 +10,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material3.*
@@ -39,11 +41,18 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.data.CriticalOutcomeLoss
+import com.example.data.CustomQuestionRecord
+import com.example.data.DenemeMemoryAnalyticsEngine
+import com.example.data.DenemeMemoryAnalyticsReport
 import com.example.data.ExamType
+import com.example.data.PaceEfficiencyStatus
+import com.example.data.QuestionTypeMasteryStat
 import com.example.data.SoruLabCatalog
 import com.example.data.TestResultRecord
 import com.example.data.YksQuestion
@@ -60,27 +69,49 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
+private const val INITIAL_HISTORY_PAGE_SIZE = 5
+private const val HISTORY_PAGE_STEP_SIZE = 10
+
+private data class CombinedStatsCalculation(
+    val progress: LearningProgressReport,
+    val memoryAnalytics: DenemeMemoryAnalyticsReport
+)
+
 @Composable
 fun IstatistiklerimScreen(
     testResults: List<TestResultRecord>,
     customQuestionsCount: Int,
-    onInspectResult: (TestResultRecord) -> Unit
+    onInspectResult: (TestResultRecord) -> Unit,
+    customQuestions: List<CustomQuestionRecord> = emptyList()
 ) {
     var selectedExam by remember { mutableStateOf(ExamType.TYT) }
     var selectedSubjectId by remember { mutableStateOf<String?>(null) }
     var expandedTopicId by remember(selectedExam, selectedSubjectId) { mutableStateOf<String?>(null) }
     var recentOnly by remember { mutableStateOf(false) }
+    var evidenceExpanded by remember { mutableStateOf(false) }
+    var visibleHistoryCount by remember(selectedExam, recentOnly) {
+        mutableIntStateOf(INITIAL_HISTORY_PAGE_SIZE)
+    }
     val openedAt = remember { System.currentTimeMillis() }
-    val calculatedProgress by key(testResults, selectedExam, recentOnly) {
-        produceState<LearningProgressReport?>(null) {
+    val combinedState by key(testResults, customQuestions, customQuestionsCount, selectedExam, recentOnly) {
+        produceState<CombinedStatsCalculation?>(null) {
             value = withContext(Dispatchers.Default) {
-                LearningProgressAnalytics.calculate(testResults, selectedExam,
-                    if (recentOnly) openedAt - 30L * 24 * 60 * 60 * 1000 else null)
+                val since = if (recentOnly) openedAt - 30L * 24 * 60 * 60 * 1000 else null
+                CombinedStatsCalculation(
+                    progress = LearningProgressAnalytics.calculate(testResults, selectedExam, since),
+                    memoryAnalytics = DenemeMemoryAnalyticsEngine.analyze(
+                        records = testResults,
+                        examType = selectedExam,
+                        customQuestions = customQuestions,
+                        sinceMillis = since,
+                        customQuestionsCountHint = customQuestionsCount
+                    )
+                )
             }
         }
     }
-    val progress = calculatedProgress
-    if (progress == null) {
+    val combined = combinedState
+    if (combined == null) {
         Box(Modifier.fillMaxSize().background(SoruLabBackground), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -90,7 +121,12 @@ fun IstatistiklerimScreen(
         }
         return
     }
+    val progress = combined.progress
+    val memoryReport = combined.memoryAnalytics
     val examResults = progress.recentAttempts
+    val visibleAttempts = remember(examResults, visibleHistoryCount) {
+        examResults.take(visibleHistoryCount)
+    }
     val subjects = remember(selectedExam) {
         SoruLabCatalog.allSubjects.filter { it.examType == selectedExam }
     }
@@ -184,11 +220,39 @@ fun IstatistiklerimScreen(
         }
 
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = !recentOnly, onClick = { recentOnly = false },
-                    label = { Text("Tüm zamanlar") }, modifier = Modifier.testTag("stats_all_time"))
-                FilterChip(selected = recentOnly, onClick = { recentOnly = true },
-                    label = { Text("Son 30 gün") }, modifier = Modifier.testTag("stats_recent_30"))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = !recentOnly,
+                        onClick = { recentOnly = false },
+                        label = { Text("Tüm zamanlar") },
+                        modifier = Modifier.testTag("stats_all_time")
+                    )
+                    FilterChip(
+                        selected = recentOnly,
+                        onClick = { recentOnly = true },
+                        label = { Text("Son 30 gün") },
+                        modifier = Modifier.testTag("stats_recent_30")
+                    )
+                }
+                if (memoryReport.backgroundRecordCount > 0) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, SoruLabBorderLight)
+                    ) {
+                        Text(
+                            text = "${memoryReport.backgroundRecordCount} analiz kaydı",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = SoruLabSlateMuted,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
             }
         }
 
@@ -208,27 +272,63 @@ fun IstatistiklerimScreen(
         }
 
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = SoruLabSurface),
-                shape = RoundedCornerShape(14.dp), modifier = Modifier.testTag("stats_evidence")) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Verinin kapsamı", fontWeight = FontWeight.Bold, color = SoruLabInkBlack)
-                    Text("${progress.counts.graded} değerlendirilen yanıt • ${progress.uniqueQuestionCount} farklı soru",
-                        color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
-                    Text("Başarı = doğru / (doğru + yanlış + boş). Anahtarı veya yanıt verisi doğrulanmayan sorular oran ve nete katılmaz.",
-                        color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
-                    Text("Tekrar çözümler yanıt sayısına dahildir; farklı soru sayısını artırmaz. Güçlü/zayıf görünüm için en az 10 değerlendirilen yanıt ve 5 farklı değerlendirilebilir soru gerekir.",
-                        color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
-                    if (progress.excludedAttemptCount > 0) Text(
-                        "${progress.excludedAttemptCount} testin soru/yanıt ayrıntısı eksik veya okunamıyor; başarı hesabına katılmadı. Son Testler'den açabilirsin.",
-                        color = SoruLabCoralRed, style = MaterialTheme.typography.bodySmall)
-                    if (progress.unscopedQuestionCount > 0) Text(
-                        "${progress.unscopedQuestionCount} sorunun dersi eşleşmedi; toplamda görünür, bir derse tahminen yazılmaz.",
-                        color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
-                    if (progress.unknownOutcomeCount > 0) Text(
-                        "${progress.unknownOutcomeCount} yanıtın alt kazanımı kesinleşmedi.",
-                        color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
-                    if (recentOnly) Text("Tarihi olmayan eski kayıtlar Son 30 gün filtresine katılmaz.",
-                        color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
+            DenemeAndOsymAnalyticsSection(report = memoryReport)
+        }
+
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = SoruLabSurface),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, SoruLabBorderLight),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { evidenceExpanded = !evidenceExpanded }
+                    .testTag("stats_evidence")
+            ) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "Verinin kapsamı",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = SoruLabInkBlack
+                            )
+                            Text(
+                                text = "${progress.counts.graded} değerlendirilen yanıt • ${progress.uniqueQuestionCount} farklı soru",
+                                color = SoruLabSlateMuted,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        Icon(
+                            imageVector = if (evidenceExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                            contentDescription = if (evidenceExpanded) "Daralt" else "Ayrıntıyı aç",
+                            tint = SoruLabSlateMuted
+                        )
+                    }
+                    AnimatedVisibility(visible = evidenceExpanded) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
+                            HorizontalDivider(color = SoruLabBorderLight)
+                            Text("Başarı = doğru / (doğru + yanlış + boş). Anahtarı veya yanıt verisi doğrulanmayan sorular oran ve nete katılmaz.",
+                                color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
+                            Text("Tekrar çözümler yanıt sayısına dahildir; farklı soru sayısını artırmaz. Güçlü/zayıf görünüm için en az 10 değerlendirilen yanıt ve 5 farklı değerlendirilebilir soru gerekir.",
+                                color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
+                            if (progress.excludedAttemptCount > 0) Text(
+                                "${progress.excludedAttemptCount} testin soru/yanıt ayrıntısı eksik veya okunamıyor; başarı hesabına katılmadı. Son Testler'den açabilirsin.",
+                                color = SoruLabCoralRed, style = MaterialTheme.typography.bodySmall)
+                            if (progress.unscopedQuestionCount > 0) Text(
+                                "${progress.unscopedQuestionCount} sorunun dersi eşleşmedi; toplamda görünür, bir derse tahminen yazılmaz.",
+                                color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
+                            if (progress.unknownOutcomeCount > 0) Text(
+                                "${progress.unknownOutcomeCount} yanıtın alt kazanımı kesinleşmedi.",
+                                color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
+                            if (recentOnly) Text("Tarihi olmayan eski kayıtlar Son 30 gün filtresine katılmaz.",
+                                color = SoruLabSlateMuted, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                 }
             }
         }
@@ -351,11 +451,39 @@ fun IstatistiklerimScreen(
         }
 
         item {
-            Text(
-                text = "Son Testler",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                color = SoruLabInkBlack
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "Son Testler",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = SoruLabInkBlack
+                    )
+                    if (examResults.size > INITIAL_HISTORY_PAGE_SIZE) {
+                        Text(
+                            text = "Son ${visibleAttempts.size} / ${examResults.size} kayıt gösteriliyor (tümü hafızada analiz edilir)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SoruLabSlateMuted
+                        )
+                    }
+                }
+                if (examResults.isNotEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = SoruLabSkyTint.copy(alpha = 0.65f)
+                    ) {
+                        Text(
+                            text = "${examResults.size} KAYIT",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = SoruLabRoyalBlue,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
+                }
+            }
         }
 
         if (examResults.isEmpty()) {
@@ -363,22 +491,23 @@ fun IstatistiklerimScreen(
                 EmptyStatsMessage("${selectedExam.name} için henüz tamamlanmış test yok.")
             }
         } else {
-            items(examResults, key = { "stats_result_card_${it.id}" }) { attempt ->
+            items(visibleAttempts, key = { "stats_result_card_${it.id}" }) { attempt ->
                 val res = attempt.record
                 val detail = attempt.counts
+                val isDeneme = DenemeMemoryAnalyticsEngine.isDenemeAttempt(res)
                 val dateStr = res.createdAt?.toDate()?.let { dateFormat.format(it) } ?: "Tarih bilgisi yok"
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onInspectResult(res) }
                         .testTag("stats_result_card_${attempt.id}"),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = SoruLabSurface)
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, SoruLabBorderLight, RoundedCornerShape(14.dp))
+                            .border(1.dp, SoruLabBorderLight, RoundedCornerShape(16.dp))
                             .padding(14.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -387,26 +516,49 @@ fun IstatistiklerimScreen(
                             modifier = Modifier
                                 .size(42.dp)
                                 .clip(RoundedCornerShape(13.dp))
-                                .background(SoruLabSkyTint),
+                                .background(if (isDeneme) SoruLabVioletLight else SoruLabSkyTint),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.ReceiptLong,
+                                imageVector = if (isDeneme) Icons.Filled.EmojiEvents else Icons.Filled.ReceiptLong,
                                 contentDescription = null,
-                                tint = SoruLabRoyalBlue,
+                                tint = if (isDeneme) SoruLabViolet else SoruLabRoyalBlue,
                                 modifier = Modifier.size(21.dp)
                             )
                         }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "${res.examType} • ${res.subjectName}",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = SoruLabCobaltBlue
-                            )
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "${res.examType} • ${res.subjectName.ifBlank { "Genel" }}",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = if (isDeneme) SoruLabViolet else SoruLabCobaltBlue
+                                )
+                                if (isDeneme) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = SoruLabVioletLight
+                                    ) {
+                                        Text(
+                                            text = "DENEME",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.ExtraBold
+                                            ),
+                                            color = SoruLabViolet,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
                             Text(
                                 text = res.testTitle,
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = SoruLabInkBlack
+                                color = SoruLabInkBlack,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = run {
@@ -418,6 +570,20 @@ fun IstatistiklerimScreen(
                                 maxLines = 2
                             )
                         }
+                        if (detail?.net != null) {
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = String.format(Locale.forLanguageTag("tr-TR"), "%.2f", detail.net),
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                    color = SoruLabInkBlack
+                                )
+                                Text(
+                                    text = "NET",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                    color = SoruLabSlateMuted
+                                )
+                            }
+                        }
                         Icon(
                             imageVector = Icons.Filled.ChevronRight,
                             contentDescription = "Sonucu incele",
@@ -426,7 +592,580 @@ fun IstatistiklerimScreen(
                     }
                 }
             }
+
+            if (examResults.size > INITIAL_HISTORY_PAGE_SIZE) {
+                item(key = "stats_history_pagination_controls") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (visibleHistoryCount < examResults.size) {
+                            val remaining = examResults.size - visibleHistoryCount
+                            OutlinedButton(
+                                onClick = {
+                                    visibleHistoryCount = (visibleHistoryCount + HISTORY_PAGE_STEP_SIZE)
+                                        .coerceAtMost(examResults.size)
+                                },
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, SoruLabCobaltBlue.copy(alpha = 0.35f)),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = Color.White,
+                                    contentColor = SoruLabCobaltBlue
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("stats_show_more_history")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.ExpandMore,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = "Daha Fazla Göster ($remaining kayıt)",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
+                        }
+                        if (visibleHistoryCount > INITIAL_HISTORY_PAGE_SIZE) {
+                            TextButton(
+                                onClick = { visibleHistoryCount = INITIAL_HISTORY_PAGE_SIZE },
+                                modifier = Modifier.testTag("stats_collapse_history")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.ExpandLess,
+                                    contentDescription = null,
+                                    tint = SoruLabSlateMuted,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = "Daralt",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    color = SoruLabSlateMuted
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun DenemeAndOsymAnalyticsSection(
+    report: DenemeMemoryAnalyticsReport
+) {
+    val netTrend = report.netTrend
+    val topicMastery = report.topicMastery
+    val practicedTypes = report.practicedQuestionTypes
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("stats_deneme_osym_section"),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Section Header + Pace Efficiency Pill
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "ARKA PLAN HAFIZA ANALİZİ",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.8.sp
+                    ),
+                    color = SoruLabRoyalBlue
+                )
+                Text(
+                    text = "Deneme & ÖSYM Kazanım Analizi",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                    color = SoruLabInkBlack
+                )
+            }
+            PaceEfficiencyPill(
+                avgSeconds = netTrend.avgSecondsPerQuestionRounded,
+                status = netTrend.paceStatus
+            )
+        }
+
+        // 1. Executive Net Trend & Topic Mastery Card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("stats_net_trend_card"),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.dp, Color(0xFFDDE8F8)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(SoruLabSkyTint),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.TrendingUp,
+                                contentDescription = null,
+                                tint = SoruLabRoyalBlue,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "${report.examType.name} Net Gelişim Özeti",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                color = SoruLabInkBlack
+                            )
+                            Text(
+                                text = if (netTrend.denemeCount > 0) {
+                                    "${netTrend.denemeCount} tamamlanan deneme • Son 5 deneme ortalaması"
+                                } else {
+                                    "Deneme geçmişi oluştuğunda net trendi otomatik güncellenir"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = SoruLabSlateMuted
+                            )
+                        }
+                    }
+
+                    if (netTrend.netGainFromFirst != null) {
+                        val positive = netTrend.netGainFromFirst >= -0.004
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = if (positive) SoruLabEmeraldLight else SoruLabCoralLight
+                        ) {
+                            Text(
+                                text = netTrend.formattedNetGain,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                color = if (positive) SoruLabEmerald else SoruLabCoralRed,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFFF8FAFE))
+                        .border(1.dp, Color(0xFFE6EEF8), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 12.dp, vertical = 11.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    ExecutiveMetricCell(
+                        label = "Son 5 Ort.",
+                        value = netTrend.lastFiveAverageNet?.let(DenemeMemoryAnalyticsEngine::formatNet) ?: "—",
+                        accent = SoruLabCobaltBlue
+                    )
+                    ExecutiveMetricCell(
+                        label = "Rekor Net",
+                        value = netTrend.highestNetRecord?.let(DenemeMemoryAnalyticsEngine::formatNet) ?: "—",
+                        accent = SoruLabViolet
+                    )
+                    ExecutiveMetricCell(
+                        label = "Doğruluk",
+                        value = netTrend.accuracyPercent?.let { "%$it" } ?: "—",
+                        accent = SoruLabEmerald
+                    )
+                    ExecutiveMetricCell(
+                        label = "Ustalık",
+                        value = if (topicMastery.practicedTopicCount > 0) "%${topicMastery.masteryScore}" else "—",
+                        accent = SoruLabRoyalBlue
+                    )
+                }
+
+                if (netTrend.recentFiveDenemes.size >= 2) {
+                    val maxNet = netTrend.recentFiveDenemes.maxOf { it.net }.coerceAtLeast(1.0)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        netTrend.recentFiveDenemes.forEachIndexed { idx, point ->
+                            val ratio = (point.net.coerceAtLeast(0.0) / maxNet).toFloat().coerceIn(0.16f, 1f)
+                            val isLatest = idx == netTrend.recentFiveDenemes.lastIndex
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = DenemeMemoryAnalyticsEngine.formatNet(point.net),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isLatest) FontWeight.ExtraBold else FontWeight.SemiBold
+                                    ),
+                                    color = if (isLatest) SoruLabRoyalBlue else SoruLabSlateMuted
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(0.62f)
+                                        .height((42 * ratio).dp.coerceAtLeast(8.dp))
+                                        .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp, bottomStart = 4.dp, bottomEnd = 4.dp))
+                                        .background(
+                                            if (isLatest) {
+                                                Brush.verticalGradient(listOf(SoruLabRoyalBlue, SoruLabCobaltBlue))
+                                            } else {
+                                                Brush.verticalGradient(listOf(SoruLabSkyTint, SoruLabSkyTint))
+                                            }
+                                        )
+                                )
+                                Text(
+                                    text = "D${idx + 1}",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                    color = SoruLabSlateMuted
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (topicMastery.practicedTopicCount > 0) {
+                    HorizontalDivider(color = SoruLabBorderLight)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "Konu Aşinalık & Kapsama Skoru",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = SoruLabInkBlack
+                            )
+                            Text(
+                                text = "${topicMastery.practicedTopicCount} çözülen konu • %${topicMastery.outcomeCoveragePercent} kazanım • ${topicMastery.coveredQuestionTypeCount}/${topicMastery.totalQuestionTypeCount} ÖSYM soru tipi",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = SoruLabSlateMuted
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = SoruLabSkyTint.copy(alpha = 0.65f)
+                        ) {
+                            Text(
+                                text = "%${topicMastery.familiarityScore} Aşinalık",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                color = SoruLabRoyalBlue,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Top Missed Outcomes ("Net Artış Fırsatları") Card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("stats_missed_outcomes_card"),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.dp, Color(0xFFDDE8F8)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "Net Artış Fırsatları",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
+                            color = SoruLabInkBlack
+                        )
+                        Text(
+                            text = "En çok net kaybettiren kritik ÖSYM kazanımları",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SoruLabSlateMuted
+                        )
+                    }
+                    if (report.topMissedOutcomes.isNotEmpty()) {
+                        val totalPotential = report.topMissedOutcomes.sumOf { it.potentialNetGain }
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = SoruLabAmberLight
+                        ) {
+                            Text(
+                                text = "+${DenemeMemoryAnalyticsEngine.formatNet(totalPotential)} Net Potansiyeli",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                color = Color(0xFFB45309),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (report.topMissedOutcomes.isEmpty()) {
+                    Text(
+                        text = if (report.backgroundRecordCount > 0) {
+                            "Çözülen kayıtlarda yanlış veya boş bırakılan kritik kazanım bulunmuyor."
+                        } else {
+                            "Deneme ve konu testleri çözdükçe net kaybettiren kazanımlar burada önceliklendirilir."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SoruLabSlateMuted
+                    )
+                } else {
+                    report.topMissedOutcomes.forEachIndexed { index, item ->
+                        MissedOutcomeOpportunityRow(rank = index + 1, item = item)
+                        if (index < report.topMissedOutcomes.lastIndex) {
+                            HorizontalDivider(color = SoruLabBorderLight.copy(alpha = 0.7f))
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. ÖSYM Question-Type Mastery Card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("stats_question_type_card"),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.dp, Color(0xFFDDE8F8)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "ÖSYM Soru Tipi Hakimiyeti",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
+                            color = SoruLabInkBlack
+                        )
+                        Text(
+                            text = "Öncüllü, Grafik-Tablo, Yeni Nesil ve Analitik kurgu başarısı",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SoruLabSlateMuted
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = SoruLabSurfaceVariant
+                    ) {
+                        Text(
+                            text = "${practicedTypes.size}/${report.questionTypeMastery.size} Tip",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = SoruLabSlateDark,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
+                }
+
+                if (practicedTypes.isEmpty()) {
+                    Text(
+                        text = "Soru tiplerine göre başarı yüzdesi için en az bir doğrulanmış test tamamlayın.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SoruLabSlateMuted
+                    )
+                } else {
+                    practicedTypes.forEach { stat ->
+                        QuestionTypeMasteryBarRow(stat = stat)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaceEfficiencyPill(
+    avgSeconds: Int?,
+    status: PaceEfficiencyStatus
+) {
+    val (bg, fg) = when (status) {
+        PaceEfficiencyStatus.FAST -> SoruLabEmeraldLight to SoruLabEmerald
+        PaceEfficiencyStatus.IDEAL -> SoruLabSkyTint to SoruLabRoyalBlue
+        PaceEfficiencyStatus.SLOW -> SoruLabAmberLight to Color(0xFFB45309)
+        PaceEfficiencyStatus.NO_DATA -> SoruLabSurfaceVariant to SoruLabSlateMuted
+    }
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = bg,
+        modifier = Modifier.testTag("stats_pace_pill")
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Timer,
+                contentDescription = null,
+                tint = fg,
+                modifier = Modifier.size(14.dp)
+            )
+            Text(
+                text = if (avgSeconds != null) "$avgSeconds sn/soru" else "Süre yok",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                color = fg
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExecutiveMetricCell(
+    label: String,
+    value: String,
+    accent: Color
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+            color = accent
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+            color = SoruLabSlateMuted
+        )
+    }
+}
+
+@Composable
+private fun MissedOutcomeOpportunityRow(
+    rank: Int,
+    item: CriticalOutcomeLoss
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(26.dp)
+                .clip(CircleShape)
+                .background(SoruLabCoralLight),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "$rank",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                color = SoruLabCoralRed
+            )
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = "${item.subjectName} • ${item.topicName}",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = SoruLabCobaltBlue,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "${item.outcomeTitle} (${item.wrongCount}Y • ${item.blankCount}B)",
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                color = SoruLabInkBlack,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = SoruLabEmeraldLight.copy(alpha = 0.75f)
+        ) {
+            Text(
+                text = "+${DenemeMemoryAnalyticsEngine.formatNet(item.potentialNetGain)} Net",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                color = SoruLabEmerald,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuestionTypeMasteryBarRow(
+    stat: QuestionTypeMasteryStat
+) {
+    val pct = stat.accuracyPercent ?: 0
+    val barColor = when {
+        pct >= 75 -> SoruLabEmerald
+        pct >= 50 -> SoruLabCobaltBlue
+        else -> SoruLabAmber
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stat.shortTag,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                color = SoruLabInkBlack
+            )
+            Text(
+                text = "${stat.correctCount}/${stat.gradedCount} doğru • %$pct",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = barColor
+            )
+        }
+        LinearProgressIndicator(
+            progress = { pct / 100f },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(50)),
+            color = barColor,
+            trackColor = SoruLabSurfaceVariant
+        )
     }
 }
 

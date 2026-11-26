@@ -523,7 +523,8 @@ private fun DenemelerTabHost(
             onStartExam = { mockExam -> mainViewModel.startMockExam(mockExam) },
             onDeleteExam = { mockExam -> mainViewModel.deleteMockExam(mockExam) },
             onReviewExam = { record -> mainViewModel.openRecentResultForReview(record) },
-            onOpenPdfStudio = { mainViewModel.openPdfCropperStudio() }
+            onOpenPdfStudio = { mainViewModel.openPdfCropperStudio() },
+            onStartPreparedDeneme = { ready -> mainViewModel.startPreparedDeneme(ready) }
         )
     }
 }

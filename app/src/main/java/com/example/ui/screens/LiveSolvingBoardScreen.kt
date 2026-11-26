@@ -1328,6 +1328,7 @@ private fun LiveSolvingBoardContent(
                 penThickness = penThickness,
                 selectedPenColorHex = selectedPenColorHex,
                 elapsedSeconds = session.elapsedSeconds,
+                targetDurationSeconds = session.targetDurationSeconds,
                 onToggleViewMode = onToggleViewMode,
                 onSelectTool = { tool ->
                     isZoomMagnifierEnabled = false
@@ -3466,6 +3467,27 @@ private fun PremiumEraserGlyph() {
     }
 }
 
+internal fun formatBoardTimerText(
+    elapsedSeconds: Int,
+    targetDurationSeconds: Int
+): String {
+    val displaySeconds = if (targetDurationSeconds > 0) {
+        (targetDurationSeconds - elapsedSeconds.coerceAtLeast(0)).coerceAtLeast(0)
+    } else {
+        elapsedSeconds.coerceAtLeast(0)
+    }
+    return if (displaySeconds >= 3600) {
+        val hours = (displaySeconds / 3600).toString().padStart(2, '0')
+        val mins = ((displaySeconds % 3600) / 60).toString().padStart(2, '0')
+        val secs = (displaySeconds % 60).toString().padStart(2, '0')
+        "$hours:$mins:$secs"
+    } else {
+        val mins = (displaySeconds / 60).toString().padStart(2, '0')
+        val secs = (displaySeconds % 60).toString().padStart(2, '0')
+        "$mins:$secs"
+    }
+}
+
 @Composable
 private fun BottomDarkNavyDrawingBar345(
     viewMode: BoardViewMode,
@@ -3477,6 +3499,7 @@ private fun BottomDarkNavyDrawingBar345(
     penThickness: Float = 35f,
     selectedPenColorHex: Long,
     elapsedSeconds: Int,
+    targetDurationSeconds: Int = 0,
     onToggleViewMode: () -> Unit,
     onSelectTool: (DrawingTool) -> Unit,
     onToggleZoom: () -> Unit,
@@ -3781,20 +3804,60 @@ private fun BottomDarkNavyDrawingBar345(
                     }
                 }
 
-                // SAĞ: Gri Hap Kronometre ("00:12")
-                val mins = (elapsedSeconds / 60).toString().padStart(2, '0')
-                val secs = (elapsedSeconds % 60).toString().padStart(2, '0')
+                // SAĞ: Süreli Geri Sayım veya 00:00 Kronometre Rozeti
+                val isCountdown = targetDurationSeconds > 0
+                val remainingSeconds = if (isCountdown) {
+                    (targetDurationSeconds - elapsedSeconds.coerceAtLeast(0)).coerceAtLeast(0)
+                } else 0
+                val timerText = formatBoardTimerText(
+                    elapsedSeconds = elapsedSeconds,
+                    targetDurationSeconds = targetDurationSeconds
+                )
+                val timerBgColor = when {
+                    !isCountdown -> Color(0xFFE2E8F0)
+                    remainingSeconds == 0 || remainingSeconds in 1..60 -> Color(0xFFFEE2E2)
+                    remainingSeconds in 61..300 -> Color(0xFFFEF3C7)
+                    else -> Color(0xFFE2E8F0)
+                }
+                val timerBorderColor = when {
+                    !isCountdown -> Color.Transparent
+                    remainingSeconds == 0 || remainingSeconds in 1..60 -> Color(0xFFFCA5A5)
+                    remainingSeconds in 61..300 -> Color(0xFFFCD34D)
+                    else -> Color.Transparent
+                }
+                val timerTextColor = when {
+                    !isCountdown -> Color(0xFF1E293B)
+                    remainingSeconds == 0 || remainingSeconds in 1..60 -> Color(0xFFB91C1C)
+                    remainingSeconds in 61..300 -> Color(0xFF92400E)
+                    else -> Color(0xFF1E293B)
+                }
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = Color(0xFFE2E8F0)
+                    color = timerBgColor,
+                    border = if (timerBorderColor != Color.Transparent) {
+                        BorderStroke(1.dp, timerBorderColor)
+                    } else null,
+                    modifier = Modifier.testTag("board_timer_badge")
                 ) {
-                    Text(
-                        text = "$mins:$secs",
-                        color = Color(0xFF1E293B),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Timer,
+                            contentDescription = null,
+                            tint = timerTextColor,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = timerText,
+                            color = timerTextColor,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            maxLines = 1
+                        )
+                    }
                 }
                 if (showImmersiveToggle) {
                     IconButton(
@@ -3983,6 +4046,7 @@ private fun FullScreenTwinQuestionComparisonView(
                 penThickness = penThickness,
                 selectedPenColorHex = selectedPenColorHex,
                 elapsedSeconds = session.elapsedSeconds,
+                targetDurationSeconds = session.targetDurationSeconds,
                 onToggleViewMode = onBackToBookReview,
                 onSelectTool = onSelectTool,
                 onToggleZoom = {},

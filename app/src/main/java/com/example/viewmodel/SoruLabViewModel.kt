@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.LearningOutcomeAssignment
 import com.example.data.LearningOutcomeCatalog
 import com.example.data.AUTOMATIC_TEST_QUESTION_COUNT
+import com.example.data.CropQualityGate
 import com.example.data.CustomQuestionRecord
 import com.example.data.DifficultyLevel
 import com.example.data.ExamType
@@ -185,7 +186,8 @@ data class ActiveSolvingSession(
     val currentQuestionIndex: Int = 0,
     val selectedAnswers: Map<Int, String> = emptyMap(),
     val elapsedSeconds: Int = 0,
-    val durationLimitSeconds: Int = 0
+    val durationLimitSeconds: Int = 0,
+    val targetDurationSeconds: Int = 0
 )
 
 class SoruLabViewModel(
@@ -595,7 +597,8 @@ class SoruLabViewModel(
      */
     private fun syncPdfPoolToPracticeTests(poolQuestions: List<CustomQuestionRecord>) {
         poolSyncJob?.cancel()
-        if (poolQuestions.isEmpty()) {
+        val cleanPoolQuestions = CropQualityGate.filterCleanPool(poolQuestions)
+        if (cleanPoolQuestions.isEmpty()) {
             refreshTopicProgressSummaries()
             return
         }
@@ -623,7 +626,7 @@ class SoruLabViewModel(
 
     private fun refreshTopicProgressSummaries() {
         viewModelScope.launch(Dispatchers.Default) {
-            val pool = _userCustomQuestions.value
+            val pool = _userCustomQuestions.value.filter(CropQualityGate::isCleanQuestionCrop)
             val solvedResults = _userTestResults.value.filter {
                 it.isSolvedAttempt && !it.testId.startsWith("deneme_v147_")
             }
@@ -996,7 +999,10 @@ class SoruLabViewModel(
             val originalById = _userCustomQuestions.value.associateBy { it.id }
             MistakeReviewPolicy.wrongAnswersOnly(questions, answers).forEach { q ->
                 val source = originalById[q.sourceQuestionId]
-                if (source == null || !TopicIntegrityPolicy.isSuitable(source, topic)) return@forEach
+                if (source == null ||
+                    !TopicIntegrityPolicy.isSuitable(source, topic) ||
+                    !CropQualityGate.isCleanQuestionCrop(source)
+                ) return@forEach
                 val key = LevelQuestionPolicy.stableId(q)
                 if (seen.add(key)) errors.add(q)
             }
@@ -1021,6 +1027,7 @@ class SoruLabViewModel(
     ): List<YksQuestion> {
         val topicPool = _userCustomQuestions.value.filter { question ->
             TopicIntegrityPolicy.isSuitable(question, topic) &&
+                CropQualityGate.isCleanQuestionCrop(question) &&
                 repository.hasRecoverableQuestionImage(question)
         }
 
@@ -1118,6 +1125,7 @@ class SoruLabViewModel(
     ): List<YksQuestion> {
         val strictTopicPool = _userCustomQuestions.value.filter { cq ->
             TopicIntegrityPolicy.isSuitable(cq, topic) &&
+                CropQualityGate.isCleanQuestionCrop(cq) &&
                 repository.hasRecoverableQuestionImage(cq)
         }
         if (strictTopicPool.isEmpty()) return emptyList()
@@ -1250,6 +1258,7 @@ class SoruLabViewModel(
     fun checkPoolAvailability(topic: YksTopic, level: TopicTestLevel): PoolAvailabilityCheck {
         val strictTopicPool = _userCustomQuestions.value.filter { cq ->
             TopicIntegrityPolicy.isSuitable(cq, topic) &&
+                CropQualityGate.isCleanQuestionCrop(cq) &&
                 repository.hasRecoverableQuestionImage(cq)
         }
         val countsByDiff = QUESTION_DIFFICULTY_BANDS.associateWith { diff ->
@@ -1360,9 +1369,14 @@ class SoruLabViewModel(
             val topicRecordCount = _userCustomQuestions.value.count { cq ->
                 matchesTopic(cq.subjectId, cq.topicId, cq.topicName, topic)
             }
+            val cleanCropCount = _userCustomQuestions.value.count { cq ->
+                matchesTopic(cq.subjectId, cq.topicId, cq.topicName, topic) &&
+                    CropQualityGate.isCleanQuestionCrop(cq)
+            }
             val failureDetails = when {
                 topicRecordCount == 0 -> "Bu konuya eşleşmiş soru kaydı bulunamadı. Kitabın konu etiketlerini kontrol et."
-                strictTopicPool.isEmpty() -> "$topicRecordCount kayıt var ancak soru görselleri cihazda bulunamadı. Kitabı silmeden görselleri geri yüklemek gerekiyor."
+                cleanCropCount == 0 -> "$topicRecordCount kayıt bulundu ancak kırpma kalitesi denetiminden (bozuk, eksik veya kırpılmamış tam sayfa görsel) geçemedi."
+                strictTopicPool.isEmpty() -> "$cleanCropCount kayıt var ancak soru görselleri cihazda bulunamadı. Kitabı silmeden görselleri geri yüklemek gerekiyor."
                 allTopicQuestions.none { it.answerKeyVerified } -> "${strictTopicPool.size} soru görseli var ancak cevap anahtarları doğrulanmamış. Yanlış cevapla sınav oluşturulamaz."
                 else -> "Bu seviyeye uygun doğrulanmış soru bulunmuyor. Mevcut etiketler: " +
                     countsByDiff.filterValues { it > 0 }
@@ -1478,8 +1492,10 @@ class SoruLabViewModel(
         if (publisherFiltered.isEmpty()) return null
         val bySourceId = _userCustomQuestions.value.associateBy { it.id }
         val strictCandidates = publisherFiltered.filter { q ->
-            bySourceId[q.sourceQuestionId]?.let { TopicIntegrityPolicy.isSuitable(it, topic) }
-                ?: false
+            bySourceId[q.sourceQuestionId]?.let {
+                TopicIntegrityPolicy.isSuitable(it, topic) &&
+                    CropQualityGate.isCleanQuestionCrop(it)
+            } ?: false
         }.distinctBy { LevelQuestionPolicy.stableId(it) }
 
         val key = "${topic.id}_${level.name}"
@@ -1513,7 +1529,8 @@ class SoruLabViewModel(
                     q.correctOption !in setOf("A", "B", "C", "D", "E") ||
                     !q.isEligibleForLevel(level) ||
                     bySourceId[q.sourceQuestionId]?.let {
-                        !TopicIntegrityPolicy.isSuitable(it, topic)
+                        !TopicIntegrityPolicy.isSuitable(it, topic) ||
+                            !CropQualityGate.isCleanQuestionCrop(it)
                     } != false
             } ||
             questionsToUse.map(LevelQuestionPolicy::stableId).distinct().size != questionsToUse.size
@@ -1663,10 +1680,10 @@ class SoruLabViewModel(
             subjectId = session.subjectId,
             topicId = session.topicId,
             topicName = session.topicName,
-            pool = _userCustomQuestions.value,
+            pool = _userCustomQuestions.value.filter(CropQualityGate::isCleanQuestionCrop),
             excludedIds = session.testItem.questions.mapTo(HashSet()) { it.sourceQuestionId },
             previousUseCounts = previousTwinUseCounts(),
-            isUsable = repository::hasRecoverableQuestionImage
+            isUsable = { CropQualityGate.isCleanQuestionCrop(it) && repository.hasRecoverableQuestionImage(it) }
         ) ?: return TwinQuestionModalData(
             errorMessage = "Aynı konuda farklı ve cevap anahtarı doğrulanmış bir soru henüz yok. İkiz oluşturmak için kitaplığa yeni ZIP soru paketleri ekleyebilirsin."
         )
@@ -1843,7 +1860,8 @@ class SoruLabViewModel(
         openOpticalFormFirst: Boolean = false,
         preloadedAnswers: Map<Int, String>? = null,
         initialQuestionIndex: Int = 0,
-        preloadedDurationSeconds: Int? = null
+        preloadedDurationSeconds: Int? = null,
+        targetDurationSeconds: Int = 0
     ) {
         val resolvedTestItem = hydrateSnapshotQuestionImages(testItem)
         if (resolvedTestItem.questions.isEmpty()) {
@@ -1866,6 +1884,7 @@ class SoruLabViewModel(
         } else {
             0
         }
+        val normalizedTargetSeconds = if (isReviewMode) 0 else targetDurationSeconds.coerceAtLeast(0)
         _elapsedSeconds.value = initialSeconds
 
         val safeQuestionIdx = initialQuestionIndex.coerceIn(
@@ -1888,7 +1907,9 @@ class SoruLabViewModel(
             isQuestionMapDrawerOpen = false,
             currentQuestionIndex = safeQuestionIdx,
             selectedAnswers = parsedAnswers,
-            elapsedSeconds = initialSeconds
+            elapsedSeconds = initialSeconds,
+            durationLimitSeconds = normalizedTargetSeconds,
+            targetDurationSeconds = normalizedTargetSeconds
         )
         _activeTestQuestions.value = resolvedTestItem.questions
 
@@ -1900,8 +1921,12 @@ class SoruLabViewModel(
                     val cur = _activeSession.value ?: break
                     if (!cur.isReviewMode) {
                         _elapsedSeconds.value += 1
-                        if (cur.durationLimitSeconds > 0 &&
-                            _elapsedSeconds.value >= cur.durationLimitSeconds) {
+                        val effectiveLimit = if (cur.targetDurationSeconds > 0) {
+                            cur.targetDurationSeconds
+                        } else {
+                            cur.durationLimitSeconds
+                        }
+                        if (effectiveLimit > 0 && _elapsedSeconds.value >= effectiveLimit) {
                             finishActiveTestAndReview()
                             break
                         }
@@ -2034,6 +2059,7 @@ class SoruLabViewModel(
                 val actualTopic = SoruLabCatalog.resolveTopicFast(record.topicId, record.topicName)
                 actualTopic != null &&
                     TopicIntegrityPolicy.isSuitable(record, actualTopic) &&
+                    CropQualityGate.isCleanQuestionCrop(record) &&
                     record.answerKeyVerified &&
                     record.correctOption in setOf("A", "B", "C", "D", "E") &&
                     record.isEligibleForLevel(level)
@@ -2181,16 +2207,60 @@ class SoruLabViewModel(
         val realTopic = realSubject.topics.firstOrNull {
             it.id == mockExam.linkedTest.topicId
         } ?: realSubject.topics.first()
+        val targetSeconds = if (!reviewOnly && mockExam.durationMinutes > 0) {
+            mockExam.durationMinutes * 60
+        } else {
+            0
+        }
         startSolvingSession(
             topic = realTopic,
             testItem = mockExam.linkedTest,
             initialViewMode = BoardViewMode.FULL_PAGE,
-            isReviewMode = reviewOnly
+            isReviewMode = reviewOnly,
+            targetDurationSeconds = targetSeconds
         )
-        if (!reviewOnly) {
-            _activeSession.value = _activeSession.value?.copy(
-                durationLimitSeconds = mockExam.durationMinutes.coerceAtLeast(1) * 60
-            )
+    }
+
+    private fun buildMockExamFromReadyPlan(ready: DenemePlan.Ready): MockExamItem {
+        val preservedMinutes = ready.minutes.coerceAtLeast(0)
+        val baseExam = DenemeBlueprints.fromSnapshot(ready.test)
+        val resolvedExamType = baseExam?.examType ?: when {
+            ready.test.id.contains("_AYT_") -> ExamType.AYT
+            ready.test.id.contains("_TYT_") -> ExamType.TYT
+            else -> _selectedExamType.value
+        }
+        return (baseExam ?: MockExamItem(
+            id = ready.test.id,
+            title = ready.test.fullTitle,
+            publisher = "SoruLab",
+            examType = resolvedExamType,
+            questionCount = ready.test.questions.size,
+            durationMinutes = preservedMinutes,
+            difficulty = ready.test.difficulty,
+            tag = if (preservedMinutes <= 0) {
+                "Kronometre • Doğrulanmış kitaplık"
+            } else {
+                "Konu ağırlıklı • Doğrulanmış kitaplık"
+            },
+            linkedTest = ready.test
+        )).copy(durationMinutes = preservedMinutes)
+    }
+
+    fun startPreparedDeneme(ready: DenemePlan.Ready) {
+        val uid = effectiveUserId() ?: "device_yks_student_tr"
+        val exam = buildMockExamFromReadyPlan(ready)
+        _generatedMockExams.value = (listOf(exam) + _generatedMockExams.value)
+            .distinctBy { it.id }
+        startMockExam(exam)
+        showBanner("Deneme hazır • ${ready.test.questions.size} doğrulanmış soru")
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = runCatching { repository.saveCachedGeneratedTestSnapshot(uid, ready.test) }
+            if (saved.isFailure) {
+                withContext(Dispatchers.Main) {
+                    showBanner("Deneme başlatıldı ancak cihaz önbelleğine kaydedilemedi.")
+                }
+            }
         }
     }
 
@@ -2208,13 +2278,13 @@ class SoruLabViewModel(
                 is DenemePlan.Ready -> {
                     val uid = effectiveUserId() ?: "device_yks_student_tr"
                     val saved = withContext(Dispatchers.IO) {
-                        runCatching { repository.saveCachedGeneratedTestSnapshot(uid,plan.test) }
+                        runCatching { repository.saveCachedGeneratedTestSnapshot(uid, plan.test) }
                     }
                     if (saved.isFailure) {
                         showBanner("Deneme cihazda saklanamadı; soru kayıtlarını riske atmamak için açılmadı.")
                         return@launch
                     }
-                    val exam = DenemeBlueprints.fromSnapshot(plan.test) ?: return@launch
+                    val exam = buildMockExamFromReadyPlan(plan)
                     _generatedMockExams.value = (listOf(exam) + _generatedMockExams.value)
                         .distinctBy { it.id }
                     startMockExam(exam)
@@ -2362,7 +2432,9 @@ class SoruLabViewModel(
             isReviewMode = true,
             isOpticalFormDrawerOpen = false,
             isStatsDrawerOpen = false,
-            elapsedSeconds = finalDuration
+            elapsedSeconds = finalDuration,
+            durationLimitSeconds = 0,
+            targetDurationSeconds = 0
         )
 
         val uid = effectiveUserId() ?: "device_yks_student_tr"

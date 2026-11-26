@@ -7,8 +7,8 @@ package com.example.viewmodel
 data class DenemeTopicQuota(val label: String, val count: Int, val topicIds: Set<String>)
 
 object DenemeTopicProfiles {
-    const val VERSION = "2026.11-v3-osym-order"
-    const val NOTICE = "2018–2025 ÖSYM kitapçık sırası ve konu dağılımlarına dayalı SoruLab çalışma planıdır. Konu sayıları gelecek ÖSYM sınavı için garanti değildir. Süreler öneridir."
+    const val VERSION = "2026.12-v4-osym-2018-2026"
+    const val NOTICE = "2018–2026 ÖSYM kitapçık sırası, soru arketipleri ve kazanım dağılımlarına dayalı SoruLab çalışma planıdır. Konu sayıları gelecek ÖSYM sınavı için garanti değildir. Süreler öneridir."
     private fun q(label: String, count: Int, vararg topics: String) =
         DenemeTopicQuota(label, count, linkedSetOf(*topics))
 

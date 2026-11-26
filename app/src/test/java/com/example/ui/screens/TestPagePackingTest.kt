@@ -90,6 +90,20 @@ class TestPagePackingTest {
         assertValid(heights, pages, 760, 12)
     }
 
+    @Test fun `nearFitScaleAdjustments eliminates 40 percent bottom void when next image overflows by 7 percent`() {
+        // Available = 900px, gap = 16px. Q0 = 510px (56% of column -> 44% bottom void!), Q1 = 435px.
+        // 510 + 16 + 435 = 961px (only 6.7% over 900px). Near-fit trims both by ~0.93f so they pack onto 1 column!
+        val heights = listOf(510, 435, 420, 410)
+        val scalable = listOf(true, true, true, true)
+        val initial = packMeasuredTestPages(heights, 900, 16, 2)
+        val trims = computeNearFitScaleAdjustments(heights, scalable, initial, 900, 16)
+        assertTrue("Near-fit must compute a crisp >= 0.87 trim factor", trims[0] in 0.87f..0.96f)
+        val adjustedHeights = heights.mapIndexed { i, h -> (h * trims[i]).toInt() }
+        val repacked = packMeasuredTestPages(adjustedHeights, 900, 16, 2)
+        assertEquals("All 4 questions now fit cleanly on 1 balanced 2-column page without bottom voids", 1, repacked.size)
+        assertValid(adjustedHeights, repacked, 900, 16)
+    }
+
     private fun assertValid(heights: List<Int>, pages: List<TestPagePacking>, available: Int, gap: Int) {
         assertEquals(heights.indices.toList(), pages.flatMap { it.columns.flatten() })
         pages.forEach { page -> page.columns.forEach { column ->

@@ -72,6 +72,7 @@ jobs:
           --tests 'com.example.viewmodel.DenemeBlueprintEngineTest'
           --tests 'com.example.data.CropQualityGateTest'
           --tests 'com.example.data.DenemeMemoryAnalyticsEngineTest'
+          --tests 'com.example.ui.screens.TestPagePackingTest'
           --no-daemon --no-configuration-cache --max-workers=2
 
       - name: Build signed release APK

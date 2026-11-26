@@ -234,6 +234,7 @@ data class QuestionScaleAndCropConfig(
 @Immutable
 data class TestPageLayoutConfig(
     val columnMode: PageColumnLayoutMode = PageColumnLayoutMode.TWO_COLUMN,
+    val overrideColumnMode: Boolean = false,
     val bookletType: BookletType = BookletType.A,
     val bookletTitle: String = "YKS KURUMSAL DENEME КİTAPÇIĞI",
     val subjectHeader: String = "TEMEL MATEMATİK TESTİ",
@@ -251,7 +252,7 @@ data class TestPageLayoutConfig(
         copy(scaleConfig = scaleConfig.copy(scalePercent = percent).clamped())
 
     fun withColumnMode(mode: PageColumnLayoutMode): TestPageLayoutConfig =
-        copy(columnMode = mode)
+        copy(columnMode = mode, overrideColumnMode = true)
 
     fun withBookletType(type: BookletType): TestPageLayoutConfig =
         copy(bookletType = type)

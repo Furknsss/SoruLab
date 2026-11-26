@@ -48,6 +48,11 @@ object CropQualityGate {
     private const val MIN_PARTIAL_BOX_RATIO = 0.16f
     private const val MAX_PARTIAL_BOX_RATIO = 5.2f
     private const val MIN_CLEAN_TEXT_LENGTH = 10
+    private const val MAX_VERIFIED_FILE_CACHE = 65_536
+
+    // Kırpılmış soru görselleri diske yazıldıktan sonra değişmez; 1000 kitap (250.000+ soru) ölçeğinde
+    // tekrarlayan File.exists() ve FileInputStream çağrılarını sıfırlamak için doğrulanmış boyutları bellekte tutar.
+    private val verifiedFileDimensionCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>(4096)
 
     fun isCleanQuestionCrop(record: CustomQuestionRecord): Boolean =
         inspectCropQuality(record).isClean
@@ -133,36 +138,43 @@ object CropQualityGate {
         // 4. Diskte gerçekten var olan kırpılmış görsel dosyası için boyut ve çözünürlük kontrolü
         val imagePath = record.croppedImagePath.trim()
         if (imagePath.isNotBlank()) {
-            val imageFile = File(imagePath)
-            if (imageFile.exists()) {
-                if (!imageFile.isFile || imageFile.length() < MIN_CLEAN_FILE_BYTES) {
-                    return CropQualityVerdict(
-                        isClean = false,
-                        reason = CropRejectReason.CORRUPT_OR_EMPTY_IMAGE_FILE,
-                        detail = "fileLength=${imageFile.length()}"
-                    )
-                }
-                val dimensions = decodeImageDimensions(imageFile)
-                if (dimensions == null) {
-                    return CropQualityVerdict(
-                        isClean = false,
-                        reason = CropRejectReason.UNREADABLE_OR_SLIVER_BITMAP,
-                        detail = "unreadableImageHeader=${imageFile.name}"
-                    )
-                }
-                val (width, height) = dimensions
-                val wRatio = width.toFloat() / height.coerceAtLeast(1).toFloat()
-                val hRatio = height.toFloat() / width.coerceAtLeast(1).toFloat()
-                if (width < MIN_BITMAP_WIDTH_PX ||
-                    height < MIN_BITMAP_HEIGHT_PX ||
-                    wRatio > MAX_BITMAP_WIDTH_TO_HEIGHT ||
-                    hRatio > MAX_BITMAP_HEIGHT_TO_WIDTH
-                ) {
-                    return CropQualityVerdict(
-                        isClean = false,
-                        reason = CropRejectReason.UNREADABLE_OR_SLIVER_BITMAP,
-                        detail = "bitmap=${width}x${height}"
-                    )
+            val cachedDims = verifiedFileDimensionCache[imagePath]
+            if (cachedDims == null) {
+                val imageFile = File(imagePath)
+                if (imageFile.exists()) {
+                    if (!imageFile.isFile || imageFile.length() < MIN_CLEAN_FILE_BYTES) {
+                        return CropQualityVerdict(
+                            isClean = false,
+                            reason = CropRejectReason.CORRUPT_OR_EMPTY_IMAGE_FILE,
+                            detail = "fileLength=${imageFile.length()}"
+                        )
+                    }
+                    val dimensions = decodeImageDimensions(imageFile)
+                    if (dimensions == null) {
+                        return CropQualityVerdict(
+                            isClean = false,
+                            reason = CropRejectReason.UNREADABLE_OR_SLIVER_BITMAP,
+                            detail = "unreadableImageHeader=${imageFile.name}"
+                        )
+                    }
+                    val (width, height) = dimensions
+                    val wRatio = width.toFloat() / height.coerceAtLeast(1).toFloat()
+                    val hRatio = height.toFloat() / width.coerceAtLeast(1).toFloat()
+                    if (width < MIN_BITMAP_WIDTH_PX ||
+                        height < MIN_BITMAP_HEIGHT_PX ||
+                        wRatio > MAX_BITMAP_WIDTH_TO_HEIGHT ||
+                        hRatio > MAX_BITMAP_HEIGHT_TO_WIDTH
+                    ) {
+                        return CropQualityVerdict(
+                            isClean = false,
+                            reason = CropRejectReason.UNREADABLE_OR_SLIVER_BITMAP,
+                            detail = "bitmap=${width}x${height}"
+                        )
+                    }
+                    if (verifiedFileDimensionCache.size >= MAX_VERIFIED_FILE_CACHE) {
+                        verifiedFileDimensionCache.clear()
+                    }
+                    verifiedFileDimensionCache[imagePath] = dimensions
                 }
             }
         }

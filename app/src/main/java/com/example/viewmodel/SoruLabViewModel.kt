@@ -252,6 +252,18 @@ class SoruLabViewModel(
     private val _activeTool = MutableStateFlow(DrawingTool.PEN)
     val activeTool: StateFlow<DrawingTool> = _activeTool.asStateFlow()
 
+    private val _pageLayoutConfig = MutableStateFlow(repository.loadPageLayoutConfig())
+    val pageLayoutConfig: StateFlow<com.example.util.TestPageLayoutConfig> = _pageLayoutConfig.asStateFlow()
+
+    private var topicSummaryJob: Job? = null
+
+    fun updatePageLayoutConfig(updated: com.example.util.TestPageLayoutConfig) {
+        _pageLayoutConfig.value = updated
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.savePageLayoutConfig(updated)
+        }
+    }
+
     private val _selectedStrokeSizeIndex = MutableStateFlow(1)
     val selectedStrokeSizeIndex: StateFlow<Int> = _selectedStrokeSizeIndex.asStateFlow()
     // Pen thickness and eraser size are separate tools, not one shared value.
@@ -602,13 +614,13 @@ class SoruLabViewModel(
      */
     private fun syncPdfPoolToPracticeTests(poolQuestions: List<CustomQuestionRecord>) {
         poolSyncJob?.cancel()
-        val cleanPoolQuestions = CropQualityGate.filterCleanPool(poolQuestions)
-        if (cleanPoolQuestions.isEmpty()) {
-            refreshTopicProgressSummaries()
-            return
-        }
-
         poolSyncJob = viewModelScope.launch(Dispatchers.Default) {
+            val cleanPoolQuestions = CropQualityGate.filterCleanPool(poolQuestions)
+            if (cleanPoolQuestions.isEmpty()) {
+                refreshTopicProgressSummaries()
+                return@launch
+            }
+
             val baseMap = _generatedTopicTests.value
             val updatedMap = HashMap<String, List<YksTestItem>>(baseMap.size)
             for ((k, v) in baseMap) {
@@ -630,18 +642,24 @@ class SoruLabViewModel(
     }
 
     private fun refreshTopicProgressSummaries() {
-        viewModelScope.launch(Dispatchers.Default) {
-            val pool = _userCustomQuestions.value.filter(CropQualityGate::isCleanQuestionCrop)
+        topicSummaryJob?.cancel()
+        topicSummaryJob = viewModelScope.launch(Dispatchers.Default) {
+            val rawPool = _userCustomQuestions.value
             val solvedResults = _userTestResults.value.filter {
                 it.isSolvedAttempt && !it.testId.startsWith("deneme_v147_")
             }
             val genMap = _generatedTopicTests.value
             val deleted = _deletedTestIds.value
 
-            // Pre-index counts by topicId & normalized topicName in O(N) instead of O(Topics * Questions)
-            val poolCountByTopicId = HashMap<String, Int>(128)
-            for (cq in pool) {
-                val resolvedId = SoruLabCatalog.resolveTopicForRecord(cq.subjectId, cq.topicId, cq.topicName)?.id.orEmpty()
+            // 1000 kitap (250.000+ soru) ölçeğinde O(1) konu çözümleme önbelleği + tek geçişli indeksleme
+            val topicMemo = HashMap<String, String>(256)
+            val poolCountByTopicId = HashMap<String, Int>(160)
+            for (cq in rawPool) {
+                if (!CropQualityGate.isCleanQuestionCrop(cq)) continue
+                val memoKey = "${cq.subjectId}|${cq.topicId}|${cq.topicName}"
+                val resolvedId = topicMemo.getOrPut(memoKey) {
+                    SoruLabCatalog.resolveTopicForRecord(cq.subjectId, cq.topicId, cq.topicName)?.id.orEmpty()
+                }
                 if (resolvedId.isNotBlank()) {
                     poolCountByTopicId[resolvedId] = (poolCountByTopicId[resolvedId] ?: 0) + 1
                 }
@@ -649,7 +667,10 @@ class SoruLabViewModel(
 
             val solvedByTopicId = HashMap<String, MutableList<TestResultRecord>>(64)
             for (res in solvedResults) {
-                val resolvedId = SoruLabCatalog.resolveTopicForRecord(res.subjectId, res.topicId, res.topicName)?.id.orEmpty()
+                val memoKey = "${res.subjectId}|${res.topicId}|${res.topicName}"
+                val resolvedId = topicMemo.getOrPut(memoKey) {
+                    SoruLabCatalog.resolveTopicForRecord(res.subjectId, res.topicId, res.topicName)?.id.orEmpty()
+                }
                 if (resolvedId.isNotBlank()) {
                     solvedByTopicId.getOrPut(resolvedId) { ArrayList() }.add(res)
                 }
@@ -2282,8 +2303,16 @@ class SoruLabViewModel(
     fun createAndStartDeneme(request: DenemeRequest) {
         viewModelScope.launch {
             val pool = _userCustomQuestions.value
-            val previous = _userTestResults.value.filter { it.testId.startsWith("deneme_v147_") }
-            val plan = withContext(Dispatchers.Default) { DenemePlanner.build(request, pool, previous) }
+            val previous = _userTestResults.value
+            val existingExams = _generatedMockExams.value
+            val plan = withContext(Dispatchers.Default) {
+                DenemePlanner.build(
+                    request = request,
+                    pool = pool,
+                    previous = previous,
+                    existingExams = existingExams
+                )
+            }
             when (plan) {
                 is DenemePlan.Missing -> {
                     showBanner("Deneme oluşturulamadı: " + plan.shortage.joinToString("; ") {

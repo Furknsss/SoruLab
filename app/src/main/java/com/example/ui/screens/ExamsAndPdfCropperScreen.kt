@@ -678,6 +678,15 @@ fun SoruHavuzuAndPdfStudioView(
                 val selectedBookIds = hashMapOf<String, Pair<String, String>>()
                 val chosen = uris.distinct()
                 try {
+                    val existingByBookId = withContext(Dispatchers.Default) {
+                        val map = HashMap<String, CustomQuestionRecord>(256)
+                        for (cq in customQuestions) {
+                            if (cq.bookId.isNotBlank() && !map.containsKey(cq.bookId)) {
+                                map[cq.bookId] = cq
+                            }
+                        }
+                        map
+                    }
                     for ((index, uri) in chosen.withIndex()) {
                         zipBatchProgress = "${index + 1}/${chosen.size} ZIP kontrol ediliyor…"
                         try {
@@ -691,7 +700,7 @@ fun SoruHavuzuAndPdfStudioView(
                             val identity = pack.bookTitle.trim().lowercase() to
                                 PublisherNameKey.from(authoritativePublisher.name)
                             require(bookId.isNotBlank()) { "ZIP kitap kimliği eksik." }
-                            val existing = customQuestions.firstOrNull { it.bookId == bookId }
+                            val existing = existingByBookId[bookId]
                             require(existing == null ||
                                 existing.sourceBookTitle.trim().equals(pack.bookTitle.trim(), true)
                             ) {
@@ -788,7 +797,10 @@ fun SoruHavuzuAndPdfStudioView(
     var searchBookQuery by remember { mutableStateOf("") }
     var selectedTopicInBookModal by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(customQuestions, customPublishers) {
+    val poolIdentity = remember(customQuestions) {
+        Triple(customQuestions.size, customQuestions.firstOrNull()?.id.orEmpty(), System.identityHashCode(customQuestions))
+    }
+    LaunchedEffect(poolIdentity, customPublishers) {
         if (customQuestions.isEmpty()) {
             libraryBooks = emptyList()
         } else {
@@ -2201,7 +2213,7 @@ private fun LibraryBookShowcaseCard(
     onOpenBookTest: () -> Unit,
     onDeleteBook: () -> Unit
 ) {
-    val coverBitmap = StudioImageAndPdfEngine.rememberCachedBitmap(book.coverImagePath)
+    val coverBitmap = StudioImageAndPdfEngine.rememberThumbnailBitmap(book.coverImagePath, maxDimension = 520)
     val primaryBrand = Color(book.publisherInfo.primaryColorHex)
     val secondaryBrand = Color(book.publisherInfo.secondaryColorHex)
 

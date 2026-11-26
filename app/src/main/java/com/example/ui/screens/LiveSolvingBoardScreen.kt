@@ -109,6 +109,9 @@ import com.example.util.StylusInputPolicy
 import com.example.util.BoardInkCoordinates
 import com.example.util.TestAnswerAnalyticsEngine
 import com.example.viewmodel.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -135,18 +138,48 @@ internal data class BookImageMeasurements(
 )
 
 private object TestPageDimensions {
-    val edgeHandleSpace = 30.dp
-    val pageHorizontal = 12.dp
-    val pageVertical = 10.dp
-    val footerHeight = 40.dp
+    fun edgeHandleSpace(columns: Int): Dp = if (columns == 1) 18.dp else 24.dp
+    fun pageHorizontal(columns: Int): Dp = if (columns == 1) 10.dp else 14.dp
+    val pageVertical = 8.dp
+    val footerHeight = 36.dp
     val gutter = 20.dp
-    val questionGap = 12.dp
+    fun questionGap(preset: com.example.util.QuestionSpacingPreset): Dp = when (preset) {
+        com.example.util.QuestionSpacingPreset.COMPACT -> 12.dp
+        com.example.util.QuestionSpacingPreset.NORMAL -> 16.dp
+        com.example.util.QuestionSpacingPreset.SPACIOUS -> 28.dp
+    }
+}
+
+private object MeasuredPaperCache {
+    private val maxTrimmedCacheKb: Int = ((Runtime.getRuntime().maxMemory() / 1024L) / 10L)
+        .toInt()
+        .coerceIn(12 * 1024, 48 * 1024)
+
+    val trimmedBitmaps = object : android.util.LruCache<String, Bitmap>(maxTrimmedCacheKb) {
+        override fun sizeOf(key: String, value: Bitmap): Int =
+            (value.allocationByteCount / 1024).coerceAtLeast(1)
+    }
+
+    val glyphRatioCache = java.util.concurrent.ConcurrentHashMap<String, Float>()
+
+    fun cacheKeyFor(q: YksQuestion): String = buildString {
+        append(q.id)
+        append('|')
+        append(q.imagePath)
+        append('|')
+        append(q.pdfFilePath)
+        append('|')
+        append(q.pageIndex)
+        append('|')
+        append(q.imageBase64.length)
+    }
 }
 
 private val LocalTestBitmaps = staticCompositionLocalOf<Map<String, Bitmap?>> { emptyMap() }
 
 private data class PreparedTestPaper(
     val columnWidth: Float,
+    val userScalePercent: Int,
     val bitmaps: Map<String, Bitmap?>,
     val scales: Map<String, Float>
 )
@@ -157,43 +190,93 @@ private fun MeasuredBookPages(
     questions: List<YksQuestion>,
     customPublishers: List<YksPublisherInfo>,
     isImmersive: Boolean,
+    layoutConfig: com.example.util.TestPageLayoutConfig = com.example.util.TestPageLayoutConfig(),
     content: @Composable (List<TwoColumnQuestionPage>, Map<String, Float>) -> Unit
 ) {
     val context = LocalContext.current.applicationContext
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val columns = if (maxWidth >= 600.dp) 2 else 1
+        val columns = if (layoutConfig.overrideColumnMode) {
+            layoutConfig.columnMode.columnCount
+        } else {
+            if (maxWidth >= 600.dp) 2 else 1
+        }
+        val edgeHandle = TestPageDimensions.edgeHandleSpace(columns)
+        val pageHoriz = TestPageDimensions.pageHorizontal(columns)
+        val gapDp = TestPageDimensions.questionGap(layoutConfig.spacingPreset)
+        val userScalePercent = layoutConfig.scaleConfig.clampedScalePercent
+        val userScaleFactor = layoutConfig.scaleConfig.scaleFactor
         val density = LocalDensity.current
         val columnWidthPx = with(density) {
-            val inner = constraints.maxWidth - TestPageDimensions.edgeHandleSpace.roundToPx() -
-                2 * TestPageDimensions.pageHorizontal.roundToPx()
+            val inner = constraints.maxWidth - edgeHandle.roundToPx() -
+                2 * pageHoriz.roundToPx()
             if (columns == 2) ((inner - TestPageDimensions.gutter.roundToPx()) / 2).coerceAtLeast(1)
             else inner.coerceAtLeast(1)
         }
         val columnWidthDp = with(density) { columnWidthPx.toDp().value }
-        val prepared by produceState<PreparedTestPaper?>(null, questions, columnWidthDp) {
+        val questionsIdentity = remember(questions) {
+            Triple(questions.size, questions.firstOrNull()?.id.orEmpty(), System.identityHashCode(questions))
+        }
+        val prepared by produceState<PreparedTestPaper?>(null, questionsIdentity, columnWidthDp, userScalePercent) {
             val loaded = withContext(Dispatchers.IO) {
-                val bitmaps = questions.associate { q ->
-                    q.id to StudioImageAndPdfEngine.loadGuaranteedQuestionBitmap(
-                        context, q.id, q.imagePath, q.imageBase64, q.pdfFilePath,
-                        q.pageIndex, q.normLeft, q.normTop, q.normRight, q.normBottom
-                    )?.let(::trimTestImageMargins)
+                val semaphore = kotlinx.coroutines.sync.Semaphore(4)
+                val targetMaxWidthPx = if (questions.size > 16) {
+                    (columnWidthPx * 2.2f).toInt().coerceIn(640, 1440)
+                } else {
+                    1600
                 }
+                val pairs = coroutineScope {
+                    questions.map { q ->
+                        async {
+                            semaphore.acquire()
+                            try {
+                                val cKey = MeasuredPaperCache.cacheKeyFor(q)
+                                val cached = MeasuredPaperCache.trimmedBitmaps.get(cKey)?.takeUnless { it.isRecycled }
+                                val trimmed = cached ?: StudioImageAndPdfEngine.loadGuaranteedQuestionBitmap(
+                                    context, q.id, q.imagePath, q.imageBase64, q.pdfFilePath,
+                                    q.pageIndex, q.normLeft, q.normTop, q.normRight, q.normBottom
+                                )?.let { raw ->
+                                    val downscaled = if (raw.width > targetMaxWidthPx && raw.height > 120) {
+                                        val scaledH = (raw.height.toLong() * targetMaxWidthPx / raw.width).toInt().coerceAtLeast(1)
+                                        runCatching { Bitmap.createScaledBitmap(raw, targetMaxWidthPx, scaledH, true) }.getOrDefault(raw)
+                                    } else raw
+                                    trimTestImageMargins(downscaled)
+                                }?.also { MeasuredPaperCache.trimmedBitmaps.put(cKey, it) }
+                                q.id to trimmed
+                            } finally {
+                                semaphore.release()
+                            }
+                        }
+                    }.awaitAll()
+                }
+                val bitmaps = pairs.toMap()
+                val contentWidthForGlyph = (columnWidthDp - 40f).coerceAtLeast(1f)
                 val metrics = bitmaps.mapNotNull { (id, bitmap) ->
                     bitmap?.let {
+                        val glyphRatioKey = "$id|${it.width}x${it.height}"
+                        val cachedGlyphRatio = MeasuredPaperCache.glyphRatioCache[glyphRatioKey]
+                        val glyphDp = if (cachedGlyphRatio != null) {
+                            if (cachedGlyphRatio > 0f) cachedGlyphRatio * contentWidthForGlyph else null
+                        } else {
+                            val detected = detectTypicalPrintedGlyphDp(it, contentWidthForGlyph)
+                            MeasuredPaperCache.glyphRatioCache[glyphRatioKey] =
+                                if (detected != null && contentWidthForGlyph > 0f) detected / contentWidthForGlyph else -1f
+                            detected
+                        }
                         id to BookImageMeasurements(
                             it.height.toFloat() / it.width,
-                            estimateBookTypographyScale(it, (columnWidthDp - 46f).coerceAtLeast(1f)),
-                            detectTypicalPrintedGlyphDp(it, (columnWidthDp - 46f).coerceAtLeast(1f))
+                            estimateBookTypographyScale(it, contentWidthForGlyph),
+                            glyphDp
                         )
                     }
                 }.toMap()
-                PreparedTestPaper(columnWidthDp, bitmaps, calibratedBookTypographyScales(metrics))
+                val baseScales = calibratedBookTypographyScales(metrics).mapValues { (_, s) ->
+                    (s * userScaleFactor).coerceIn(0.50f, 1.50f)
+                }
+                PreparedTestPaper(columnWidthDp, userScalePercent, bitmaps, baseScales)
             }
-            // Publish on the Android UI thread, including when a test frame-clock
-            // interceptor resumes the IO continuation on a background worker.
             withContext(Dispatchers.Main.immediate) { value = loaded }
         }
-        val paper = prepared?.takeIf { it.columnWidth == columnWidthDp }
+        val paper = prepared?.takeIf { it.columnWidth == columnWidthDp && it.userScalePercent == userScalePercent }
         if (paper == null) {
             Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally,
@@ -208,32 +291,89 @@ private fun MeasuredBookPages(
                 val available = (constraints.maxHeight - chrome -
                     2 * TestPageDimensions.pageVertical.roundToPx() -
                     TestPageDimensions.footerHeight.roundToPx()).coerceAtLeast(1)
-                val heights = questions.map { q ->
+                val gapPx = gapDp.roundToPx()
+
+                val initialHeights = questions.map { q ->
                     subcompose("measure_" + q.id) {
                         Box(Modifier.clearAndSetSemantics { }) {
-                        BookPageQuestionItem345(
-                            question = q, maxImageHeight = (available.toDp() - 38.dp).coerceAtLeast(1.dp),
-                            imageTypographyScale = paper.scales[q.id] ?: 1f,
-                            isReviewMode = false, selectedOption = null,
-                            isThreeDotMenuOpen = false, customPublishers = customPublishers,
-                            onToggleThreeDotMenu = {}, onSelectOption = {}, onOpenTopicLecture = {},
-                            onOpenSolutionModal = {}, onOpenTwinScreen = {}, onAddToKumbara = {}
-                        )
+                            BookPageQuestionItem345(
+                                question = q, maxImageHeight = (available.toDp() - 34.dp).coerceAtLeast(1.dp),
+                                imageTypographyScale = paper.scales[q.id] ?: 1f,
+                                isReviewMode = false, selectedOption = null,
+                                isThreeDotMenuOpen = false, customPublishers = customPublishers,
+                                onToggleThreeDotMenu = {}, onSelectOption = {}, onOpenTopicLecture = {},
+                                onOpenSolutionModal = {}, onOpenTwinScreen = {}, onAddToKumbara = {}
+                            )
                         }
                     }.single().measure(Constraints(minWidth = columnWidthPx, maxWidth = columnWidthPx)).height
                 }
-                val packingHeight = available
-                val pages = packMeasuredTestPages(
-                    heights = heights,
-                    availableHeight = packingHeight,
-                    gap = TestPageDimensions.questionGap.roundToPx(),
+
+                val initialPack = packMeasuredTestPages(
+                    heights = initialHeights,
+                    availableHeight = available,
+                    gap = gapPx,
                     columnCount = columns
-                ).map { page ->
+                )
+
+                val scalableFlags = questions.map { q -> paper.bitmaps[q.id] != null }
+                val nearFitAdjustments = computeNearFitScaleAdjustments(
+                    heights = initialHeights,
+                    scalableFlags = scalableFlags,
+                    initialPages = initialPack,
+                    availableHeight = available,
+                    gap = gapPx
+                )
+                val hasNearFitTrim = nearFitAdjustments.any { it < 0.999f }
+
+                val finalScales = if (hasNearFitTrim) {
+                    val map = HashMap<String, Float>(paper.scales.size)
+                    questions.forEachIndexed { idx, q ->
+                        val base = paper.scales[q.id] ?: 1f
+                        map[q.id] = (base * nearFitAdjustments[idx]).coerceIn(0.50f, 1.50f)
+                    }
+                    map
+                } else {
+                    paper.scales
+                }
+
+                val finalHeights = if (hasNearFitTrim) {
+                    questions.mapIndexed { idx, q ->
+                        if (nearFitAdjustments[idx] < 0.999f) {
+                            subcompose("measure_trimmed_" + q.id) {
+                                Box(Modifier.clearAndSetSemantics { }) {
+                                    BookPageQuestionItem345(
+                                        question = q, maxImageHeight = (available.toDp() - 34.dp).coerceAtLeast(1.dp),
+                                        imageTypographyScale = finalScales[q.id] ?: 1f,
+                                        isReviewMode = false, selectedOption = null,
+                                        isThreeDotMenuOpen = false, customPublishers = customPublishers,
+                                        onToggleThreeDotMenu = {}, onSelectOption = {}, onOpenTopicLecture = {},
+                                        onOpenSolutionModal = {}, onOpenTwinScreen = {}, onAddToKumbara = {}
+                                    )
+                                }
+                            }.single().measure(Constraints(minWidth = columnWidthPx, maxWidth = columnWidthPx)).height
+                        } else {
+                            initialHeights[idx]
+                        }
+                    }
+                } else {
+                    initialHeights
+                }
+
+                val pages = (if (hasNearFitTrim) {
+                    packMeasuredTestPages(
+                        heights = finalHeights,
+                        availableHeight = available,
+                        gap = gapPx,
+                        columnCount = columns
+                    )
+                } else {
+                    initialPack
+                }).map { page ->
                     TwoColumnQuestionPage(page.columns[0].map(questions::get),
                         page.columns.getOrNull(1).orEmpty().map(questions::get), columns)
                 }
                 val board = subcompose("board") {
-                    Box(Modifier.fillMaxSize()) { content(pages, paper.scales) }
+                    Box(Modifier.fillMaxSize()) { content(pages, finalScales) }
                 }.single().measure(constraints)
                 layout(constraints.maxWidth, constraints.maxHeight) { board.placeRelative(0, 0) }
             }
@@ -299,7 +439,7 @@ internal fun trimQuestionWhiteMargins(source: Bitmap): Bitmap {
     }.getOrDefault(source)
 }
 
-/** Normalize fonts relative to the actual question set, not a publisher name. */
+/** Normalize fonts relative to the actual question set without shrinking single-column crops into cramped stamps. */
 internal fun calibratedBookTypographyScales(
     measurements: Map<String, BookImageMeasurements>
 ): Map<String, Float> {
@@ -307,16 +447,14 @@ internal fun calibratedBookTypographyScales(
         it.printedGlyphDp?.takeIf { px -> px.isFinite() && px in 2.5f..28f }
     }.sorted()
     if (observed.isEmpty()) return measurements.mapValues {
-        it.value.typographyScale.coerceIn(0.60f, 1.90f)
+        it.value.typographyScale.coerceIn(0.90f, 1.45f)
     }
-    // Target a readable common printed glyph, not the smallest 30th-percentile
-    // tiny font. Both narrow publisher crops and big publisher crops converge.
-    val commonFontDp = observed[(observed.size * 0.55f).toInt()
-        .coerceIn(0, observed.lastIndex)].coerceIn(10.5f, 13.0f)
+    val commonFontDp = observed[(observed.size * 0.60f).toInt()
+        .coerceIn(0, observed.lastIndex)].coerceIn(11.5f, 14.0f)
     return measurements.mapValues { (_, metric) ->
         metric.printedGlyphDp?.takeIf { it.isFinite() && it > 0f }
-            ?.let { (commonFontDp / it).coerceIn(0.60f, 1.90f) }
-            ?: metric.typographyScale.coerceIn(0.60f, 1.90f)
+            ?.let { (commonFontDp / it).coerceIn(0.90f, 1.45f) }
+            ?: metric.typographyScale.coerceIn(0.90f, 1.45f)
     }
 }
 
@@ -415,10 +553,8 @@ internal fun estimateBookTypographyScale(bitmap: Bitmap, columnContentWidthDp: F
     if (bitmap.width < 16 || bitmap.height < 16 || columnContentWidthDp <= 0f) return 1f
     val measuredGlyphDp = detectTypicalPrintedGlyphDp(bitmap, columnContentWidthDp)
     if (measuredGlyphDp != null && measuredGlyphDp.isFinite() && measuredGlyphDp > 0f) {
-        // Fit the visual glyphs of Barış / Ergi / ÜçDörtBeş around a
-        // consistent printed font size, never cropping the source image.
-        val targetDp = (columnContentWidthDp * 0.052f).coerceIn(7.5f, 11f)
-        return (targetDp / measuredGlyphDp).coerceIn(0.60f, 1.90f)
+        val targetDp = (columnContentWidthDp * 0.056f).coerceIn(9.5f, 13.0f)
+        return (targetDp / measuredGlyphDp).coerceIn(0.90f, 1.45f)
     }
     val sampleStep = 3
     val left = (bitmap.width * 0.06f).toInt()
@@ -468,7 +604,7 @@ internal fun estimateBookTypographyScale(bitmap: Bitmap, columnContentWidthDp: F
     val typicalGlyphPx = bands[bands.size / 2].toFloat()
     val renderedGlyphDp = typicalGlyphPx * columnContentWidthDp / bitmap.width
     if (!renderedGlyphDp.isFinite() || renderedGlyphDp <= 0f) return 1f
-    return (12.0f / renderedGlyphDp).coerceIn(0.60f, 1.90f)
+    return (12.5f / renderedGlyphDp).coerceIn(0.90f, 1.45f)
 }
 
 internal fun estimateBookImageMeasurements(
@@ -589,7 +725,7 @@ internal fun estimatedBookQuestionUnits(
     return (contentHeightDp + 8f).coerceAtLeast(74f) / columnWidthDp.coerceAtLeast(120f)
 }
 
-/** Preserve readable width and aspect ratio. Tall images extend into vertical scrolling. */
+/** Preserve readable width and aspect ratio. Honors user scale (50%..150%) while preventing overflow. */
 internal fun fittedBookImageSizeDp(
     availableWidth: Float,
     availableHeight: Float,
@@ -600,7 +736,7 @@ internal fun fittedBookImageSizeDp(
     if (availableWidth <= 0f || availableHeight <= 0f) return 0f to 0f
     val ratio = widthOverHeight.takeIf { it.isFinite() && it > 0f } ?: 1f
     val visualScale = if (singleQuestionLayout) 1f else
-        typographyScale.coerceIn(0.60f, 1.90f)
+        typographyScale.coerceIn(0.50f, 1.50f)
     val width = minOf(availableWidth * visualScale, availableWidth).coerceAtLeast(0f)
     return width to (width / ratio)
 }
@@ -860,12 +996,21 @@ fun LiveSolvingBoardScreen(
     onGenerateTwinQuestion: (YksQuestion, (TwinQuestionModalData) -> Unit) -> Unit = { _, _ -> },
     onGenerateSolutionForQuestion: (YksQuestion, (String) -> Unit) -> Unit = { _, _ -> },
     onAddQuestionToKumbara: (YksQuestion) -> Unit = {},
-    customPublishers: List<YksPublisherInfo> = emptyList()
+    customPublishers: List<YksPublisherInfo> = emptyList(),
+    pageLayoutConfig: com.example.util.TestPageLayoutConfig = com.example.util.TestPageLayoutConfig(),
+    onUpdatePageLayoutConfig: ((com.example.util.TestPageLayoutConfig) -> Unit)? = null
 ) {
     var isImmersive by rememberSaveable(session.testItem.id) { mutableStateOf(false) }
+    var activeLayoutConfig by remember(pageLayoutConfig) { mutableStateOf(pageLayoutConfig) }
+    var showPageLayoutSheet by remember { mutableStateOf(false) }
     BackHandler(onBack = onExitSession)
-    key(session.testItem.id, session.testItem.questions) {
-        MeasuredBookPages(session.testItem.questions, customPublishers, isImmersive) { pages, scales ->
+    key(session.testItem.id) {
+        MeasuredBookPages(
+            questions = session.testItem.questions,
+            customPublishers = customPublishers,
+            isImmersive = isImmersive,
+            layoutConfig = activeLayoutConfig
+        ) { pages, scales ->
             LiveSolvingBoardContent(
                 session = session,
                 strokes = strokes,
@@ -897,10 +1042,24 @@ fun LiveSolvingBoardScreen(
                 onGenerateSolutionForQuestion = onGenerateSolutionForQuestion,
                 onAddQuestionToKumbara = onAddQuestionToKumbara,
                 customPublishers = customPublishers,
-                packedBookPages = pages, imageTypographyScales = scales,
-                isImmersive = isImmersive, onToggleImmersive = { isImmersive = !isImmersive }
+                packedBookPages = pages,
+                imageTypographyScales = scales,
+                layoutConfig = activeLayoutConfig,
+                onOpenPageLayoutSettings = { showPageLayoutSheet = true },
+                isImmersive = isImmersive,
+                onToggleImmersive = { isImmersive = !isImmersive }
             )
         }
+    }
+    if (showPageLayoutSheet) {
+        TestPageLayoutSettingsBottomSheet(
+            config = activeLayoutConfig,
+            onConfigChange = { updated ->
+                activeLayoutConfig = updated
+                onUpdatePageLayoutConfig?.invoke(updated)
+            },
+            onDismiss = { showPageLayoutSheet = false }
+        )
     }
 }
 
@@ -938,6 +1097,8 @@ private fun LiveSolvingBoardContent(
     customPublishers: List<YksPublisherInfo> = emptyList(),
     packedBookPages: List<TwoColumnQuestionPage>,
     imageTypographyScales: Map<String, Float>,
+    layoutConfig: com.example.util.TestPageLayoutConfig = com.example.util.TestPageLayoutConfig(),
+    onOpenPageLayoutSettings: (() -> Unit)? = null,
     isImmersive: Boolean,
     onToggleImmersive: () -> Unit
 ) {
@@ -1347,6 +1508,7 @@ private fun LiveSolvingBoardContent(
                 onSelectPenThickness = onSelectPenThickness,
                 onSelectPenColor = onSelectPenColor,
                 onClearCanvas = { onClearCanvas(displayedCanvasKey) },
+                onOpenPageLayoutSettings = onOpenPageLayoutSettings,
                 isImmersive = isImmersive,
                 showImmersiveToggle = true,
                 onToggleImmersive = onToggleImmersive
@@ -1377,7 +1539,7 @@ private fun LiveSolvingBoardContent(
                     // Edge-to-edge real book paper. No rounded grey frame,
                     // external 8dp gutter or card shadow around the sheet.
                     .fillMaxSize()
-                    .padding(end = TestPageDimensions.edgeHandleSpace)
+                    .padding(end = TestPageDimensions.edgeHandleSpace(packedBookPages.firstOrNull()?.columnCount ?: 2))
                     .background(Color.White)
                     .testTag("board_ink_viewport")
                     .semantics { stateDescription = zoomStateDescription }
@@ -1667,6 +1829,7 @@ private fun LiveSolvingBoardContent(
                                 pageQuestions = pageQuestions,
                                 scrollState = singleQuestionScrollStates.getOrPut(StylusInputPolicy.canvasKey(session.testItem.id, pageIdx)) { ScrollState(0) },
                                 imageTypographyScales = imageTypographyScales,
+                                layoutConfig = layoutConfig,
                                 currentBookPageIndex = pageIdx,
                                 totalBookPages = totalBookPages,
                                 customPublishers = customPublishers,
@@ -2154,6 +2317,7 @@ private fun RealTwoColumnBookPageSurface(
     pageQuestions: TwoColumnQuestionPage,
     scrollState: ScrollState,
     imageTypographyScales: Map<String, Float>,
+    layoutConfig: com.example.util.TestPageLayoutConfig = com.example.util.TestPageLayoutConfig(),
     currentBookPageIndex: Int,
     totalBookPages: Int,
     customPublishers: List<YksPublisherInfo>,
@@ -2168,29 +2332,55 @@ private fun RealTwoColumnBookPageSurface(
     onPrevBookPage: () -> Unit = {},
     onNextBookPage: () -> Unit = {}
 ) {
+    val columnCount = pageQuestions.columnCount
+    val pageHoriz = TestPageDimensions.pageHorizontal(columnCount)
+    val gapDp = TestPageDimensions.questionGap(layoutConfig.spacingPreset)
     Column(
         Modifier.fillMaxSize().background(Color.White)
-            .padding(horizontal = TestPageDimensions.pageHorizontal, vertical = TestPageDimensions.pageVertical)
+            .padding(horizontal = pageHoriz, vertical = TestPageDimensions.pageVertical)
     ) {
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val viewportHeight = maxHeight
-            val columnCount = pageQuestions.columnCount
             val leftCount = pageQuestions.left.size
+            val separatorPositions = remember { mutableStateListOf<Triple<Float, Float, Float>>() }
             Layout(
                 modifier = Modifier.fillMaxWidth()
                     .verticalScroll(scrollState)
                     .testTag("test_page_columns")
                     .drawBehind {
-                        if (columnCount == 2 && pageQuestions.right.isNotEmpty()) drawLine(
-                            Color(0xFFE2E8F0), Offset(size.width / 2, 0f),
-                            Offset(size.width / 2, size.height), 1.dp.toPx()
-                        )
+                        if (columnCount == 2 && pageQuestions.right.isNotEmpty() && layoutConfig.showCenterColumnDivider) {
+                            drawLine(
+                                Color(0xFFCBD5E1),
+                                Offset(size.width / 2f, 0f),
+                                Offset(size.width / 2f, size.height),
+                                1.dp.toPx()
+                            )
+                        }
+                        if (layoutConfig.separatorStyle != com.example.util.QuestionSeparatorStyle.NONE) {
+                            val dashEffect = if (layoutConfig.separatorStyle == com.example.util.QuestionSeparatorStyle.DASHED_LINE) {
+                                PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()), 0f)
+                            } else null
+                            val sepColor = if (layoutConfig.separatorStyle == com.example.util.QuestionSeparatorStyle.SOLID_LINE) {
+                                Color(0xFFCBD5E1)
+                            } else {
+                                Color(0xFFEAF0F7)
+                            }
+                            for ((xStart, xEnd, yPos) in separatorPositions) {
+                                drawLine(
+                                    color = sepColor,
+                                    start = Offset(xStart, yPos),
+                                    end = Offset(xEnd, yPos),
+                                    strokeWidth = 1.dp.toPx(),
+                                    pathEffect = dashEffect
+                                )
+                            }
+                        }
                     },
                 content = {
                     pageQuestions.questions.forEach { q ->
                         key(q.id) {
                             BookPageQuestionItem345(
-                                question = q, maxImageHeight = (viewportHeight - 38.dp).coerceAtLeast(1.dp),
+                                question = q, maxImageHeight = (viewportHeight - 34.dp).coerceAtLeast(1.dp),
                                 imageTypographyScale = imageTypographyScales[q.id] ?: 1f, isReviewMode = session.isReviewMode,
                                 selectedOption = session.selectedAnswers[q.number],
                                 isThreeDotMenuOpen = openThreeDotQuestionNumber == q.number,
@@ -2212,21 +2402,39 @@ private fun RealTwoColumnBookPageSurface(
                 val measured = measurables.map { it.measure(Constraints(minWidth = width, maxWidth = width)) }
                 val columns = if (columnCount == 2)
                     listOf(measured.take(leftCount), measured.drop(leftCount)) else listOf(measured)
-                val gap = TestPageDimensions.questionGap.roundToPx()
+                val gap = gapDp.roundToPx()
                 fun occupied(items: List<androidx.compose.ui.layout.Placeable>) =
                     items.sumOf { it.height } + (items.size - 1).coerceAtLeast(0) * gap
                 val height = (columns.maxOfOrNull(::occupied) ?: 0).coerceAtLeast(1)
+                val newSeparators = ArrayList<Triple<Float, Float, Float>>(measured.size)
+                columns.forEachIndexed { column, items ->
+                    val colX = if (column == 0) 0 else constraints.maxWidth - width
+                    var y = 0
+                    items.forEachIndexed { idx, item ->
+                        y += item.height
+                        if (idx < items.lastIndex) {
+                            newSeparators.add(Triple(colX + 36.dp.toPx(), (colX + width).toFloat(), y + gap * 0.5f))
+                        }
+                        y += gap
+                    }
+                }
+                if (separatorPositions.toList() != newSeparators) {
+                    separatorPositions.clear()
+                    separatorPositions.addAll(newSeparators)
+                }
                 layout(constraints.maxWidth, height) {
                     columns.forEachIndexed { column, items ->
+                        val colX = if (column == 0) 0 else constraints.maxWidth - width
                         var y = 0
                         items.forEach { item ->
-                            item.placeRelative(if (column == 0) 0 else constraints.maxWidth - width, y)
+                            item.placeRelative(colX, y)
                             y += item.height + gap
                         }
                     }
                 }
             }
         }
+        HorizontalDivider(color = Color(0xFFE8EEF5), thickness = 1.dp)
         Row(
             Modifier.fillMaxWidth().height(TestPageDimensions.footerHeight).testTag("test_page_footer"),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -2240,7 +2448,7 @@ private fun RealTwoColumnBookPageSurface(
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onPrevBookPage, enabled = currentBookPageIndex > 0,
-                    modifier = Modifier.size(36.dp)) {
+                    modifier = Modifier.size(34.dp)) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Önceki sayfa", Modifier.size(16.dp))
                 }
                 Text(
@@ -2248,7 +2456,7 @@ private fun RealTwoColumnBookPageSurface(
                     color = Color(0xFF334155), fontSize = 12.sp, fontWeight = FontWeight.SemiBold
                 )
                 IconButton(onClick = onNextBookPage, enabled = currentBookPageIndex < totalBookPages - 1,
-                    modifier = Modifier.size(36.dp)) {
+                    modifier = Modifier.size(34.dp)) {
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, "Sonraki sayfa", Modifier.size(16.dp))
                 }
             }
@@ -2405,35 +2613,35 @@ private fun BookPageQuestionItem345(
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // Sol oluk: logo ve soru numarası soru görselinden ayrı tutulur.
+            // Sol oluk: kompakt logo ve soru numarası rozeti soru görseline maksimum yatay genişlik bırakır.
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.width(if (singleQuestionLayout) 30.dp else 42.dp)
+                modifier = Modifier.width(if (singleQuestionLayout) 28.dp else 36.dp)
             ) {
                 if (!singleQuestionLayout) {
                     Box(
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(30.dp)
                             .testTag("question_source_logo_${question.number}")
                             .clickable { sourceDetailsVisible = true },
                         contentAlignment = Alignment.Center
                     ) {
                         PublisherLogoEmblem(
                             publisher = sourcePublisher,
-                            size = 34.dp,
+                            size = 28.dp,
                             overrideLogoPath = question.publisherLogoUri
                         )
                     }
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(3.dp))
                 }
                 Box(
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(28.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = "${question.number}.",
-                        color = Color(0xFF2B5B84),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
+                        color = Color(0xFF1E3A8A),
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 13.5.sp,
                         textAlign = TextAlign.Center
                     )
                     if (isReviewMode) {
@@ -3507,6 +3715,7 @@ private fun BottomDarkNavyDrawingBar345(
     onSelectPenThickness: (Float) -> Unit = {},
     onSelectPenColor: (Long) -> Unit,
     onClearCanvas: () -> Unit,
+    onOpenPageLayoutSettings: (() -> Unit)? = null,
     isImmersive: Boolean = false,
     showImmersiveToggle: Boolean = false,
     onToggleImmersive: () -> Unit = {}
@@ -3801,6 +4010,21 @@ private fun BottomDarkNavyDrawingBar345(
                             tint = Color.White,
                             modifier = Modifier.size(21.dp)
                         )
+                    }
+                    if (viewMode == BoardViewMode.FULL_PAGE && onOpenPageLayoutSettings != null) {
+                        IconButton(
+                            onClick = onOpenPageLayoutSettings,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .testTag("board_page_layout_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = "Sayfa Düzeni ve Soru Boyutu",
+                                tint = Color(0xFFBAE6FD),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
 

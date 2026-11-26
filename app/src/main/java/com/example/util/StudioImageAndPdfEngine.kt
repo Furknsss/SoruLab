@@ -735,6 +735,51 @@ object StudioImageAndPdfEngine {
         return getCachedBitmap(file.absolutePath, maxDimension)
     }
 
+    fun getThumbnailBitmap(context: Context, path: String, maxDimension: Int = 520): Bitmap? {
+        if (path.isBlank()) return null
+        val cacheKey = "thumb:$maxDimension:$path"
+        bitmapCache.get(cacheKey)?.takeUnless { it.isRecycled }?.let { return it }
+        val directFile = File(path).takeIf { it.isFile && it.length() > 0L }
+            ?: resolveQuestionImageFile(context, path)
+            ?: return null
+        val decoded = runCatching {
+            val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(directFile.absolutePath, boundsOpts)
+            if (boundsOpts.outWidth <= 0 || boundsOpts.outHeight <= 0) return@runCatching null
+            var sampleSize = 1
+            val longest = max(boundsOpts.outWidth, boundsOpts.outHeight)
+            if (longest > maxDimension && maxDimension > 0) {
+                while ((longest / (sampleSize * 2)) >= maxDimension) {
+                    sampleSize *= 2
+                }
+            }
+            val decodeOpts = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.RGB_565
+            }
+            BitmapFactory.decodeFile(directFile.absolutePath, decodeOpts)
+        }.getOrNull() ?: return null
+        bitmapCache.put(cacheKey, decoded)
+        return decoded
+    }
+
+    @Composable
+    fun rememberThumbnailBitmap(path: String, maxDimension: Int = 520): Bitmap? {
+        val context = LocalContext.current
+        val cacheKey = "thumb:$maxDimension:$path"
+        var bitmap by remember(cacheKey) { mutableStateOf(peekCachedBitmap(cacheKey)) }
+        LaunchedEffect(cacheKey) {
+            if (path.isBlank()) {
+                bitmap = null
+            } else if (bitmap == null || bitmap?.isRecycled == true) {
+                bitmap = withContext(Dispatchers.IO) {
+                    getThumbnailBitmap(context, path, maxDimension)
+                }
+            }
+        }
+        return bitmap
+    }
+
     /**
      * Non-blocking Composable helper: returns cached bitmap immediately in 0ms if in RAM,
      * otherwise decodes on Dispatchers.IO without blocking the UI thread / SurfaceSyncGroup.

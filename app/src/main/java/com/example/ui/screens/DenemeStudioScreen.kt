@@ -103,7 +103,9 @@ fun DenemeStudioScreen(
     onOpenPdfStudio: () -> Unit,
     modifier: Modifier = Modifier,
     onDeleteExam: (MockExamItem) -> Unit = {},
-    onStartPreparedDeneme: ((DenemePlan.Ready) -> Unit)? = null
+    onStartPreparedDeneme: ((DenemePlan.Ready) -> Unit)? = null,
+    initialLayoutConfig: TestPageLayoutConfig = TestPageLayoutConfig(),
+    onUpdateLayoutConfig: ((TestPageLayoutConfig) -> Unit)? = null
 ) {
     var isCreating by remember { mutableStateOf(false) }
     var selectedRecord by remember { mutableStateOf<TestResultRecord?>(null) }
@@ -111,7 +113,7 @@ fun DenemeStudioScreen(
     var infoQuestionsTest by remember { mutableStateOf<YksTestItem?>(null) }
     var showAllExamsSheet by remember { mutableStateOf(false) }
     var showAllHistoriesSheet by remember { mutableStateOf(false) }
-    var layoutConfig by remember { mutableStateOf(TestPageLayoutConfig()) }
+    var layoutConfig by remember(initialLayoutConfig) { mutableStateOf(initialLayoutConfig) }
     var showLayoutSheet by remember { mutableStateOf(false) }
 
     val histories = remember(solvedRecords) {
@@ -364,6 +366,7 @@ fun DenemeStudioScreen(
         DenemeCreatorSheet(
             questions = customQuestions,
             solvedRecords = solvedRecords,
+            existingExams = allExams,
             layoutConfig = layoutConfig,
             onOpenLayoutSettings = { showLayoutSheet = true },
             onOpenQuestionsInfo = { test -> infoQuestionsTest = test },
@@ -413,7 +416,10 @@ fun DenemeStudioScreen(
     if (showLayoutSheet) {
         TestPageLayoutSettingsBottomSheet(
             config = layoutConfig,
-            onConfigChange = { layoutConfig = it },
+            onConfigChange = { updated ->
+                layoutConfig = updated
+                onUpdateLayoutConfig?.invoke(updated)
+            },
             onDismiss = { showLayoutSheet = false }
         )
     }
@@ -826,6 +832,7 @@ private fun ChoiceChip(text: String, selected: Boolean, onClick: () -> Unit) {
 private fun DenemeCreatorSheet(
     questions: List<CustomQuestionRecord>,
     solvedRecords: List<TestResultRecord>,
+    existingExams: List<MockExamItem> = emptyList(),
     layoutConfig: TestPageLayoutConfig,
     onOpenLayoutSettings: () -> Unit,
     onOpenQuestionsInfo: (YksTestItem) -> Unit,
@@ -879,6 +886,16 @@ private fun DenemeCreatorSheet(
         buildMissingOverride = null
     }
 
+    val questionsToken = remember(questions) {
+        Triple(questions.size, questions.firstOrNull()?.id.orEmpty(), System.identityHashCode(questions))
+    }
+    val solvedToken = remember(solvedRecords) {
+        Triple(solvedRecords.size, solvedRecords.firstOrNull()?.id.orEmpty(), System.identityHashCode(solvedRecords))
+    }
+    val examsToken = remember(existingExams) {
+        Triple(existingExams.size, existingExams.firstOrNull()?.id.orEmpty(), System.identityHashCode(existingExams))
+    }
+
     val contentKey = remember(
         request.kind,
         request.examType,
@@ -888,8 +905,9 @@ private fun DenemeCreatorSheet(
         request.count,
         request.difficulty,
         request.durationMinutes,
-        questions,
-        solvedRecords
+        questionsToken,
+        solvedToken,
+        examsToken
     ) {
         listOf<Any?>(
             request.kind,
@@ -900,15 +918,22 @@ private fun DenemeCreatorSheet(
             request.count,
             request.difficulty,
             request.durationMinutes,
-            questions.size,
-            solvedRecords.size
+            questionsToken,
+            solvedToken,
+            examsToken
         )
     }
 
     val preview by key(contentKey) {
         produceState<DenemePlan?>(initialValue = null) {
             value = withContext(Dispatchers.Default) {
-                DenemePlanner.build(request, questions, solvedRecords, sequence = 0L)
+                DenemePlanner.build(
+                    request = request,
+                    pool = questions,
+                    previous = solvedRecords,
+                    sequence = 0L,
+                    existingExams = existingExams
+                )
             }
         }
     }
@@ -1272,7 +1297,8 @@ private fun DenemeCreatorSheet(
                                     request = request,
                                     pool = questions,
                                     previous = solvedRecords,
-                                    sequence = System.currentTimeMillis()
+                                    sequence = System.currentTimeMillis(),
+                                    existingExams = existingExams
                                 )
                                 when (built) {
                                     is DenemePlan.Missing -> buildMissingOverride = built

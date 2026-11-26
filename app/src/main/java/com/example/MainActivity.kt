@@ -245,6 +245,7 @@ private fun ActiveSolvingSessionHost(
     val penThickness by mainViewModel.penThickness.collectAsStateWithLifecycle()
     val selectedPenColorHex by mainViewModel.selectedPenColorHex.collectAsStateWithLifecycle()
     val customPublishers by mainViewModel.customPublishers.collectAsStateWithLifecycle()
+    val pageLayoutConfig by mainViewModel.pageLayoutConfig.collectAsStateWithLifecycle()
 
     val curSession = session ?: return
     val canvasKey = remember(
@@ -304,7 +305,9 @@ private fun ActiveSolvingSessionHost(
                 aiViewModel.generateQuestionSolutionOnDemand(q, context.applicationContext, cb)
             },
             onAddQuestionToKumbara = { q -> mainViewModel.addQuestionToKumbara(q) },
-            customPublishers = customPublishers
+            customPublishers = customPublishers,
+            pageLayoutConfig = pageLayoutConfig,
+            onUpdatePageLayoutConfig = { mainViewModel.updatePageLayoutConfig(it) }
         )
 
         AiAssistantAndBannerHost(
@@ -429,6 +432,7 @@ private fun DenemelerTabHost(
     val customPublishers by mainViewModel.customPublishers.collectAsStateWithLifecycle()
     val userTestResults by mainViewModel.userTestResults.collectAsStateWithLifecycle()
     val generatedMockExams by mainViewModel.generatedMockExams.collectAsStateWithLifecycle()
+    val pageLayoutConfig by mainViewModel.pageLayoutConfig.collectAsStateWithLifecycle()
     val isAutoTagging by aiViewModel.isAutoTagging.collectAsStateWithLifecycle()
     val batchStatusText by aiViewModel.batchStatusText.collectAsStateWithLifecycle()
     val batchProgressPercent by aiViewModel.batchProgressPercent.collectAsStateWithLifecycle()
@@ -449,12 +453,6 @@ private fun DenemelerTabHost(
         }
         val selectedPubLogoLookup = remember(customPublishers) {
             customPublishers.associateBy({ it.name.lowercase() }, { it.customLogoPath })
-        }
-
-        val questionsByBookName = remember(userCustomQuestions) {
-            userCustomQuestions.groupBy {
-                it.bookOrTestName.ifBlank { "${it.publisherTag} Soru Bankası" }
-            }
         }
 
         SoruHavuzuAndPdfStudioView(
@@ -503,7 +501,10 @@ private fun DenemelerTabHost(
             onBack = { mainViewModel.closePdfCropperStudio() },
             onSolveBookInPractice = { firstRecord ->
                 val bookName = firstRecord.bookOrTestName.ifBlank { "${firstRecord.publisherTag} Soru Bankası" }
-                val bookQuestions = questionsByBookName[bookName].orEmpty().ifEmpty { listOf(firstRecord) }
+                val bookQuestions = userCustomQuestions.filter {
+                    val candidateName = it.bookOrTestName.ifBlank { "${it.publisherTag} Soru Bankası" }
+                    (firstRecord.bookId.isNotBlank() && it.bookId == firstRecord.bookId) || candidateName == bookName
+                }.ifEmpty { listOf(firstRecord) }
                 mainViewModel.solveBookQuestionsInPractice(bookName, bookQuestions)
             },
             onSolveBookChunkInPractice = { chunkQuestions ->
@@ -524,7 +525,9 @@ private fun DenemelerTabHost(
             onDeleteExam = { mockExam -> mainViewModel.deleteMockExam(mockExam) },
             onReviewExam = { record -> mainViewModel.openRecentResultForReview(record) },
             onOpenPdfStudio = { mainViewModel.openPdfCropperStudio() },
-            onStartPreparedDeneme = { ready -> mainViewModel.startPreparedDeneme(ready) }
+            onStartPreparedDeneme = { ready -> mainViewModel.startPreparedDeneme(ready) },
+            initialLayoutConfig = pageLayoutConfig,
+            onUpdateLayoutConfig = { mainViewModel.updatePageLayoutConfig(it) }
         )
     }
 }

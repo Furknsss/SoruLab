@@ -202,6 +202,19 @@ object DenemeBlueprints {
  */
 object DenemePlanner {
     private val keys = setOf("A", "B", "C", "D", "E")
+    private const val MAX_META_CACHE_SIZE = 65_536
+    private val resolvedMetaCache = java.util.concurrent.ConcurrentHashMap<String, OsymResolvedQuestionMeta>(4096)
+
+    private fun cachedMetaFor(record: CustomQuestionRecord): OsymResolvedQuestionMeta {
+        val cacheKey = "${record.id}|${record.topicId}|${record.aiSolutionSummary.hashCode()}"
+        resolvedMetaCache[cacheKey]?.let { return it }
+        val resolved = Osym2018To2026Intelligence.resolveOutcomeForRecord(record)
+        if (resolvedMetaCache.size >= MAX_META_CACHE_SIZE) {
+            resolvedMetaCache.clear()
+        }
+        resolvedMetaCache[cacheKey] = resolved
+        return resolved
+    }
 
     private fun matchedTopic(q: CustomQuestionRecord): YksTopic? =
         SoruLabCatalog.allSubjects.firstOrNull { it.id == q.subjectId }
@@ -245,7 +258,7 @@ object DenemePlanner {
     private fun pickSlice(
         candidates: List<CustomQuestionRecord>,
         count: Int,
-        priorIds: Set<String>,
+        exposureById: Map<String, Int>,
         metaCache: Map<String, OsymResolvedQuestionMeta>,
         masteryMemory: StudentOsymMasteryMemory,
         alreadySelected: List<CustomQuestionRecord> = emptyList(),
@@ -258,7 +271,7 @@ object DenemePlanner {
             .mapValues { (_, items) ->
                 items.sortedWith(
                     compareBy<CustomQuestionRecord>(
-                        { if (it.id in priorIds) 1 else 0 },
+                        { exposureById[it.id] ?: 0 },
                         { it.publisherTag.lowercase(Locale.ROOT) },
                         { it.sourceTestId },
                         { it.questionNumberInBook },
@@ -297,9 +310,9 @@ object DenemePlanner {
             val nonEmpty = available.filterValues { it.isNotEmpty() }
             if (nonEmpty.isEmpty()) return@repeat
 
-            // Alt konuları önce hiç seçilmemiş olanlara, eşitlikte 2018-2026 ÖSYM ağırlığı + eksik konu ağırlığına göre dağıt
+            // Alt konuları önce hiç görülmemiş taze sorusu olanlara, ardından en az tüketilmiş olanlara ve 2018-2026 ÖSYM ağırlığına göre dağıt
             val topic = nonEmpty.keys.sortedWith(
-                compareBy<String> { t -> if (nonEmpty.getValue(t).any { it.id !in priorIds }) 0 else 1 }
+                compareBy<String> { t -> nonEmpty.getValue(t).minOf { exposureById[it.id] ?: 0 } / 15 }
                     .thenBy { topicCounts[it] ?: 0 }
                     .thenByDescending { ((topicOsymShare[it] ?: 4.0) * 100.0).roundToInt() }
                     .thenBy { topicOrderIndex[it] ?: Int.MAX_VALUE }
@@ -309,11 +322,11 @@ object DenemePlanner {
             val list = available.getValue(topic)
             val next = list.minWithOrNull(
                 compareBy<CustomQuestionRecord>(
-                    // 1. Son 6 denemede çözülmüş aynı soruları taze alternatif varken tekrar etme
-                    { if (it.id in priorIds) 1 else 0 },
+                    // 1. Dinamik Canlı Yenileme: 0 (hiç görülmemiş) < 15..35 (kayıtlı bekleyen denemede) < 65..95 (1 kez çözülmüş ve yanlış/boş) < 100..125 (1 kez doğru çözülmüş) < 200+ (çoklu çözülmüş)
+                    { exposureById[it.id] ?: 0 },
                     // 2. 2018-2026 ÖSYM kazanım frekansı + öğrencinin yanlış/boş kazanımı + tam kazanım ve 6 soru tipi kapsama skoru
                     { record ->
-                        val meta = metaCache[record.id] ?: Osym2018To2026Intelligence.resolveOutcomeForRecord(record)
+                        val meta = metaCache[record.id] ?: cachedMetaFor(record)
                         val oKey = outcomeKeyFor(record, metaCache)
                         val qType = meta.questionType
                         val sKey = sourceKeyFor(record, metaCache)
@@ -412,66 +425,139 @@ object DenemePlanner {
         return ((distinctTypes.toDouble() / OsymQuestionType.entries.size.toDouble()) * 100.0).toInt().coerceIn(0, 100)
     }
 
+    private fun buildQuestionExposureScores(
+        previous: List<TestResultRecord>,
+        existingExams: List<MockExamItem>
+    ): Map<String, Int> {
+        if (previous.isEmpty() && existingExams.isEmpty()) return emptyMap()
+        val exposure = HashMap<String, Int>(256)
+        val solvedTestIds = HashSet<String>(previous.size)
+
+        val sortedSolved = previous.sortedByDescending { it.createdAt?.seconds ?: 0L }
+        sortedSolved.forEachIndexed { idx, record ->
+            if (record.testId.isNotBlank()) solvedTestIds.add(record.testId)
+            val snapshot = TestSnapshotCodec.decode(record.testSnapshotJson) ?: return@forEachIndexed
+            val answers = parseSimpleAnswersMap(record.answersMapJson)
+            val recencyBonus = (16 - idx).coerceAtLeast(0)
+            for (q in snapshot.questions) {
+                val qid = q.sourceQuestionId.ifBlank { q.id }
+                if (qid.isBlank()) continue
+                val chosen = answers[q.number]?.trim()?.uppercase(Locale.ROOT).orEmpty()
+                val wasMissedOrBlank = q.answerKeyVerified && (chosen.isBlank() || chosen != q.correctOption.uppercase(Locale.ROOT))
+                val delta = 100 + recencyBonus - (if (wasMissedOrBlank) 35 else 0)
+                exposure[qid] = (exposure[qid] ?: 0) + delta.coerceAtLeast(50)
+            }
+        }
+
+        // Henüz çözülmemiş ancak oluşturulup kaydedilmiş denemelerdeki sorulara +15..23 puan ver:
+        // böylece arka arkaya 2., 3., 4. deneme oluşturulduğunda her deneme %100 taze sorulardan kurulur!
+        val unsolvedExams = existingExams
+            .filterNot { it.id in solvedTestIds }
+            .sortedByDescending { it.id }
+        unsolvedExams.forEachIndexed { idx, exam ->
+            val recencyBonus = (8 - idx).coerceAtLeast(0)
+            for (q in exam.linkedTest.questions) {
+                val qid = q.sourceQuestionId.ifBlank { q.id }
+                if (qid.isBlank()) continue
+                exposure[qid] = (exposure[qid] ?: 0) + 15 + recencyBonus
+            }
+        }
+        return exposure
+    }
+
+    private fun parseSimpleAnswersMap(json: String): Map<Int, String> {
+        if (json.isBlank() || !json.contains(':')) return emptyMap()
+        return runCatching {
+            val obj = org.json.JSONObject(json)
+            val map = HashMap<Int, String>(obj.length())
+            val iter = obj.keys()
+            while (iter.hasNext()) {
+                val key = iter.next()
+                val qNum = key.toIntOrNull() ?: continue
+                map[qNum] = obj.optString(key, "")
+            }
+            map
+        }.getOrDefault(emptyMap())
+    }
+
     fun build(
         request: DenemeRequest,
         pool: List<CustomQuestionRecord>,
         previous: List<TestResultRecord> = emptyList(),
-        sequence: Long = System.currentTimeMillis()
+        sequence: Long = System.currentTimeMillis(),
+        existingExams: List<MockExamItem> = emptyList()
     ): DenemePlan {
         val slices = sections(request)
             ?: return DenemePlan.Missing(listOf(DenemeShortage("Geçersiz deneme seçimi", 1, 0)))
 
-        val previousIds = previous
-            .sortedByDescending { it.createdAt?.seconds ?: 0L }
-            .take(6)
-            .flatMap { record ->
-                TestSnapshotCodec.decode(record.testSnapshotJson)?.questions.orEmpty()
-                    .map { it.sourceQuestionId }
-            }
-            .filter { it.isNotBlank() }
-            .toSet()
-
-        val masteryMemory = Osym2018To2026Intelligence.analyzeStudentWeaknesses(previous)
-
-        val examPool = pool
-            .filter {
-                it.examType.equals(request.examType.name, true) &&
-                    eligible(it, request.difficulty)
-            }
-            .distinctBy { it.id }
-
-        val metaCache = examPool.associate { it.id to Osym2018To2026Intelligence.resolveOutcomeForRecord(it) }
-
-        val selected = mutableListOf<CustomQuestionRecord>()
-        val shortages = mutableListOf<DenemeShortage>()
-        slices.forEach { section ->
+        // 1000 kitap (250.000+ soru) ölçeğinde daraltarak ön-filtreleme:
+        // Yalnızca bu denemenin ihtiyaç duyduğu ders ve alt konular için eligible() ve kazanım çözümlemesi çalıştır!
+        val sectionQuotas = slices.map { section ->
             val quotas = if (request.kind == DenemeKind.BRANS) {
                 DenemeTopicProfiles.forSection(section)
             } else {
                 listOf(DenemeTopicQuota(section.label, section.count, section.allowedTopicIds))
             }
-            quotas.forEach { quota ->
-                val candidates = examPool.filter {
-                    it.subjectId == section.subjectId &&
-                        it.topicId in quota.topicIds &&
-                        (section.allowedTopicIds.isEmpty() || it.topicId in section.allowedTopicIds)
-                }.filterNot { q -> selected.any { it.id == q.id } }
+            section to quotas
+        }
+        val requiredSubjectIds = HashSet<String>(slices.size * 2)
+        val requiredTopicIds = HashSet<String>(64)
+        for ((section, quotas) in sectionQuotas) {
+            requiredSubjectIds.add(section.subjectId)
+            for (q in quotas) requiredTopicIds.addAll(q.topicIds)
+        }
+
+        val seenIds = HashSet<String>(2048)
+        val candidatesBySubjectTopic = HashMap<String, MutableList<CustomQuestionRecord>>(128)
+        val metaCache = HashMap<String, OsymResolvedQuestionMeta>(1024)
+        val targetExamName = request.examType.name
+
+        for (record in pool) {
+            if (record.subjectId !in requiredSubjectIds) continue
+            if (requiredTopicIds.isNotEmpty() && record.topicId !in requiredTopicIds) continue
+            if (!record.examType.equals(targetExamName, ignoreCase = true)) continue
+            if (record.id.isBlank() || !seenIds.add(record.id)) continue
+            if (!eligible(record, request.difficulty)) continue
+
+            val bucketKey = "${record.subjectId}|${record.topicId}"
+            candidatesBySubjectTopic.getOrPut(bucketKey) { ArrayList() }.add(record)
+            metaCache[record.id] = cachedMetaFor(record)
+        }
+
+        val exposureById = buildQuestionExposureScores(previous, existingExams)
+        val masteryMemory = Osym2018To2026Intelligence.analyzeStudentWeaknesses(previous)
+
+        val selected = mutableListOf<CustomQuestionRecord>()
+        val selectedIds = HashSet<String>(128)
+        val shortages = mutableListOf<DenemeShortage>()
+        for ((section, quotas) in sectionQuotas) {
+            for (quota in quotas) {
+                val candidates = ArrayList<CustomQuestionRecord>()
+                for (tId in quota.topicIds) {
+                    if (section.allowedTopicIds.isNotEmpty() && tId !in section.allowedTopicIds) continue
+                    val bucket = candidatesBySubjectTopic["${section.subjectId}|$tId"] ?: continue
+                    for (rec in bucket) {
+                        if (rec.id !in selectedIds) candidates.add(rec)
+                    }
+                }
 
                 if (candidates.size < quota.count) {
                     shortages.add(DenemeShortage(section.label + " • " + quota.label, quota.count, candidates.size))
                 } else {
-                    selected.addAll(
-                        pickSlice(
-                            candidates = candidates,
-                            count = quota.count,
-                            priorIds = previousIds,
-                            metaCache = metaCache,
-                            masteryMemory = masteryMemory,
-                            alreadySelected = selected,
-                            orderedTopicIds = quota.topicIds.toList(),
-                            sortPedagogically = true
-                        )
+                    val picked = pickSlice(
+                        candidates = candidates,
+                        count = quota.count,
+                        exposureById = exposureById,
+                        metaCache = metaCache,
+                        masteryMemory = masteryMemory,
+                        alreadySelected = selected,
+                        orderedTopicIds = quota.topicIds.toList(),
+                        sortPedagogically = true
                     )
+                    for (p in picked) {
+                        selected.add(p)
+                        selectedIds.add(p.id)
+                    }
                 }
             }
         }
@@ -589,7 +675,7 @@ object DenemePlanner {
             questions = questions,
             denemeProfileVersion = DenemeTopicProfiles.VERSION,
             denemeDifficultyLabel = request.difficulty.label,
-            denemeReusedQuestionCount = selected.count { it.id in previousIds },
+            denemeReusedQuestionCount = selected.count { (exposureById[it.id] ?: 0) >= 50 },
             denemeDistributionSummary = slices.joinToString("\n") { section ->
                 section.label + ": " + if (request.kind == DenemeKind.BRANS) {
                     DenemeTopicProfiles.forSection(section).joinToString(" • ") { it.label + " " + it.count }

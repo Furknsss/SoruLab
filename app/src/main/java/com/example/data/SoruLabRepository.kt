@@ -289,6 +289,45 @@ class SoruLabRepository(
         }
     }
 
+    fun loadPageLayoutConfig(): com.example.util.TestPageLayoutConfig {
+        val ctx = appContext ?: return com.example.util.TestPageLayoutConfig()
+        return runCatching {
+            val prefs = ctx.getSharedPreferences("sorulab_page_layout_prefs", Context.MODE_PRIVATE)
+            val scalePct = prefs.getInt("scale_percent", 100).coerceIn(50, 150)
+            val overrideCol = prefs.getBoolean("override_col_mode", false)
+            val colName = prefs.getString("col_mode", com.example.util.PageColumnLayoutMode.TWO_COLUMN.name).orEmpty()
+            val spacingName = prefs.getString("spacing_preset", com.example.util.QuestionSpacingPreset.NORMAL.name).orEmpty()
+            val sepName = prefs.getString("separator_style", com.example.util.QuestionSeparatorStyle.SUBTLE_HAIRLINE.name).orEmpty()
+            val centerDiv = prefs.getBoolean("show_center_div", true)
+            com.example.util.TestPageLayoutConfig(
+                columnMode = com.example.util.PageColumnLayoutMode.entries.firstOrNull { it.name == colName }
+                    ?: com.example.util.PageColumnLayoutMode.TWO_COLUMN,
+                overrideColumnMode = overrideCol,
+                scaleConfig = com.example.util.QuestionScaleAndCropConfig(scalePercent = scalePct).clamped(),
+                spacingPreset = com.example.util.QuestionSpacingPreset.entries.firstOrNull { it.name == spacingName }
+                    ?: com.example.util.QuestionSpacingPreset.NORMAL,
+                separatorStyle = com.example.util.QuestionSeparatorStyle.entries.firstOrNull { it.name == sepName }
+                    ?: com.example.util.QuestionSeparatorStyle.SUBTLE_HAIRLINE,
+                showCenterColumnDivider = centerDiv
+            )
+        }.getOrDefault(com.example.util.TestPageLayoutConfig())
+    }
+
+    fun savePageLayoutConfig(updated: com.example.util.TestPageLayoutConfig) {
+        val ctx = appContext ?: return
+        runCatching {
+            ctx.getSharedPreferences("sorulab_page_layout_prefs", Context.MODE_PRIVATE)
+                .edit()
+                .putInt("scale_percent", updated.scaleConfig.clampedScalePercent)
+                .putBoolean("override_col_mode", updated.overrideColumnMode)
+                .putString("col_mode", updated.columnMode.name)
+                .putString("spacing_preset", updated.spacingPreset.name)
+                .putString("separator_style", updated.separatorStyle.name)
+                .putBoolean("show_center_div", updated.showCenterColumnDivider)
+                .apply()
+        }
+    }
+
     fun loadCachedSolvedTestResults(userId: String): List<TestResultRecord> {
         val ctx = appContext ?: return emptyList()
         return try {

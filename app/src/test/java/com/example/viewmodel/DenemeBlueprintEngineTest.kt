@@ -422,4 +422,87 @@ class DenemeBlueprintEngineTest {
 
         assertEquals("fresh_teget_target", nextPlan.test.questions.single().sourceQuestionId)
     }
+
+    @Test
+    fun consecutiveSavedExamsNeverRepeatQuestionsEvenBeforeSolving() {
+        val bank = completeBank("tyt_fizik")
+        val req = DenemeRequest(DenemeKind.BRANS, ExamType.TYT, "tyt_fizik")
+
+        val exam1Plan = DenemePlanner.build(req, bank, sequence = 1001L) as DenemePlan.Ready
+        val exam1 = DenemeBlueprints.fromSnapshot(exam1Plan.test)!!
+
+        val exam2Plan = DenemePlanner.build(
+            request = req,
+            pool = bank,
+            sequence = 1002L,
+            existingExams = listOf(exam1)
+        ) as DenemePlan.Ready
+        val exam2 = DenemeBlueprints.fromSnapshot(exam2Plan.test)!!
+
+        val exam3Plan = DenemePlanner.build(
+            request = req,
+            pool = bank,
+            sequence = 1003L,
+            existingExams = listOf(exam1, exam2)
+        ) as DenemePlan.Ready
+
+        val ids1 = exam1Plan.test.questions.map { it.sourceQuestionId }.toSet()
+        val ids2 = exam2Plan.test.questions.map { it.sourceQuestionId }.toSet()
+        val ids3 = exam3Plan.test.questions.map { it.sourceQuestionId }.toSet()
+
+        assertTrue("Deneme #2 must use 100% fresh questions distinct from saved Deneme #1", ids1.intersect(ids2).isEmpty())
+        assertTrue("Deneme #3 must use 100% fresh questions distinct from saved Deneme #1 and #2", (ids1 + ids2).intersect(ids3).isEmpty())
+    }
+
+    @Test
+    fun thousandBookScalePoolBuildsDenemeRapidlyWithoutLag() {
+        // Simulate 1,000 books (~50,000 questions across all subjects) and verify fast O(1) narrow-first build
+        val sharedSolution = CustomQuestionRecord.packSolutionWithMeta("B seçeneği doğrudur.", answerKeyVerified = true)
+        val subjects = SoruLabCatalog.allSubjects
+        val hugePool = ArrayList<CustomQuestionRecord>(50_000)
+        for (bookIdx in 1..1_000) {
+            val subject = subjects[bookIdx % subjects.size]
+            val topics = subject.topics
+            for (qIdx in 1..50) {
+                val topic = topics[(bookIdx + qIdx) % topics.size]
+                hugePool.add(
+                    CustomQuestionRecord(
+                        id = "b${bookIdx}_q$qIdx",
+                        bookId = "book_$bookIdx",
+                        examType = subject.examType.name,
+                        subjectId = subject.id,
+                        subjectName = subject.name,
+                        topicId = topic.id,
+                        topicName = topic.name,
+                        difficulty = "Orta",
+                        correctOption = "B",
+                        questionText = "1000 kitap performans testi sorusu #$bookIdx-$qIdx (${topic.name})",
+                        publisherTag = "Yayın ${(bookIdx % 12) + 1}",
+                        sourceBookTitle = "Kitap #$bookIdx",
+                        aiSolutionSummary = sharedSolution
+                    )
+                )
+            }
+        }
+        // Warm cache once, then time clean AYT Mat + Geo 40-question build across 50,000 records
+        val req = DenemeRequest(DenemeKind.BRANS, ExamType.AYT, "ayt_mat")
+        val warm = DenemePlanner.build(req, hugePool, sequence = 1L)
+        assertTrue(warm is DenemePlan.Ready)
+
+        val startNs = System.nanoTime()
+        val second = DenemePlanner.build(
+            request = req,
+            pool = hugePool,
+            sequence = 2L,
+            existingExams = listOfNotNull(DenemeBlueprints.fromSnapshot((warm as DenemePlan.Ready).test))
+        )
+        val elapsedMs = (System.nanoTime() - startNs) / 1_000_000L
+        assertTrue(second is DenemePlan.Ready)
+        assertEquals(40, (second as DenemePlan.Ready).test.questions.size)
+        assertTrue(
+            "Second AYT Mat deneme must pick 40 fresh questions from 1000-book pool",
+            warm.test.questions.map { it.sourceQuestionId }.intersect(second.test.questions.map { it.sourceQuestionId }.toSet()).isEmpty()
+        )
+        assertTrue("1000-book build should finish rapidly (< 1500ms), took ${elapsedMs}ms", elapsedMs < 1_500L)
+    }
 }

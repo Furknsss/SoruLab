@@ -93,7 +93,13 @@ fun IstatistiklerimScreen(
         mutableIntStateOf(INITIAL_HISTORY_PAGE_SIZE)
     }
     val openedAt = remember { System.currentTimeMillis() }
-    val combinedState by key(testResults, customQuestions, customQuestionsCount, selectedExam, recentOnly) {
+    val resultsToken = remember(testResults) {
+        Triple(testResults.size, testResults.firstOrNull()?.id.orEmpty(), System.identityHashCode(testResults))
+    }
+    val poolToken = remember(customQuestions) {
+        Triple(customQuestions.size, customQuestions.firstOrNull()?.id.orEmpty(), System.identityHashCode(customQuestions))
+    }
+    val combinedState by key(resultsToken, poolToken, customQuestionsCount, selectedExam, recentOnly) {
         produceState<CombinedStatsCalculation?>(null) {
             value = withContext(Dispatchers.Default) {
                 val since = if (recentOnly) openedAt - 30L * 24 * 60 * 60 * 1000 else null

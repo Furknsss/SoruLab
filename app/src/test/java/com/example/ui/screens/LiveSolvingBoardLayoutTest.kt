@@ -35,21 +35,24 @@ class LiveSolvingBoardLayoutTest {
         assertTrue("Tablet questions should use nearly half the screen", first.width > 340f)
         val footer = compose.onAllNodesWithTag("test_page_footer").fetchSemanticsNodes().first().boundsInRoot
         assertTrue("Footer must fit the viewport", footer.bottom <= 1280f)
-        val lastImage = compose.onNodeWithTag("book_question_3").fetchSemanticsNode().boundsInRoot
-        val logo = compose.onNodeWithTag("question_source_logo_1").fetchSemanticsNode().boundsInRoot
-        val number = compose.onNodeWithText("1.").fetchSemanticsNode().boundsInRoot
-        assertTrue("Publisher must sit above the question number", logo.bottom <= number.top)
+        compose.onAllNodesWithTag("question_source_logo_1").assertCountEquals(0)
         val firstQuestion = compose.onNodeWithTag("book_question_1").fetchSemanticsNode().boundsInRoot
         val secondQuestion = compose.onNodeWithTag("book_question_2").fetchSemanticsNode().boundsInRoot
         val thirdQuestion = compose.onNodeWithTag("book_question_3").fetchSemanticsNode().boundsInRoot
-        val gapOne = secondQuestion.top - firstQuestion.bottom
-        val gapTwo = thirdQuestion.top - secondQuestion.bottom
-        assertTrue("Questions must stack compactly from top without huge gaps: gapOne=$gapOne",
-            gapOne in 8f..20f)
-        assertTrue("Consecutive question gaps must stay consistent: gapOne=$gapOne gapTwo=$gapTwo",
-            kotlin.math.abs(gapOne - gapTwo) < 3f)
+        val fourthQuestion = compose.onNodeWithTag("book_question_4").fetchSemanticsNode().boundsInRoot
+        val number = compose.onNodeWithText("1.").fetchSemanticsNode().boundsInRoot
+        assertTrue("Clean question number must align flush with the top of question 1",
+            kotlin.math.abs(number.top - firstQuestion.top) <= 14f)
+        val leftWorkspace = secondQuestion.top - firstQuestion.bottom
+        val rightWorkspace = fourthQuestion.top - thirdQuestion.bottom
+        assertTrue("Both columns must align at the exact same top baseline",
+            kotlin.math.abs(firstQuestion.top - thirdQuestion.top) < 2f)
+        assertTrue("Left column must leave generous natural solving workspace below Q1: $leftWorkspace",
+            leftWorkspace >= 40f)
+        assertTrue("Right column must leave generous natural solving workspace below Q3: $rightWorkspace",
+            rightWorkspace >= 40f)
         assertTrue("Questions must stay above the fixed footer",
-            thirdQuestion.bottom <= footer.top + 1f)
+            secondQuestion.bottom <= footer.top + 1f && fourthQuestion.bottom <= footer.top + 1f)
         capture("test-tablet")
         compose.onNodeWithTag("optical_form_tab").performClick()
         compose.onNodeWithTag("optic_q1_A").assertIsDisplayed()
@@ -77,8 +80,8 @@ class LiveSolvingBoardLayoutTest {
         val second = compose.onNodeWithTag("book_question_2").fetchSemanticsNode().boundsInRoot
         assertTrue("Source print remains readable", first.width > 300f && first.height > 70f)
         assertTrue("Printed questions keep reading order without overlap", second.top >= first.bottom)
-        assertTrue("Actual image pages avoid artificial giant gaps: gap=${second.top - first.bottom}",
-            second.top - first.bottom in 8f..20f)
+        assertTrue("345 booklet page reserves natural S-Pen solving workspace: gap=${second.top - first.bottom}",
+            second.top - first.bottom in 40f..360f)
         capture("test-tablet-printed")
     }
 
@@ -89,10 +92,13 @@ class LiveSolvingBoardLayoutTest {
         val q2 = compose.onNodeWithTag("book_question_2").fetchSemanticsNode().boundsInRoot
         val q3 = compose.onNodeWithTag("book_question_3").fetchSemanticsNode().boundsInRoot
         val q4 = compose.onNodeWithTag("book_question_4").fetchSemanticsNode().boundsInRoot
+        val footer = compose.onAllNodesWithTag("test_page_footer").fetchSemanticsNodes().first().boundsInRoot
         val leftGap = q2.top - q1.bottom
         val rightGap = q4.top - q3.bottom
-        assertTrue("Left column must not stretch 2 questions apart: leftGap=$leftGap", leftGap in 8f..20f)
-        assertTrue("Right column must not stretch 2 questions apart: rightGap=$rightGap", rightGap in 8f..20f)
+        assertTrue("Left column provides balanced solving workspace without pushing Q2 to footer: leftGap=$leftGap",
+            leftGap in 40f..340f && footer.top - q2.bottom >= 60f)
+        assertTrue("Right column provides balanced solving workspace without pushing Q4 to footer: rightGap=$rightGap",
+            rightGap in 40f..340f && footer.top - q4.bottom >= 60f)
         assertTrue("Both columns must align at the same top baseline", kotlin.math.abs(q1.top - q3.top) < 2f)
         capture("test-tablet-sparse-compact")
     }

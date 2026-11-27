@@ -138,15 +138,15 @@ internal data class BookImageMeasurements(
 )
 
 private object TestPageDimensions {
-    fun edgeHandleSpace(columns: Int): Dp = if (columns == 1) 18.dp else 24.dp
+    fun edgeHandleSpace(columns: Int): Dp = if (columns == 1) 16.dp else 20.dp
     fun pageHorizontal(columns: Int): Dp = if (columns == 1) 10.dp else 14.dp
     val pageVertical = 8.dp
     val footerHeight = 36.dp
-    val gutter = 20.dp
+    val gutter = 22.dp
     fun questionGap(preset: com.example.util.QuestionSpacingPreset): Dp = when (preset) {
-        com.example.util.QuestionSpacingPreset.COMPACT -> 12.dp
-        com.example.util.QuestionSpacingPreset.NORMAL -> 16.dp
-        com.example.util.QuestionSpacingPreset.SPACIOUS -> 28.dp
+        com.example.util.QuestionSpacingPreset.COMPACT -> 18.dp
+        com.example.util.QuestionSpacingPreset.NORMAL -> 22.dp
+        com.example.util.QuestionSpacingPreset.SPACIOUS -> 30.dp
     }
 }
 
@@ -198,11 +198,10 @@ private fun MeasuredBookPages(
         val columns = if (layoutConfig.overrideColumnMode) {
             layoutConfig.columnMode.columnCount
         } else {
-            if (maxWidth >= 600.dp) 2 else 1
+            if (maxWidth >= 520.dp) 2 else 1
         }
         val edgeHandle = TestPageDimensions.edgeHandleSpace(columns)
         val pageHoriz = TestPageDimensions.pageHorizontal(columns)
-        val gapDp = TestPageDimensions.questionGap(layoutConfig.spacingPreset)
         val userScalePercent = layoutConfig.scaleConfig.clampedScalePercent
         val userScaleFactor = layoutConfig.scaleConfig.scaleFactor
         val density = LocalDensity.current
@@ -249,7 +248,7 @@ private fun MeasuredBookPages(
                     }.awaitAll()
                 }
                 val bitmaps = pairs.toMap()
-                val contentWidthForGlyph = (columnWidthDp - 40f).coerceAtLeast(1f)
+                val contentWidthForGlyph = (columnWidthDp - 30f).coerceAtLeast(1f)
                 val metrics = bitmaps.mapNotNull { (id, bitmap) ->
                     bitmap?.let {
                         val glyphRatioKey = "$id|${it.width}x${it.height}"
@@ -291,7 +290,6 @@ private fun MeasuredBookPages(
                 val available = (constraints.maxHeight - chrome -
                     2 * TestPageDimensions.pageVertical.roundToPx() -
                     TestPageDimensions.footerHeight.roundToPx()).coerceAtLeast(1)
-                val gapPx = gapDp.roundToPx()
 
                 val initialHeights = questions.map { q ->
                     subcompose("measure_" + q.id) {
@@ -308,20 +306,19 @@ private fun MeasuredBookPages(
                     }.single().measure(Constraints(minWidth = columnWidthPx, maxWidth = columnWidthPx)).height
                 }
 
-                val initialPack = packMeasuredTestPages(
+                val initialPack = packBookletPages345(
                     heights = initialHeights,
                     availableHeight = available,
-                    gap = gapPx,
                     columnCount = columns
                 )
 
                 val scalableFlags = questions.map { q -> paper.bitmaps[q.id] != null }
-                val nearFitAdjustments = computeNearFitScaleAdjustments(
+                val nearFitAdjustments = computeBookletNearFitAdjustments(
                     heights = initialHeights,
                     scalableFlags = scalableFlags,
                     initialPages = initialPack,
                     availableHeight = available,
-                    gap = gapPx
+                    columnCount = columns
                 )
                 val hasNearFitTrim = nearFitAdjustments.any { it < 0.999f }
 
@@ -360,10 +357,9 @@ private fun MeasuredBookPages(
                 }
 
                 val pages = (if (hasNearFitTrim) {
-                    packMeasuredTestPages(
+                    packBookletPages345(
                         heights = finalHeights,
                         availableHeight = available,
-                        gap = gapPx,
                         columnCount = columns
                     )
                 } else {
@@ -2334,7 +2330,7 @@ private fun RealTwoColumnBookPageSurface(
 ) {
     val columnCount = pageQuestions.columnCount
     val pageHoriz = TestPageDimensions.pageHorizontal(columnCount)
-    val gapDp = TestPageDimensions.questionGap(layoutConfig.spacingPreset)
+    val minGapDp = TestPageDimensions.questionGap(layoutConfig.spacingPreset)
     Column(
         Modifier.fillMaxSize().background(Color.White)
             .padding(horizontal = pageHoriz, vertical = TestPageDimensions.pageVertical)
@@ -2342,38 +2338,20 @@ private fun RealTwoColumnBookPageSurface(
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val viewportHeight = maxHeight
             val leftCount = pageQuestions.left.size
-            val separatorPositions = remember { mutableStateListOf<Triple<Float, Float, Float>>() }
             Layout(
                 modifier = Modifier.fillMaxWidth()
                     .verticalScroll(scrollState)
                     .testTag("test_page_columns")
                     .drawBehind {
+                        // Yalnızca sol ve sağ sütun arasında tek, zarif dikey kitapçık çizgisi;
+                        // aynı sütundaki sorular arasında yatay çizgi ÇİZİLMEZ.
                         if (columnCount == 2 && pageQuestions.right.isNotEmpty() && layoutConfig.showCenterColumnDivider) {
                             drawLine(
-                                Color(0xFFCBD5E1),
-                                Offset(size.width / 2f, 0f),
-                                Offset(size.width / 2f, size.height),
-                                1.dp.toPx()
+                                color = Color(0xFFC8E0EA),
+                                start = Offset(size.width / 2f, 0f),
+                                end = Offset(size.width / 2f, size.height),
+                                strokeWidth = 1.dp.toPx()
                             )
-                        }
-                        if (layoutConfig.separatorStyle != com.example.util.QuestionSeparatorStyle.NONE) {
-                            val dashEffect = if (layoutConfig.separatorStyle == com.example.util.QuestionSeparatorStyle.DASHED_LINE) {
-                                PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()), 0f)
-                            } else null
-                            val sepColor = if (layoutConfig.separatorStyle == com.example.util.QuestionSeparatorStyle.SOLID_LINE) {
-                                Color(0xFFCBD5E1)
-                            } else {
-                                Color(0xFFEAF0F7)
-                            }
-                            for ((xStart, xEnd, yPos) in separatorPositions) {
-                                drawLine(
-                                    color = sepColor,
-                                    start = Offset(xStart, yPos),
-                                    end = Offset(xEnd, yPos),
-                                    strokeWidth = 1.dp.toPx(),
-                                    pathEffect = dashEffect
-                                )
-                            }
                         }
                     },
                 content = {
@@ -2402,33 +2380,38 @@ private fun RealTwoColumnBookPageSurface(
                 val measured = measurables.map { it.measure(Constraints(minWidth = width, maxWidth = width)) }
                 val columns = if (columnCount == 2)
                     listOf(measured.take(leftCount), measured.drop(leftCount)) else listOf(measured)
-                val gap = gapDp.roundToPx()
-                fun occupied(items: List<androidx.compose.ui.layout.Placeable>) =
-                    items.sumOf { it.height } + (items.size - 1).coerceAtLeast(0) * gap
-                val height = (columns.maxOfOrNull(::occupied) ?: 0).coerceAtLeast(1)
-                val newSeparators = ArrayList<Triple<Float, Float, Float>>(measured.size)
-                columns.forEachIndexed { column, items ->
-                    val colX = if (column == 0) 0 else constraints.maxWidth - width
-                    var y = 0
-                    items.forEachIndexed { idx, item ->
-                        y += item.height
-                        if (idx < items.lastIndex) {
-                            newSeparators.add(Triple(colX + 36.dp.toPx(), (colX + width).toFloat(), y + gap * 0.5f))
-                        }
-                        y += gap
-                    }
-                }
-                if (separatorPositions.toList() != newSeparators) {
-                    separatorPositions.clear()
-                    separatorPositions.addAll(newSeparators)
-                }
-                layout(constraints.maxWidth, height) {
+
+                val topInsetPx = 8.dp.roundToPx()
+                val minGapPx = minGapDp.roundToPx()
+                val viewportPx = viewportHeight.roundToPx().coerceAtLeast(1)
+                val usableViewportPx = (viewportPx - topInsetPx).coerceAtLeast(1)
+
+                fun minOccupied(items: List<androidx.compose.ui.layout.Placeable>): Int =
+                    if (items.isEmpty()) 0
+                    else topInsetPx + items.sumOf { it.height } + (items.size - 1) * minGapPx
+
+                val maxMinOccupied = columns.maxOfOrNull(::minOccupied) ?: 0
+                val layoutHeight = maxOf(viewportPx, maxMinOccupied)
+
+                layout(constraints.maxWidth, layoutHeight) {
                     columns.forEachIndexed { column, items ->
+                        if (items.isEmpty()) return@forEachIndexed
                         val colX = if (column == 0) 0 else constraints.maxWidth - width
-                        var y = 0
-                        items.forEach { item ->
-                            item.placeRelative(colX, y)
-                            y += item.height + gap
+                        if (items.size == 1) {
+                            items[0].placeRelative(colX, topInsetPx)
+                        } else {
+                            val inkSum = items.sumOf { it.height }
+                            val freeSpace = layoutHeight - topInsetPx - inkSum
+                            val maxWorkspacePerQuestion = (usableViewportPx * (if (items.size == 2) 0.26f else 0.18f))
+                                .toInt()
+                                .coerceAtLeast(minGapPx)
+                            val perQuestionWorkspace = (freeSpace / items.size)
+                                .coerceIn(minGapPx, maxWorkspacePerQuestion)
+                            var y = topInsetPx
+                            items.forEach { item ->
+                                item.placeRelative(colX, y)
+                                y += item.height + perQuestionWorkspace
+                            }
                         }
                     }
                 }
@@ -2613,45 +2596,30 @@ private fun BookPageQuestionItem345(
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // Sol oluk: kompakt logo ve soru numarası rozeti soru görseline maksimum yatay genişlik bırakır.
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.width(if (singleQuestionLayout) 28.dp else 36.dp)
+            // Sol oluk: Yayınevi logosu kalabalığı olmadan, soru kökü ilk satırıyla hizalı saf kitapçık numarası (`1.`, `2.`, `3.`)
+            Box(
+                modifier = Modifier
+                    .width(26.dp)
+                    .heightIn(min = 24.dp)
+                    .padding(top = 1.dp)
+                    .testTag("question_number_badge_${question.number}")
+                    .clickable { sourceDetailsVisible = true },
+                contentAlignment = Alignment.TopStart
             ) {
-                if (!singleQuestionLayout) {
-                    Box(
-                        modifier = Modifier.size(30.dp)
-                            .testTag("question_source_logo_${question.number}")
-                            .clickable { sourceDetailsVisible = true },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        PublisherLogoEmblem(
-                            publisher = sourcePublisher,
-                            size = 28.dp,
-                            overrideLogoPath = question.publisherLogoUri
-                        )
-                    }
-                    Spacer(Modifier.height(3.dp))
-                }
-                Box(
-                    modifier = Modifier.size(28.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "${question.number}.",
-                        color = Color(0xFF1E3A8A),
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 13.5.sp,
-                        textAlign = TextAlign.Center
+                Text(
+                    text = "${question.number}.",
+                    color = Color(0xFF1E293B),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.5.sp,
+                    textAlign = TextAlign.Start
+                )
+                if (isReviewMode) {
+                    HandDrawnBrushMark345(
+                        isEmpty = isEmpty || isUngraded,
+                        isCorrect = isCorrect,
+                        isUngraded = false,
+                        modifier = Modifier.size(26.dp)
                     )
-                    if (isReviewMode) {
-                        HandDrawnBrushMark345(
-                            isEmpty = isEmpty || isUngraded,
-                            isCorrect = isCorrect,
-                            isUngraded = false,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
                 }
             }
 
@@ -4011,22 +3979,9 @@ private fun BottomDarkNavyDrawingBar345(
                             modifier = Modifier.size(21.dp)
                         )
                     }
-                    if (viewMode == BoardViewMode.FULL_PAGE && onOpenPageLayoutSettings != null) {
-                        IconButton(
-                            onClick = onOpenPageLayoutSettings,
-                            modifier = Modifier
-                                .size(38.dp)
-                                .testTag("board_page_layout_btn")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Tune,
-                                contentDescription = "Sayfa Düzeni ve Soru Boyutu",
-                                tint = Color(0xFFBAE6FD),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
                 }
+
+                Spacer(modifier = Modifier.width(6.dp))
 
                 // SAĞ: Süreli Geri Sayım veya 00:00 Kronometre Rozeti
                 val isCountdown = targetDurationSeconds > 0
@@ -4079,7 +4034,8 @@ private fun BottomDarkNavyDrawingBar345(
                             color = timerTextColor,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
-                            maxLines = 1
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }

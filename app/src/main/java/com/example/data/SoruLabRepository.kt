@@ -297,7 +297,7 @@ class SoruLabRepository(
             val overrideCol = prefs.getBoolean("override_col_mode", false)
             val colName = prefs.getString("col_mode", com.example.util.PageColumnLayoutMode.TWO_COLUMN.name).orEmpty()
             val spacingName = prefs.getString("spacing_preset", com.example.util.QuestionSpacingPreset.NORMAL.name).orEmpty()
-            val sepName = prefs.getString("separator_style", com.example.util.QuestionSeparatorStyle.SUBTLE_HAIRLINE.name).orEmpty()
+            val sepName = prefs.getString("separator_style", com.example.util.QuestionSeparatorStyle.NONE.name).orEmpty()
             val centerDiv = prefs.getBoolean("show_center_div", true)
             com.example.util.TestPageLayoutConfig(
                 columnMode = com.example.util.PageColumnLayoutMode.entries.firstOrNull { it.name == colName }
@@ -307,7 +307,7 @@ class SoruLabRepository(
                 spacingPreset = com.example.util.QuestionSpacingPreset.entries.firstOrNull { it.name == spacingName }
                     ?: com.example.util.QuestionSpacingPreset.NORMAL,
                 separatorStyle = com.example.util.QuestionSeparatorStyle.entries.firstOrNull { it.name == sepName }
-                    ?: com.example.util.QuestionSeparatorStyle.SUBTLE_HAIRLINE,
+                    ?: com.example.util.QuestionSeparatorStyle.NONE,
                 showCenterColumnDivider = centerDiv
             )
         }.getOrDefault(com.example.util.TestPageLayoutConfig())

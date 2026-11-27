@@ -520,32 +520,32 @@ enum class TopicTestLevel(
 ) {
     SEVIYE_TESPIT(
         "SEVİYE TESPİT", "Seviye Tespit", "Seviye Tespit",
-        0xFF2563EB, 0xFFFFFFFF, 0.5f, DifficultyLevel.ORTA,
+        0xFFF59E0B, 0xFFFFFFFF, 0.5f, DifficultyLevel.ORTA,
         "Kolay, Orta, Zor ve Çok Zor sorulardan dengeli karışım; ÖSYM tipi ayrı etikettir"
     ),
     BASLANGIC(
         "BAŞLANGIÇ", "Başlangıç", "Başlangıç",
-        0xFF16A34A, 0xFFFFFFFF, 0.15f, DifficultyLevel.KOLAY,
+        0xFF10B981, 0xFFFFFFFF, 0.15f, DifficultyLevel.KOLAY,
         "Yalnızca Kolay zorluk etiketli sorular"
     ),
     IKIZ(
         "İKİZ", "İkiz • Yanlışlarım", "İkiz",
-        0xFFF59E0B, 0xFF422006, 0.48f, DifficultyLevel.ORTA,
+        0xFFF97316, 0xFFFFFFFF, 0.48f, DifficultyLevel.ORTA,
         "Bu konudaki geçmiş testlerinde yanlış cevapladığın soruların tekrarı"
     ),
     PEKISTIRME(
         "PEKİŞTİRME", "Pekiştirme", "Pekiştirme",
-        0xFFF97316, 0xFFFFFFFF, 0.36f, DifficultyLevel.ORTA,
+        0xFF0284C7, 0xFFFFFFFF, 0.36f, DifficultyLevel.ORTA,
         "Ağırlık Orta; uygun olduğunda 1 Kolay ve 1 Zor soru"
     ),
     OSYM(
         "ÖSYM", "ÖSYM", "ÖSYM",
-        0xFF6366F1, 0xFFFFFFFF, 0.56f, DifficultyLevel.ORTA,
+        0xFF2563EB, 0xFFFFFFFF, 0.56f, DifficultyLevel.ORTA,
         "Zorluğu ne olursa olsun yalnızca ÖSYM tipi işaretli sorular"
     ),
     DERECE(
         "DERECE", "Derece", "Derece",
-        0xFFDB2777, 0xFFFFFFFF, 0.88f, DifficultyLevel.ZOR,
+        0xFF7C3AED, 0xFFFFFFFF, 0.88f, DifficultyLevel.ZOR,
         "Yalnızca Zor ve Çok Zor etiketli sorular"
     );
 

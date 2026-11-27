@@ -2919,14 +2919,14 @@ internal fun TopicTestsDetailView(
                                         .fillMaxWidth()
                                         .height(105.dp)
                                         .clip(RoundedCornerShape(topEnd = 4.dp))
-                                        .background(Color(0xFFD98A16))
+                                        .background(Color(0xFFF59E0B))
                                 )
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(105.dp)
                                         .clip(RoundedCornerShape(bottomEnd = 4.dp))
-                                        .background(Color(0xFF0E8AC8))
+                                        .background(Color(0xFF2563EB))
                                 )
                             }
 
@@ -3323,20 +3323,29 @@ private fun RadialLevelWheelOverlay(
         Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG).apply {
             textAlign = Paint.Align.CENTER
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textSize = with(density) { 9.sp.toPx() }
-            letterSpacing = 0.03f
+            textSize = with(density) { 9.5.sp.toPx() }
+            letterSpacing = 0.04f
+            setShadowLayer(with(density) { 2.dp.toPx() }, 0f, with(density) { 1.dp.toPx() }, android.graphics.Color.argb(95, 15, 23, 42))
         }
     }
 
-    // Only this wheel borrows the requested reference palette. The existing
-    // six level identities, selection callbacks and question pools stay intact.
-    val referenceWedgePalette = listOf(
-        Color(0xFFF9E6B4), // Seviye Tespit: warm ivory
-        Color(0xFFFAD2A7), // Başlangıç: apricot
-        Color(0xFFF4B2A4), // İkiz: soft coral
-        Color(0xFF288FDC), // Pekiştirme: vivid sky blue
-        Color(0xFF93C9E9), // ÖSYM: pale azure
-        Color(0xFF9998CC)  // Derece: lavender
+    // Canlı, yüksek kontrastlı ve okunaklı 6 kademeli YKS seviye paleti:
+    // Soluk krem/somon üzerine okunmayan beyaz yazı hatası giderildi; tüm dilimler canlı ve net okunur.
+    val vibrantWedgePalette = listOf(
+        Color(0xFFF59E0B), // Seviye Tespit: Canlı Kehribar Altın
+        Color(0xFF10B981), // Başlangıç: Canlı Zümrüt Yeşili
+        Color(0xFFF97316), // İkiz: Canlı Mercan Turuncu
+        Color(0xFF0284C7), // Pekiştirme: Canlı Gökyüzü Mavisi
+        Color(0xFF2563EB), // ÖSYM: Canlı Kraliyet Mavisi
+        Color(0xFF7C3AED)  // Derece: Canlı Mor / İndigo
+    )
+    val selectedWedgePalette = listOf(
+        Color(0xFFD97706), // Seviye Tespit (Seçili)
+        Color(0xFF059669), // Başlangıç (Seçili)
+        Color(0xFFEA580C), // İkiz (Seçili)
+        Color(0xFF0369A1), // Pekiştirme (Seçili)
+        Color(0xFF1D4ED8), // ÖSYM (Seçili)
+        Color(0xFF6D28D9)  // Derece (Seçili)
     )
     val safeAlpha = animProgress.coerceIn(0f, 1f)
 
@@ -3416,8 +3425,9 @@ private fun RadialLevelWheelOverlay(
                 val sliceTopLeft = Offset(centerX - sliceRadius, centerY - sliceRadius)
                 val sliceSize = Size(sliceRadius * 2f, sliceRadius * 2f)
 
+                val wedgeColor = if (isSelected) selectedWedgePalette[index] else vibrantWedgePalette[index]
                 drawArc(
-                    color = referenceWedgePalette[index].copy(alpha = safeAlpha),
+                    color = wedgeColor.copy(alpha = (if (isSelected) 1f else 0.90f) * safeAlpha),
                     startAngle = sliceStart,
                     sweepAngle = dynamicSliceSweep,
                     useCenter = true,
@@ -3469,9 +3479,9 @@ private fun RadialLevelWheelOverlay(
             val ringTopLeft = Offset(centerX - ringRadiusMid, centerY - ringRadiusMid)
             val ringSize = Size(ringRadiusMid * 2f, ringRadiusMid * 2f)
 
-            // Top 90° outer border frame (Amber)
+            // Top 90° outer border frame (Warm Amber-Orange)
             drawArc(
-                color = Color(0xFFF7B631).copy(alpha = safeAlpha),
+                color = Color(0xFFF59E0B).copy(alpha = safeAlpha),
                 startAngle = -90f,
                 sweepAngle = 89.2f,
                 useCenter = false,
@@ -3480,9 +3490,9 @@ private fun RadialLevelWheelOverlay(
                 style = Stroke(width = ringThickness, cap = StrokeCap.Butt)
             )
 
-            // Bottom 90° outer border frame (Cyan-Blue)
+            // Bottom 90° outer border frame (Royal Blue-Violet)
             drawArc(
-                color = Color(0xFF2BA9D7).copy(alpha = safeAlpha),
+                color = Color(0xFF2563EB).copy(alpha = safeAlpha),
                 startAngle = 0.8f,
                 sweepAngle = 89.2f,
                 useCenter = false,

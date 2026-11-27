@@ -104,6 +104,56 @@ class TestPagePackingTest {
         assertValid(adjustedHeights, repacked, 900, 16)
     }
 
+    @Test fun `booklet345 never crams 3 medium math questions into one column and leaves natural solving space`() {
+        // Exact Trigonometry test proportions where old packing crammed 3+3 onto 1 page with zero solving space
+        val heights = listOf(185, 175, 360, 410, 195, 170)
+        val available = 880
+        val pages = packBookletPages345(heights, available, 2)
+        assertEquals(heights.indices.toList(), pages.flatMap { it.columns.flatten() })
+        assertTrue("Must not cram all 6 math questions onto 1 cramped sheet", pages.size == 2)
+        pages.forEach { page ->
+            page.columns.filter { it.isNotEmpty() }.forEach { col ->
+                assertTrue("Math columns must hold at most 2 questions, got ${col.size}", col.size <= 2)
+                if (col.size >= 2) {
+                    val ink = col.sumOf { heights[it] }
+                    assertTrue(
+                        "Multi-question column must reserve >= 20% natural solving workspace: ink=$ink available=$available",
+                        ink <= (available * 0.80).toInt()
+                    )
+                }
+            }
+        }
+    }
+
+    @Test fun `booklet345 pairs tall diagram question with short question like 345 All Star reference`() {
+        // Exact ÜçDörtBeş All Star reference page: Q5 (360) + Q6 (310) on Left; Q7 tall graph (500) + Q8 short (130) on Right
+        val heights = listOf(360, 310, 500, 130)
+        val pages = packBookletPages345(heights, 880, 2)
+        assertEquals(1, pages.size)
+        assertEquals(listOf(listOf(0, 1), listOf(2, 3)), pages.single().columns)
+    }
+
+    @Test fun `booklet345 random mixed tests preserve reading order and solving workspace`() {
+        val random = Random(345)
+        repeat(100) {
+            val heights = List(random.nextInt(1, 45)) { random.nextInt(80, 1150) }
+            val available = random.nextInt(550, 1150)
+            for (columns in 1..2) {
+                val pages = packBookletPages345(heights, available, columns)
+                assertEquals(heights.indices.toList(), pages.flatMap { it.columns.flatten() })
+                pages.forEach { page ->
+                    page.columns.forEach { col ->
+                        assertTrue("Booklet column never exceeds 3 items", col.size <= 3)
+                        if (col.size >= 2) {
+                            val ink = col.sumOf { heights[it] }
+                            assertTrue("Multi-item column reserves solving space", ink <= available)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private fun assertValid(heights: List<Int>, pages: List<TestPagePacking>, available: Int, gap: Int) {
         assertEquals(heights.indices.toList(), pages.flatMap { it.columns.flatten() })
         pages.forEach { page -> page.columns.forEach { column ->

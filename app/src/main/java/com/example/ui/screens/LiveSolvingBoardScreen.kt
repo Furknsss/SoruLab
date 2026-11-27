@@ -248,7 +248,7 @@ private fun MeasuredBookPages(
                     }.awaitAll()
                 }
                 val bitmaps = pairs.toMap()
-                val contentWidthForGlyph = (columnWidthDp - 30f).coerceAtLeast(1f)
+                val contentWidthForGlyph = (columnWidthDp - 38f).coerceAtLeast(1f)
                 val metrics = bitmaps.mapNotNull { (id, bitmap) ->
                     bitmap?.let {
                         val glyphRatioKey = "$id|${it.width}x${it.height}"
@@ -2596,30 +2596,47 @@ private fun BookPageQuestionItem345(
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // Sol oluk: Yayınevi logosu kalabalığı olmadan, soru kökü ilk satırıyla hizalı saf kitapçık numarası (`1.`, `2.`, `3.`)
-            Box(
-                modifier = Modifier
-                    .width(26.dp)
-                    .heightIn(min = 24.dp)
-                    .padding(top = 1.dp)
-                    .testTag("question_number_badge_${question.number}")
-                    .clickable { sourceDetailsVisible = true },
-                contentAlignment = Alignment.TopStart
+            // Sol oluk: Soru numarasının hemen üstünde yayınevi logosu + altında kitapçık soru numarası (`1.`, `2.`, `3.`)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.width(34.dp)
             ) {
-                Text(
-                    text = "${question.number}.",
-                    color = Color(0xFF1E293B),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.5.sp,
-                    textAlign = TextAlign.Start
-                )
-                if (isReviewMode) {
-                    HandDrawnBrushMark345(
-                        isEmpty = isEmpty || isUngraded,
-                        isCorrect = isCorrect,
-                        isUngraded = false,
-                        modifier = Modifier.size(26.dp)
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .testTag("question_source_logo_${question.number}")
+                        .clickable { sourceDetailsVisible = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    PublisherLogoEmblem(
+                        publisher = sourcePublisher,
+                        size = 28.dp,
+                        overrideLogoPath = question.publisherLogoUri
                     )
+                }
+                Spacer(Modifier.height(3.dp))
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .testTag("question_number_badge_${question.number}")
+                        .clickable { sourceDetailsVisible = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "${question.number}.",
+                        color = Color(0xFF1E293B),
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 13.5.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    if (isReviewMode) {
+                        HandDrawnBrushMark345(
+                            isEmpty = isEmpty || isUngraded,
+                            isCorrect = isCorrect,
+                            isUngraded = false,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
             }
 

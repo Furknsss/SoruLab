@@ -35,14 +35,15 @@ class LiveSolvingBoardLayoutTest {
         assertTrue("Tablet questions should use nearly half the screen", first.width > 340f)
         val footer = compose.onAllNodesWithTag("test_page_footer").fetchSemanticsNodes().first().boundsInRoot
         assertTrue("Footer must fit the viewport", footer.bottom <= 1280f)
-        compose.onAllNodesWithTag("question_source_logo_1").assertCountEquals(0)
+        compose.onNodeWithTag("question_source_logo_1").assertIsDisplayed()
         val firstQuestion = compose.onNodeWithTag("book_question_1").fetchSemanticsNode().boundsInRoot
         val secondQuestion = compose.onNodeWithTag("book_question_2").fetchSemanticsNode().boundsInRoot
         val thirdQuestion = compose.onNodeWithTag("book_question_3").fetchSemanticsNode().boundsInRoot
         val fourthQuestion = compose.onNodeWithTag("book_question_4").fetchSemanticsNode().boundsInRoot
+        val logo = compose.onNodeWithTag("question_source_logo_1").fetchSemanticsNode().boundsInRoot
         val number = compose.onNodeWithText("1.").fetchSemanticsNode().boundsInRoot
-        assertTrue("Clean question number must align flush with the top of question 1",
-            kotlin.math.abs(number.top - firstQuestion.top) <= 14f)
+        assertTrue("Publisher logo must sit directly above the question number",
+            logo.bottom <= number.top + 1f)
         val leftWorkspace = secondQuestion.top - firstQuestion.bottom
         val rightWorkspace = fourthQuestion.top - thirdQuestion.bottom
         assertTrue("Both columns must align at the exact same top baseline",

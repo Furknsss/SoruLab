@@ -274,6 +274,13 @@ class SoruLabViewModel(
     private val _penThickness = MutableStateFlow(35f)
     val penThickness: StateFlow<Float> = _penThickness.asStateFlow()
 
+    // Samsung Notes tarzı silgi modu (varsayılan Çizgi Silgisi) ve silgi boyutu (0 - 100)
+    private val _eraserMode = MutableStateFlow(com.example.ui.drawing.EraserMode.STROKE)
+    val eraserMode: StateFlow<com.example.ui.drawing.EraserMode> = _eraserMode.asStateFlow()
+
+    private val _eraserThickness = MutableStateFlow(42f)
+    val eraserThickness: StateFlow<Float> = _eraserThickness.asStateFlow()
+
     private val _selectedPenColorHex = MutableStateFlow(0xFF111111L)
     val selectedPenColorHex: StateFlow<Long> = _selectedPenColorHex.asStateFlow()
 
@@ -2553,9 +2560,27 @@ class SoruLabViewModel(
         _selectedStrokeSizeIndex.value = safe
         if (_activeTool.value == DrawingTool.ERASER) {
             eraserStrokeSizeIndex = safe
+            _eraserThickness.value = com.example.ui.drawing.eraserStrokeIndexToThickness(safe)
         } else {
             penStrokeSizeIndex = safe
             _penThickness.value = com.example.ui.drawing.strokeSizeIndexToThickness(safe)
+        }
+    }
+
+    fun selectEraserMode(mode: com.example.ui.drawing.EraserMode) {
+        _eraserMode.value = mode
+        if (_activeTool.value != DrawingTool.ERASER) {
+            selectDrawingTool(DrawingTool.ERASER)
+        }
+    }
+
+    fun selectEraserThickness(value: Float) {
+        val clamped = value.coerceIn(0f, 100f)
+        _eraserThickness.value = clamped
+        val mappedIndex = com.example.ui.drawing.thicknessToEraserStrokeIndex(clamped)
+        eraserStrokeSizeIndex = mappedIndex
+        if (_activeTool.value == DrawingTool.ERASER) {
+            _selectedStrokeSizeIndex.value = mappedIndex
         }
     }
 
@@ -2605,29 +2630,35 @@ class SoruLabViewModel(
         val currentList = _boardStrokes.value[key].orEmpty()
 
         if (tool == DrawingTool.ERASER) {
-            val eraserIdx = if (_activeTool.value == DrawingTool.ERASER) {
-                _selectedStrokeSizeIndex.value
+            val eraserWidthPx = com.example.ui.drawing.eraserThicknessToPx(_eraserThickness.value)
+            val finalStrokes = if (_eraserMode.value == com.example.ui.drawing.EraserMode.STROKE) {
+                val untouched = currentList.filterNot { stroke ->
+                    !stroke.isEraser && com.example.ui.drawing.doesEraserTouchStroke(
+                        stroke = stroke,
+                        eraserPoints = points,
+                        eraserWidthPx = eraserWidthPx
+                    )
+                }
+                if (untouched.any { !it.isEraser }) untouched else emptyList()
             } else {
-                eraserStrokeSizeIndex
+                if (currentList.any { !it.isEraser }) {
+                    val eraserStroke = DrawStroke(
+                        points = points,
+                        colorHex = 0x00000000L,
+                        strokeWidthPx = eraserWidthPx,
+                        isSmartShape = false,
+                        isEraser = true
+                    )
+                    currentList + eraserStroke
+                } else {
+                    emptyList()
+                }
             }
-            val eraserWidthPx = listOf(18f, 38f, 68f)
-                .getOrElse(eraserIdx) { 38f }
-            val remaining = currentList
-            val finalStrokes = if (remaining.any { !it.isEraser }) {
-                val eraserStroke = DrawStroke(
-                    points = points,
-                    colorHex = 0x00000000L,
-                    strokeWidthPx = eraserWidthPx,
-                    isSmartShape = false,
-                    isEraser = true
-                )
-                remaining + eraserStroke
-            } else {
-                emptyList()
+            if (finalStrokes != currentList) {
+                val updatedStrokes = _boardStrokes.value + (key to finalStrokes)
+                _boardStrokes.value = updatedStrokes
+                repository.saveCachedBoardStrokes(effectiveUserId() ?: "device_yks_student_tr", updatedStrokes)
             }
-            val updatedStrokes = _boardStrokes.value + (key to finalStrokes)
-            _boardStrokes.value = updatedStrokes
-            repository.saveCachedBoardStrokes(effectiveUserId() ?: "device_yks_student_tr", updatedStrokes)
             return
         }
 

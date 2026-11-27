@@ -243,6 +243,8 @@ private fun ActiveSolvingSessionHost(
     val activeTool by mainViewModel.activeTool.collectAsStateWithLifecycle()
     val selectedStrokeSizeIndex by mainViewModel.selectedStrokeSizeIndex.collectAsStateWithLifecycle()
     val penThickness by mainViewModel.penThickness.collectAsStateWithLifecycle()
+    val eraserMode by mainViewModel.eraserMode.collectAsStateWithLifecycle()
+    val eraserThickness by mainViewModel.eraserThickness.collectAsStateWithLifecycle()
     val selectedPenColorHex by mainViewModel.selectedPenColorHex.collectAsStateWithLifecycle()
     val customPublishers by mainViewModel.customPublishers.collectAsStateWithLifecycle()
     val pageLayoutConfig by mainViewModel.pageLayoutConfig.collectAsStateWithLifecycle()
@@ -269,12 +271,16 @@ private fun ActiveSolvingSessionHost(
             activeTool = activeTool,
             selectedStrokeSizeIndex = selectedStrokeSizeIndex,
             penThickness = penThickness,
+            eraserMode = eraserMode,
+            eraserThickness = eraserThickness,
             selectedPenColorHex = selectedPenColorHex,
             onExitSession = { mainViewModel.exitSolvingSession() },
             onToggleViewMode = { mainViewModel.toggleBoardViewMode() },
             onSelectTool = { mainViewModel.selectDrawingTool(it) },
             onSelectStrokeSize = { mainViewModel.selectStrokeSize(it) },
             onSelectPenThickness = { mainViewModel.selectPenThickness(it) },
+            onSelectEraserMode = { mainViewModel.selectEraserMode(it) },
+            onSelectEraserThickness = { mainViewModel.selectEraserThickness(it) },
             onSelectPenColor = { mainViewModel.selectPenColor(it) },
             onAddStroke = { canvas, points, pressures, tool ->
                 mainViewModel.addStrokeToCanvas(canvas, points, pressures, tool)

@@ -671,7 +671,7 @@ object DenemePlanner {
             difficultyPosition = avgWeight.coerceIn(.1f, .95f),
             defaultCompleted = false,
             starRating = 0,
-            level = TopicTestLevel.SEVIYE_TESPIT,
+            level = TopicTestLevel.OSYM,
             questions = questions,
             denemeProfileVersion = DenemeTopicProfiles.VERSION,
             denemeDifficultyLabel = request.difficulty.label,

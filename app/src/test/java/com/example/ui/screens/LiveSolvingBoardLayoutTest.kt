@@ -136,6 +136,131 @@ class LiveSolvingBoardLayoutTest {
         capture("test-long-question-scrolled")
     }
 
+    @Test
+    fun penSizeHasNoPxTextAndSamsungEraserPopoverSupportsStrokeAndAreaModes() {
+        val strokeA = DrawStroke(
+            points = listOf(androidx.compose.ui.geometry.Offset(40f, 100f), androidx.compose.ui.geometry.Offset(240f, 100f)),
+            colorHex = 0xFF111111L,
+            strokeWidthPx = 8f
+        )
+        val strokeB = DrawStroke(
+            points = listOf(androidx.compose.ui.geometry.Offset(40f, 320f), androidx.compose.ui.geometry.Offset(240f, 320f)),
+            colorHex = 0xFF111111L,
+            strokeWidthPx = 8f
+        )
+        assertTrue(
+            "Samsung Notes stroke eraser must detect crossing a drawn line",
+            com.example.ui.drawing.doesEraserTouchStroke(
+                strokeA,
+                listOf(androidx.compose.ui.geometry.Offset(130f, 70f), androidx.compose.ui.geometry.Offset(130f, 130f)),
+                36f
+            )
+        )
+        assertFalse(
+            "Untouched line must remain intact",
+            com.example.ui.drawing.doesEraserTouchStroke(
+                strokeB,
+                listOf(androidx.compose.ui.geometry.Offset(130f, 70f), androidx.compose.ui.geometry.Offset(130f, 130f)),
+                36f
+            )
+        )
+
+        showBoard(useImages = false, questionCount = 4)
+        compose.onNodeWithTag("tool_pen_size_btn").assertIsDisplayed()
+        compose.onAllNodesWithText("px", substring = true).assertCountEquals(0)
+        val penBounds = compose.onNodeWithTag("smart_spen_mode").fetchSemanticsNode().boundsInRoot
+        val penSizeBounds = compose.onNodeWithTag("tool_pen_size_btn").fetchSemanticsNode().boundsInRoot
+        assertTrue("Pen size button must sit immediately next to the pen button",
+            penSizeBounds.left >= penBounds.right - 2f && penSizeBounds.left - penBounds.right <= 20f)
+
+        compose.onNodeWithTag("tool_eraser_size_btn").assertIsDisplayed().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("eraser_settings_popover").assertIsDisplayed()
+        compose.onNodeWithTag("eraser_mode_stroke").assertIsDisplayed()
+        compose.onNodeWithTag("eraser_mode_area").assertIsDisplayed()
+        compose.onNodeWithTag("eraser_size_slider").assertIsDisplayed()
+    }
+
+    @Test
+    fun idealLevelCardAppearsOnlyWhenSeviyeTespitDifficultyIsSelected() {
+        val questions = (1..6).map { number ->
+            YksQuestion(
+                id = "diag_$number",
+                number = number,
+                publisherName = "SoruLab",
+                stemTop = "$number. Seviye tespit sorusu",
+                stemBottom = "Doğru cevabı bulunuz.",
+                options = mapOf("A" to "1", "B" to "2", "C" to "3", "D" to "4", "E" to "5"),
+                correctOption = "A",
+                difficulty = if (number <= 2) DifficultyLevel.KOLAY else DifficultyLevel.ORTA,
+                stepByStepSolution = ""
+            )
+        }
+        var currentLevel by mutableStateOf(TopicTestLevel.PEKISTIRME)
+        compose.setContent {
+            val test = YksTestItem(
+                id = "diag_test",
+                topicId = "diziler",
+                title = "Test 1",
+                fullTitle = "Diziler · Test 1",
+                difficulty = DifficultyLevel.ORTA,
+                difficultyPosition = 0.5f,
+                level = currentLevel,
+                questions = questions
+            )
+            val session = ActiveSolvingSession(
+                testItem = test,
+                examType = ExamType.AYT,
+                subjectId = "mat",
+                subjectName = "Matematik",
+                topicId = "diziler",
+                topicName = "Diziler",
+                isReviewMode = true,
+                selectedAnswers = mapOf(1 to "A", 2 to "A", 3 to "A", 4 to "A", 5 to "B", 6 to "B")
+            )
+            var activeTool by remember { mutableStateOf(DrawingTool.HAND_PAN) }
+            MaterialTheme {
+                LiveSolvingBoardScreen(
+                    session = session,
+                    strokes = emptyList(),
+                    currentCanvasKey = "diag",
+                    activeTool = activeTool,
+                    selectedStrokeSizeIndex = 1,
+                    selectedPenColorHex = 0xFF0F172A,
+                    onExitSession = {},
+                    onToggleViewMode = {},
+                    onSelectTool = { activeTool = it },
+                    onSelectStrokeSize = {},
+                    onSelectPenColor = {},
+                    onAddStroke = { _, _, _, _ -> },
+                    onBookPageChanged = {},
+                    onClearCanvas = {},
+                    onSelectQuestionIndex = {},
+                    onSelectOption = { _, _ -> },
+                    onToggleOpticalForm = {},
+                    onToggleStatsDrawer = {},
+                    onToggleQuestionMap = {},
+                    onFinishTest = {},
+                    onGoToStatsTab = {},
+                    onAskAiForQuestion = {}
+                )
+            }
+        }
+        compose.waitUntil(30_000) {
+            compose.onAllNodesWithTag("go_to_report_card_btn").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("go_to_report_card_btn").performClick()
+        compose.waitForIdle()
+        // Non-SEVIYE_TESPIT -> must NOT display "İdeal Seviyeniz"
+        compose.onAllNodesWithTag("diagnostic_ideal_level_card").assertCountEquals(0)
+
+        // Switch to SEVIYE_TESPIT -> MUST display "İdeal Seviyeniz" with recommended level!
+        currentLevel = TopicTestLevel.SEVIYE_TESPIT
+        compose.waitForIdle()
+        compose.onNodeWithTag("diagnostic_ideal_level_card").assertIsDisplayed()
+        compose.onNodeWithTag("diagnostic_recommended_level", useUnmergedTree = true).assertIsDisplayed()
+    }
+
     private fun showBoard(useImages: Boolean = false, longQuestion: Boolean = false, questionCount: Int = 12) {
         val questions = (1..questionCount).map { number ->
             YksQuestion(
@@ -161,15 +286,16 @@ class LiveSolvingBoardLayoutTest {
             var session by remember { mutableStateOf(ActiveSolvingSession(
                 test, ExamType.AYT, "mat", "Matematik", "diziler", "Diziler"
             )) }
+            var tool by remember { mutableStateOf(DrawingTool.HAND_PAN) }
             MaterialTheme {
                 LiveSolvingBoardScreen(
-                    session = session, strokes = emptyList(), currentCanvasKey = "layout", activeTool = DrawingTool.HAND_PAN,
+                    session = session, strokes = emptyList(), currentCanvasKey = "layout", activeTool = tool,
                     selectedStrokeSizeIndex = 1, selectedPenColorHex = 0xFF0F172A,
                     onExitSession = {}, onToggleViewMode = {
                         session = session.copy(viewMode = if (session.viewMode == BoardViewMode.FULL_PAGE)
                             BoardViewMode.SINGLE_QUESTION else BoardViewMode.FULL_PAGE)
                     },
-                    onSelectTool = {}, onSelectStrokeSize = {}, onSelectPenColor = {},
+                    onSelectTool = { tool = it }, onSelectStrokeSize = {}, onSelectPenColor = {},
                     onAddStroke = { _, _, _, _ -> }, onBookPageChanged = {}, onClearCanvas = {},
                     onSelectQuestionIndex = { session = session.copy(currentQuestionIndex = it) },
                     onSelectOption = { q, opt -> session = session.copy(selectedAnswers = session.selectedAnswers + (q to opt)) },

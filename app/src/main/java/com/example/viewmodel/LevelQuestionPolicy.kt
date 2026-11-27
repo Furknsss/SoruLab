@@ -178,4 +178,76 @@ internal object LevelPlacementAdvisor {
         }
         return LevelPlacement(recommendation, note)
     }
+
+    /**
+     * Seviye Tespit testi bittiğinde öğrencinin doğru/yanlış sayısına, net oranına ve
+     * soruların zorluk ağırlığına göre her koşulda somut bir "İdeal Seviyeniz" önerisi üretir.
+     */
+    fun evaluateForDiagnosticResult(
+        questions: List<YksQuestion>,
+        chosenAnswers: Map<Int, String>
+    ): LevelPlacement {
+        val verified = questions.filter {
+            it.answerKeyVerified && it.correctOption in setOf("A", "B", "C", "D", "E")
+        }.ifEmpty { questions }
+
+        val total = verified.size.coerceAtLeast(1)
+        val correctCount = verified.count {
+            chosenAnswers[it.number]?.uppercase() == it.correctOption
+        }
+        val wrongCount = verified.count { q ->
+            val chosen = chosenAnswers[q.number]?.uppercase()
+            !chosen.isNullOrBlank() && chosen != q.correctOption
+        }
+        val emptyCount = (total - correctCount - wrongCount).coerceAtLeast(0)
+        val statsPrefix = "Doğru: $correctCount • Yanlış: $wrongCount • Boş: $emptyCount — "
+
+        val strict = evaluate(questions, chosenAnswers)
+        if (strict != null) {
+            return LevelPlacement(
+                recommended = strict.recommended,
+                note = statsPrefix + strict.note
+            )
+        }
+
+        val netRatio = ((correctCount - wrongCount / 4.0) / total).coerceIn(0.0, 1.0)
+        var totalDifficultyWeight = 0.0
+        var earnedDifficultyWeight = 0.0
+        for (q in verified) {
+            val w = when (q.difficulty.fourTier()) {
+                DifficultyLevel.KOLAY -> 1.00
+                DifficultyLevel.ORTA -> 1.35
+                DifficultyLevel.ZOR -> 1.75
+                DifficultyLevel.COK_ZOR -> 2.10
+                DifficultyLevel.OSYM -> 1.45
+            }
+            totalDifficultyWeight += w
+            val chosen = chosenAnswers[q.number]?.uppercase()
+            if (chosen == q.correctOption) {
+                earnedDifficultyWeight += w
+            } else if (!chosen.isNullOrBlank()) {
+                earnedDifficultyWeight -= 0.25 * w
+            }
+        }
+        val weightedRatio = if (totalDifficultyWeight > 0.0) {
+            (earnedDifficultyWeight / totalDifficultyWeight).coerceIn(0.0, 1.0)
+        } else {
+            netRatio
+        }
+        val masteryScore = (0.55 * netRatio + 0.45 * weightedRatio).coerceIn(0.0, 1.0)
+
+        val recommended = when {
+            masteryScore < 0.36 -> TopicTestLevel.BASLANGIC
+            masteryScore < 0.62 -> TopicTestLevel.PEKISTIRME
+            masteryScore < 0.82 -> TopicTestLevel.OSYM
+            else -> TopicTestLevel.DERECE
+        }
+        val detailNote = when (recommended) {
+            TopicTestLevel.BASLANGIC -> "Temel kazanımları ve kolay seviye soru kalıplarını sağlamlaştırarak ilerlemen en verimli başlangıç olacaktır."
+            TopicTestLevel.PEKISTIRME -> "Temelin hazır; orta seviye pekiştirme testleriyle işlem hızını ve doğruluğunu yükselt."
+            TopicTestLevel.OSYM -> "Kazanım hakimiyetin iyi düzeyde; ÖSYM tarzı kurgusal sorularla sınav pratiğine odaklan."
+            else -> "Üst düzey başarı gösterdin! Zor ve Çok Zor derece sorularıyla hedeflerini zirveye taşı."
+        }
+        return LevelPlacement(recommended, statsPrefix + detailNote)
+    }
 }

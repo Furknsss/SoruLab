@@ -190,4 +190,35 @@ class LevelQuestionPolicyTest {
         assertEquals(TopicTestLevel.OSYM,
             LevelPlacementAdvisor.evaluate(questions, allCorrect + (3 to "A"))?.recommended)
     }
+
+    @Test fun diagnosticResultAdvisorAlwaysComputesIdealLevelFromCorrectAndWrongAnswers() {
+        val mixedPool = listOf(
+            question(DifficultyLevel.KOLAY, 1),
+            question(DifficultyLevel.KOLAY, 2),
+            question(DifficultyLevel.ORTA, 3),
+            question(DifficultyLevel.ORTA, 4),
+            question(DifficultyLevel.ZOR, 5),
+            question(DifficultyLevel.ZOR, 6)
+        )
+        // Low score (1 correct, 5 wrong) -> BASLANGIC
+        val lowAnswers = mapOf(1 to "B", 2 to "A", 3 to "A", 4 to "A", 5 to "A", 6 to "A")
+        val lowRes = LevelPlacementAdvisor.evaluateForDiagnosticResult(mixedPool, lowAnswers)
+        assertEquals(TopicTestLevel.BASLANGIC, lowRes.recommended)
+        assertTrue(lowRes.note.contains("Doğru: 1 • Yanlış: 5"))
+
+        // Medium score (3 correct, 1 wrong) -> PEKISTIRME
+        val midAnswers = mapOf(1 to "B", 2 to "B", 3 to "B", 4 to "A")
+        val midRes = LevelPlacementAdvisor.evaluateForDiagnosticResult(mixedPool, midAnswers)
+        assertEquals(TopicTestLevel.PEKISTIRME, midRes.recommended)
+
+        // High score (5 correct, 1 wrong) -> OSYM
+        val highAnswers = mapOf(1 to "B", 2 to "B", 3 to "B", 4 to "B", 5 to "B", 6 to "A")
+        val highRes = LevelPlacementAdvisor.evaluateForDiagnosticResult(mixedPool, highAnswers)
+        assertEquals(TopicTestLevel.OSYM, highRes.recommended)
+
+        // Full score (6 correct, 0 wrong) -> DERECE
+        val topAnswers = (1..6).associateWith { "B" }
+        val topRes = LevelPlacementAdvisor.evaluateForDiagnosticResult(mixedPool, topAnswers)
+        assertEquals(TopicTestLevel.DERECE, topRes.recommended)
+    }
 }
